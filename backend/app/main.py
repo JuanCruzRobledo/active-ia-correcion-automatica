@@ -96,20 +96,40 @@ def register_routers(app: FastAPI) -> None:
             "version": settings.APP_VERSION,
         }
 
-    # TODO: Fase 1 - Agregar auth_router
-    # from app.api.v1.routers import auth_router
-    # app.include_router(auth_router.router, prefix="/api/v1", tags=["Auth"])
+    # Fase 1 - Auth router
+    from app.routers.auth import router as auth_router
 
-    # TODO: Fase 2 - Agregar routers de CRUD basico
-    # from app.api.v1.routers import user_router, materia_router, comision_router
-    # app.include_router(user_router.router, prefix="/api/v1", tags=["Usuarios"])
-    # app.include_router(materia_router.router, prefix="/api/v1", tags=["Materias"])
-    # app.include_router(comision_router.router, prefix="/api/v1", tags=["Comisiones"])
+    app.include_router(auth_router, prefix="/api/v1")
 
-    # TODO: Fase 3 - Agregar routers de rubricas y entregas
-    # from app.api.v1.routers import rubrica_router, entrega_router
-    # app.include_router(rubrica_router.router, prefix="/api/v1", tags=["Rubricas"])
-    # app.include_router(entrega_router.router, prefix="/api/v1", tags=["Entregas"])
+    # Fase 2 - CRUD basico
+    from app.routers.usuarios import router as usuarios_router
+
+    app.include_router(usuarios_router, prefix="/api/v1")
+
+    # Fase 2 - Materias router
+    from app.routers.materias import router as materias_router
+
+    app.include_router(materias_router, prefix="/api/v1")
+
+    # Fase 2 - Comisiones router
+    from app.routers.comisiones import router as comisiones_router
+
+    app.include_router(comisiones_router, prefix="/api/v1")
+
+    # Fase 3 - Rubricas router
+    from app.routers.rubricas import router as rubricas_router
+
+    app.include_router(rubricas_router, prefix="/api/v1")
+
+    # Fase 3 - Entregas router
+    from app.routers.entregas import router as entregas_router
+
+    app.include_router(entregas_router, prefix="/api/v1")
+
+    # Fase 4 - Correcciones router
+    from app.routers.correcciones import router as correcciones_router
+
+    app.include_router(correcciones_router, prefix="/api/v1")
 
     # TODO: Fase 4 - Agregar routers de correcciones y documentos
     # from app.api.v1.routers import correccion_router, documento_router

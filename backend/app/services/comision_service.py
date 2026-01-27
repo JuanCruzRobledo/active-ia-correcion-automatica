@@ -1,0 +1,391 @@
+# app/services/comision_service.py
+"""
+Comision service for Active-IA.
+
+Business logic for commission (comision) management operations.
+
+Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 5
+"""
+
+from fastapi import HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.comision import Comision
+from app.models.enums import RolEnum
+from app.repositories.comision_repository import (
+    ComisionRepository,
+    ComisionTutorRepository,
+)
+from app.repositories.materia_repository import MateriaRepository
+from app.repositories.usuario_repository import UsuarioRepository
+from app.schemas.comision import (
+    ComisionCreate,
+    ComisionDetailResponse,
+    ComisionList,
+    ComisionListItem,
+    ComisionResponse,
+    ComisionUpdate,
+    MateriaInfo,
+    TutorInfo,
+    TutoresAssign,
+    TutoresResponse,
+)
+from app.schemas.usuario import UsuarioListItem
+
+
+class ComisionService:
+    """Service for comision management operations."""
+
+    def __init__(self, db: AsyncSession):
+        """
+        Initialize comision service.
+
+        Args:
+            db: Async database session.
+        """
+        self.db = db
+        self.comision_repo = ComisionRepository(db)
+        self.comision_tutor_repo = ComisionTutorRepository(db)
+        self.materia_repo = MateriaRepository(db)
+        self.usuario_repo = UsuarioRepository(db)
+
+    async def crear_comision(self, data: ComisionCreate) -> ComisionResponse:
+        """
+        Create a new comision.
+
+        Args:
+            data: Comision creation data (materia_id, nombre, anio).
+
+        Returns:
+            ComisionResponse with comision data.
+
+        Raises:
+            HTTPException 404: Materia not found.
+            HTTPException 409: Comision with same materia+nombre+anio exists.
+        """
+        # Validate materia exists
+        materia = await self.materia_repo.get_active_by_id(data.materia_id)
+        if not materia:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Materia no encontrada o inactiva",
+            )
+
+        # Check if comision already exists (materia + nombre + anio)
+        if await self.comision_repo.exists(
+            materia_id=data.materia_id,
+            nombre=data.nombre,
+            anio=data.anio,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Ya existe una comisión con ese nombre para esta materia y año",
+            )
+
+        # Create comision
+        comision = Comision(
+            materia_id=data.materia_id,
+            nombre=data.nombre,
+            anio=data.anio,
+            activa=True,
+        )
+
+        created_comision = await self.comision_repo.create(comision)
+
+        return ComisionResponse.model_validate(created_comision)
+
+    async def listar_comisiones(
+        self,
+        *,
+        materia_id: int | None = None,
+        anio: int | None = None,
+        include_inactive: bool = False,
+        page: int = 1,
+        per_page: int = 20,
+    ) -> ComisionList:
+        """
+        List comisiones with optional filters and pagination.
+
+        Args:
+            materia_id: Filter by materia ID.
+            anio: Filter by academic year.
+            include_inactive: Include soft-deleted comisiones.
+            page: Page number (1-indexed).
+            per_page: Items per page.
+
+        Returns:
+            ComisionList with paginated results.
+        """
+        comisiones, total = await self.comision_repo.get_all(
+            materia_id=materia_id,
+            anio=anio,
+            include_inactive=include_inactive,
+            page=page,
+            per_page=per_page,
+        )
+
+        # Build list items with counts
+        items = []
+        for comision in comisiones:
+            # Count tutores
+            tutores = await self.comision_tutor_repo.get_tutores_for_comision(
+                comision.id
+            )
+            num_tutores = len(tutores)
+
+            # Count active entregas
+            num_entregas = (
+                len([e for e in comision.entregas if e.activa])
+                if comision.entregas
+                else 0
+            )
+
+            items.append(
+                ComisionListItem(
+                    id=comision.id,
+                    materia_id=comision.materia_id,
+                    materia_nombre=comision.materia.nombre,
+                    materia_codigo=comision.materia.codigo,
+                    nombre=comision.nombre,
+                    anio=comision.anio,
+                    activa=comision.activa,
+                    created_at=comision.created_at,
+                    num_tutores=num_tutores,
+                    num_entregas=num_entregas,
+                )
+            )
+
+        return ComisionList(
+            items=items,
+            total=total,
+            page=page,
+            per_page=per_page,
+        )
+
+    async def obtener_comision(self, comision_id: int) -> ComisionDetailResponse:
+        """
+        Get a comision by ID with materia and tutores info.
+
+        Args:
+            comision_id: Comision's database ID.
+
+        Returns:
+            ComisionDetailResponse with full comision data.
+
+        Raises:
+            HTTPException 404: Comision not found.
+        """
+        comision = await self.comision_repo.get_by_id_with_relations(comision_id)
+
+        if not comision:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Comisión no encontrada",
+            )
+
+        # Build materia info
+        materia_info = MateriaInfo(
+            id=comision.materia.id,
+            codigo=comision.materia.codigo,
+            nombre=comision.materia.nombre,
+        )
+
+        # Build tutores info
+        tutores_info = []
+        for ct in comision.tutores:
+            tutor = await self.usuario_repo.get_by_id(ct.tutor_id)
+            if tutor:
+                tutores_info.append(
+                    TutorInfo(
+                        id=tutor.id,
+                        username=tutor.username,
+                        nombre=tutor.nombre,
+                        asignado_en=ct.asignado_en,
+                    )
+                )
+
+        return ComisionDetailResponse(
+            id=comision.id,
+            materia_id=comision.materia_id,
+            nombre=comision.nombre,
+            anio=comision.anio,
+            activa=comision.activa,
+            created_at=comision.created_at,
+            updated_at=comision.updated_at,
+            materia=materia_info,
+            tutores=tutores_info,
+        )
+
+    async def actualizar_comision(
+        self,
+        comision_id: int,
+        data: ComisionUpdate,
+    ) -> ComisionResponse:
+        """
+        Update an existing comision.
+
+        Args:
+            comision_id: Comision's database ID.
+            data: Comision update data (nombre).
+
+        Returns:
+            ComisionResponse with updated comision data.
+
+        Raises:
+            HTTPException 404: Comision not found.
+            HTTPException 409: Updated nombre conflicts with existing comision.
+        """
+        comision = await self.comision_repo.get_by_id(comision_id)
+
+        if not comision:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Comisión no encontrada",
+            )
+
+        # Update only provided fields
+        if data.nombre is not None:
+            # Check if new nombre conflicts with existing comision
+            if data.nombre != comision.nombre:
+                if await self.comision_repo.exists(
+                    materia_id=comision.materia_id,
+                    nombre=data.nombre,
+                    anio=comision.anio,
+                ):
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Ya existe una comisión con ese nombre para esta materia y año",
+                    )
+            comision.nombre = data.nombre
+
+        updated_comision = await self.comision_repo.update(comision)
+
+        return ComisionResponse.model_validate(updated_comision)
+
+    async def eliminar_comision(self, comision_id: int) -> None:
+        """
+        Soft delete a comision.
+
+        Args:
+            comision_id: Comision's database ID.
+
+        Raises:
+            HTTPException 404: Comision not found.
+        """
+        comision = await self.comision_repo.get_active_by_id(comision_id)
+
+        if not comision:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Comisión no encontrada o ya eliminada",
+            )
+
+        await self.comision_repo.soft_delete(comision)
+
+    async def restaurar_comision(self, comision_id: int) -> ComisionResponse:
+        """
+        Restore a soft-deleted comision.
+
+        Args:
+            comision_id: Comision's database ID.
+
+        Returns:
+            ComisionResponse with restored comision data.
+
+        Raises:
+            HTTPException 404: Comision not found.
+            HTTPException 400: Comision is not deleted.
+        """
+        comision = await self.comision_repo.get_by_id(comision_id)
+
+        if not comision:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Comisión no encontrada",
+            )
+
+        if comision.activa:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La comisión no está eliminada",
+            )
+
+        restored_comision = await self.comision_repo.restore(comision)
+
+        return ComisionResponse.model_validate(restored_comision)
+
+    async def asignar_tutores(
+        self,
+        comision_id: int,
+        data: TutoresAssign,
+    ) -> TutoresResponse:
+        """
+        Assign tutors to a comision (replaces existing assignments).
+
+        Args:
+            comision_id: Comision's database ID.
+            data: TutoresAssign with list of tutor IDs.
+
+        Returns:
+            TutoresResponse with assigned tutors.
+
+        Raises:
+            HTTPException 404: Comision not found or tutor not found.
+            HTTPException 400: User is not a tutor or is inactive.
+        """
+        # Validate comision exists
+        comision = await self.comision_repo.get_active_by_id(comision_id)
+        if not comision:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Comisión no encontrada o inactiva",
+            )
+
+        # Validate all tutors exist and have TUTOR role
+        valid_tutores = []
+        for tutor_id in data.tutor_ids:
+            usuario = await self.usuario_repo.get_active_by_id(tutor_id)
+
+            if not usuario:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Usuario con ID {tutor_id} no encontrado o inactivo",
+                )
+
+            if usuario.rol != RolEnum.TUTOR:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El usuario {usuario.username} no tiene rol de TUTOR",
+                )
+
+            valid_tutores.append(usuario)
+
+        # Remove all previous assignments
+        await self.comision_tutor_repo.delete_all_for_comision(comision_id)
+
+        # Create new assignments
+        for usuario in valid_tutores:
+            await self.comision_tutor_repo.create(
+                tutor_id=usuario.id,
+                comision_id=comision_id,
+            )
+
+        # Build response
+        tutores_list = [
+            UsuarioListItem(
+                id=u.id,
+                username=u.username,
+                nombre=u.nombre,
+                email=u.email,
+                rol=u.rol,
+                activo=u.activo,
+                created_at=u.created_at,
+            )
+            for u in valid_tutores
+        ]
+
+        return TutoresResponse(
+            comision_id=comision_id,
+            tutores=tutores_list,
+            message=f"{len(tutores_list)} tutor(es) asignado(s) exitosamente",
+        )

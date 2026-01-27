@@ -23,6 +23,9 @@ from app.models.enums import (
 from app.models.usuario import Usuario
 from app.models.materia import CoordinadorMateria, Materia
 from app.models.comision import Comision, ComisionTutor
+from app.models.rubrica import Rubrica
+from app.models.entrega import Entrega, EntregaHistorial
+from app.models.correccion import Correccion
 
 __all__ = [
     # Base
@@ -44,4 +47,8 @@ __all__ = [
     "CoordinadorMateria",
     "Comision",
     "ComisionTutor",
+    "Rubrica",
+    "Entrega",
+    "EntregaHistorial",
+    "Correccion",
 ]
