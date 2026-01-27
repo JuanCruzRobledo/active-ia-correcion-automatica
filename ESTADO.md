@@ -6,30 +6,30 @@
 
 ## Estado Actual
 
-| Campo                     | Valor                             |
-| ------------------------- | --------------------------------- |
-| **Fase actual**           | Fase 4 - Backend Corrección IA    |
-| **Tarea actual**          | 4.6 - Crear rubrica_ia_service.py |
-| **Ultima sesion**         | 2026-01-27                        |
-| **Porcentaje completado** | 53%                               |
+| Campo                     | Valor                          |
+| ------------------------- | ------------------------------ |
+| **Fase actual**           | Fase 5 - Frontend Setup + Auth |
+| **Tarea actual**          | 5.1 - Setup proyecto frontend  |
+| **Ultima sesion**         | 2026-01-27                     |
+| **Porcentaje completado** | 58%                            |
 
 ---
 
 ## Progreso por Fase
 
-| #   | Fase                          | Estado        | Progreso     |
-| --- | ----------------------------- | ------------- | ------------ |
-| 0   | Setup Inicial                 | `COMPLETADA`  | 8/8 tareas   |
-| 1   | Backend - Auth + Modelos      | `COMPLETADA`  | 12/12 tareas |
-| 2   | Backend - CRUD Basico         | `COMPLETADA`  | 15/15 tareas |
-| 3   | Backend - Rubricas + Entregas | `COMPLETADA`  | 14/14 tareas |
-| 4   | Backend - Correccion IA       | `EN PROGRESO` | 5/10 tareas  |
-| 5   | Frontend - Setup + Auth       | `PENDIENTE`   | 0/10 tareas  |
-| 6   | Frontend - Features           | `PENDIENTE`   | 0/20 tareas  |
-| 7   | Testing + Integracion         | `PENDIENTE`   | 0/8 tareas   |
-| 8   | Docker + Deploy               | `PENDIENTE`   | 0/6 tareas   |
+| #   | Fase                          | Estado       | Progreso     |
+| --- | ----------------------------- | ------------ | ------------ |
+| 0   | Setup Inicial                 | `COMPLETADA` | 8/8 tareas   |
+| 1   | Backend - Auth + Modelos      | `COMPLETADA` | 12/12 tareas |
+| 2   | Backend - CRUD Basico         | `COMPLETADA` | 15/15 tareas |
+| 3   | Backend - Rubricas + Entregas | `COMPLETADA` | 14/14 tareas |
+| 4   | Backend - Correccion IA       | `COMPLETADA` | 10/10 tareas |
+| 5   | Frontend - Setup + Auth       | `PENDIENTE`  | 0/10 tareas  |
+| 6   | Frontend - Features           | `PENDIENTE`  | 0/20 tareas  |
+| 7   | Testing + Integracion         | `PENDIENTE`  | 0/8 tareas   |
+| 8   | Docker + Deploy               | `PENDIENTE`  | 0/6 tareas   |
 
-**Total**: 54/103 tareas completadas
+**Total**: 59/103 tareas completadas
 
 ---
 
@@ -41,6 +41,61 @@
 
 ### Que se hizo:
 
+- Implementacion de tarea 4.10: Creacion de backend/app/routers/documentos.py
+  - Router REST API con 3 endpoints para generacion de documentos
+  - GET /documentos/correcciones/:id/pdf - Descarga PDF individual
+  - GET /documentos/comisiones/:id/rubricas/:rubrica_id/pdfs - Descarga ZIP con todos los PDFs
+  - GET /documentos/comisiones/:id/rubricas/:rubrica_id/excel - Exporta notas a Excel
+  - Integracion con PDFService y ExcelService
+  - Respuestas como StreamingResponse con headers de descarga
+- Actualizacion de backend/app/routers/**init**.py para exportar documentos_router
+- Registro de documentos_router en backend/app/main.py
+- Verificacion de sintaxis - ✅ Exitosa
+- Implementacion de tarea 4.9: Creacion de backend/app/services/excel_service.py
+  - Servicio para exportar notas a Excel usando openpyxl
+  - Metodo exportar_notas_excel: genera archivo .xlsx con formato profesional
+  - Columnas: Alumno, Nota, Estado, Fecha, Editado
+  - Notas con colores: verde (>=80), amarillo (>=60), rojo (<60)
+  - Headers formateados con freeze panes
+  - Fila de resumen con total de entregas
+  - Sanitizacion de nombres de archivo
+- Actualizacion de backend/app/services/**init**.py para exportar ExcelService
+- Verificacion de sintaxis - ✅ Exitosa
+- Implementacion de tarea 4.8: Creacion de backend/app/services/pdf_service.py
+  - Servicio para generar PDFs de devolucion usando ReportLab
+  - Metodo generar_pdf_devolucion: genera PDF individual con formato profesional
+  - Metodo generar_zip_pdfs: genera ZIP con PDFs de todas las entregas corregidas
+  - Formato de PDF incluye: nota, criterios evaluados, fortalezas, recomendaciones
+  - Indicadores visuales con colores: verde (OK), amarillo (WARNING), rojo (ERROR)
+  - Sanitizacion de nombres de archivo para compatibilidad
+  - Integracion con CorreccionRepository para obtener datos
+- Actualizacion de backend/app/services/**init**.py para exportar PDFService
+- Verificacion de sintaxis - ✅ Exitosa
+- Actualizacion de ROADMAP.md marcando tarea 4.8 como completada
+- Implementacion de tarea 4.7: Agregar endpoint POST /rubricas/desde-pdf
+  - Endpoint para generar rubricas desde PDF usando IA
+  - Recibe PDF via multipart/form-data (max 10MB)
+  - Validacion de API Key de Gemini configurada
+  - Integracion con RubricaIAService.generar_rubrica_desde_pdf
+  - Retorna estructura sugerida de rubrica para revision
+  - Documentacion completa con proceso y validaciones
+- Actualizacion de backend/app/routers/rubricas.py con imports necesarios
+- Verificacion de sintaxis - ✅ Exitosa
+- Actualizacion de ROADMAP.md marcando tarea 4.7 como completada
+- Implementacion de tarea 4.6: Creacion de backend/app/services/rubrica_ia_service.py
+  - Servicio para generar rubricas desde PDF usando IA
+  - Metodo generar_rubrica_desde_pdf con validacion de archivos
+  - Validacion de tipo de archivo (solo PDF), tamaño maximo 10MB
+  - Conversion de PDF a base64 para transmision a N8N
+  - Integracion con N8NClient.trigger_rubric_generation
+  - Parseo y validacion de respuesta de Gemini
+  - Validacion de estructura de criterios (nombre, descripcion, puntaje)
+  - Validacion de suma de puntajes = 100 (tolerancia ±5)
+  - Manejo de errores: N8NError, N8NTimeoutError, ValidationError
+  - Desencriptacion segura de API Key de Gemini
+- Actualizacion de backend/app/services/**init**.py para exportar RubricaIAService
+- Verificacion de sintaxis - ✅ Exitosa
+- Actualizacion de ROADMAP.md marcando tarea 4.6 como completada
 - Implementacion de tarea 4.5: Creacion de backend/app/routers/correcciones.py
   - Router REST API con 6 endpoints para correcciones
   - POST /entregas/{id}/corregir, POST /entregas/{id}/recorregir, POST /lote
@@ -107,7 +162,7 @@
 
 ### Proxima tarea:
 
-- **4.6**: Crear backend/app/services/rubrica_ia_service.py
+- **5.1**: Setup proyecto frontend con Next.js
 
 ### Problemas encontrados:
 
@@ -115,10 +170,13 @@
 
 ### Notas:
 
-- Fase 4 progreso: 5/10 tareas completadas (50%)
-- Router de correcciones registrado en /api/v1/correcciones con 6 endpoints REST
-- Endpoints requieren autorizacion de Tutor/Admin y API Key de Gemini configurada
-- Arquitectura completa: Router -> Service -> Repository -> Model
+- ✅ **FASE 4 COMPLETADA** - Backend de Corrección IA (10/10 tareas - 100%)
+- Funcionalidad completa de correcciones con IA implementada
+- Generacion de rubricas desde PDF con Gemini
+- Generacion de PDFs de devolucion con ReportLab
+- Exportacion de notas a Excel con openpyxl
+- 3 endpoints de documentos: PDF individual, ZIP masivo, Excel
+- Fase 4 progreso: 10/10 tareas completadas (100%)
 - CorreccionService implementa patron async/await completo
 - Integracion con N8N usando N8NClient ya implementado en tarea 4.1
 - Rate limiting de 2 segundos entre correcciones en lote para evitar sobrecarga
@@ -168,7 +226,8 @@
 
 | Archivo                                           | Ultima modificacion | Por                     |
 | ------------------------------------------------- | ------------------- | ----------------------- |
-| backend/app/routers/correcciones.py               | 2026-01-27          | Tarea 4.5 completada    |
+| backend/app/routers/rubricas.py                   | 2026-01-27          | Tarea 4.7 completada    |
+| backend/app/services/rubrica_ia_service.py        | 2026-01-27          | Tarea 4.6 completada    |
 | backend/app/routers/**init**.py                   | 2026-01-27          | Tarea 4.5 completada    |
 | backend/app/main.py                               | 2026-01-27          | Tarea 4.5 completada    |
 | backend/app/services/correccion_service.py        | 2026-01-27          | Tarea 4.4 completada    |

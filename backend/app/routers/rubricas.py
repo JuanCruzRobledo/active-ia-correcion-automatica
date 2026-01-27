@@ -8,7 +8,7 @@ All endpoints require authentication and admin authorization.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 6
 """
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
@@ -24,6 +24,7 @@ from app.schemas.rubrica import (
     RubricaUpdate,
 )
 from app.services.rubrica_service import RubricaService
+from app.services.rubrica_ia_service import RubricaIAService
 
 router = APIRouter(
     prefix="/rubricas",
@@ -218,3 +219,70 @@ async def duplicar_rubrica(
 
     service = RubricaService(db)
     return await service.duplicar_rubrica(rubrica_id, data)
+
+
+@router.post("/desde-pdf", status_code=status.HTTP_200_OK)
+async def generar_rubrica_desde_pdf(
+    pdf_file: UploadFile = File(..., description="Archivo PDF con la consigna del TP"),
+    tipo_rubrica: str = Form("TP", description="Tipo de rúbrica (TP, PARCIAL_1, etc.)"),
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """
+    Generate a rubrica from a PDF file using AI.
+
+    **Process:**
+    1. Validates user has Gemini API Key configured
+    2. Validates PDF file (type and size)
+    3. Sends PDF to N8N → Gemini for criteria extraction
+    4. Returns suggested rubrica structure for review
+
+    **Required:**
+    - `pdf_file`: PDF file with assignment description (max 10MB)
+
+    **Optional:**
+    - `tipo_rubrica`: Type of rubrica (default: TP)
+
+    **Returns:**
+    - `nombre_sugerido`: Suggested name for the rubrica
+    - `descripcion`: Brief description extracted from PDF
+    - `puntaje_maximo`: Always 100
+    - `criterios`: List of evaluation criteria with:
+      - `nombre`: Criterion name
+      - `descripcion`: Criterion description
+      - `puntaje_maximo`: Points for this criterion
+
+    **Next steps:**
+    - Coordinator reviews and edits criteria if needed
+    - Creates rubrica using POST /rubricas endpoint with the criteria
+
+    **Validation:**
+    - User must have Gemini API Key configured
+    - File must be PDF format
+    - File size must be ≤ 10MB
+    - Sum of criteria puntajes will be validated to equal 100 (±5 tolerance)
+
+    **Authorization:** Admin only (Coordinador in future)
+
+    **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-RUB-02
+    """
+    require_admin(current_user)
+
+    # Validate API Key is configured
+    if not current_user.api_key_encrypted:
+        from fastapi import HTTPException
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debes configurar tu API Key de Gemini en tu perfil antes de generar rúbricas con IA",
+        )
+
+    # Use RubricaIAService to generate rubrica
+    ia_service = RubricaIAService()
+    rubrica_data = await ia_service.generar_rubrica_desde_pdf(
+        pdf_file=pdf_file,
+        api_key_encrypted=current_user.api_key_encrypted,
+        tipo_rubrica=tipo_rubrica,
+    )
+
+    return rubrica_data

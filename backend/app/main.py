@@ -131,6 +131,11 @@ def register_routers(app: FastAPI) -> None:
 
     app.include_router(correcciones_router, prefix="/api/v1")
 
+    # Fase 4 - Documentos router
+    from app.routers.documentos import router as documentos_router
+
+    app.include_router(documentos_router, prefix="/api/v1")
+
     # TODO: Fase 4 - Agregar routers de correcciones y documentos
     # from app.api.v1.routers import correccion_router, documento_router
     # app.include_router(correccion_router.router, prefix="/api/v1", tags=["Correcciones"])

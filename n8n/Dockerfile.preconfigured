@@ -1,0 +1,37 @@
+# Dockerfile para N8N Preconfigurado - Active-IA
+#
+# Esta imagen incluye workflows preconfigurados para:
+# - Corrección automática con Gemini
+# - Generación de rúbricas desde PDF
+# - Health check
+#
+# Uso: Ejecutar build-image.sh después de configurar N8N localmente
+
+FROM n8nio/n8n:latest
+
+# Copiar datos preconfigurados (workflows + configuración)
+# IMPORTANTE: El directorio data/ debe existir y estar configurado antes de buildear
+COPY --chown=node:node ./data /home/node/.n8n
+
+# Variables de entorno por defecto
+# Estas se sobrescriben desde docker-compose.yml en producción
+ENV N8N_BASIC_AUTH_ACTIVE=true \
+    N8N_BASIC_AUTH_USER=admin \
+    N8N_BASIC_AUTH_PASSWORD=admin123 \
+    N8N_HOST=0.0.0.0 \
+    N8N_PORT=5678 \
+    N8N_PROTOCOL=http \
+    WEBHOOK_URL=http://localhost:5678 \
+    GENERIC_TIMEZONE=America/Argentina/Buenos_Aires \
+    EXECUTIONS_DATA_PRUNE=true \
+    EXECUTIONS_DATA_MAX_AGE=168
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=5 \
+  CMD wget --quiet --tries=1 --spider http://localhost:5678/healthz || exit 1
+
+# Exponer puerto
+EXPOSE 5678
+
+# El comando por defecto de la imagen base de N8N
+# CMD ["n8n"]

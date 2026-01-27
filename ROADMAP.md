@@ -340,26 +340,26 @@
 
 ### Generacion Rubricas desde PDF
 
-- [ ] **4.6** Crear `backend/app/services/rubrica_ia_service.py`
+- [x] **4.6** Crear `backend/app/services/rubrica_ia_service.py`
       **Incluir**: generar_rubrica_desde_pdf
       **Ref**: `docs/specs/03-REQUISITOS-FUNCIONALES.md` HU-RUB-02
       **Archivos**: `backend/app/services/rubrica_ia_service.py`
 
-- [ ] **4.7** Agregar endpoint POST /rubricas/desde-pdf
+- [x] **4.7** Agregar endpoint POST /rubricas/desde-pdf
       **Archivos**: `backend/app/routers/rubricas.py` (modificar)
 
 ### Documentos Module
 
-- [ ] **4.8** Crear `backend/app/services/pdf_service.py`
+- [x] **4.8** Crear `backend/app/services/pdf_service.py`
       **Incluir**: generar_pdf_devolucion, generar_zip_pdfs
       **Ref**: `docs/specs/03-REQUISITOS-FUNCIONALES.md` seccion 10.2
       **Archivos**: `backend/app/services/pdf_service.py`
 
-- [ ] **4.9** Crear `backend/app/services/excel_service.py`
+- [x] **4.9** Crear `backend/app/services/excel_service.py`
       **Incluir**: exportar_notas_excel
       **Archivos**: `backend/app/services/excel_service.py`
 
-- [ ] **4.10** Crear `backend/app/routers/documentos.py`
+- [x] **4.10** Crear `backend/app/routers/documentos.py`
       **Endpoints**: GET /correcciones/:id/pdf, GET /comisiones/:id/rubricas/:rubrica_id/pdfs, GET /comisiones/:id/rubricas/:rubrica_id/excel
       **Archivos**: `backend/app/routers/documentos.py`
 
