@@ -6,12 +6,12 @@
 
 ## Estado Actual
 
-| Campo                     | Valor                          |
-| ------------------------- | ------------------------------ |
-| **Fase actual**           | Fase 5 - Frontend Setup + Auth |
-| **Tarea actual**          | 5.1 - Setup proyecto frontend  |
-| **Ultima sesion**         | 2026-01-27                     |
-| **Porcentaje completado** | 58%                            |
+| Campo                     | Valor                               |
+| ------------------------- | ----------------------------------- |
+| **Fase actual**           | Fase 5 - Frontend Setup + Auth      |
+| **Tarea actual**          | 5.9 - Crear LoginPage               |
+| **Ultima sesion**         | 2026-01-27                          |
+| **Porcentaje completado** | 65%                                 |
 
 ---
 
@@ -24,149 +24,57 @@
 | 2   | Backend - CRUD Basico         | `COMPLETADA` | 15/15 tareas |
 | 3   | Backend - Rubricas + Entregas | `COMPLETADA` | 14/14 tareas |
 | 4   | Backend - Correccion IA       | `COMPLETADA` | 10/10 tareas |
-| 5   | Frontend - Setup + Auth       | `PENDIENTE`  | 0/10 tareas  |
+| 5   | Frontend - Setup + Auth       | `EN PROGRESO`| 8/10 tareas  |
 | 6   | Frontend - Features           | `PENDIENTE`  | 0/20 tareas  |
 | 7   | Testing + Integracion         | `PENDIENTE`  | 0/8 tareas   |
 | 8   | Docker + Deploy               | `PENDIENTE`  | 0/6 tareas   |
 
-**Total**: 59/103 tareas completadas
+**Total**: 67/103 tareas completadas
 
 ---
 
 ## Ultima Sesion
 
-### Fecha: 2026-01-27
+### Fecha: 2026-01-27 (Sesión 6)
 
-### Duracion: ~75 min
+### Duracion: ~10 min
 
 ### Que se hizo:
 
-- Implementacion de tarea 4.10: Creacion de backend/app/routers/documentos.py
-  - Router REST API con 3 endpoints para generacion de documentos
-  - GET /documentos/correcciones/:id/pdf - Descarga PDF individual
-  - GET /documentos/comisiones/:id/rubricas/:rubrica_id/pdfs - Descarga ZIP con todos los PDFs
-  - GET /documentos/comisiones/:id/rubricas/:rubrica_id/excel - Exporta notas a Excel
-  - Integracion con PDFService y ExcelService
-  - Respuestas como StreamingResponse con headers de descarga
-- Actualizacion de backend/app/routers/**init**.py para exportar documentos_router
-- Registro de documentos_router en backend/app/main.py
-- Verificacion de sintaxis - ✅ Exitosa
-- Implementacion de tarea 4.9: Creacion de backend/app/services/excel_service.py
-  - Servicio para exportar notas a Excel usando openpyxl
-  - Metodo exportar_notas_excel: genera archivo .xlsx con formato profesional
-  - Columnas: Alumno, Nota, Estado, Fecha, Editado
-  - Notas con colores: verde (>=80), amarillo (>=60), rojo (<60)
-  - Headers formateados con freeze panes
-  - Fila de resumen con total de entregas
-  - Sanitizacion de nombres de archivo
-- Actualizacion de backend/app/services/**init**.py para exportar ExcelService
-- Verificacion de sintaxis - ✅ Exitosa
-- Implementacion de tarea 4.8: Creacion de backend/app/services/pdf_service.py
-  - Servicio para generar PDFs de devolucion usando ReportLab
-  - Metodo generar_pdf_devolucion: genera PDF individual con formato profesional
-  - Metodo generar_zip_pdfs: genera ZIP con PDFs de todas las entregas corregidas
-  - Formato de PDF incluye: nota, criterios evaluados, fortalezas, recomendaciones
-  - Indicadores visuales con colores: verde (OK), amarillo (WARNING), rojo (ERROR)
-  - Sanitizacion de nombres de archivo para compatibilidad
-  - Integracion con CorreccionRepository para obtener datos
-- Actualizacion de backend/app/services/**init**.py para exportar PDFService
-- Verificacion de sintaxis - ✅ Exitosa
-- Actualizacion de ROADMAP.md marcando tarea 4.8 como completada
-- Implementacion de tarea 4.7: Agregar endpoint POST /rubricas/desde-pdf
-  - Endpoint para generar rubricas desde PDF usando IA
-  - Recibe PDF via multipart/form-data (max 10MB)
-  - Validacion de API Key de Gemini configurada
-  - Integracion con RubricaIAService.generar_rubrica_desde_pdf
-  - Retorna estructura sugerida de rubrica para revision
-  - Documentacion completa con proceso y validaciones
-- Actualizacion de backend/app/routers/rubricas.py con imports necesarios
-- Verificacion de sintaxis - ✅ Exitosa
-- Actualizacion de ROADMAP.md marcando tarea 4.7 como completada
-- Implementacion de tarea 4.6: Creacion de backend/app/services/rubrica_ia_service.py
-  - Servicio para generar rubricas desde PDF usando IA
-  - Metodo generar_rubrica_desde_pdf con validacion de archivos
-  - Validacion de tipo de archivo (solo PDF), tamaño maximo 10MB
-  - Conversion de PDF a base64 para transmision a N8N
-  - Integracion con N8NClient.trigger_rubric_generation
-  - Parseo y validacion de respuesta de Gemini
-  - Validacion de estructura de criterios (nombre, descripcion, puntaje)
-  - Validacion de suma de puntajes = 100 (tolerancia ±5)
-  - Manejo de errores: N8NError, N8NTimeoutError, ValidationError
-  - Desencriptacion segura de API Key de Gemini
-- Actualizacion de backend/app/services/**init**.py para exportar RubricaIAService
-- Verificacion de sintaxis - ✅ Exitosa
-- Actualizacion de ROADMAP.md marcando tarea 4.6 como completada
-- Implementacion de tarea 4.5: Creacion de backend/app/routers/correcciones.py
-  - Router REST API con 6 endpoints para correcciones
-  - POST /entregas/{id}/corregir, POST /entregas/{id}/recorregir, POST /lote
-  - GET /{id}, GET /entregas/{id}, PUT /{id}
-  - Validacion de API Key Gemini, autorizacion con require_tutor
-  - Registro en main.py con prefix /api/v1
-- Actualizacion de backend/app/routers/**init**.py
-- Verificacion de sintaxis - ✅ Exitosa
-- Actualizacion de ROADMAP.md marcando tarea 4.5 como completada
-- Implementacion de tarea 4.4: Creacion de backend/app/services/correccion_service.py
-  - Clase CorreccionService con logica de negocio para correcciones automaticas
-  - Metodo corregir_individual: correccion de una entrega usando IA via N8N
-  - Metodo corregir_lote: correccion masiva con rate limiting (2s entre correcciones)
-  - Metodo recorregir: re-correccion que reemplaza correccion anterior
-  - Metodo editar_correccion: edicion manual de correcciones con flag editado_manualmente
-  - Metodo obtener_correccion y obtener_por_entrega: consultas de correcciones
-  - Integracion con N8NClient para llamadas a workflows de Gemini
-  - Logica de reintentos con backoff exponencial (max 1 reintento)
-  - Parseo y validacion de respuestas de Gemini usando GeminiResponse schema
-  - Manejo de estados de entrega: PENDIENTE durante correccion, CORREGIDA al finalizar, ERROR en fallos
-  - Construccion de payload para N8N con codigo, rubrica, API key y contexto
-  - Desencriptacion segura de API Keys de Gemini
-  - Manejo completo de excepciones: N8NError, N8NTimeoutError, ValidationError
-- Actualizacion de backend/app/services/**init**.py para exportar CorreccionService
-- Verificacion de sintaxis con py_compile - ✅ Exitosa
-- Actualizacion de ROADMAP.md marcando tarea 4.4 como completada
-- Sesion anterior (4.3): Creacion de CorreccionRepository
-  - Clase CorreccionRepository siguiendo patron establecido en el proyecto
-  - Metodos CRUD basicos: get_by_id, create, update, delete
-  - Metodos especializados: get_by_entrega_id (relacion 1:1), get_by_entrega_id_with_relations
-  - Metodo get_all con filtros: comision_id, rubrica_id, corregido_por_id, editado_manualmente
-  - Paginacion y ordenamiento por created_at desc
-  - Metodo exists_by_entrega_id para validaciones
-  - Metodo get_statistics_by_rubrica para calcular avg, min, max, count de notas
-  - Metodo get_by_ids para operaciones en lote
-  - Uso de selectinload para eager loading de relaciones (entrega, corregido_por)
-  - Manejo de joins con Entrega para filtros por comision/rubrica
-- Actualizacion de backend/app/repositories/**init**.py para exportar CorreccionRepository
-- Verificacion de sintaxis con py_compile - ✅ Exitosa
-- Actualizacion de ROADMAP.md marcando tarea 4.3 como completada
-- Sesiones anteriores (4.1 y 4.2): Creacion de N8NClient, exceptions, y schemas de correccion
-  - Clase N8NClient con metodos async para workflows de N8N
-  - trigger_correction() con timeout de 90s para correcciones
-  - trigger_rubric_generation() con timeout de 120s para PDFs
-  - health_check() con timeout de 10s
-  - Manejo de excepciones con N8NError y N8NTimeoutError
-- Creacion de backend/app/core/exceptions.py
-  - Excepciones personalizadas: ValidationError, UnauthorizedError, ForbiddenError
-  - Excepciones de integracion: N8NError, N8NTimeoutError, GeminiError
-  - Excepciones de API: APIKeyInvalidError, QuotaExceededError
-- Actualizacion de backend/app/integrations/**init**.py para exportar N8NClient
-- Implementacion de tarea 4.2: Creacion de backend/app/schemas/correccion.py
-  - CriterioEvaluado: Schema para criterio evaluado con id, nombre, puntaje, estado, feedback
-  - CriterioGeminiSchema: Schema para parsear respuesta de Gemini
-  - GeminiResponse: Schema completo de respuesta de Gemini con validacion de nota
-  - CorreccionResponse: Schema para API con todos los datos de correccion
-  - CorreccionUpdate: Schema para edicion manual de correcciones
-  - CorreccionCreate: Schema para crear correcciones (uso interno)
-  - CorregirLoteRequest/Response: Schemas para correccion en lote
-  - CorreccionListItem: Schema ligero para listados
-- Actualizacion de backend/app/schemas/**init**.py para exportar schemas de correccion
-- Verificacion de sintaxis con py_compile - ✅ Exitosa
-- Actualizacion de ROADMAP.md marcando tarea 4.2 como completada
+- ✅ **Completado de tarea 5.7: Crear auth service**
+  - Creacion de `frontend/src/features/auth/services/auth-service.ts`
+    - Funciones de login y logout con manejo de token JWT
+    - Almacenamiento en localStorage (auth_token, auth_user)
+    - Validacion de autenticacion con verificacion de expiracion de token
+    - Funcion changePassword para cambio de contraseña
+    - Funciones auxiliares: getToken, getUser, isAuthenticated, updateStoredUser, clearAuth
+
+- ✅ **Completado de tarea 5.8: Crear auth hooks**
+  - Creacion de `frontend/src/features/auth/hooks/useAuth.ts`
+    - Hook para acceder al estado de autenticacion
+    - Sincronizacion multi-tab con storage events
+    - Estados: user, isAuthenticated, isLoading
+  - Creacion de `frontend/src/features/auth/hooks/useLogin.ts`
+    - Mutation de React Query para login
+    - Navegacion automatica: /dashboard o /change-password segun primer_login
+    - Manejo de errores con toast
+  - Creacion de `frontend/src/features/auth/hooks/useLogout.ts`
+    - Mutation de React Query para logout
+    - Limpieza de storage y redireccion
+  - Creacion de `frontend/src/features/auth/hooks/index.ts`
+    - Exports centralizados de hooks
+  - Verificacion de build - ✅ Exitosa (npm run build sin errores)
+  - 354.42 kB bundle size (gzip: 112.68 kB)
+
+- Actualizacion de ROADMAP.md marcando tareas 5.7 y 5.8 como completadas
 
 ### Proxima tarea:
 
-- **5.1**: Setup proyecto frontend con Next.js
+- **5.9**: Crear LoginPage
 
 ### Problemas encontrados:
 
-- Ninguno
+- Error TypeScript inicial: propiedad debe_cambiar_password no existia en UserInfo (corregido a primer_login)
 
 ### Notas:
 
@@ -226,6 +134,23 @@
 
 | Archivo                                           | Ultima modificacion | Por                     |
 | ------------------------------------------------- | ------------------- | ----------------------- |
+| frontend/src/features/auth/hooks/useAuth.ts      | 2026-01-27          | Tarea 5.8 completada    |
+| frontend/src/features/auth/hooks/useLogin.ts     | 2026-01-27          | Tarea 5.8 completada    |
+| frontend/src/features/auth/hooks/useLogout.ts    | 2026-01-27          | Tarea 5.8 completada    |
+| frontend/src/features/auth/hooks/index.ts        | 2026-01-27          | Tarea 5.8 completada    |
+| ROADMAP.md                                        | 2026-01-27          | Tareas 5.7-5.8 marcadas |
+| ESTADO.md                                         | 2026-01-27          | Actualizacion sesion    |
+| frontend/src/features/auth/services/auth-service.ts | 2026-01-27        | Tarea 5.7 completada    |
+| frontend/src/shared/components/layout/index.ts    | 2026-01-27          | Tarea 5.6 completada    |
+| frontend/src/shared/components/ui/Button.tsx      | 2026-01-27          | Tarea 5.5 completada    |
+| frontend/src/shared/components/ui/Badge.tsx       | 2026-01-27          | Tarea 5.5 completada    |
+| frontend/src/shared/components/ui/Input.tsx       | 2026-01-27          | Tarea 5.5 completada    |
+| frontend/src/shared/components/ui/Select.tsx      | 2026-01-27          | Tarea 5.5 completada    |
+| frontend/src/shared/components/ui/Spinner.tsx     | 2026-01-27          | Tarea 5.5 completada    |
+| frontend/src/shared/components/ui/Modal.tsx       | 2026-01-27          | Tarea 5.5 completada    |
+| frontend/src/shared/components/ui/index.ts        | 2026-01-27          | Tarea 5.5 completada    |
+| ROADMAP.md                                        | 2026-01-27          | Tarea 5.5 marcada       |
+| ESTADO.md                                         | 2026-01-27          | Actualizacion sesion    |
 | backend/app/routers/rubricas.py                   | 2026-01-27          | Tarea 4.7 completada    |
 | backend/app/services/rubrica_ia_service.py        | 2026-01-27          | Tarea 4.6 completada    |
 | backend/app/routers/**init**.py                   | 2026-01-27          | Tarea 4.5 completada    |

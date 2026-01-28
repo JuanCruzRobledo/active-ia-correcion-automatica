@@ -372,39 +372,39 @@
 
 ### Configuracion Base
 
-- [ ] **5.1** Configurar React Router con rutas base
+- [x] **5.1** Configurar React Router con rutas base
       **Incluir**: Layout principal, rutas publicas/protegidas
       **Archivos**: `frontend/src/app/router.tsx`, `frontend/src/app/App.tsx`
 
-- [ ] **5.2** Configurar React Query
+- [x] **5.2** Configurar React Query
       **Archivos**: `frontend/src/app/providers.tsx`
 
-- [ ] **5.3** Crear cliente Axios con interceptors
+- [x] **5.3** Crear cliente Axios con interceptors
       **Incluir**: baseURL, token injection, error handling
       **Archivos**: `frontend/src/shared/services/api-client.ts`
 
-- [ ] **5.4** Crear tipos compartidos
+- [x] **5.4** Crear tipos compartidos
       **Incluir**: User, Rol, ApiResponse, ApiError
       **Archivos**: `frontend/src/shared/types/index.ts`
 
 ### Componentes UI Base
 
-- [ ] **5.5** Crear componentes UI base
+- [x] **5.5** Crear componentes UI base
       **Incluir**: Button, Input, Select, Modal, Badge, Spinner
       **Ref**: `docs/specs/08-SISTEMA-DISENO-ESTILOS.md`
       **Archivos**: `frontend/src/shared/components/ui/`
 
-- [ ] **5.6** Crear Layout principal
+- [x] **5.6** Crear Layout principal
       **Incluir**: Sidebar, Header, Main content area
       **Ref**: `docs/specs/07-DISENO-UI-UX.md` seccion Navegacion
       **Archivos**: `frontend/src/shared/components/layout/`
 
 ### Auth Feature
 
-- [ ] **5.7** Crear auth service
+- [x] **5.7** Crear auth service
       **Archivos**: `frontend/src/features/auth/services/auth-service.ts`
 
-- [ ] **5.8** Crear auth hooks
+- [x] **5.8** Crear auth hooks
       **Incluir**: useAuth, useLogin, useLogout
       **Archivos**: `frontend/src/features/auth/hooks/`
 
