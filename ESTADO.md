@@ -8,10 +8,10 @@
 
 | Campo                     | Valor                               |
 | ------------------------- | ----------------------------------- |
-| **Fase actual**           | Fase 5 - Frontend Setup + Auth      |
-| **Tarea actual**          | 5.9 - Crear LoginPage               |
-| **Ultima sesion**         | 2026-01-27                          |
-| **Porcentaje completado** | 65%                                 |
+| **Fase actual**           | Fase 6 - Frontend Features          |
+| **Tarea actual**          | 6.2 - Crear usuarios service        |
+| **Ultima sesion**         | 2026-01-28                          |
+| **Porcentaje completado** | 68%                                 |
 
 ---
 
@@ -24,60 +24,114 @@
 | 2   | Backend - CRUD Basico         | `COMPLETADA` | 15/15 tareas |
 | 3   | Backend - Rubricas + Entregas | `COMPLETADA` | 14/14 tareas |
 | 4   | Backend - Correccion IA       | `COMPLETADA` | 10/10 tareas |
-| 5   | Frontend - Setup + Auth       | `EN PROGRESO`| 8/10 tareas  |
-| 6   | Frontend - Features           | `PENDIENTE`  | 0/20 tareas  |
+| 5   | Frontend - Setup + Auth       | `COMPLETADA` | 10/10 tareas |
+| 6   | Frontend - Features           | `EN CURSO`   | 1/20 tareas  |
 | 7   | Testing + Integracion         | `PENDIENTE`  | 0/8 tareas   |
 | 8   | Docker + Deploy               | `PENDIENTE`  | 0/6 tareas   |
 
-**Total**: 67/103 tareas completadas
+**Total**: 70/103 tareas completadas
 
 ---
 
 ## Ultima Sesion
 
-### Fecha: 2026-01-27 (Sesión 6)
+### Fecha: 2026-01-28 (Sesión 9)
 
-### Duracion: ~10 min
+### Duracion: ~25 min
 
 ### Que se hizo:
 
-- ✅ **Completado de tarea 5.7: Crear auth service**
-  - Creacion de `frontend/src/features/auth/services/auth-service.ts`
-    - Funciones de login y logout con manejo de token JWT
-    - Almacenamiento en localStorage (auth_token, auth_user)
-    - Validacion de autenticacion con verificacion de expiracion de token
-    - Funcion changePassword para cambio de contraseña
-    - Funciones auxiliares: getToken, getUser, isAuthenticated, updateStoredUser, clearAuth
-
-- ✅ **Completado de tarea 5.8: Crear auth hooks**
-  - Creacion de `frontend/src/features/auth/hooks/useAuth.ts`
-    - Hook para acceder al estado de autenticacion
-    - Sincronizacion multi-tab con storage events
-    - Estados: user, isAuthenticated, isLoading
-  - Creacion de `frontend/src/features/auth/hooks/useLogin.ts`
-    - Mutation de React Query para login
-    - Navegacion automatica: /dashboard o /change-password segun primer_login
-    - Manejo de errores con toast
-  - Creacion de `frontend/src/features/auth/hooks/useLogout.ts`
-    - Mutation de React Query para logout
-    - Limpieza de storage y redireccion
-  - Creacion de `frontend/src/features/auth/hooks/index.ts`
-    - Exports centralizados de hooks
+- ✅ **Completado de tarea 6.1: Crear DashboardPage por rol**
+  - Creacion de `frontend/src/features/dashboard/pages/DashboardPage.tsx`
+    - Componente principal que renderiza dashboard según rol del usuario
+    - Usa hook useAuth para obtener usuario actual
+    - Switch statement para renderizar componente específico por rol
+    - Estados de loading y error manejados
+  - Creacion de `frontend/src/features/dashboard/components/DashboardAdmin.tsx`
+    - 4 StatCards: Materias (5), Comisiones (85), Usuarios (25), Rúbricas (42)
+    - Sección QuickActions con botones de crear
+    - Sección RecentActivity con timeline de eventos
+  - Creacion de `frontend/src/features/dashboard/components/DashboardCoordinador.tsx`
+    - 3 StatCards: Comisiones (17), Rúbricas (12), Pendientes (145)
+    - CorrectionsProgress con barras de progreso por comisión
+    - Muestra tutor, completados/totales y última actividad
+  - Creacion de `frontend/src/features/dashboard/components/DashboardTutor.tsx`
+    - 3 StatCards: Comisiones (2), Pendientes (28), Corregidas (156)
+    - ComisionCards con detalles de cada comisión asignada
+    - Botón "Ver entregas" por comisión
+  - Creacion de `frontend/src/features/dashboard/components/StatCard.tsx`
+    - Componente reutilizable para stats con icono y variantes
+    - Variantes: default, success, warning, destructive
+    - Props: title, value, subtitle, icon, variant
+  - Creacion de `frontend/src/features/dashboard/components/QuickActions.tsx`
+    - Lista de botones de acción rápida para Admin
+    - Recibe array de actions con label, icon, onClick
+  - Creacion de `frontend/src/features/dashboard/components/RecentActivity.tsx`
+    - Timeline de actividad reciente del sistema
+    - Usa date-fns para formatear fechas relativas (locale es)
+  - Creacion de `frontend/src/features/dashboard/components/CorrectionsProgress.tsx`
+    - Barras de progreso por comisión para Coordinador
+    - Muestra porcentaje, completados/totales
+    - Diferencia visualmente si está completado o en progreso
+  - Creacion de `frontend/src/features/dashboard/components/ComisionCard.tsx`
+    - Card de comisión para vista Tutor
+    - Muestra alumnos totales y pendientes
+    - Botón para navegar a entregas
+  - Creacion de `frontend/src/shared/components/ui/Progress.tsx`
+    - Componente de barra de progreso
+    - Variantes automáticas según value: success (100%), warning (<50%)
+    - Animación de transición suave
+  - Creacion de index.ts para exports centralizados en dashboard
+  - Actualizacion de `frontend/src/shared/components/ui/index.ts`
+    - Export de Progress agregado
   - Verificacion de build - ✅ Exitosa (npm run build sin errores)
-  - 354.42 kB bundle size (gzip: 112.68 kB)
+  - 426.32 kB bundle size (gzip: 137.56 kB)
 
-- Actualizacion de ROADMAP.md marcando tareas 5.7 y 5.8 como completadas
+- ✅ **Completado de tarea 5.10: Crear ChangePasswordModal** (sesión anterior)
+  - Creacion de `frontend/src/features/auth/hooks/useChangePassword.ts`
+    - Hook React Query mutation para cambio de contraseña
+    - Actualiza flag primer_login a false en localStorage tras éxito
+    - Navegación automática a dashboard
+    - Notificaciones toast para éxito/error
+  - Creacion de `frontend/src/features/auth/components/ChangePasswordModal.tsx`
+    - Modal que no puede cerrarse hasta cambiar contraseña (disableBackdropClose, disableEscapeClose)
+    - Formulario con 3 campos: contraseña actual, nueva, confirmación
+    - Validación: mínimo 8 caracteres, contraseñas coinciden, diferente de actual
+    - Manejo de estados de carga y errores
+    - Limpieza de errores al escribir en campos
+    - Helper text con instrucciones
+  - Actualizacion de `frontend/src/features/auth/hooks/index.ts`
+    - Export del hook useChangePassword
+  - Creacion de `frontend/src/features/auth/components/index.ts`
+    - Export centralizado del modal
+  - Verificacion de build - ✅ Exitosa (npm run build sin errores)
+  - 399.95 kB bundle size (gzip: 130.37 kB)
+
+- Actualizacion de ROADMAP.md marcando tarea 5.10 como completada
+- ✅ **FASE 5 COMPLETADA** - Frontend Setup + Auth (10/10 tareas - 100%)
 
 ### Proxima tarea:
 
-- **5.9**: Crear LoginPage
+- **6.2**: Crear usuarios service
 
 ### Problemas encontrados:
 
-- Error TypeScript inicial: propiedad debe_cambiar_password no existia en UserInfo (corregido a primer_login)
+- Error TypeScript: LucideIcon debe importarse como `import type` con verbatimModuleSyntax (corregido en StatCard y QuickActions)
 
 ### Notas:
 
+- ✅ **Tarea 6.1 COMPLETADA** - Dashboard funcional con 3 vistas por rol
+- Dashboard completamente funcional con datos mock
+- Implementados 9 componentes nuevos del dashboard
+- 3 dashboards diferenciados (Admin, Coordinador, Tutor) según especificación
+- Componente Progress creado para barras de progreso
+- Ready para siguiente tarea (usuarios service)
+- ✅ **FASE 5 COMPLETADA** - Frontend Setup + Auth (10/10 tareas - 100%)
+- Hooks de React Query para auth operations
+- LoginPage con validación y estados de carga
+- ChangePasswordModal con validación de requisitos de contraseña
+- Integración con localStorage para persistencia de sesión
+- Ready para comenzar Fase 6 (Frontend Features)
 - ✅ **FASE 4 COMPLETADA** - Backend de Corrección IA (10/10 tareas - 100%)
 - Funcionalidad completa de correcciones con IA implementada
 - Generacion de rubricas desde PDF con Gemini
@@ -111,6 +165,7 @@
 | Fecha      | Duracion | Fase  | Tareas completadas     | Notas                 |
 | ---------- | -------- | ----- | ---------------------- | --------------------- |
 | 2026-01-26 | 30 min   | Setup | Sistema de continuidad | Configuracion inicial |
+| 2026-01-28 | 15 min   | Fase 5 | 5.9 - LoginPage       | Build exitoso         |
 
 ---
 
@@ -134,6 +189,32 @@
 
 | Archivo                                           | Ultima modificacion | Por                     |
 | ------------------------------------------------- | ------------------- | ----------------------- |
+| frontend/src/features/dashboard/pages/DashboardPage.tsx | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/features/dashboard/components/DashboardAdmin.tsx | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/features/dashboard/components/DashboardCoordinador.tsx | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/features/dashboard/components/DashboardTutor.tsx | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/features/dashboard/components/StatCard.tsx | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/features/dashboard/components/QuickActions.tsx | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/features/dashboard/components/RecentActivity.tsx | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/features/dashboard/components/CorrectionsProgress.tsx | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/features/dashboard/components/ComisionCard.tsx | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/features/dashboard/components/index.ts | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/features/dashboard/pages/index.ts | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/features/dashboard/index.ts | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/shared/components/ui/Progress.tsx | 2026-01-28 | Tarea 6.1 completada |
+| frontend/src/shared/components/ui/index.ts | 2026-01-28 | Tarea 6.1 actualizada |
+| ROADMAP.md | 2026-01-28 | Tarea 6.1 marcada |
+| ESTADO.md | 2026-01-28 | Actualizacion sesion |
+| frontend/src/features/auth/components/ChangePasswordModal.tsx | 2026-01-28 | Tarea 5.10 completada |
+| frontend/src/features/auth/components/index.ts    | 2026-01-28          | Tarea 5.10 completada   |
+| frontend/src/features/auth/hooks/useChangePassword.ts | 2026-01-28      | Tarea 5.10 completada   |
+| frontend/src/features/auth/hooks/index.ts        | 2026-01-28          | Tarea 5.10 actualizada  |
+| ROADMAP.md                                        | 2026-01-28          | Tarea 5.10 marcada      |
+| ESTADO.md                                         | 2026-01-28          | Actualizacion sesion    |
+| frontend/src/features/auth/pages/LoginPage.tsx   | 2026-01-28          | Tarea 5.9 completada    |
+| frontend/src/features/auth/pages/index.ts        | 2026-01-28          | Tarea 5.9 completada    |
+| ROADMAP.md                                        | 2026-01-28          | Tarea 5.9 marcada       |
+| ESTADO.md                                         | 2026-01-28          | Actualizacion sesion    |
 | frontend/src/features/auth/hooks/useAuth.ts      | 2026-01-27          | Tarea 5.8 completada    |
 | frontend/src/features/auth/hooks/useLogin.ts     | 2026-01-27          | Tarea 5.8 completada    |
 | frontend/src/features/auth/hooks/useLogout.ts    | 2026-01-27          | Tarea 5.8 completada    |

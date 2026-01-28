@@ -1,0 +1,85 @@
+/**
+ * StatCard - Reusable statistic card component.
+ *
+ * Displays a numeric stat with icon, title, and subtitle.
+ * Supports different variants for visual feedback.
+ *
+ * Ref: docs/specs/08-SISTEMA-DISENO-ESTILOS.md Section 7.2
+ */
+
+import type { LucideIcon } from 'lucide-react';
+import { cn } from '@/shared/utils/cn';
+
+interface StatCardProps {
+  /**
+   * Card title
+   */
+  title: string;
+
+  /**
+   * Main numeric value
+   */
+  value: number;
+
+  /**
+   * Subtitle text (e.g., "activas", "pendientes")
+   */
+  subtitle: string;
+
+  /**
+   * Lucide icon component
+   */
+  icon: LucideIcon;
+
+  /**
+   * Visual variant
+   */
+  variant?: 'default' | 'success' | 'warning' | 'destructive';
+}
+
+const variantStyles = {
+  default: 'bg-card border-border',
+  success: 'bg-success/10 border-success/20',
+  warning: 'bg-warning/10 border-warning/20',
+  destructive: 'bg-destructive/10 border-destructive/20',
+};
+
+const iconVariantStyles = {
+  default: 'text-muted-foreground',
+  success: 'text-success',
+  warning: 'text-warning',
+  destructive: 'text-destructive',
+};
+
+export function StatCard({
+  title,
+  value,
+  subtitle,
+  icon: Icon,
+  variant = 'default',
+}: StatCardProps) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg border p-6 transition-colors',
+        variantStyles[variant]
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <p className="text-3xl font-bold text-foreground">{value}</p>
+          <p className="text-xs text-muted-foreground">{subtitle}</p>
+        </div>
+        <div
+          className={cn(
+            'rounded-full bg-muted/50 p-3',
+            iconVariantStyles[variant]
+          )}
+        >
+          <Icon className="h-6 w-6" />
+        </div>
+      </div>
+    </div>
+  );
+}

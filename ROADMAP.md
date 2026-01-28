@@ -408,11 +408,11 @@
       **Incluir**: useAuth, useLogin, useLogout
       **Archivos**: `frontend/src/features/auth/hooks/`
 
-- [ ] **5.9** Crear LoginPage
+- [x] **5.9** Crear LoginPage
       **Ref**: `docs/specs/03-REQUISITOS-FUNCIONALES.md` HU-AUTH-01
       **Archivos**: `frontend/src/features/auth/pages/LoginPage.tsx`
 
-- [ ] **5.10** Crear ChangePasswordModal
+- [x] **5.10** Crear ChangePasswordModal
       **Ref**: `docs/specs/03-REQUISITOS-FUNCIONALES.md` HU-AUTH-02
       **Archivos**: `frontend/src/features/auth/components/ChangePasswordModal.tsx`
 
@@ -425,7 +425,7 @@
 
 ### Dashboard
 
-- [ ] **6.1** Crear DashboardPage por rol
+- [x] **6.1** Crear DashboardPage por rol
       **Archivos**: `frontend/src/features/dashboard/pages/DashboardPage.tsx`
 
 ### Usuarios Feature (Admin)

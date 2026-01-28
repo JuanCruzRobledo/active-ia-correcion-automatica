@@ -20,3 +20,6 @@ export type { SpinnerProps } from './Spinner';
 
 export { Modal } from './Modal';
 export type { ModalProps } from './Modal';
+
+export { Progress } from './Progress';
+export type { ProgressProps } from './Progress';
