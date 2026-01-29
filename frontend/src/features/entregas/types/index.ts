@@ -1,0 +1,140 @@
+// features/entregas/types/index.ts
+/**
+ * TypeScript types for Entregas feature.
+ *
+ * Mirrors backend schemas from app/schemas/entrega.py
+ * Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
+ * Ref: docs/specs/06-MODELO-DATOS.md seccion 3.7
+ */
+
+export type EstadoEntrega = 'SUBIDA' | 'PENDIENTE' | 'CORREGIDA' | 'ERROR';
+
+export type ModoConsolidacion =
+  | 'SOLO_CODIGO' // .py, .java, .js, .ts, .c, .cpp, .go
+  | 'WEB_COMPLETO' // + .html, .css, .json
+  | 'PROYECTO_COMPLETO' // + .md, .txt, .yml, .xml
+  | 'PERSONALIZADO'; // Usuario define extensiones
+
+export interface ComisionInfo {
+  id: number;
+  nombre: string;
+  anio: number;
+  materia_codigo: string;
+  materia_nombre: string;
+}
+
+export interface RubricaInfo {
+  id: number;
+  tipo: string;
+  nombre: string;
+  numero: number;
+  anio: number;
+}
+
+export interface CorreccionInfo {
+  id: number;
+  nota: number;
+  editado_manualmente: boolean;
+  fecha_correccion: string;
+}
+
+export interface Entrega {
+  id: number;
+  comision_id: number;
+  rubrica_id: number;
+  alumno_nombre: string;
+  archivo_nombre: string;
+  archivo_ruta: string;
+  archivo_tamanio: number;
+  archivo_tipo: 'zip' | 'txt';
+  contenido_preview: string | null;
+  estado: EstadoEntrega;
+  hash_sha256: string | null;
+  subido_por_id: number;
+  activo: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EntregaDetail extends Entrega {
+  comision: ComisionInfo;
+  rubrica: RubricaInfo;
+  correccion: CorreccionInfo | null;
+  subido_por_nombre: string;
+}
+
+export interface EntregaListItem {
+  id: number;
+  comision_id: number;
+  rubrica_id: number;
+  alumno_nombre: string;
+  archivo_nombre: string;
+  archivo_tamanio: number;
+  estado: EstadoEntrega;
+  nota: number | null;
+  tiene_correccion: boolean;
+  created_at: string;
+}
+
+export interface EntregaList {
+  items: EntregaListItem[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface EntregaCreate {
+  comision_id: number;
+  rubrica_id: number;
+  alumno_nombre: string;
+  archivo: File;
+  modo_consolidacion?: ModoConsolidacion;
+  extensiones_personalizadas?: string[]; // Ej: ['.sql', '.sh']
+  sobrescribir?: boolean;
+}
+
+export interface CargaMasivaCreate {
+  comision_id: number;
+  rubrica_id: number;
+  archivo_zip: File;
+  modo_consolidacion: ModoConsolidacion;
+  extensiones_personalizadas?: string[];
+  sobrescribir: boolean;
+}
+
+export interface EntregaResponse {
+  id: number;
+  alumno_nombre: string;
+  archivo_nombre: string;
+  estado: EstadoEntrega;
+  mensaje: string;
+}
+
+export interface CargaMasivaResponse {
+  exitosas: EntregaResponse[];
+  errores: {
+    alumno_nombre: string;
+    error: string;
+  }[];
+  total_procesadas: number;
+  total_exitosas: number;
+  total_errores: number;
+}
+
+export interface EntregaContenido {
+  id: number;
+  alumno_nombre: string;
+  archivo_nombre: string;
+  contenido_completo: string;
+  lenguaje: string; // Para syntax highlighting (py, java, js, etc.)
+}
+
+export interface EntregasFilters {
+  comision_id: number;
+  rubrica_id: number;
+  estado?: EstadoEntrega;
+  search?: string; // Buscar por nombre de alumno
+  include_inactive?: boolean;
+  page?: number;
+  per_page?: number;
+}

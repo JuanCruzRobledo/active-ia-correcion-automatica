@@ -9,7 +9,7 @@
 | Campo                     | Valor                        |
 | ------------------------- | ---------------------------- |
 | **Fase actual**           | Fase 6 - Frontend Features   |
-| **Tarea actual**          | 6.15 - Crear entregas service y hooks |
+| **Tarea actual**          | 6.16 - Crear EntregasPage |
 | **Ultima sesion**         | 2026-01-29                   |
 | **Porcentaje completado** | 81%                          |
 
@@ -25,15 +25,108 @@
 | 3   | Backend - Rubricas + Entregas | `COMPLETADA` | 14/14 tareas |
 | 4   | Backend - Correccion IA       | `COMPLETADA` | 10/10 tareas |
 | 5   | Frontend - Setup + Auth       | `COMPLETADA` | 10/10 tareas |
-| 6   | Frontend - Features           | `EN CURSO`   | 14/20 tareas  |
+| 6   | Frontend - Features           | `EN CURSO`   | 15/20 tareas  |
 | 7   | Testing + Integracion         | `PENDIENTE`  | 0/8 tareas   |
 | 8   | Docker + Deploy               | `PENDIENTE`  | 0/6 tareas   |
 
-**Total**: 83/103 tareas completadas
+**Total**: 84/103 tareas completadas
 
 ---
 
 ## Ultima Sesion
+
+### Fecha: 2026-01-29 (Sesión 21)
+
+### Duracion: ~45 min
+
+### Que se hizo:
+
+- ✅ **Tarea 6.14: Crear RubricaEditor**
+  - Instalación de @dnd-kit para drag-and-drop de criterios
+    - `npm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities`
+  - Creación de `frontend/src/features/rubricas/components/RubricaEditor.tsx`
+    - Componente modal completo con 500+ líneas de código
+    - Dos modos: crear y editar rúbricas
+    - Formulario con validación React Hook Form + Zod
+    - Campos implementados:
+      - Tipo (enum: TP, PARCIAL_1, PARCIAL_2, RECUPERATORIO_1, RECUPERATORIO_2, FINAL, GLOBAL)
+      - Número (1-999, deshabilitado en edición)
+      - Año (2020-2100, deshabilitado en edición)
+      - Nombre (texto libre, editable)
+    - Editor de criterios con drag-and-drop:
+      - Lista sortable de criterios con @dnd-kit
+      - Componente CriterioItem para cada criterio
+      - Campos por criterio: nombre, descripción, puntaje_maximo
+      - Drag handle con icono GripVertical
+      - Botón eliminar por criterio
+      - Máximo 20 criterios
+    - Validación en tiempo real:
+      - Suma de puntajes debe ser exactamente 100
+      - Indicador visual de puntaje total (verde=100, rojo>100, amarillo<100)
+      - Mensaje dinámico "faltan X" o "sobran X"
+      - Botón submit deshabilitado si suma ≠ 100
+    - Botón "Agregar Criterio" al final de la lista
+    - Integración con hooks:
+      - useCreateRubrica para crear nueva rúbrica
+      - useUpdateRubrica para editar existente
+      - Invalidación automática de cache al guardar
+    - Estados de loading:
+      - Spinner en botón submit durante guardado
+      - Deshabilitado durante loading
+    - Estructura de datos:
+      - criterios_json con CriteriosStructure (puntaje_maximo + criterios[])
+      - IDs únicos con crypto.randomUUID() para cada criterio
+    - Responsive design con grid adaptativo
+  - Creación de `frontend/src/features/rubricas/components/index.ts`
+    - Barrel export de RubricaEditor
+  - Actualización de `frontend/src/features/rubricas/index.ts`
+    - Agregado export de components
+  - Integración en RubricasPage:
+    - Import de RubricaEditor
+    - Reemplazo del placeholder modal con componente real
+    - Paso de props: isOpen, onClose, materiaId, rubrica
+    - Uso de useRubrica para obtener datos en modo edición
+  - Corrección de errores TypeScript:
+    - DragEndEvent como type import
+    - Eliminado import no usado (arrayMove, X)
+    - Ajuste de schema Zod (sin required_error, usar invalid_type_error)
+    - Alineación con tipos backend (anio en lugar de anio_academico)
+    - Eliminado campo descripcion que no existe en backend
+    - Agregado campo numero que faltaba
+    - Ajuste de criterios_json.criterios en lugar de solo criterios
+  - Build exitoso: 629.19 kB bundle (gzip: 197.35 kB) - Sin errores TypeScript
+  - Actualización de ROADMAP.md marcando tarea 6.14 como completada
+
+### Proxima tarea:
+
+- **6.16**: Crear EntregasPage
+
+### Problemas encontrados:
+
+- Ninguno
+
+### Notas:
+
+- ✅ **Tarea 6.15 COMPLETADA** - Service layer completo para entregas
+- Implementado siguiendo patrones de React Query y Clean Architecture
+- Service con 6 métodos: getAll, getById, create, createMasiva, delete, getContenido
+- Hooks con query key factory para cache management eficiente
+- Soporte para file uploads con FormData (multipart/form-data)
+- Todos los endpoints del backend cubiertos:
+  - Individual upload (create)
+  - Bulk upload (createMasiva)
+  - List with filters (getAll)
+  - Detail view (getById)
+  - Code viewer (getContenido)
+  - Soft delete (delete)
+- Filtros implementados: comision_id, rubrica_id, estado, search, include_inactive, paginación
+- 6 hooks React Query con invalidación inteligente de cache
+- staleTime de 5 minutos para queries optimizadas
+- Build exitoso: 629.19 kB bundle (gzip: 197.35 kB) - Sin errores TypeScript
+- Ready para siguiente tarea (EntregasPage UI)
+- Progreso Fase 6: 15/20 tareas (75%)
+
+---
 
 ### Fecha: 2026-01-29 (Sesión 21)
 

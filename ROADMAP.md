@@ -479,7 +479,7 @@
 
 ### Entregas Feature
 
-- [ ] **6.15** Crear entregas service y hooks
+- [x] **6.15** Crear entregas service y hooks
       **Archivos**: `frontend/src/features/entregas/`
 
 - [ ] **6.16** Crear EntregasPage
