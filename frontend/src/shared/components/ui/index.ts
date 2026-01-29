@@ -23,3 +23,13 @@ export type { ModalProps } from './Modal';
 
 export { Progress } from './Progress';
 export type { ProgressProps } from './Progress';
+
+export { Table } from './Table';
+export type { TableProps, TableColumn } from './Table';
+
+export { EmptyState } from './EmptyState';
+export type { EmptyStateProps } from './EmptyState';
+
+export { Dropdown } from './Dropdown';
+export type { DropdownProps, DropdownItem } from './Dropdown';
+

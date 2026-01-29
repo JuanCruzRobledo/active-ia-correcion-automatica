@@ -13,15 +13,41 @@ import { BookOpen, GraduationCap, Users, FileText, Plus } from 'lucide-react';
 import { StatCard } from './StatCard';
 import { QuickActions } from './QuickActions';
 import { RecentActivity } from './RecentActivity';
+import { useDashboardAdminStats } from '../hooks';
+import { Spinner } from '@/shared/components/ui';
 
 export function DashboardAdmin() {
-  // TODO: Fetch real stats from API
-  const stats = {
-    materias: 5,
-    comisiones: 85,
-    usuarios: 25,
-    rubricas: 42,
-  };
+  const { data: stats, isLoading, error } = useDashboardAdminStats();
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-destructive">Error al cargar estadísticas del dashboard</p>
+        <p className="text-sm text-muted-foreground mt-2">
+          {error instanceof Error ? error.message : 'Error desconocido'}
+        </p>
+      </div>
+    );
+  }
+
+  // No data state (shouldn't happen but good to handle)
+  if (!stats) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">No hay datos disponibles</p>
+      </div>
+    );
+  }
 
   const quickActions = [
     {

@@ -1,0 +1,1 @@
+export { RubricaEditor } from './RubricaEditor';

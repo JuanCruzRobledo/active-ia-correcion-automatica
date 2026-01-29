@@ -33,6 +33,13 @@ from app.schemas.correccion import (
     CriterioGeminiSchema,
     GeminiResponse,
 )
+from app.schemas.dashboard import (
+    AdminStatsResponse,
+    CoordinadorStatsResponse,
+    CorrectionProgressItem,
+    TutorStatsResponse,
+    ComisionDetailItem,
+)
 from app.schemas.entrega import (
     CargaMasivaCreate,
     CargaMasivaResponse,
@@ -152,4 +159,10 @@ __all__ = [
     "CorreccionListItem",
     "CorregirLoteRequest",
     "CorregirLoteResponse",
+    # Dashboard
+    "AdminStatsResponse",
+    "CoordinadorStatsResponse",
+    "CorrectionProgressItem",
+    "TutorStatsResponse",
+    "ComisionDetailItem",
 ]
