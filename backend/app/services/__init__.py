@@ -10,6 +10,7 @@ from app.services.auth_service import AuthService
 from app.services.comision_service import ComisionService
 from app.services.consolidacion_service import ConsolidacionService
 from app.services.correccion_service import CorreccionService
+from app.services.dashboard_service import DashboardService
 from app.services.entrega_service import EntregaService
 from app.services.excel_service import ExcelService
 from app.services.historial_service import HistorialService
@@ -32,4 +33,5 @@ __all__ = [
     "CorreccionService",
     "PDFService",
     "ExcelService",
+    "DashboardService",
 ]

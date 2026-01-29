@@ -11,31 +11,41 @@
 import { GraduationCap, Clock, CheckCircle } from 'lucide-react';
 import { StatCard } from './StatCard';
 import { ComisionCard } from './ComisionCard';
+import { useDashboardTutorStats } from '../hooks';
+import { Spinner } from '@/shared/components/ui';
 
 export function DashboardTutor() {
-  // TODO: Fetch real stats from API
-  const stats = {
-    comisiones: 2,
-    pendientes: 28,
-    corregidas: 156,
-  };
+  const { data: dashboardData, isLoading, error } = useDashboardTutorStats();
 
-  const comisiones = [
-    {
-      id: 1,
-      nombre: 'Programación 1',
-      comision: 'Comisión A - 2026',
-      alumnos: 35,
-      pendientes: 12,
-    },
-    {
-      id: 2,
-      nombre: 'Programación 2',
-      comision: 'Comisión B - 2026',
-      alumnos: 32,
-      pendientes: 16,
-    },
-  ];
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-destructive">Error al cargar estadísticas del dashboard</p>
+        <p className="text-sm text-muted-foreground mt-2">
+          {error instanceof Error ? error.message : 'Error desconocido'}
+        </p>
+      </div>
+    );
+  }
+
+  // No data state
+  if (!dashboardData) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">No hay datos disponibles</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -51,21 +61,21 @@ export function DashboardTutor() {
       <div className="grid gap-6 sm:grid-cols-3">
         <StatCard
           title="Comisiones"
-          value={stats.comisiones}
+          value={dashboardData.comisiones}
           subtitle="asignadas"
           icon={GraduationCap}
           variant="default"
         />
         <StatCard
           title="Pendientes"
-          value={stats.pendientes}
+          value={dashboardData.pendientes}
           subtitle="de corregir"
           icon={Clock}
           variant="warning"
         />
         <StatCard
           title="Corregidas"
-          value={stats.corregidas}
+          value={dashboardData.corregidas}
           subtitle="entregas"
           icon={CheckCircle}
           variant="success"
@@ -76,7 +86,7 @@ export function DashboardTutor() {
       <div>
         <h2 className="mb-4 text-lg font-semibold text-foreground">Mis Comisiones</h2>
         <div className="grid gap-6 lg:grid-cols-2">
-          {comisiones.map((comision) => (
+          {dashboardData.comisiones_details.map((comision) => (
             <ComisionCard key={comision.id} comision={comision} />
           ))}
         </div>

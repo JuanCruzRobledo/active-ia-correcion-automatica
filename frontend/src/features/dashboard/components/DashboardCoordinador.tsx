@@ -11,41 +11,41 @@
 import { GraduationCap, FileText, Clock } from 'lucide-react';
 import { StatCard } from './StatCard';
 import { CorrectionsProgress } from './CorrectionsProgress';
+import { useDashboardCoordinadorStats } from '../hooks';
+import { Spinner } from '@/shared/components/ui';
 
 export function DashboardCoordinador() {
-  // TODO: Fetch real stats from API
-  const stats = {
-    comisiones: 17,
-    rubricas: 12,
-    pendientes: 145,
-  };
+  const { data: dashboardData, isLoading, error } = useDashboardCoordinadorStats();
 
-  const correctionsProgress = [
-    {
-      id: 1,
-      comision: 'Prog1 - Comisión A',
-      tutor: 'Carlos',
-      completed: 28,
-      total: 35,
-      lastActivity: '2026-01-28T12:30:00Z',
-    },
-    {
-      id: 2,
-      comision: 'Prog1 - Comisión B',
-      tutor: 'Ana',
-      completed: 30,
-      total: 30,
-      lastActivity: '2026-01-27T18:00:00Z',
-    },
-    {
-      id: 3,
-      comision: 'Prog2 - Comisión A',
-      tutor: 'Luis',
-      completed: 12,
-      total: 32,
-      lastActivity: '2026-01-28T10:15:00Z',
-    },
-  ];
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-destructive">Error al cargar estadísticas del dashboard</p>
+        <p className="text-sm text-muted-foreground mt-2">
+          {error instanceof Error ? error.message : 'Error desconocido'}
+        </p>
+      </div>
+    );
+  }
+
+  // No data state
+  if (!dashboardData) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">No hay datos disponibles</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -61,21 +61,21 @@ export function DashboardCoordinador() {
       <div className="grid gap-6 sm:grid-cols-3">
         <StatCard
           title="Comisiones"
-          value={stats.comisiones}
+          value={dashboardData.comisiones}
           subtitle="asignadas"
           icon={GraduationCap}
           variant="default"
         />
         <StatCard
           title="Rúbricas"
-          value={stats.rubricas}
+          value={dashboardData.rubricas}
           subtitle="activas"
           icon={FileText}
           variant="default"
         />
         <StatCard
           title="Pendientes"
-          value={stats.pendientes}
+          value={dashboardData.pendientes}
           subtitle="de corregir"
           icon={Clock}
           variant="warning"
@@ -83,7 +83,7 @@ export function DashboardCoordinador() {
       </div>
 
       {/* Corrections Progress */}
-      <CorrectionsProgress progress={correctionsProgress} />
+      <CorrectionsProgress progress={dashboardData.corrections_progress} />
     </div>
   );
 }

@@ -1,0 +1,1 @@
+export { RubricasPage } from './RubricasPage';

@@ -10,6 +10,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { cn } from '@/shared/utils';
+import { useAuth, useLogout } from '@/features/auth/hooks';
 
 interface NavItem {
   to: string;
@@ -44,9 +45,12 @@ const navItems: NavItem[] = [
 ];
 
 export const Sidebar = () => {
-  // TODO: Get user from auth context
-  const userRole = 'admin'; // Mock
-  const userName = 'Administrador'; // Mock
+  const { user } = useAuth();
+  const logoutMutation = useLogout();
+
+  // Use user data from auth or fallback to defaults
+  const userRole = user?.rol || 'admin';
+  const userName = user?.nombre || 'Usuario';
 
   const filteredNavItems = navItems.filter(
     (item) => !item.roles || item.roles.includes(userRole)
@@ -109,14 +113,12 @@ export const Sidebar = () => {
           </NavLink>
 
           <button
-            onClick={() => {
-              // TODO: Implement logout
-              console.log('Logout');
-            }}
-            className="flex w-full items-center gap-3 rounded-lg px-4 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent"
+            onClick={() => logoutMutation.mutate()}
+            disabled={logoutMutation.isPending}
+            className="flex w-full items-center gap-3 rounded-lg px-4 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <LogOut className="h-5 w-5" />
-            <span>Cerrar sesión</span>
+            <span>{logoutMutation.isPending ? 'Cerrando...' : 'Cerrar sesión'}</span>
           </button>
         </div>
       </div>

@@ -16,7 +16,7 @@ interface ProgressItem {
   tutor: string;
   completed: number;
   total: number;
-  lastActivity: string; // ISO 8601
+  last_activity: string | null; // ISO 8601
 }
 
 interface CorrectionsProgressProps {
@@ -47,22 +47,26 @@ export function CorrectionsProgress({ progress }: CorrectionsProgressProps) {
                       {item.comision} ({item.tutor})
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {isCompleted ? (
-                        <>
-                          Completado:{' '}
-                          {formatDistanceToNow(new Date(item.lastActivity), {
-                            addSuffix: true,
-                            locale: es,
-                          })}
-                        </>
+                      {item.last_activity ? (
+                        isCompleted ? (
+                          <>
+                            Completado:{' '}
+                            {formatDistanceToNow(new Date(item.last_activity), {
+                              addSuffix: true,
+                              locale: es,
+                            })}
+                          </>
+                        ) : (
+                          <>
+                            Última actividad:{' '}
+                            {formatDistanceToNow(new Date(item.last_activity), {
+                              addSuffix: true,
+                              locale: es,
+                            })}
+                          </>
+                        )
                       ) : (
-                        <>
-                          Última actividad:{' '}
-                          {formatDistanceToNow(new Date(item.lastActivity), {
-                            addSuffix: true,
-                            locale: es,
-                          })}
-                        </>
+                        <span className="text-xs text-muted-foreground">Sin actividad</span>
                       )}
                     </p>
                   </div>

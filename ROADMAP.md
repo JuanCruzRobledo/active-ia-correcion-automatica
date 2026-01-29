@@ -430,50 +430,50 @@
 
 ### Usuarios Feature (Admin)
 
-- [ ] **6.2** Crear usuarios service
+- [x] **6.2** Crear usuarios service
       **Archivos**: `frontend/src/features/usuarios/services/usuarios-service.ts`
 
-- [ ] **6.3** Crear usuarios hooks
+- [x] **6.3** Crear usuarios hooks
       **Archivos**: `frontend/src/features/usuarios/hooks/`
 
-- [ ] **6.4** Crear UsuariosPage
+- [x] **6.4** Crear UsuariosPage
       **Incluir**: Tabla, filtros, acciones
       **Archivos**: `frontend/src/features/usuarios/pages/UsuariosPage.tsx`
 
-- [ ] **6.5** Crear UsuarioForm modal
+- [x] **6.5** Crear UsuarioForm modal
       **Archivos**: `frontend/src/features/usuarios/components/UsuarioForm.tsx`
 
 ### Materias Feature
 
-- [ ] **6.6** Crear materias service y hooks
+- [x] **6.6** Crear materias service y hooks
       **Archivos**: `frontend/src/features/materias/`
 
-- [ ] **6.7** Crear MateriasPage
+- [x] **6.7** Crear MateriasPage
       **Archivos**: `frontend/src/features/materias/pages/MateriasPage.tsx`
 
-- [ ] **6.8** Crear MateriaForm modal
+- [x] **6.8** Crear MateriaForm modal
       **Archivos**: `frontend/src/features/materias/components/MateriaForm.tsx`
 
 ### Comisiones Feature
 
-- [ ] **6.9** Crear comisiones service y hooks
+- [x] **6.9** Crear comisiones service y hooks
       **Archivos**: `frontend/src/features/comisiones/`
 
-- [ ] **6.10** Crear ComisionesPage
+- [x] **6.10** Crear ComisionesPage
       **Archivos**: `frontend/src/features/comisiones/pages/ComisionesPage.tsx`
 
-- [ ] **6.11** Crear ComisionForm modal
+- [x] **6.11** Crear ComisionForm modal
       **Archivos**: `frontend/src/features/comisiones/components/ComisionForm.tsx`
 
 ### Rubricas Feature
 
-- [ ] **6.12** Crear rubricas service y hooks
+- [x] **6.12** Crear rubricas service y hooks
       **Archivos**: `frontend/src/features/rubricas/`
 
-- [ ] **6.13** Crear RubricasPage
+- [x] **6.13** Crear RubricasPage
       **Archivos**: `frontend/src/features/rubricas/pages/RubricasPage.tsx`
 
-- [ ] **6.14** Crear RubricaEditor
+- [x] **6.14** Crear RubricaEditor
       **Incluir**: Editor de criterios drag-and-drop
       **Archivos**: `frontend/src/features/rubricas/components/RubricaEditor.tsx`
 
