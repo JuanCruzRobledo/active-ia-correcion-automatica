@@ -38,6 +38,27 @@ export interface CorreccionInfo {
   fecha_correccion: string;
 }
 
+export interface CriterioEvaluado {
+  id: string;
+  nombre: string;
+  puntaje_obtenido: number;
+  puntaje_maximo: number;
+  estado: 'OK' | 'WARNING' | 'ERROR';
+  feedback: string;
+}
+
+export interface Correccion {
+  id: number;
+  entrega_id: number;
+  nota: number;
+  criterios: CriterioEvaluado[];
+  fortalezas: string[];
+  recomendaciones: string[];
+  comentario_general: string;
+  fecha_correccion: string;
+  editado_manualmente: boolean;
+}
+
 export interface Entrega {
   id: number;
   comision_id: number;

@@ -19,6 +19,7 @@ import type {
   CargaMasivaResponse,
   EntregaContenido,
   EntregasFilters,
+  Correccion,
 } from '../types';
 
 /**
@@ -156,4 +157,62 @@ export const useDeleteEntrega = () => {
       });
     },
   });
+
 };
+
+/**
+ * Hook to trigger AI correction for an entrega.
+ *
+ * Invalidates entregas lists and updates detail cache on success.
+ */
+export const useCorregirEntrega = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<Correccion, Error, number>({
+    mutationFn: entregasService.corregir,
+    onSuccess: (correccion, entregaId) => {
+      // Invalidate lists
+      queryClient.invalidateQueries({
+        queryKey: entregasKeys.lists(),
+      });
+
+      // Update detail if it exists in cache
+      queryClient.setQueryData<EntregaDetail>(
+        entregasKeys.detail(entregaId),
+        (old) => {
+          if (!old) return undefined;
+          return {
+            ...old,
+            estado: 'CORREGIDA',
+            correccion: {
+              id: correccion.id,
+              nota: correccion.nota,
+              editado_manualmente: correccion.editado_manualmente,
+              fecha_correccion: correccion.fecha_correccion,
+            },
+          };
+        }
+      );
+    },
+  });
+};
+
+/**
+ * Hook to trigger AI correction for multiple entregas.
+ *
+ * Invalidates entregas lists on success.
+ */
+export const useCorregirEntregaMasiva = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<Correccion[], Error, number[]>({
+    mutationFn: entregasService.corregirLote,
+    onSuccess: () => {
+      // Invalidate all lists
+      queryClient.invalidateQueries({
+        queryKey: entregasKeys.lists(),
+      });
+    },
+  });
+};
+

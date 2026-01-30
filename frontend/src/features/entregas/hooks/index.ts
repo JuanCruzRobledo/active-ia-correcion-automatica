@@ -7,4 +7,6 @@ export {
   useCreateEntregaMasiva,
   useDeleteEntrega,
   entregasKeys,
+  useCorregirEntrega,
+  useCorregirEntregaMasiva,
 } from './useEntregas';
