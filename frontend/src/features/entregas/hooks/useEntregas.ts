@@ -40,13 +40,18 @@ export const entregasKeys = {
  * Hook to get a list of entregas with filters.
  *
  * @param filters - Query filters (comision_id, rubrica_id, estado, search, pagination)
+ * @param options - Additional query options (e.g., enabled)
  * @returns Query result with entregas list
  */
-export const useEntregas = (filters: EntregasFilters) => {
+export const useEntregas = (
+  filters?: EntregasFilters,
+  options?: { enabled?: boolean }
+) => {
   return useQuery<EntregaList, Error>({
-    queryKey: entregasKeys.list(filters),
-    queryFn: () => entregasService.getAll(filters),
+    queryKey: entregasKeys.list(filters ?? { comision_id: 0, rubrica_id: 0 }),
+    queryFn: () => entregasService.getAll(filters!),
     staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: options?.enabled ?? !!filters,
   });
 };
 

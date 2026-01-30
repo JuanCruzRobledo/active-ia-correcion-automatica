@@ -44,22 +44,22 @@ class DashboardService:
         """
         # Count materias (not deleted)
         materias_count = await db.scalar(
-            select(func.count(Materia.id)).where(Materia.eliminado == False)
+            select(func.count(Materia.id)).where(Materia.activa == True)
         )
 
         # Count comisiones (not deleted)
         comisiones_count = await db.scalar(
-            select(func.count(Comision.id)).where(Comision.eliminado == False)
+            select(func.count(Comision.id)).where(Comision.activa == True)
         )
 
         # Count usuarios (not deleted)
         usuarios_count = await db.scalar(
-            select(func.count(Usuario.id)).where(Usuario.eliminado == False)
+            select(func.count(Usuario.id)).where(Usuario.activo == True)
         )
 
         # Count rubricas (not deleted)
         rubricas_count = await db.scalar(
-            select(func.count(Rubrica.id)).where(Rubrica.eliminado == False)
+            select(func.count(Rubrica.id)).where(Rubrica.activa == True)
         )
 
         return AdminStatsResponse(
@@ -101,14 +101,14 @@ class DashboardService:
         # Count comisiones in these materias
         comisiones_count = await db.scalar(
             select(func.count(Comision.id)).where(
-                Comision.materia_id.in_(materia_ids), Comision.eliminado == False
+                Comision.materia_id.in_(materia_ids), Comision.activa == True
             )
         )
 
         # Count rubricas for these materias
         rubricas_count = await db.scalar(
             select(func.count(Rubrica.id)).where(
-                Rubrica.materia_id.in_(materia_ids), Rubrica.eliminado == False
+                Rubrica.materia_id.in_(materia_ids), Rubrica.activa == True
             )
         )
 
@@ -138,7 +138,7 @@ class DashboardService:
             .join(Usuario, ComisionTutor.tutor_id == Usuario.id)
             .outerjoin(Entrega, Comision.id == Entrega.comision_id)
             .outerjoin(Correccion, Entrega.id == Correccion.entrega_id)
-            .where(Comision.materia_id.in_(materia_ids), Comision.eliminado == False)
+            .where(Comision.materia_id.in_(materia_ids), Comision.activa == True)
             .group_by(Comision.id, Materia.nombre, Usuario.nombre)
         )
 
@@ -230,7 +230,7 @@ class DashboardService:
             )
             .join(Materia, Comision.materia_id == Materia.id)
             .outerjoin(Entrega, Comision.id == Entrega.comision_id)
-            .where(Comision.id.in_(comision_ids), Comision.eliminado == False)
+            .where(Comision.id.in_(comision_ids), Comision.activa == True)
             .group_by(Comision.id, Materia.nombre, Comision.nombre, Comision.anio)
         )
 

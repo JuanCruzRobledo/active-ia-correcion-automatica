@@ -11,6 +11,8 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useEntregas, useDeleteEntrega, useCorregirEntregaMasiva, useCorregirEntrega } from '../hooks';
+import { useComisiones } from '@/features/comisiones/hooks';
+import { useRubricas } from '@/features/rubricas/hooks';
 import { Button } from '@/shared/components/ui/Button';
 import { Input } from '@/shared/components/ui/Input';
 import { Select } from '@/shared/components/ui/Select';
@@ -31,11 +33,6 @@ import {
 } from 'lucide-react';
 import type { EstadoEntrega, EntregaListItem } from '../types';
 
-interface EntregasPageProps {
-  comisionId: number;
-  rubricaId: number;
-}
-
 const ESTADO_OPTIONS: { value: EstadoEntrega | 'TODOS'; label: string }[] = [
   { value: 'TODOS', label: 'Todos los estados' },
   { value: 'SUBIDA', label: 'Subidas' },
@@ -44,8 +41,17 @@ const ESTADO_OPTIONS: { value: EstadoEntrega | 'TODOS'; label: string }[] = [
   { value: 'ERROR', label: 'Con errores' },
 ];
 
-export const EntregasPage = ({ comisionId, rubricaId }: EntregasPageProps) => {
+export const EntregasPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // Selectors state
+  const [selectedComisionId, setSelectedComisionId] = useState<number | null>(
+    searchParams.get('comision_id') ? parseInt(searchParams.get('comision_id')!, 10) : null
+  );
+  const [selectedRubricaId, setSelectedRubricaId] = useState<number | null>(
+    searchParams.get('rubrica_id') ? parseInt(searchParams.get('rubrica_id')!, 10) : null
+  );
+
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [estadoFilter, setEstadoFilter] = useState<EstadoEntrega | 'TODOS'>(
     (searchParams.get('estado') as EstadoEntrega) || 'TODOS'
@@ -57,14 +63,29 @@ export const EntregasPage = ({ comisionId, rubricaId }: EntregasPageProps) => {
   const page = parseInt(searchParams.get('page') || '1', 10);
   const perPage = 20;
 
-  const { data, isLoading, error } = useEntregas({
-    comision_id: comisionId,
-    rubrica_id: rubricaId,
-    estado: estadoFilter !== 'TODOS' ? estadoFilter : undefined,
-    search: searchTerm || undefined,
-    page,
-    per_page: perPage,
-  });
+  // Fetch comisiones (tutors see only their assigned comisiones)
+  const { data: comisionesData, isLoading: isLoadingComisiones } = useComisiones({});
+
+  // Fetch rubricas for selected comision's materia
+  const selectedComision = comisionesData?.items.find(c => c.id === selectedComisionId);
+  const { data: rubricasData, isLoading: isLoadingRubricas } = useRubricas(
+    selectedComision?.materia_id ? { materia_id: selectedComision.materia_id } : undefined,
+    { enabled: !!selectedComision?.materia_id }
+  );
+
+  const { data, isLoading, error } = useEntregas(
+    selectedComisionId && selectedRubricaId
+      ? {
+          comision_id: selectedComisionId,
+          rubrica_id: selectedRubricaId,
+          estado: estadoFilter !== 'TODOS' ? estadoFilter : undefined,
+          search: searchTerm || undefined,
+          page,
+          per_page: perPage,
+        }
+      : undefined,
+    { enabled: !!selectedComisionId && !!selectedRubricaId }
+  );
 
   const deleteMutation = useDeleteEntrega();
   const corregirMutation = useCorregirEntrega();
