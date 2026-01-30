@@ -21,26 +21,26 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/dashboard', icon: Home, label: 'Dashboard' },
-  { to: '/usuarios', icon: Users, label: 'Usuarios', roles: ['admin'] },
-  { to: '/materias', icon: BookOpen, label: 'Materias', roles: ['admin'] },
+  { to: '/usuarios', icon: Users, label: 'Usuarios', roles: ['ADMIN'] },
+  { to: '/materias', icon: BookOpen, label: 'Materias', roles: ['ADMIN'] },
   {
     to: '/comisiones',
     icon: FolderOpen,
     label: 'Comisiones',
-    roles: ['admin', 'coordinador'],
+    roles: ['ADMIN', 'COORDINADOR'],
   },
   {
     to: '/rubricas',
     icon: FileText,
     label: 'Rúbricas',
-    roles: ['admin', 'coordinador'],
+    roles: ['ADMIN', 'COORDINADOR'],
   },
-  { to: '/entregas', icon: FileText, label: 'Entregas', roles: ['tutor'] },
+  { to: '/entregas', icon: FileText, label: 'Entregas', roles: ['TUTOR'] },
   {
     to: '/correcciones',
     icon: CheckSquare,
     label: 'Correcciones',
-    roles: ['tutor'],
+    roles: ['TUTOR'],
   },
 ];
 
@@ -106,8 +106,8 @@ export const Sidebar = () => {
             <User className="h-5 w-5" />
             <div className="flex-1 truncate">
               <p className="truncate font-medium">{userName}</p>
-              <p className="truncate text-xs text-muted-foreground capitalize">
-                {userRole}
+              <p className="truncate text-xs text-muted-foreground">
+                {userRole.charAt(0) + userRole.slice(1).toLowerCase()}
               </p>
             </div>
           </NavLink>
