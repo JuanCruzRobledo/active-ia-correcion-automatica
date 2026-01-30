@@ -18,6 +18,7 @@ import type {
   CargaMasivaResponse,
   EntregaContenido,
   EntregasFilters,
+  Correccion,
 } from '../types';
 
 export const entregasService = {
@@ -147,6 +148,24 @@ export const entregasService = {
     const { data } = await apiClient.get<EntregaContenido>(
       `/entregas/${id}/contenido`
     );
+    return data;
+  },
+
+  /**
+   * Trigger AI correction for a specific entrega.
+   */
+  corregir: async (id: number): Promise<Correccion> => {
+    const { data } = await apiClient.post<Correccion>(`/entregas/${id}/corregir`);
+    return data;
+  },
+
+  /**
+   * Trigger AI correction for multiple entregas.
+   */
+  corregirLote: async (ids: number[]): Promise<Correccion[]> => {
+    const { data } = await apiClient.post<Correccion[]>('/entregas/corregir-lote', {
+      ids,
+    });
     return data;
   },
 };
