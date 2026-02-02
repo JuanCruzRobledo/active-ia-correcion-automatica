@@ -29,7 +29,7 @@ export const perfilKeys = {
 export const useProfile = () => {
   return useQuery<UserProfile, Error>({
     queryKey: perfilKeys.detail(),
-    queryFn: perfilService.getProfile,
+    queryFn: () => perfilService.getProfile(),
     staleTime: 10 * 60 * 1000, // 10 minutes
   });
 };
@@ -49,13 +49,13 @@ export const useUpdateApiKey = () => {
     Error,
     string
   >({
-    mutationFn: perfilService.updateApiKey,
+    mutationFn: (apiKey: string) => perfilService.updateApiKey(apiKey),
     onSuccess: (response) => {
       // Invalidate profile to refetch with updated API Key status
       queryClient.invalidateQueries({ queryKey: perfilKeys.all });
 
       if (response.valid) {
-        toast.success('API Key configurada exitosamente');
+        toast.success('API Key configurada y validada exitosamente');
       } else {
         toast.error('API Key inválida. Verifica e intenta nuevamente.');
       }
