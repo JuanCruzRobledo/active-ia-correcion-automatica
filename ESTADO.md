@@ -37,9 +37,9 @@
 | Campo                     | Valor                                   |
 | ------------------------- | --------------------------------------- |
 | **Fase actual**           | Fase 6 - Frontend Features              |
-| **Tarea actual**          | 6.19 - Crear CorreccionDetailModal      |
+| **Tarea actual**          | Fase 6 completada                       |
 | **Ultima sesion**         | 2026-02-02                              |
-| **Porcentaje completado** | 84%                                     |
+| **Porcentaje completado** | 85%                                     |
 
 ---
 
@@ -53,56 +53,60 @@
 | 3   | Backend - Rubricas + Entregas | `COMPLETADA` | 14/14 tareas |
 | 4   | Backend - Correccion IA       | `COMPLETADA` | 10/10 tareas |
 | 5   | Frontend - Setup + Auth       | `COMPLETADA` | 10/10 tareas |
-| 6   | Frontend - Features           | `EN CURSO`   | 18/20 tareas |
+| 6   | Frontend - Features           | `COMPLETADA` | 20/20 tareas |
 | 7   | Testing + Integracion         | `PENDIENTE`  | 0/8 tareas   |
 | 8   | Docker + Deploy               | `PENDIENTE`  | 0/6 tareas   |
 
-**Total**: 87/103 tareas completadas
+**Total**: 89/103 tareas completadas
 
 ---
 
 ## Ultima Sesion
 
-### Fecha: 2026-02-02 (Sesión 22)
+### Fecha: 2026-02-02 (Sesión 23)
 
 ### Que se hizo:
 
-- ✅ **Tarea 6.16: Crear EntregasPage** (COMPLETADA)
-  - Archivo: `frontend/src/features/entregas/pages/EntregasPage.tsx` (588 líneas)
-  - Agregado selectores de Comisión y Rúbrica (faltaban)
-  - Tabla completa con filtros, selección múltiple, paginación
-  - Integración con 8 hooks: useComisiones, useRubricas, useEntregas, etc.
-  - Build: 645.45 kB bundle (gzip: 201.51 kB) ✅
-
-- ✅ **Tarea 6.17: Crear CargaEntregaModal** (COMPLETADA)
-  - Archivo: `frontend/src/features/entregas/components/CargaEntregaModal.tsx` (460 líneas)
-  - Modal dual-mode: individual y masivo
-  - Drag & drop de archivos con validación (.zip, .txt, 100 MB max)
-  - 4 modos de consolidación: SOLO_CODIGO, WEB_COMPLETO, PROYECTO_COMPLETO, PERSONALIZADO
-  - Creados componentes UI faltantes: Radio.tsx, Alert.tsx
+- ✅ **Tarea 6.19: Crear CorreccionDetailModal** (COMPLETADA)
+  - Archivo: `frontend/src/features/correcciones/components/CorreccionDetailModal.tsx` (470 líneas)
+  - Modal completo para vista y edición de correcciones
+  - Secciones: Nota final con recalcular, Criterios editables, Fortalezas/Recomendaciones (listas editables), Comentario general
+  - Cada criterio tiene: puntaje (select 0-max), estado (OK/WARNING/ERROR), feedback (textarea)
+  - Integración con hook useUpdateCorreccion, cache management automático
   - Build: 655.89 kB bundle (gzip: 204.06 kB) ✅
 
-- ✅ **Tarea 6.18: Crear correcciones service y hooks** (COMPLETADA)
-  - Archivos: types/index.ts (53 líneas), services/correcciones-service.ts (94 líneas), hooks/useCorrecciones.ts (203 líneas)
-  - Service layer con 6 métodos: corregir individual/lote, get, update, recorregir
-  - React Query hooks con cache management y query key factory
-  - Toast notifications, optimistic updates, invalidación inteligente
-  - Build: 655.89 kB bundle (gzip: 204.06 kB) ✅
+- ✅ **Tarea 6.20: Crear PerfilPage** (COMPLETADA)
+  - Archivos: types/index.ts, services/perfil-service.ts, hooks/usePerfil.ts, pages/PerfilPage.tsx (518 líneas)
+  - Service layer: getProfile(), updateApiKey() con validación backend
+  - Hooks: useProfile(), useUpdateApiKey() con React Query
+  - Página completa con 3 secciones: Información Personal, API Key Gemini, Seguridad
+  - Modales: Configurar/Cambiar API Key (validación formato AIza), Cambiar contraseña (validación 8+ chars, 1 número)
+  - Toggle show/hide en campos sensibles, badges de estado, formato de fechas
+  - Creado hook useChangePassword en auth/hooks con React Query mutation
+  - Build: 666.87 kB bundle (gzip: 206.27 kB) ✅
 
-### Proxima tarea:
+### Fase 6 Completada:
 
-- **6.19**: Crear CorreccionDetailModal (modal de vista/edición de correcciones)
+- ✅ **20/20 tareas** de Frontend Features completadas
+- Próxima fase: Fase 7 - Testing + Integración (0/8 tareas)
 
 ### Problemas encontrados:
 
-- Ninguno en sesión 22 - Todas las implementaciones siguieron patrones existentes
+- Tarea 6.19: Errores TypeScript por imports incorrectos (default vs named) - Corregidos
+- Tarea 6.19: Modal usaba prop `maxWidth` inexistente, cambiado a `size="2xl"` - Corregido
+- Tarea 6.20: Hook useChangePassword no existía en auth/hooks - Creado con React Query mutation
+- Tarea 6.20: Campos de ChangePasswordRequest usan snake_case (current_password) no camelCase - Corregido
 
 ### Notas:
 
-- Fase 6 al 90% (18/20 tareas)
-- Solo faltan 2 tareas de frontend: CorreccionDetailModal (6.19) y PerfilPage (6.20)
+- ✅ **Fase 6 COMPLETADA** (20/20 tareas)
+- Todas las features de frontend implementadas: Auth, Dashboard, Usuarios, Materias, Comisiones, Rúbricas, Entregas, Correcciones, Perfil
 - Builds consistentes sin errores TypeScript
-- Componentes UI base completos (Button, Input, Select, Modal, Badge, Radio, Alert, etc.)
+- Bundle final: 666.87 kB (gzip: 206.27 kB)
+- Componentes UI base completos (Button, Input, Select, Modal, Badge, Radio, Alert, Spinner)
+- Service layer completo con React Query para cache management
+- Sistema de permisos por rol implementado
+- Integración completa con backend esperado
 
 ---
 

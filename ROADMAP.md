@@ -495,13 +495,13 @@
 - [x] **6.18** Crear correcciones service y hooks
       **Archivos**: `frontend/src/features/correcciones/`
 
-- [ ] **6.19** Crear CorreccionDetailModal
+- [x] **6.19** Crear CorreccionDetailModal
       **Incluir**: Vista y edicion de correccion
       **Archivos**: `frontend/src/features/correcciones/components/CorreccionDetailModal.tsx`
 
 ### Perfil Feature
 
-- [ ] **6.20** Crear PerfilPage
+- [x] **6.20** Crear PerfilPage
       **Incluir**: Datos, API Key, cambio password
       **Archivos**: `frontend/src/features/perfil/pages/PerfilPage.tsx`
 
