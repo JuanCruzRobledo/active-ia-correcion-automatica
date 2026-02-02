@@ -141,6 +141,11 @@ def register_routers(app: FastAPI) -> None:
 
     app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 
+    # Fase 6 - Perfil router
+    from app.routers.perfil import router as perfil_router
+
+    app.include_router(perfil_router, prefix="/api/v1")
+
 
 # Crear instancia de la aplicacion
 app = create_application()
