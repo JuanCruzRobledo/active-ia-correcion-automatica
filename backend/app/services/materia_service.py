@@ -45,18 +45,19 @@ class MateriaService:
         self.coord_materia_repo = CoordinadorMateriaRepository(db)
         self.usuario_repo = UsuarioRepository(db)
 
-    async def crear_materia(self, data: MateriaCreate) -> MateriaResponse:
+    async def crear_materia(self, data: MateriaCreate) -> MateriaDetailResponse:
         """
         Create a new materia.
 
         Args:
-            data: Materia creation data (codigo, nombre, descripcion).
+            data: Materia creation data (codigo, nombre, descripcion, coordinador_ids).
 
         Returns:
-            MateriaResponse with materia data.
+            MateriaDetailResponse with materia data and coordinators.
 
         Raises:
             HTTPException 409: Codigo already exists.
+            HTTPException 400: Invalid coordinator.
         """
         # Normalize codigo to uppercase
         codigo_upper = data.codigo.upper()
@@ -68,6 +69,32 @@ class MateriaService:
                 detail="El código de materia ya existe",
             )
 
+        # Validate coordinators if provided
+        valid_coordinadores = []
+        if data.coordinador_ids:
+            for coord_id in data.coordinador_ids:
+                usuario = await self.usuario_repo.get_by_id(coord_id)
+
+                if not usuario:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Usuario con ID {coord_id} no encontrado",
+                    )
+
+                if not usuario.activo:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Usuario {usuario.username} está deshabilitado",
+                    )
+
+                if usuario.rol != RolEnum.COORDINADOR:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Usuario {usuario.username} no tiene rol de coordinador",
+                    )
+
+                valid_coordinadores.append(usuario)
+
         # Create materia
         materia = Materia(
             codigo=codigo_upper,
@@ -78,7 +105,15 @@ class MateriaService:
 
         created_materia = await self.materia_repo.create(materia)
 
-        return MateriaResponse.model_validate(created_materia)
+        # Assign coordinators
+        for usuario in valid_coordinadores:
+            await self.coord_materia_repo.create(
+                coordinador_id=usuario.id,
+                materia_id=created_materia.id,
+            )
+
+        # Return detailed response with coordinators
+        return await self.obtener_materia(created_materia.id)
 
     async def listar_materias(
         self,
@@ -190,19 +225,20 @@ class MateriaService:
         self,
         materia_id: int,
         data: MateriaUpdate,
-    ) -> MateriaResponse:
+    ) -> MateriaDetailResponse:
         """
         Update a materia's information.
 
         Args:
             materia_id: Materia's database ID.
-            data: Update data (nombre, descripcion).
+            data: Update data (nombre, descripcion, coordinador_ids).
 
         Returns:
-            MateriaResponse with updated materia data.
+            MateriaDetailResponse with updated materia data and coordinators.
 
         Raises:
             HTTPException 404: Materia not found.
+            HTTPException 400: Invalid coordinator.
         """
         materia = await self.materia_repo.get_by_id(materia_id)
 
@@ -218,9 +254,47 @@ class MateriaService:
         if data.descripcion is not None:
             materia.descripcion = data.descripcion
 
-        updated_materia = await self.materia_repo.update(materia)
+        await self.materia_repo.update(materia)
 
-        return MateriaResponse.model_validate(updated_materia)
+        # Update coordinators if provided
+        if data.coordinador_ids is not None:
+            # Validate coordinators
+            valid_coordinadores = []
+            for coord_id in data.coordinador_ids:
+                usuario = await self.usuario_repo.get_by_id(coord_id)
+
+                if not usuario:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Usuario con ID {coord_id} no encontrado",
+                    )
+
+                if not usuario.activo:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Usuario {usuario.username} está deshabilitado",
+                    )
+
+                if usuario.rol != RolEnum.COORDINADOR:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Usuario {usuario.username} no tiene rol de coordinador",
+                    )
+
+                valid_coordinadores.append(usuario)
+
+            # Remove all existing assignments
+            await self.coord_materia_repo.delete_all_for_materia(materia_id)
+
+            # Create new assignments
+            for usuario in valid_coordinadores:
+                await self.coord_materia_repo.create(
+                    coordinador_id=usuario.id,
+                    materia_id=materia_id,
+                )
+
+        # Return detailed response with coordinators
+        return await self.obtener_materia(materia_id)
 
     async def eliminar_materia(self, materia_id: int) -> None:
         """

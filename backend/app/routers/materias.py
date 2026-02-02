@@ -54,19 +54,20 @@ async def listar_materias(
 
 @router.post(
     "/",
-    response_model=MateriaResponse,
+    response_model=MateriaDetailResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def crear_materia(
     data: MateriaCreate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> MateriaResponse:
+) -> MateriaDetailResponse:
     """
-    Crea una nueva materia.
+    Crea una nueva materia con coordinadores opcionales.
 
     Solo administradores pueden crear materias.
     El código debe ser único y se convierte automáticamente a mayúsculas.
+    Los coordinadores se pueden asignar en el mismo request.
     """
     require_admin(current_user)
 
@@ -91,19 +92,20 @@ async def obtener_materia(
     return await service.obtener_materia(materia_id)
 
 
-@router.put("/{materia_id}", response_model=MateriaResponse)
+@router.put("/{materia_id}", response_model=MateriaDetailResponse)
 async def actualizar_materia(
     materia_id: int,
     data: MateriaUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> MateriaResponse:
+) -> MateriaDetailResponse:
     """
-    Actualiza una materia existente.
+    Actualiza una materia existente con coordinadores opcionales.
 
     Solo administradores pueden actualizar materias.
     Solo se actualizan los campos proporcionados.
     El código no puede ser modificado después de la creación.
+    Si se proveen coordinador_ids, reemplaza todas las asignaciones existentes.
     """
     require_admin(current_user)
 

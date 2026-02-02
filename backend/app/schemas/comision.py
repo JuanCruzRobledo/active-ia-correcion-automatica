@@ -42,6 +42,10 @@ class ComisionCreate(ComisionBase):
         gt=0,
         description="ID de la materia a la que pertenece la comisión",
     )
+    tutor_ids: list[int] = Field(
+        default_factory=list,
+        description="IDs de tutores a asignar (opcional)",
+    )
 
 
 class ComisionUpdate(BaseModel):
@@ -56,6 +60,10 @@ class ComisionUpdate(BaseModel):
         min_length=1,
         max_length=50,
         description="Nombre de la comisión",
+    )
+    tutor_ids: list[int] | None = Field(
+        None,
+        description="IDs de tutores a asignar (reemplaza asignaciones existentes)",
     )
 
 

@@ -1,17 +1,19 @@
 // features/comisiones/components/ComisionForm.tsx
 /**
- * Form modal for creating and editing comisiones
+ * Form modal for creating and editing comisiones with tutor assignment
  *
- * Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md HU-COM-01
+ * Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md HU-COM-01, HU-COM-02
  */
 
 import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Button, Input, Select, type SelectOption } from '@/shared/components/ui';
+import { MultiSelect } from '@/shared/components/ui/MultiSelect';
 import { useCreateComision, useUpdateComision } from '../hooks';
 import { useMaterias } from '@/features/materias/hooks';
+import { useTutores } from '@/features/usuarios/hooks';
 import type { ComisionDetail } from '../types';
 
 // Validation schema
@@ -28,6 +30,7 @@ const comisionSchema = z.object({
     .int('El año debe ser un número entero')
     .min(2020, 'El año debe ser mayor o igual a 2020')
     .max(2100, 'El año debe ser menor o igual a 2100'),
+  tutor_ids: z.array(z.number()).optional(),
 });
 
 type ComisionFormData = z.infer<typeof comisionSchema>;
@@ -51,9 +54,12 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
     per_page: 100, // Get all active materias
   });
 
+  const { data: tutores = [], isLoading: loadingTutores } = useTutores();
+
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
     reset,
     setValue,
@@ -63,6 +69,7 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
       materia_id: 0,
       nombre: '',
       anio: currentYear,
+      tutor_ids: [],
     },
   });
 
@@ -72,11 +79,13 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
       setValue('materia_id', comision.materia_id);
       setValue('nombre', comision.nombre);
       setValue('anio', comision.anio);
+      setValue('tutor_ids', comision.tutores?.map((t) => t.id) || []);
     } else {
       reset({
         materia_id: 0,
         nombre: '',
         anio: currentYear,
+        tutor_ids: [],
       });
     }
   }, [comision, setValue, reset, currentYear]);
@@ -88,6 +97,7 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
         materia_id: 0,
         nombre: '',
         anio: currentYear,
+        tutor_ids: [],
       });
     }
   }, [isOpen, reset, currentYear]);
@@ -95,16 +105,22 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
   const onSubmit = async (data: ComisionFormData) => {
     try {
       if (isEditMode) {
-        // Update existing comision (only name can be changed)
+        // Update existing comision
         await updateMutation.mutateAsync({
           id: comision.id,
           data: {
             nombre: data.nombre,
+            tutor_ids: data.tutor_ids,
           },
         });
       } else {
         // Create new comision
-        await createMutation.mutateAsync(data);
+        await createMutation.mutateAsync({
+          materia_id: data.materia_id,
+          nombre: data.nombre,
+          anio: data.anio,
+          tutor_ids: data.tutor_ids,
+        });
       }
       onClose();
     } catch (error) {
@@ -161,13 +177,25 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
           })}
         />
 
-        {!isEditMode && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm text-blue-800">
-              💡 Después de crear la comisión, podrás asignarle tutores desde la vista de comisiones.
-            </p>
-          </div>
-        )}
+        <Controller
+          name="tutor_ids"
+          control={control}
+          render={({ field }) => (
+            <MultiSelect
+              label="Tutores (Opcional)"
+              placeholder="Selecciona tutores"
+              tooltip="Usuarios con rol TUTOR que pueden corregir entregas de esta comisión"
+              options={tutores.map((t) => ({
+                value: t.id,
+                label: t.nombre,
+              }))}
+              value={field.value || []}
+              onChange={field.onChange}
+              loading={loadingTutores}
+              error={errors.tutor_ids?.message}
+            />
+          )}
+        />
 
         <div className="flex justify-end gap-2 pt-4">
           <Button

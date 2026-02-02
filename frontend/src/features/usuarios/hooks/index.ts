@@ -11,4 +11,6 @@ export {
   useDeleteUsuario,
   useRestoreUsuario,
   useResetPassword,
+  useCoordinadores,
+  useTutores,
 } from './useUsuarios';
