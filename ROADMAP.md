@@ -482,17 +482,17 @@
 - [x] **6.15** Crear entregas service y hooks
       **Archivos**: `frontend/src/features/entregas/`
 
-- [ ] **6.16** Crear EntregasPage
+- [x] **6.16** Crear EntregasPage
       **Incluir**: Tabla, filtros, seleccion multiple
       **Archivos**: `frontend/src/features/entregas/pages/EntregasPage.tsx`
 
-- [ ] **6.17** Crear CargaEntregaModal
+- [x] **6.17** Crear CargaEntregaModal
       **Incluir**: Individual y masiva
       **Archivos**: `frontend/src/features/entregas/components/CargaEntregaModal.tsx`
 
 ### Correcciones Feature
 
-- [ ] **6.18** Crear correcciones service y hooks
+- [x] **6.18** Crear correcciones service y hooks
       **Archivos**: `frontend/src/features/correcciones/`
 
 - [ ] **6.19** Crear CorreccionDetailModal

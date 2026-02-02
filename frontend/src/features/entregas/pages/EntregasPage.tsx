@@ -13,6 +13,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useEntregas, useDeleteEntrega, useCorregirEntregaMasiva, useCorregirEntrega } from '../hooks';
 import { useComisiones } from '@/features/comisiones/hooks';
 import { useRubricas } from '@/features/rubricas/hooks';
+import { CargaEntregaModal } from '../components';
 import { Button } from '@/shared/components/ui/Button';
 import { Input } from '@/shared/components/ui/Input';
 import { Select } from '@/shared/components/ui/Select';
@@ -69,8 +70,7 @@ export const EntregasPage = () => {
   // Fetch rubricas for selected comision's materia
   const selectedComision = comisionesData?.items.find(c => c.id === selectedComisionId);
   const { data: rubricasData, isLoading: isLoadingRubricas } = useRubricas(
-    selectedComision?.materia_id ? { materia_id: selectedComision.materia_id } : undefined,
-    { enabled: !!selectedComision?.materia_id }
+    selectedComision?.materia_id ? { materia_id: selectedComision.materia_id } : undefined
   );
 
   const { data, isLoading, error } = useEntregas(
@@ -170,9 +170,8 @@ export const EntregasPage = () => {
       try {
         await corregirMasivaMutation.mutateAsync(ids);
         setSelectedIds([]);
-      } catch (e) {
-        console.error(e);
-        alert('Error al iniciar corrección masiva');
+      } catch (error) {
+        alert(`Error al iniciar corrección masiva: ${error instanceof Error ? error.message : 'Error desconocido'}`);
       }
     }
   };
@@ -250,6 +249,7 @@ export const EntregasPage = () => {
           <Button
             variant="secondary"
             onClick={() => setShowBulkUploadModal(true)}
+            disabled={!selectedComisionId || !selectedRubricaId}
           >
             <PackageOpen className="w-4 h-4" />
             Subir Lote
@@ -257,6 +257,7 @@ export const EntregasPage = () => {
           <Button
             variant="primary"
             onClick={() => setShowUploadModal(true)}
+            disabled={!selectedComisionId || !selectedRubricaId}
           >
             <FileUp className="w-4 h-4" />
             Subir Entrega
@@ -264,8 +265,80 @@ export const EntregasPage = () => {
         </div>
       </div>
 
-      {/* Filters and Actions */}
+      {/* Selectors: Comisión y Rúbrica */}
       <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="flex flex-col lg:flex-row gap-4">
+          {/* Comisión Selector */}
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Comisión
+            </label>
+            <Select
+              value={selectedComisionId?.toString() || ''}
+              onChange={(e) => {
+                const comisionId = e.target.value ? parseInt(e.target.value, 10) : null;
+                setSelectedComisionId(comisionId);
+                setSelectedRubricaId(null); // Reset rubrica when comision changes
+                setSelectedIds([]);
+                setSearchParams((prev) => {
+                  if (comisionId) {
+                    prev.set('comision_id', comisionId.toString());
+                  } else {
+                    prev.delete('comision_id');
+                  }
+                  prev.delete('rubrica_id');
+                  prev.set('page', '1');
+                  return prev;
+                });
+              }}
+              options={[
+                { value: '', label: 'Selecciona una comisión' },
+                ...(comisionesData?.items.map(c => ({
+                  value: c.id.toString(),
+                  label: `${c.nombre} - ${c.materia_nombre}`
+                })) || [])
+              ]}
+              disabled={isLoadingComisiones}
+            />
+          </div>
+
+          {/* Rúbrica Selector */}
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              Rúbrica / Trabajo Práctico
+            </label>
+            <Select
+              value={selectedRubricaId?.toString() || ''}
+              onChange={(e) => {
+                const rubricaId = e.target.value ? parseInt(e.target.value, 10) : null;
+                setSelectedRubricaId(rubricaId);
+                setSelectedIds([]);
+                setSearchParams((prev) => {
+                  if (rubricaId) {
+                    prev.set('rubrica_id', rubricaId.toString());
+                  } else {
+                    prev.delete('rubrica_id');
+                  }
+                  prev.set('page', '1');
+                  return prev;
+                });
+              }}
+              options={[
+                { value: '', label: 'Selecciona una rúbrica' },
+                ...(rubricasData?.items.map(r => ({
+                  value: r.id.toString(),
+                  label: `${r.tipo} ${r.numero} - ${r.nombre}`
+                })) || [])
+              ]}
+              disabled={!selectedComisionId || isLoadingRubricas}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Filters and Actions */}
+      {selectedComisionId && selectedRubricaId && (
+        <div className="bg-white rounded-lg border border-gray-200 p-4">
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Search */}
           <div className="flex-1">
@@ -314,9 +387,20 @@ export const EntregasPage = () => {
           )}
         </div>
       </div>
+      )}
+
+      {/* Empty State when no selection */}
+      {(!selectedComisionId || !selectedRubricaId) && (
+        <EmptyState
+          icon={<Upload className="w-12 h-12 text-gray-400" />}
+          title="Selecciona una comisión y rúbrica"
+          description="Para ver las entregas, primero debes seleccionar una comisión y el trabajo práctico (rúbrica) correspondiente"
+        />
+      )}
 
       {/* Table or Empty State */}
-      {entregas.length === 0 ? (
+      {selectedComisionId && selectedRubricaId && (
+        entregas.length === 0 ? (
         <EmptyState
           icon={<Upload className="w-12 h-12 text-gray-400" />}
           title="No hay entregas"
@@ -430,7 +514,8 @@ export const EntregasPage = () => {
                               label: 'Ver Detalle',
                               icon: <Eye className="w-4 h-4" />,
                               onClick: () => {
-                                console.log('Ver detalle', entrega.id);
+                                // TODO: Implement detail modal (Task 6.17)
+                                alert('Funcionalidad disponible en próxima versión');
                               },
                             },
                             {
@@ -445,8 +530,8 @@ export const EntregasPage = () => {
                                   label: 'Ver Corrección',
                                   icon: <FileCheck2 className="w-4 h-4" />,
                                   onClick: () => {
-                                    console.log('Ver corrección', entrega.id);
-                                    // Open modal (task 6.19)
+                                    // TODO: Open CorreccionDetailModal (Task 6.19)
+                                    alert('Funcionalidad disponible en próxima versión');
                                   },
                                 },
                               ]
@@ -496,32 +581,29 @@ export const EntregasPage = () => {
             )}
           </div>
         </>
+        )
       )}
 
-      {/* Modals (Placeholders for now - will be implemented in task 6.17) */}
-      {showUploadModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold mb-4">Subir Entrega</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Componente CargaEntregaModal será implementado en la tarea 6.17
-            </p>
-            <Button onClick={() => setShowUploadModal(false)}>Cerrar</Button>
-          </div>
-        </div>
+      {/* Individual Upload Modal */}
+      {showUploadModal && selectedComisionId && selectedRubricaId && (
+        <CargaEntregaModal
+          isOpen={showUploadModal}
+          onClose={() => setShowUploadModal(false)}
+          comisionId={selectedComisionId}
+          rubricaId={selectedRubricaId}
+          mode="individual"
+        />
       )}
 
-      {showBulkUploadModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold mb-4">Subir Lote</h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Componente CargaEntregaModal (modo masivo) será implementado en la
-              tarea 6.17
-            </p>
-            <Button onClick={() => setShowBulkUploadModal(false)}>Cerrar</Button>
-          </div>
-        </div>
+      {/* Bulk Upload Modal */}
+      {showBulkUploadModal && selectedComisionId && selectedRubricaId && (
+        <CargaEntregaModal
+          isOpen={showBulkUploadModal}
+          onClose={() => setShowBulkUploadModal(false)}
+          comisionId={selectedComisionId}
+          rubricaId={selectedRubricaId}
+          mode="masivo"
+        />
       )}
     </div>
   );
