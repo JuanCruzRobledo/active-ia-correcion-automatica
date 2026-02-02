@@ -6,12 +6,12 @@
 
 ## Estado Actual
 
-| Campo                     | Valor                      |
-| ------------------------- | -------------------------- |
-| **Fase actual**           | Fase 6 - Frontend Features |
-| **Tarea actual**          | 6.16 - Crear EntregasPage  |
-| **Ultima sesion**         | 2026-01-29                 |
-| **Porcentaje completado** | 81%                        |
+| Campo                     | Valor                                   |
+| ------------------------- | --------------------------------------- |
+| **Fase actual**           | Fase 6 - Frontend Features              |
+| **Tarea actual**          | 6.19 - Crear CorreccionDetailModal      |
+| **Ultima sesion**         | 2026-02-02                              |
+| **Porcentaje completado** | 84%                                     |
 
 ---
 
@@ -25,106 +25,226 @@
 | 3   | Backend - Rubricas + Entregas | `COMPLETADA` | 14/14 tareas |
 | 4   | Backend - Correccion IA       | `COMPLETADA` | 10/10 tareas |
 | 5   | Frontend - Setup + Auth       | `COMPLETADA` | 10/10 tareas |
-| 6   | Frontend - Features           | `EN CURSO`   | 15/20 tareas |
+| 6   | Frontend - Features           | `EN CURSO`   | 18/20 tareas |
 | 7   | Testing + Integracion         | `PENDIENTE`  | 0/8 tareas   |
 | 8   | Docker + Deploy               | `PENDIENTE`  | 0/6 tareas   |
 
-**Total**: 84/103 tareas completadas
+**Total**: 87/103 tareas completadas
 
 ---
 
 ## Ultima Sesion
 
-### Fecha: 2026-01-29 (Sesión 21)
+### Fecha: 2026-02-02 (Sesión 22)
+
+### Duracion: ~60 min
+
+### Que se hizo:
+
+- ✅ **Tarea 6.16: Crear EntregasPage** (COMPLETADA)
+  - Revisión del archivo `frontend/src/features/entregas/pages/EntregasPage.tsx`
+    - Archivo ya existía con 528 líneas implementadas (90% completo)
+  - **Correcciones y mejoras realizadas**:
+    - ✅ Agregado selectores de Comisión y Rúbrica (FALTABAN):
+      - Selector de comisión con lista de comisiones del tutor
+      - Selector de rúbrica filtrado por materia de la comisión seleccionada
+      - Labels descriptivos con estilos consistentes
+      - Sincronización con URL (searchParams)
+      - Deshabilitado de selectores durante loading
+      - Reset de rúbrica al cambiar comisión
+    - ✅ Agregado EmptyState cuando no hay selección:
+      - Mensaje claro: "Selecciona una comisión y rúbrica"
+      - Aparece antes de la tabla cuando no hay selección
+    - ✅ Removido console.log de debug (2 instancias):
+      - Reemplazado por TODOs para tareas futuras
+      - Agregado alerts con mensajes de funcionalidad futura
+    - ✅ Corregido error TypeScript en useRubricas:
+      - Removido segundo parámetro options no soportado
+      - Hook ahora funciona correctamente
+    - ✅ Deshabilitado botones de carga cuando no hay selección:
+      - "Subir Entrega" requiere comisión y rúbrica
+      - "Subir Lote" requiere comisión y rúbrica
+    - ✅ Ajustado lógica condicional de renderizado:
+      - Filtros y acciones solo se muestran con selección
+      - Tabla solo se muestra con selección válida
+      - Estructura de condicionales correcta
+  - **Funcionalidades implementadas**:
+    - Selectores en cascada (Comisión → Rúbrica)
+    - Tabla completa con columnas: Alumno, Archivo, Estado, Nota, Fecha, Acciones
+    - Filtros avanzados: búsqueda por alumno, filtro por estado
+    - Selección múltiple con checkboxes
+    - Acciones individuales: Ver Detalle, Corregir, Ver Corrección, Eliminar
+    - Acciones en lote: Corregir seleccionados, Ver pendientes
+    - Paginación con navegación anterior/siguiente
+    - Estados vacíos contextuales
+    - EmptyState para sin selección y sin entregas
+    - Gestión de estados de carga y error
+    - Integración con 8 hooks: useComisiones, useRubricas, useEntregas, useDeleteEntrega, useCorregirEntrega, useCorregirEntregaMasiva
+  - **Placeholders para tareas futuras**:
+    - Modales de carga (Tarea 6.17 - CargaEntregaModal)
+    - Modal de detalle de corrección (Tarea 6.19 - CorreccionDetailModal)
+  - Build exitoso: 645.45 kB bundle (gzip: 201.51 kB) - Sin errores TypeScript
+  - Actualización de ROADMAP.md marcando tarea 6.16 como completada
+
+### Proxima tarea:
+
+- **6.17**: Crear CargaEntregaModal (para subida individual y masiva)
+
+### Problemas encontrados:
+
+- **Faltaban selectores de Comisión y Rúbrica**: La página tenía la lógica pero no los componentes UI para seleccionar. Corregido.
+- **Error TypeScript en useRubricas**: Hook no aceptaba segundo parámetro options. Removido.
+- **console.log en código de producción**: Removidos y reemplazados por TODOs.
+
+### Notas:
+
+- ✅ EntregasPage 100% COMPLETA excepto modales de carga (tarea 6.17)
+- La página tiene 588 líneas y está dentro del límite de 600 LOC
+- Diseño responsive con mobile-first approach
+- Código limpio sin console.logs ni any types
+- Integración perfecta con hooks de entregas, comisiones y rúbricas
+- Progreso Fase 6: 16/20 tareas (80%)
+- Próximas 4 tareas: 6.17 (CargaEntregaModal), 6.18 (correcciones service), 6.19 (CorreccionDetailModal), 6.20 (PerfilPage)
+
+### Fecha: 2026-02-02 (Sesión 22 - Continuación)
 
 ### Duracion: ~45 min
 
 ### Que se hizo:
 
-- ✅ **Tarea 6.14: Crear RubricaEditor**
-  - Instalación de @dnd-kit para drag-and-drop de criterios
-    - `npm install @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities`
-  - Creación de `frontend/src/features/rubricas/components/RubricaEditor.tsx`
-    - Componente modal completo con 500+ líneas de código
-    - Dos modos: crear y editar rúbricas
-    - Formulario con validación React Hook Form + Zod
-    - Campos implementados:
-      - Tipo (enum: TP, PARCIAL_1, PARCIAL_2, RECUPERATORIO_1, RECUPERATORIO_2, FINAL, GLOBAL)
-      - Número (1-999, deshabilitado en edición)
-      - Año (2020-2100, deshabilitado en edición)
-      - Nombre (texto libre, editable)
-    - Editor de criterios con drag-and-drop:
-      - Lista sortable de criterios con @dnd-kit
-      - Componente CriterioItem para cada criterio
-      - Campos por criterio: nombre, descripción, puntaje_maximo
-      - Drag handle con icono GripVertical
-      - Botón eliminar por criterio
-      - Máximo 20 criterios
-    - Validación en tiempo real:
-      - Suma de puntajes debe ser exactamente 100
-      - Indicador visual de puntaje total (verde=100, rojo>100, amarillo<100)
-      - Mensaje dinámico "faltan X" o "sobran X"
-      - Botón submit deshabilitado si suma ≠ 100
-    - Botón "Agregar Criterio" al final de la lista
-    - Integración con hooks:
-      - useCreateRubrica para crear nueva rúbrica
-      - useUpdateRubrica para editar existente
-      - Invalidación automática de cache al guardar
-    - Estados de loading:
-      - Spinner en botón submit durante guardado
-      - Deshabilitado durante loading
-    - Estructura de datos:
-      - criterios_json con CriteriosStructure (puntaje_maximo + criterios[])
-      - IDs únicos con crypto.randomUUID() para cada criterio
-    - Responsive design con grid adaptativo
-  - Creación de `frontend/src/features/rubricas/components/index.ts`
-    - Barrel export de RubricaEditor
-  - Actualización de `frontend/src/features/rubricas/index.ts`
-    - Agregado export de components
-  - Integración en RubricasPage:
-    - Import de RubricaEditor
-    - Reemplazo del placeholder modal con componente real
-    - Paso de props: isOpen, onClose, materiaId, rubrica
-    - Uso de useRubrica para obtener datos en modo edición
-  - Corrección de errores TypeScript:
-    - DragEndEvent como type import
-    - Eliminado import no usado (arrayMove, X)
-    - Ajuste de schema Zod (sin required_error, usar invalid_type_error)
-    - Alineación con tipos backend (anio en lugar de anio_academico)
-    - Eliminado campo descripcion que no existe en backend
-    - Agregado campo numero que faltaba
-    - Ajuste de criterios_json.criterios en lugar de solo criterios
-  - Build exitoso: 629.19 kB bundle (gzip: 197.35 kB) - Sin errores TypeScript
-  - Actualización de ROADMAP.md marcando tarea 6.14 como completada
+- ✅ **Tarea 6.17: Crear CargaEntregaModal** (COMPLETADA)
+  - Creación del archivo `frontend/src/features/entregas/components/CargaEntregaModal.tsx` (460 líneas)
+    - Componente modal completo con soporte para dos modos: 'individual' y 'masivo'
+    - Implementado formulario con validación React Hook Form + Zod
+    - Dos esquemas de validación separados (individualSchema y masivoSchema)
+  - **Funcionalidades implementadas**:
+    - ✅ Modo individual: campo nombre alumno + archivo (ZIP o TXT)
+    - ✅ Modo masivo: solo archivo ZIP con estructura de carpetas
+    - ✅ Drag & drop de archivos con estados visuales (isDragging)
+    - ✅ Validación de tipo de archivo (.zip, .txt para individual / .zip para masivo)
+    - ✅ Validación de tamaño máximo (100 MB)
+    - ✅ Selector de modo de consolidación (4 opciones):
+      - SOLO_CODIGO (.py, .java, .js, .ts, .c, .cpp, .go)
+      - WEB_COMPLETO (código + .html, .css, .json)
+      - PROYECTO_COMPLETO (código + .md, .txt, .yml, .xml)
+      - PERSONALIZADO (define tus propias extensiones)
+    - ✅ Checkbox "Sobrescribir si ya existe"
+    - ✅ Preview de archivo seleccionado con botón X para remover
+    - ✅ Resultado de carga masiva con resumen:
+      - Contadores: total procesadas, exitosas, errores
+      - Lista de entregas exitosas con checkmark verde
+      - Lista de errores con detalles en rojo
+      - Scroll en listas largas (max-h-40)
+    - ✅ Alert informativo para modo masivo (estructura esperada del ZIP)
+    - ✅ Integración con hooks useCreateEntrega y useCreateEntregaMasiva
+    - ✅ Estados de loading en botón submit
+    - ✅ Cierre automático después de carga individual exitosa
+  - Creación del archivo `frontend/src/features/entregas/components/index.ts` (barrel export)
+  - **Integración con EntregasPage**:
+    - ✅ Import de CargaEntregaModal en EntregasPage.tsx
+    - ✅ Reemplazo de modales placeholder con componente real
+    - ✅ Paso correcto de props (comisionId, rubricaId, mode)
+    - ✅ Validación que solo se abra si hay comisión y rúbrica seleccionada
+  - **Componentes UI faltantes creados**:
+    - ✅ `frontend/src/shared/components/ui/Radio.tsx`
+      - Componente radio button con label y descripción
+      - Soporte para estados disabled y error
+      - ForwardRef para integración con React Hook Form
+    - ✅ `frontend/src/shared/components/ui/Alert.tsx`
+      - Componente de alerta con 4 variantes (default, success, warning, destructive)
+      - Iconos con Lucide React (Info, CheckCircle, AlertTriangle, AlertCircle)
+      - Soporte para título opcional y children
+    - ✅ Actualización de `frontend/src/shared/components/ui/index.ts` con exports
+  - **Correcciones TypeScript realizadas**:
+    - ✅ Error TS2307: Módulos Radio y Alert no encontrados → Creados componentes
+    - ✅ Error TS2339: Property 'alumno_nombre' en FieldErrors → Cast a (as any)
+    - ✅ Error TS2322: Type 'info' not assignable → Cambiado a 'default'
+  - Build exitoso: 655.89 kB bundle (gzip: 204.06 kB) - Sin errores TypeScript
+  - Actualización de ROADMAP.md marcando tarea 6.17 como completada
 
 ### Proxima tarea:
 
-- **6.16**: Crear EntregasPage
+- **6.18**: Crear correcciones service y hooks
 
 ### Problemas encontrados:
 
-- Ninguno
+- **Componentes UI faltantes**: Radio y Alert no existían. Creados siguiendo el patrón de Checkbox.
+- **Error de tipos con FieldErrors**: El tipo de errors puede ser de dos esquemas diferentes. Solucionado con type assertion (as any).
+- **Variante 'info' inexistente**: Alert solo soporta default/success/warning/destructive. Cambiado a 'default'.
 
 ### Notas:
 
-- ✅ **Tarea 6.15 COMPLETADA** - Service layer completo para entregas
-- Implementado siguiendo patrones de React Query y Clean Architecture
-- Service con 6 métodos: getAll, getById, create, createMasiva, delete, getContenido
-- Hooks con query key factory para cache management eficiente
-- Soporte para file uploads con FormData (multipart/form-data)
-- Todos los endpoints del backend cubiertos:
-  - Individual upload (create)
-  - Bulk upload (createMasiva)
-  - List with filters (getAll)
-  - Detail view (getById)
-  - Code viewer (getContenido)
-  - Soft delete (delete)
-- Filtros implementados: comision_id, rubrica_id, estado, search, include_inactive, paginación
-- 6 hooks React Query con invalidación inteligente de cache
-- staleTime de 5 minutos para queries optimizadas
-- Build exitoso: 629.19 kB bundle (gzip: 197.35 kB) - Sin errores TypeScript
-- Ready para siguiente tarea (EntregasPage UI)
-- Progreso Fase 6: 15/20 tareas (75%)
+- ✅ CargaEntregaModal 100% COMPLETA con soporte dual-mode
+- El modal tiene 460 líneas y está dentro del límite de 500 LOC por archivo
+- Validación robusta de archivos (tipo, tamaño, formato)
+- UX mejorada con drag & drop y estados visuales claros
+- Resultado de carga masiva muestra éxitos y errores por separado
+- Integración perfecta con EntregasPage y hooks de entregas
+- Componentes UI base (Radio, Alert) agregados al sistema de diseño
+- Progreso Fase 6: 17/20 tareas (85%)
+- Próximas 3 tareas: 6.18 (correcciones service), 6.19 (CorreccionDetailModal), 6.20 (PerfilPage)
+
+### Fecha: 2026-02-02 (Sesión 22 - Continuación 3)
+
+### Duracion: ~20 min
+
+### Que se hizo:
+
+- ✅ **Tarea 6.18: Crear correcciones service y hooks** (COMPLETADA)
+  - Creación de la estructura completa del feature correcciones
+    - `frontend/src/features/correcciones/types/index.ts` (53 líneas)
+    - `frontend/src/features/correcciones/services/correcciones-service.ts` (94 líneas)
+    - `frontend/src/features/correcciones/hooks/useCorrecciones.ts` (203 líneas)
+    - `frontend/src/features/correcciones/hooks/index.ts` (10 líneas)
+  - **Tipos TypeScript creados**:
+    - ✅ EstadoCriterio: type literal 'OK' | 'WARNING' | 'ERROR'
+    - ✅ CriterioEvaluado: id, nombre, puntajes, estado, feedback
+    - ✅ Correccion: entidad completa con criterios, fortalezas, recomendaciones
+    - ✅ CorreccionUpdate: partial type para edición manual
+    - ✅ CorregirLoteRequest: array de entrega_ids para corrección batch
+  - **Service layer con 6 métodos**:
+    - ✅ corregirEntrega - POST /entregas/{id}/corregir
+    - ✅ corregirEntregasLote - POST /entregas/corregir-lote (max 50 IDs)
+    - ✅ getCorreccionById - GET /correcciones/{id}
+    - ✅ getCorreccionByEntregaId - GET /entregas/{id}/correccion (con try/catch → null)
+    - ✅ updateCorreccion - PUT /correcciones/{id}
+    - ✅ recorregirEntrega - Re-corrección usando el mismo endpoint de corregir
+  - **React Query hooks con 6 hooks**:
+    - ✅ useCorreccion - Query para obtener corrección por ID
+    - ✅ useCorreccionByEntrega - Query para obtener corrección por entrega ID
+    - ✅ useCorregirEntrega - Mutation para corregir individual
+    - ✅ useCorregirEntregasLote - Mutation para corregir en lote
+    - ✅ useUpdateCorreccion - Mutation para editar corrección manual
+    - ✅ useRecorregirEntrega - Mutation para re-corregir (descarta anterior)
+  - **Query key factory para cache management**:
+    - correccionesKeys.all, details(), detail(id), byEntrega(id)
+  - **Features implementadas**:
+    - ✅ Cache management con query key factory eficiente
+    - ✅ Invalidación inteligente de cache (invalida entregas al corregir)
+    - ✅ Optimistic updates con setQueryData
+    - ✅ Toast notifications para todas las mutations (éxito y error)
+    - ✅ staleTime de 5 minutos para queries optimizadas
+    - ✅ Integración con apiClient (axios con interceptors)
+    - ✅ Manejo de null cuando corrección no existe (getCorreccionByEntregaId)
+  - Build exitoso: 655.89 kB bundle (gzip: 204.06 kB) - Sin errores TypeScript
+  - Actualización de ROADMAP.md marcando tarea 6.18 como completada
+
+### Proxima tarea:
+
+- **6.19**: Crear CorreccionDetailModal
+
+### Problemas encontrados:
+
+- Ninguno - Implementación siguió patrones existentes de useEntregas.ts
+
+### Notas:
+
+- ✅ Service layer completo para correcciones con 6 métodos
+- ✅ Hooks con query key factory para cache management eficiente
+- Todos los endpoints del backend cubiertos según skills/correccion-ia/SKILL.md
+- Soporte para corrección individual, en lote, edición manual y re-corrección
+- Ready para siguiente tarea (CorreccionDetailModal UI)
+- Progreso Fase 6: 18/20 tareas (90%)
 
 ---
 
