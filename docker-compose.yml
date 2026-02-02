@@ -1,0 +1,143 @@
+# ============================================
+# Active-IA - Docker Compose (Producción/Híbrido)
+# ============================================
+# Modo: Base de datos en la nube
+# Servicios: backend, frontend, n8n
+# Uso: docker-compose up -d
+# ============================================
+
+version: '3.8'
+
+services:
+  # ==========================================
+  # Backend (FastAPI)
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: active-ia-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-5000}:80"
+    environment:
+      # Base de datos (apunta a la nube)
+      DATABASE_URL: ${DATABASE_URL}
+
+      # Seguridad
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+
+      # CORS
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+
+      # N8N (URLs internas de Docker)
+      N8N_WEBHOOK_BASE_URL: http://n8n:5678
+      N8N_CORRECTION_WEBHOOK: ${N8N_CORRECTION_WEBHOOK:-/webhook/corregir-individual}
+      N8N_RUBRIC_WEBHOOK: ${N8N_RUBRIC_WEBHOOK:-/webhook/rubrica}
+
+      # Archivos
+      UPLOAD_MAX_SIZE: ${UPLOAD_MAX_SIZE:-104857600}
+      UPLOAD_PATH: /app/uploads
+      BACKUP_PATH: /app/backups
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      NODE_ENV: ${NODE_ENV:-production}
+    volumes:
+      - backend_uploads:/app/uploads
+      - backend_backups:/app/backups
+    networks:
+      - active-ia-network
+    depends_on:
+      n8n:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  # ==========================================
+  # Frontend (React + Nginx)
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000}
+    container_name: active-ia-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    networks:
+      - active-ia-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # ==========================================
+  # N8N (Workflows de IA)
+  # ==========================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: active-ia-n8n
+    restart: unless-stopped
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    environment:
+      # Autenticación
+      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
+      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
+      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
+
+      # Red
+      N8N_HOST: 0.0.0.0
+      N8N_PORT: 5678
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678}
+
+      # Configuración
+      GENERIC_TIMEZONE: ${TIMEZONE:-America/Argentina/Buenos_Aires}
+      N8N_LOG_LEVEL: ${N8N_LOG_LEVEL:-info}
+
+      # Persistencia de ejecuciones
+      EXECUTIONS_DATA_PRUNE: true
+      EXECUTIONS_DATA_MAX_AGE: 168  # 7 días
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - active-ia-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+# ==========================================
+# Volúmenes persistentes
+# ==========================================
+volumes:
+  backend_uploads:
+    name: active-ia_backend_uploads
+  backend_backups:
+    name: active-ia_backend_backups
+  n8n_data:
+    name: active-ia_n8n_data
+
+# ==========================================
+# Red interna
+# ==========================================
+networks:
+  active-ia-network:
+    name: active-ia-network
+    driver: bridge

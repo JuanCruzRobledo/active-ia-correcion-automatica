@@ -36,10 +36,10 @@
 
 | Campo                     | Valor                                   |
 | ------------------------- | --------------------------------------- |
-| **Fase actual**           | Fase 6 - Frontend Features              |
-| **Tarea actual**          | Fase 6 completada                       |
+| **Fase actual**           | Fase 8 - Docker + Deploy                |
+| **Tarea actual**          | Fase 8 completada                       |
 | **Ultima sesion**         | 2026-02-02                              |
-| **Porcentaje completado** | 85%                                     |
+| **Porcentaje completado** | 92%                                     |
 
 ---
 
@@ -54,59 +54,52 @@
 | 4   | Backend - Correccion IA       | `COMPLETADA` | 10/10 tareas |
 | 5   | Frontend - Setup + Auth       | `COMPLETADA` | 10/10 tareas |
 | 6   | Frontend - Features           | `COMPLETADA` | 20/20 tareas |
-| 7   | Testing + Integracion         | `PENDIENTE`  | 0/8 tareas   |
-| 8   | Docker + Deploy               | `PENDIENTE`  | 0/6 tareas   |
+| 7   | Testing + Integracion         | `OMITIDA`    | 0/8 tareas   |
+| 8   | Docker + Deploy               | `COMPLETADA` | 6/6 tareas   |
 
-**Total**: 89/103 tareas completadas
+**Total**: 95/103 tareas completadas (8 tareas de testing omitidas)
 
 ---
 
 ## Ultima Sesion
 
-### Fecha: 2026-02-02 (Sesión 23)
+### Fecha: 2026-02-02 (Sesión 24)
 
 ### Que se hizo:
 
-- ✅ **Tarea 6.19: Crear CorreccionDetailModal** (COMPLETADA)
-  - Archivo: `frontend/src/features/correcciones/components/CorreccionDetailModal.tsx` (470 líneas)
-  - Modal completo para vista y edición de correcciones
-  - Secciones: Nota final con recalcular, Criterios editables, Fortalezas/Recomendaciones (listas editables), Comentario general
-  - Cada criterio tiene: puntaje (select 0-max), estado (OK/WARNING/ERROR), feedback (textarea)
-  - Integración con hook useUpdateCorreccion, cache management automático
-  - Build: 655.89 kB bundle (gzip: 204.06 kB) ✅
+- ✅ **Fase 8: Docker + Deploy** (COMPLETADA - 6/6 tareas)
+  - Archivos principales: backend/Dockerfile, frontend/Dockerfile, docker-compose.yml, docker-compose.local.yml, .env.example, frontend/nginx.conf, docs/DEPLOY.md
+  - Dockerfiles: Backend (Python 3.11-slim con health check), Frontend (multi-stage con Nginx Alpine)
+  - Docker Compose: 2 modos según especificación - HÍBRIDO (BD nube - default) y LOCAL COMPLETO (BD local)
+  - Configuración: .dockerignore para backend/frontend, nginx.conf para SPA routing, .gitignore raíz
+  - Variables de entorno: .env.example completo con todas las variables necesarias
+  - Documentación: docs/DEPLOY.md con guías completas para ambos modos de despliegue
 
-- ✅ **Tarea 6.20: Crear PerfilPage** (COMPLETADA)
-  - Archivos: types/index.ts, services/perfil-service.ts, hooks/usePerfil.ts, pages/PerfilPage.tsx (518 líneas)
-  - Service layer: getProfile(), updateApiKey() con validación backend
-  - Hooks: useProfile(), useUpdateApiKey() con React Query
-  - Página completa con 3 secciones: Información Personal, API Key Gemini, Seguridad
-  - Modales: Configurar/Cambiar API Key (validación formato AIza), Cambiar contraseña (validación 8+ chars, 1 número)
-  - Toggle show/hide en campos sensibles, badges de estado, formato de fechas
-  - Creado hook useChangePassword en auth/hooks con React Query mutation
-  - Build: 666.87 kB bundle (gzip: 206.27 kB) ✅
+### Fase 7 (Testing):
 
-### Fase 6 Completada:
+- ⏭️ **Fase 7 OMITIDA** por decisión del usuario (0/8 tareas)
+- Se priorizó Docker + Deploy para facilitar el despliegue inmediato
 
-- ✅ **20/20 tareas** de Frontend Features completadas
-- Próxima fase: Fase 7 - Testing + Integración (0/8 tareas)
+### Fase 8 Completada:
+
+- ✅ **6/6 tareas** de Docker + Deploy completadas
+- Sistema listo para desplegar con `docker-compose up -d`
+- Soporte para dos modos: producción (BD nube) y desarrollo (BD local)
 
 ### Problemas encontrados:
 
-- Tarea 6.19: Errores TypeScript por imports incorrectos (default vs named) - Corregidos
-- Tarea 6.19: Modal usaba prop `maxWidth` inexistente, cambiado a `size="2xl"` - Corregido
-- Tarea 6.20: Hook useChangePassword no existía en auth/hooks - Creado con React Query mutation
-- Tarea 6.20: Campos de ChangePasswordRequest usan snake_case (current_password) no camelCase - Corregido
+- Ninguno - Implementación siguió especificaciones de docs/specs/13-INFRAESTRUCTURA-DEPLOY.md
 
 ### Notas:
 
-- ✅ **Fase 6 COMPLETADA** (20/20 tareas)
-- Todas las features de frontend implementadas: Auth, Dashboard, Usuarios, Materias, Comisiones, Rúbricas, Entregas, Correcciones, Perfil
-- Builds consistentes sin errores TypeScript
-- Bundle final: 666.87 kB (gzip: 206.27 kB)
-- Componentes UI base completos (Button, Input, Select, Modal, Badge, Radio, Alert, Spinner)
-- Service layer completo con React Query para cache management
-- Sistema de permisos por rol implementado
-- Integración completa con backend esperado
+- ✅ **Fase 8 COMPLETADA** (6/6 tareas)
+- Proyecto containerizado completamente con Docker
+- Dos comandos de inicio: `docker-compose up -d` (BD nube) o `docker-compose -f docker-compose.local.yml up -d` (BD local)
+- Health checks implementados en todos los servicios
+- Volúmenes persistentes para uploads, backups y N8N data
+- Documentación completa de deploy, troubleshooting y backups en docs/DEPLOY.md
+- .gitignore actualizado para evitar commits de .env
+- 95/103 tareas totales completadas (8 de testing omitidas)
 
 ---
 
@@ -124,5 +117,7 @@
 | 2026-01-26 | Tareas atomicas en ROADMAP                  | Maximo 1-2 archivos por tarea                                                 |
 | 2026-01-26 | Usar estructura de 05-ARQUITECTURA-STACK.md | ROADMAP simplificaba, docs/specs tiene estructura completa con api/v1/routers |
 | 2026-02-02 | ESTADO.md optimizado a ~100 líneas          | Eliminar detalles granulares, historial de archivos, logs antiguos            |
+| 2026-02-02 | Omitir Fase 7 (Testing)                     | Priorizar Docker + Deploy para despliegue rápido, testing opcional            |
+| 2026-02-02 | Dos modos de docker-compose                 | docker-compose.yml (BD nube - default), docker-compose.local.yml (BD local)   |
 
 ---

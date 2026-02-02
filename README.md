@@ -46,13 +46,60 @@ active-ia/
 | **Coordinador** | Gestiona rúbricas y comisiones de sus materias |
 | **Tutor** | Corrige entregas, genera PDFs y exporta notas |
 
-## Instalación
+## Instalación Rápida con Docker (Recomendado) 🐳
 
 ### Requisitos previos
-- Node.js 18+
+- Docker 20.10+
+- Docker Compose 2.0+
+
+### Opción 1: Modo HÍBRIDO (Base de datos en la nube - DEFAULT)
+
+```bash
+# 1. Clonar repositorio
+git clone <url-del-repo>
+cd active-ia
+
+# 2. Configurar variables de entorno
+cp .env.example .env
+# Editar .env con tus configuraciones (DATABASE_URL, JWT_SECRET, etc.)
+
+# 3. Levantar servicios
+docker-compose up -d
+
+# 4. Acceder a la aplicación
+# Frontend: http://localhost:3000
+# Backend:  http://localhost:5000
+# N8N:      http://localhost:5678
+```
+
+### Opción 2: Modo LOCAL COMPLETO (Base de datos local en Docker)
+
+```bash
+# 1. Clonar y configurar (igual que opción 1)
+git clone <url-del-repo>
+cd active-ia
+cp .env.example .env
+
+# 2. Levantar servicios (incluye PostgreSQL local)
+docker-compose -f docker-compose.local.yml up -d
+
+# 3. Acceder a la aplicación
+# Frontend:   http://localhost:3000
+# Backend:    http://localhost:5000
+# N8N:        http://localhost:5678
+# PostgreSQL: localhost:5432
+```
+
+**Ver documentación completa:** [docs/DEPLOY.md](docs/DEPLOY.md)
+
+---
+
+## Instalación Manual (Sin Docker)
+
+### Requisitos previos
+- Node.js 20+
 - Python 3.11+
 - PostgreSQL 15+
-- Docker (opcional)
 
 ### Frontend
 ```bash
@@ -69,6 +116,11 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 alembic upgrade head
 uvicorn app.main:app --reload
+```
+
+### N8N
+```bash
+# Seguir instrucciones en n8n/README.md
 ```
 
 ## Configuración de AI Assistants
