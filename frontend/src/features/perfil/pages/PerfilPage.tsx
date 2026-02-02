@@ -1,4 +1,143 @@
+import { useState } from 'react';
+import { Eye, EyeOff, Key, Info, Shield, User as UserIcon } from 'lucide-react';
+import { useProfile, useUpdateApiKey } from '../hooks/usePerfil';
+import { useChangePassword } from '../../auth/hooks/useAuth';
+import { Button } from '../../../shared/components/ui/Button';
+import { Input } from '../../../shared/components/ui/Input';
+import { Modal } from '../../../shared/components/ui/Modal';
+import { Badge } from '../../../shared/components/ui/Badge';
+import { Spinner } from '../../../shared/components/ui/Spinner';
+
 export const PerfilPage = () => {
+  const { data: profile, isLoading } = useProfile();
+  const updateApiKeyMutation = useUpdateApiKey();
+  const changePasswordMutation = useChangePassword();
+
+  // API Key modal state
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState('');
+
+  // Password modal state
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-destructive">Error al cargar el perfil</p>
+      </div>
+    );
+  }
+
+  const handleApiKeySubmit = () => {
+    setApiKeyError('');
+
+    // Validar formato
+    if (!apiKey.startsWith('AIza')) {
+      setApiKeyError('La API Key debe comenzar con "AIza"');
+      return;
+    }
+
+    if (apiKey.length < 20) {
+      setApiKeyError('La API Key parece incompleta');
+      return;
+    }
+
+    updateApiKeyMutation.mutate(apiKey, {
+      onSuccess: () => {
+        setShowApiKeyModal(false);
+        setApiKey('');
+      },
+      onError: () => {
+        setApiKeyError('Error al validar la API Key. Verifica que sea correcta.');
+      },
+    });
+  };
+
+  const handlePasswordSubmit = () => {
+    setPasswordError('');
+
+    // Validaciones
+    if (newPassword.length < 8) {
+      setPasswordError('La nueva contraseña debe tener al menos 8 caracteres');
+      return;
+    }
+
+    if (!/\d/.test(newPassword)) {
+      setPasswordError('La nueva contraseña debe contener al menos un número');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Las contraseñas no coinciden');
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setPasswordError('La nueva contraseña debe ser diferente a la actual');
+      return;
+    }
+
+    changePasswordMutation.mutate(
+      {
+        current_password: currentPassword,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      },
+      {
+        onSuccess: () => {
+          setShowPasswordModal(false);
+          setCurrentPassword('');
+          setNewPassword('');
+          setConfirmPassword('');
+        },
+        onError: () => {
+          setPasswordError('Error al cambiar la contraseña. Verifica tu contraseña actual.');
+        },
+      }
+    );
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'Nunca';
+    return new Date(dateString).toLocaleDateString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const getRolColor = (rol: string) => {
+    switch (rol.toLowerCase()) {
+      case 'admin':
+        return 'destructive';
+      case 'coordinador':
+        return 'warning';
+      case 'tutor':
+        return 'info';
+      default:
+        return 'default';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -8,11 +147,373 @@ export const PerfilPage = () => {
         </p>
       </div>
 
+      {/* Información del Usuario */}
       <div className="rounded-lg border border-border bg-card p-6">
-        <p className="text-sm text-muted-foreground">
-          Página de perfil en desarrollo
-        </p>
+        <div className="flex items-center gap-3 mb-6">
+          <UserIcon className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-xl font-semibold text-foreground">
+            Información Personal
+          </h2>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">
+              Nombre completo
+            </label>
+            <p className="text-base text-foreground mt-1">{profile.nombre}</p>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">
+              Nombre de usuario
+            </label>
+            <p className="text-base text-foreground mt-1">{profile.username}</p>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">
+              Rol
+            </label>
+            <div className="mt-1">
+              <Badge variant={getRolColor(profile.rol)}>
+                {profile.rol.charAt(0).toUpperCase() + profile.rol.slice(1)}
+              </Badge>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">
+              Estado
+            </label>
+            <div className="mt-1">
+              <Badge variant={profile.activo ? 'success' : 'default'}>
+                {profile.activo ? 'Activo' : 'Inactivo'}
+              </Badge>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">
+              Fecha de creación
+            </label>
+            <p className="text-base text-foreground mt-1">
+              {formatDate(profile.created_at)}
+            </p>
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-muted-foreground">
+              Último acceso
+            </label>
+            <p className="text-base text-foreground mt-1">
+              {formatDate(profile.last_login)}
+            </p>
+          </div>
+        </div>
       </div>
+
+      {/* Configuración de API Key */}
+      <div className="rounded-lg border border-border bg-card p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Key className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-xl font-semibold text-foreground">
+            API Key de Google Gemini
+          </h2>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 rounded-md bg-muted/50">
+            <Info className="h-5 w-5 text-info mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-muted-foreground">
+              <p className="mb-2">
+                Tu API Key personal de Google Gemini se usa para las
+                correcciones automáticas. Se almacena de forma segura y
+                encriptada.
+              </p>
+              <a
+                href="https://ai.google.dev"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent hover:underline"
+              >
+                ¿Cómo obtener una API Key? →
+              </a>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-sm font-medium text-foreground">
+                Estado de la API Key
+              </label>
+              <div className="flex items-center gap-2 mt-1">
+                {profile.gemini_api_key_valid ? (
+                  <>
+                    <Badge variant="success">Configurada</Badge>
+                    {profile.gemini_api_key_last_4 && (
+                      <span className="text-sm text-muted-foreground">
+                        ****{profile.gemini_api_key_last_4}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <Badge variant="warning">No configurada</Badge>
+                )}
+              </div>
+            </div>
+
+            <Button
+              variant={profile.gemini_api_key_valid ? 'secondary' : 'primary'}
+              onClick={() => setShowApiKeyModal(true)}
+            >
+              {profile.gemini_api_key_valid ? 'Cambiar' : 'Configurar'}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Seguridad */}
+      <div className="rounded-lg border border-border bg-card p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Shield className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-xl font-semibold text-foreground">Seguridad</h2>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-sm font-medium text-foreground">
+              Contraseña
+            </label>
+            <p className="text-sm text-muted-foreground mt-1">
+              Actualiza tu contraseña regularmente para mantener tu cuenta
+              segura
+            </p>
+          </div>
+
+          <Button variant="secondary" onClick={() => setShowPasswordModal(true)}>
+            Cambiar contraseña
+          </Button>
+        </div>
+      </div>
+
+      {/* Modal de API Key */}
+      <Modal
+        isOpen={showApiKeyModal}
+        onClose={() => {
+          setShowApiKeyModal(false);
+          setApiKey('');
+          setApiKeyError('');
+        }}
+        title={
+          profile.gemini_api_key_valid
+            ? 'Cambiar API Key de Gemini'
+            : 'Configurar API Key de Gemini'
+        }
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1.5">
+              API Key
+            </label>
+            <div className="relative">
+              <Input
+                type={showApiKey ? 'text' : 'password'}
+                placeholder="AIza..."
+                value={apiKey}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setApiKey(e.target.value)
+                }
+                className={apiKeyError ? 'border-destructive' : ''}
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showApiKey ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+            {apiKeyError && (
+              <p className="text-sm text-destructive mt-1.5">{apiKeyError}</p>
+            )}
+          </div>
+
+          <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50">
+            <Info className="h-4 w-4 text-info mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-muted-foreground">
+              La API Key debe comenzar con "AIza". Se validará automáticamente
+              antes de guardarla.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setShowApiKeyModal(false);
+                setApiKey('');
+                setApiKeyError('');
+              }}
+              disabled={updateApiKeyMutation.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleApiKeySubmit}
+              disabled={!apiKey || updateApiKeyMutation.isPending}
+              isLoading={updateApiKeyMutation.isPending}
+            >
+              {updateApiKeyMutation.isPending ? 'Validando...' : 'Guardar'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal de Cambio de Contraseña */}
+      <Modal
+        isOpen={showPasswordModal}
+        onClose={() => {
+          setShowPasswordModal(false);
+          setCurrentPassword('');
+          setNewPassword('');
+          setConfirmPassword('');
+          setPasswordError('');
+        }}
+        title="Cambiar contraseña"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1.5">
+              Contraseña actual
+            </label>
+            <div className="relative">
+              <Input
+                type={showCurrentPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={currentPassword}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setCurrentPassword(e.target.value)
+                }
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showCurrentPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1.5">
+              Nueva contraseña
+            </label>
+            <div className="relative">
+              <Input
+                type={showNewPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={newPassword}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setNewPassword(e.target.value)
+                }
+                className={passwordError ? 'border-destructive' : ''}
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showNewPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1.5">
+              Confirmar nueva contraseña
+            </label>
+            <div className="relative">
+              <Input
+                type={showConfirmPassword ? 'text' : 'password'}
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setConfirmPassword(e.target.value)
+                }
+                className={passwordError ? 'border-destructive' : ''}
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showConfirmPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+            {passwordError && (
+              <p className="text-sm text-destructive mt-1.5">{passwordError}</p>
+            )}
+          </div>
+
+          <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50">
+            <Info className="h-4 w-4 text-info mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-muted-foreground">
+              La contraseña debe tener al menos 8 caracteres y contener al menos
+              un número.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setShowPasswordModal(false);
+                setCurrentPassword('');
+                setNewPassword('');
+                setConfirmPassword('');
+                setPasswordError('');
+              }}
+              disabled={changePasswordMutation.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handlePasswordSubmit}
+              disabled={
+                !currentPassword ||
+                !newPassword ||
+                !confirmPassword ||
+                changePasswordMutation.isPending
+              }
+              isLoading={changePasswordMutation.isPending}
+            >
+              {changePasswordMutation.isPending
+                ? 'Cambiando...'
+                : 'Cambiar contraseña'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
