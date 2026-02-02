@@ -43,6 +43,10 @@ class MateriaCreate(MateriaBase):
         max_length=500,
         description="Descripción opcional de la materia",
     )
+    coordinador_ids: list[int] = Field(
+        default_factory=list,
+        description="IDs de coordinadores a asignar (opcional)",
+    )
 
 
 class MateriaUpdate(BaseModel):
@@ -62,6 +66,10 @@ class MateriaUpdate(BaseModel):
         None,
         max_length=500,
         description="Descripción de la materia",
+    )
+    coordinador_ids: list[int] | None = Field(
+        None,
+        description="IDs de coordinadores a asignar (reemplaza asignaciones existentes)",
     )
 
 

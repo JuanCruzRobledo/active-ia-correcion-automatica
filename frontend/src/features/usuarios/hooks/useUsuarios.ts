@@ -133,3 +133,29 @@ export const useResetPassword = () => {
     },
   });
 };
+
+/**
+ * Hook to fetch coordinadores (users with COORDINADOR role)
+ * Useful for materia assignment forms
+ */
+export const useCoordinadores = () => {
+  return useQuery({
+    queryKey: [...usuariosKeys.lists(), { rol: 'COORDINADOR' }],
+    queryFn: () => usuariosService.getAll({ rol: 'COORDINADOR', activo: true }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    select: (data) => data.items, // Return only the items array
+  });
+};
+
+/**
+ * Hook to fetch tutores (users with TUTOR role)
+ * Useful for comision assignment forms
+ */
+export const useTutores = () => {
+  return useQuery({
+    queryKey: [...usuariosKeys.lists(), { rol: 'TUTOR' }],
+    queryFn: () => usuariosService.getAll({ rol: 'TUTOR', activo: true }),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    select: (data) => data.items, // Return only the items array
+  });
+};

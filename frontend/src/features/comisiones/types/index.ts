@@ -59,10 +59,12 @@ export interface ComisionCreate {
   materia_id: number;
   nombre: string;
   anio: number;
+  tutor_ids?: number[];
 }
 
 export interface ComisionUpdate {
   nombre?: string;
+  tutor_ids?: number[];
 }
 
 export interface TutoresAssign {

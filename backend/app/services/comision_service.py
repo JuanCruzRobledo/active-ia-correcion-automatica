@@ -49,19 +49,20 @@ class ComisionService:
         self.materia_repo = MateriaRepository(db)
         self.usuario_repo = UsuarioRepository(db)
 
-    async def crear_comision(self, data: ComisionCreate) -> ComisionResponse:
+    async def crear_comision(self, data: ComisionCreate) -> ComisionDetailResponse:
         """
         Create a new comision.
 
         Args:
-            data: Comision creation data (materia_id, nombre, anio).
+            data: Comision creation data (materia_id, nombre, anio, tutor_ids).
 
         Returns:
-            ComisionResponse with comision data.
+            ComisionDetailResponse with comision data and tutors.
 
         Raises:
             HTTPException 404: Materia not found.
             HTTPException 409: Comision with same materia+nombre+anio exists.
+            HTTPException 400: Invalid tutor.
         """
         # Validate materia exists
         materia = await self.materia_repo.get_active_by_id(data.materia_id)
@@ -82,6 +83,26 @@ class ComisionService:
                 detail="Ya existe una comisión con ese nombre para esta materia y año",
             )
 
+        # Validate tutors if provided
+        valid_tutores = []
+        if data.tutor_ids:
+            for tutor_id in data.tutor_ids:
+                usuario = await self.usuario_repo.get_active_by_id(tutor_id)
+
+                if not usuario:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Usuario con ID {tutor_id} no encontrado o inactivo",
+                    )
+
+                if usuario.rol != RolEnum.TUTOR:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"El usuario {usuario.username} no tiene rol de TUTOR",
+                    )
+
+                valid_tutores.append(usuario)
+
         # Create comision
         comision = Comision(
             materia_id=data.materia_id,
@@ -92,7 +113,15 @@ class ComisionService:
 
         created_comision = await self.comision_repo.create(comision)
 
-        return ComisionResponse.model_validate(created_comision)
+        # Assign tutors
+        for usuario in valid_tutores:
+            await self.comision_tutor_repo.create(
+                tutor_id=usuario.id,
+                comision_id=created_comision.id,
+            )
+
+        # Return detailed response with tutors
+        return await self.obtener_comision(created_comision.id)
 
     async def listar_comisiones(
         self,
@@ -220,20 +249,21 @@ class ComisionService:
         self,
         comision_id: int,
         data: ComisionUpdate,
-    ) -> ComisionResponse:
+    ) -> ComisionDetailResponse:
         """
         Update an existing comision.
 
         Args:
             comision_id: Comision's database ID.
-            data: Comision update data (nombre).
+            data: Comision update data (nombre, tutor_ids).
 
         Returns:
-            ComisionResponse with updated comision data.
+            ComisionDetailResponse with updated comision data and tutors.
 
         Raises:
             HTTPException 404: Comision not found.
             HTTPException 409: Updated nombre conflicts with existing comision.
+            HTTPException 400: Invalid tutor.
         """
         comision = await self.comision_repo.get_by_id(comision_id)
 
@@ -258,9 +288,41 @@ class ComisionService:
                     )
             comision.nombre = data.nombre
 
-        updated_comision = await self.comision_repo.update(comision)
+        await self.comision_repo.update(comision)
 
-        return ComisionResponse.model_validate(updated_comision)
+        # Update tutors if provided
+        if data.tutor_ids is not None:
+            # Validate tutors
+            valid_tutores = []
+            for tutor_id in data.tutor_ids:
+                usuario = await self.usuario_repo.get_active_by_id(tutor_id)
+
+                if not usuario:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=f"Usuario con ID {tutor_id} no encontrado o inactivo",
+                    )
+
+                if usuario.rol != RolEnum.TUTOR:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"El usuario {usuario.username} no tiene rol de TUTOR",
+                    )
+
+                valid_tutores.append(usuario)
+
+            # Remove all existing assignments
+            await self.comision_tutor_repo.delete_all_for_comision(comision_id)
+
+            # Create new assignments
+            for usuario in valid_tutores:
+                await self.comision_tutor_repo.create(
+                    tutor_id=usuario.id,
+                    comision_id=comision_id,
+                )
+
+        # Return detailed response with tutors
+        return await self.obtener_comision(comision_id)
 
     async def eliminar_comision(self, comision_id: int) -> None:
         """

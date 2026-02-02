@@ -42,11 +42,13 @@ export interface MateriaCreate {
   codigo: string;
   nombre: string;
   descripcion?: string;
+  coordinador_ids?: number[];
 }
 
 export interface MateriaUpdate {
   nombre?: string;
   descripcion?: string;
+  coordinador_ids?: number[];
 }
 
 export interface MateriasFilters {

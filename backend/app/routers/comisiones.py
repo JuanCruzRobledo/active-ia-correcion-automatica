@@ -67,23 +67,29 @@ async def listar_comisiones(
     )
 
 
-@router.post("/", response_model=ComisionResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=ComisionDetailResponse, status_code=status.HTTP_201_CREATED)
 async def crear_comision(
     data: ComisionCreate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> ComisionResponse:
+) -> ComisionDetailResponse:
     """
-    Create a new comision.
+    Create a new comision with optional tutor assignments.
 
     **Required fields:**
     - `materia_id`: ID of the materia
     - `nombre`: Comision name (e.g., "Comisión A")
     - `anio`: Academic year (e.g., 2026)
 
+    **Optional fields:**
+    - `tutor_ids`: List of user IDs to assign as tutors
+
     **Validation:**
     - Materia must exist and be active
     - Combination of materia + nombre + anio must be unique
+    - All tutors must exist, be active, and have TUTOR role
+
+    **Returns:** Comision with materia info and assigned tutores
 
     **Authorization:** Admin only
     """
@@ -115,23 +121,27 @@ async def obtener_comision(
     return await service.obtener_comision(comision_id)
 
 
-@router.put("/{comision_id}", response_model=ComisionResponse)
+@router.put("/{comision_id}", response_model=ComisionDetailResponse)
 async def actualizar_comision(
     comision_id: int,
     data: ComisionUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> ComisionResponse:
+) -> ComisionDetailResponse:
     """
-    Update an existing comision.
+    Update an existing comision with optional tutor reassignment.
 
     **Updatable fields:**
     - `nombre`: Comision name
+    - `tutor_ids`: List of user IDs to assign as tutors (replaces existing assignments)
 
     **Note:** materia_id and anio cannot be changed after creation.
 
     **Validation:**
     - New nombre must not conflict with existing comision for same materia+anio
+    - All tutors must exist, be active, and have TUTOR role
+
+    **Returns:** Updated comision with materia info and assigned tutores
 
     **Authorization:** Admin only
     """
