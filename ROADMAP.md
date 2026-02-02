@@ -550,25 +550,25 @@
 
 ### Docker
 
-- [ ] **8.1** Crear Dockerfile backend
+- [x] **8.1** Crear Dockerfile backend
       **Archivos**: `backend/Dockerfile`
 
-- [ ] **8.2** Crear Dockerfile frontend
+- [x] **8.2** Crear Dockerfile frontend
       **Archivos**: `frontend/Dockerfile`
 
-- [ ] **8.3** Crear docker-compose.yml
-      **Incluir**: backend, frontend, postgres, nginx
-      **Archivos**: `docker-compose.yml`
+- [x] **8.3** Crear docker-compose.yml
+      **Incluir**: backend, frontend, postgres, nginx (2 archivos: docker-compose.yml para BD nube, docker-compose.local.yml para BD local)
+      **Archivos**: `docker-compose.yml`, `docker-compose.local.yml`
 
 ### Configuracion
 
-- [ ] **8.4** Crear .env.example
+- [x] **8.4** Crear .env.example
       **Archivos**: `.env.example`
 
-- [ ] **8.5** Crear nginx.conf
-      **Archivos**: `nginx/nginx.conf`
+- [x] **8.5** Crear nginx.conf
+      **Archivos**: `frontend/nginx.conf`
 
-- [ ] **8.6** Documentar deploy
+- [x] **8.6** Documentar deploy
       **Archivos**: `docs/DEPLOY.md`
 
 ---

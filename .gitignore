@@ -1,0 +1,77 @@
+# ============================================
+# Active-IA - .gitignore
+# ============================================
+
+# Variables de entorno (NUNCA commitear)
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+
+# Archivos de configuración con secretos
+*.key
+*.pem
+*.p12
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+venv/
+env/
+ENV/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+error.txt
+
+# Docker
+docker-compose.override.yml
+
+# Uploads y backups (gestionados por volúmenes)
+backend/uploads/
+backend/backups/
+uploads/
+backups/
+
+# Build output
+frontend/dist/
+frontend/build/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+coverage/
+
+# N8N data local (si se usa sin volumen)
+n8n/data/
+!n8n/data/.gitkeep
+
+# Bases de datos locales
+*.db
+*.sqlite
+*.sqlite3

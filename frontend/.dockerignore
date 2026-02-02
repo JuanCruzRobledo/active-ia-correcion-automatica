@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output (se genera en el Dockerfile)
+dist/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Tests
+coverage/
+.nyc_output/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Documentation
+*.md
+!README.md
