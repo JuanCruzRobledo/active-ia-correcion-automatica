@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Eye, EyeOff, Key, Info, Shield, User as UserIcon } from 'lucide-react';
-import { useProfile, useUpdateApiKey } from '../hooks/usePerfil';
-import { useChangePassword } from '../../auth/hooks/useAuth';
+import { useProfile, useUpdateApiKey, useChangePassword } from '../hooks/usePerfil';
 import { Button } from '../../../shared/components/ui/Button';
 import { Input } from '../../../shared/components/ui/Input';
 import { Modal } from '../../../shared/components/ui/Modal';

@@ -9,10 +9,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import toast from 'react-hot-toast';
-import { getUser, isAuthenticated, changePassword } from '../services/auth-service';
-import type { UserInfo, ChangePasswordRequest } from '@/shared/types';
+import { getUser, isAuthenticated } from '../services/auth-service';
+import type { UserInfo } from '@/shared/types';
 
 interface UseAuthReturn {
   /**
@@ -92,33 +90,3 @@ export function useAuth(): UseAuthReturn {
   };
 }
 
-/**
- * Hook to change user password.
- *
- * @returns Mutation hook for password change
- *
- * @example
- * ```tsx
- * function ChangePasswordForm() {
- *   const changePasswordMutation = useChangePassword();
- *
- *   const handleSubmit = () => {
- *     changePasswordMutation.mutate({
- *       currentPassword: 'oldpass',
- *       newPassword: 'newpass',
- *     });
- *   };
- * }
- * ```
- */
-export function useChangePassword() {
-  return useMutation({
-    mutationFn: (data: ChangePasswordRequest) => changePassword(data),
-    onSuccess: () => {
-      toast.success('Contraseña actualizada exitosamente');
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || 'Error al cambiar contraseña');
-    },
-  });
-}
