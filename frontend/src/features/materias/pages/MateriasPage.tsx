@@ -1,57 +1,71 @@
 import { useState } from 'react';
-import { BookOpen, Plus, Search } from 'lucide-react';
 import {
   useMaterias,
   useDeleteMateria,
   useRestoreMateria,
   useMateria,
 } from '../hooks';
-import type { MateriaListItem } from '../types';
 import { MateriaForm } from '../components/MateriaForm';
-import { Button } from '@/shared/components/ui/Button';
-import { Input } from '@/shared/components/ui/Input';
-import { Select } from '@/shared/components/ui/Select';
-import { Badge } from '@/shared/components/ui/Badge';
-import { Spinner } from '@/shared/components/ui/Spinner';
-import { Table, type TableColumn } from '@/shared/components/ui/Table';
-import { EmptyState } from '@/shared/components/ui/EmptyState';
-import { Dropdown } from '@/shared/components/ui/Dropdown';
-import { formatDate } from '@/shared/utils/date';
+import type { MateriaListItem, MateriasFilters } from '../types';
+import {
+  Button,
+  Input,
+  Select,
+  Badge,
+  Table,
+  Spinner,
+  EmptyState,
+  Dropdown,
+  type TableColumn,
+  type SelectOption,
+} from '@/shared/components/ui';
+import { formatDate } from '@/shared/utils';
+
+interface MateriaPageFilters {
+  activa: 'TODOS' | 'true' | 'false';
+  search: string;
+  page: number;
+  per_page: number;
+}
 
 export const MateriasPage = () => {
-  const [search, setSearch] = useState('');
-  const [activaFilter, setActivaFilter] = useState<string>('all');
-  const [page, setPage] = useState(1);
-  const [showForm, setShowForm] = useState(false);
+  const [filters, setFilters] = useState<MateriaPageFilters>({
+    activa: 'TODOS',
+    search: '',
+    page: 1,
+    per_page: 20,
+  });
+
+  // Modal state
+  const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
 
-  // Build filters
-  const filters = {
-    search: search || undefined,
-    activa: activaFilter === 'all' ? undefined : activaFilter === 'active',
-    page,
-    per_page: 20,
+  // Derive API-compatible filters from page state
+  const apiFilters: MateriasFilters = {
+    search: filters.search || undefined,
+    activa: filters.activa === 'TODOS' ? undefined : filters.activa === 'true',
+    page: filters.page,
+    per_page: filters.per_page,
   };
 
-  // Queries and mutations
-  const { data, isLoading, error } = useMaterias(filters);
+  const { data, isLoading, error } = useMaterias(apiFilters);
   const { data: editingMateria } = useMateria(editingId || 0);
   const deleteMutation = useDeleteMateria();
   const restoreMutation = useRestoreMateria();
 
-  // Handlers
-  const handleOpenCreate = () => {
+  // Modal handlers
+  const handleCreate = () => {
     setEditingId(null);
-    setShowForm(true);
+    setIsFormOpen(true);
   };
 
-  const handleOpenEdit = (id: number) => {
+  const handleEdit = (id: number) => {
     setEditingId(id);
-    setShowForm(true);
+    setIsFormOpen(true);
   };
 
   const handleCloseForm = () => {
-    setShowForm(false);
+    setIsFormOpen(false);
     setEditingId(null);
   };
 
@@ -65,20 +79,22 @@ export const MateriasPage = () => {
     await restoreMutation.mutateAsync(id);
   };
 
+  // Filter options
+  const estadoOptions: SelectOption[] = [
+    { value: 'TODOS', label: 'Todas las materias' },
+    { value: 'true', label: 'Activas' },
+    { value: 'false', label: 'Inactivas' },
+  ];
+
   // Table columns
   const columns: TableColumn<MateriaListItem>[] = [
     {
       key: 'codigo',
       header: 'Código',
       render: (materia) => (
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent-1/10">
-            <BookOpen className="h-4 w-4 text-accent-1" />
-          </div>
-          <div>
-            <div className="font-medium text-foreground">{materia.codigo}</div>
-            <div className="text-xs text-muted-foreground">{materia.nombre}</div>
-          </div>
+        <div>
+          <div className="font-medium text-gray-900">{materia.codigo}</div>
+          <div className="text-sm text-gray-500">{materia.nombre}</div>
         </div>
       ),
     },
@@ -86,7 +102,7 @@ export const MateriasPage = () => {
       key: 'num_coordinadores',
       header: 'Coordinadores',
       render: (materia) => (
-        <span className="text-sm text-foreground">
+        <span className="text-gray-500">
           {materia.num_coordinadores}
         </span>
       ),
@@ -95,7 +111,7 @@ export const MateriasPage = () => {
       key: 'num_comisiones',
       header: 'Comisiones',
       render: (materia) => (
-        <span className="text-sm text-foreground">
+        <span className="text-gray-500">
           {materia.num_comisiones}
         </span>
       ),
@@ -113,7 +129,7 @@ export const MateriasPage = () => {
       key: 'created_at',
       header: 'Fecha creación',
       render: (materia) => (
-        <span className="text-sm text-muted-foreground">
+        <span className="text-gray-500">
           {formatDate(materia.created_at)}
         </span>
       ),
@@ -126,14 +142,14 @@ export const MateriasPage = () => {
       render: (materia) => (
         <Dropdown
           trigger={
-            <button className="text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100">
+            <button className="text-gray-400 hover:text-gray-600 px-2 py-1">
               •••
             </button>
           }
           items={[
             {
               label: 'Editar',
-              onClick: () => handleOpenEdit(materia.id),
+              onClick: () => handleEdit(materia.id),
               icon: '✏️',
             },
             materia.activa
@@ -154,129 +170,149 @@ export const MateriasPage = () => {
     },
   ];
 
+  // Handle filter changes
+  const handleSearchChange = (value: string) => {
+    setFilters((prev) => ({ ...prev, search: value, page: 1 }));
+  };
+
+  const handleEstadoChange = (value: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      activa: value as 'TODOS' | 'true' | 'false',
+      page: 1,
+    }));
+  };
+
+  // Loading state
   if (isLoading) {
     return (
-      <div className="flex h-96 items-center justify-center">
+      <div className="flex justify-center items-center py-12">
         <Spinner size="lg" />
       </div>
     );
   }
 
+  // Error state
   if (error) {
     return (
-      <div className="rounded-lg border border-danger bg-danger/10 p-4">
-        <p className="text-sm text-danger">
-          Error al cargar materias. Por favor, intenta nuevamente.
+      <div className="text-center py-12">
+        <div className="text-red-600 mb-4">Error al cargar materias</div>
+        <p className="text-gray-500 mb-4">
+          {error instanceof Error ? error.message : 'Error desconocido'}
         </p>
+        <Button onClick={() => window.location.reload()}>Reintentar</Button>
       </div>
     );
   }
 
-  const materias = data?.items || [];
-  const totalPages = data ? Math.ceil(data.total / data.per_page) : 0;
-
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Materias</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold text-gray-900">Materias</h1>
+          <p className="text-sm text-gray-500 mt-1">
             Gestión de materias y coordinadores
           </p>
         </div>
-        <Button onClick={handleOpenCreate}>
-          <Plus className="mr-2 h-4 w-4" />
-          Crear Materia
+        <Button onClick={handleCreate}>
+          + Crear Materia
         </Button>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="relative flex-1 md:max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
-            type="text"
+            label="Buscar"
             placeholder="Buscar por código o nombre..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1); // Reset to first page on search
-            }}
-            className="pl-10"
+            value={filters.search}
+            onChange={(e) => handleSearchChange(e.target.value)}
           />
-        </div>
-
-        <div className="flex gap-2">
           <Select
-            value={activaFilter}
-            onChange={(e) => {
-              setActivaFilter(e.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="all">Todas</option>
-            <option value="active">Activas</option>
-            <option value="inactive">Inactivas</option>
-          </Select>
+            label="Estado"
+            options={estadoOptions}
+            value={filters.activa}
+            onChange={(e) => handleEstadoChange(e.target.value)}
+          />
         </div>
       </div>
 
-      {/* Table */}
-      {materias.length === 0 ? (
-        <EmptyState
-          icon={<BookOpen className="h-12 w-12 text-muted-foreground" />}
-          title="No hay materias"
-          description="No se encontraron materias con los filtros aplicados"
-          action={
-            <Button onClick={handleOpenCreate}>
-              <Plus className="mr-2 h-4 w-4" />
-              Crear primera materia
-            </Button>
-          }
-        />
-      ) : (
-        <>
-          <Table
-            columns={columns}
-            data={materias}
-            keyExtractor={(materia) => materia.id}
-          />
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-border pt-4">
-              <p className="text-sm text-muted-foreground">
-                Mostrando {(page - 1) * 20 + 1} -{' '}
-                {Math.min(page * 20, data?.total || 0)} de {data?.total || 0}{' '}
-                materias
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                >
-                  Anterior
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                >
-                  Siguiente
-                </Button>
-              </div>
-            </div>
-          )}
-        </>
+      {/* Results summary */}
+      {data?.items && data.items.length > 0 && (
+        <div className="text-sm text-gray-500">
+          Mostrando {data.items.length} de {data.total} materias
+        </div>
       )}
 
-      {/* Create/Edit Modal */}
+      {/* Table */}
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        {data?.items && data.items.length > 0 ? (
+          <Table
+            columns={columns}
+            data={data.items}
+            keyExtractor={(item) => item.id}
+          />
+        ) : (
+          <EmptyState
+            icon="📚"
+            title="No hay materias"
+            description="No se encontraron materias con los filtros aplicados"
+            action={
+              filters.search || filters.activa !== 'TODOS' ? (
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    setFilters({
+                      activa: 'TODOS',
+                      search: '',
+                      page: 1,
+                      per_page: 20,
+                    })
+                  }
+                >
+                  Limpiar filtros
+                </Button>
+              ) : (
+                <Button onClick={handleCreate}>
+                  + Crear primera materia
+                </Button>
+              )
+            }
+          />
+        )}
+      </div>
+
+      {/* Pagination */}
+      {data && data.total > data.per_page && (
+        <div className="flex justify-center gap-2">
+          <Button
+            variant="secondary"
+            disabled={filters.page === 1}
+            onClick={() =>
+              setFilters((prev) => ({ ...prev, page: prev.page - 1 }))
+            }
+          >
+            ← Anterior
+          </Button>
+          <div className="flex items-center px-4 text-sm text-gray-600">
+            Página {filters.page} de {Math.ceil(data.total / data.per_page)}
+          </div>
+          <Button
+            variant="secondary"
+            disabled={filters.page >= Math.ceil(data.total / data.per_page)}
+            onClick={() =>
+              setFilters((prev) => ({ ...prev, page: prev.page + 1 }))
+            }
+          >
+            Siguiente →
+          </Button>
+        </div>
+      )}
+
+      {/* Modal */}
       <MateriaForm
-        isOpen={showForm}
+        isOpen={isFormOpen}
         onClose={handleCloseForm}
         materia={editingMateria || undefined}
       />
