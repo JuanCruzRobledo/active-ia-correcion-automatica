@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, MoreVertical, Plus, Search } from 'lucide-react';
+import { BookOpen, Plus, Search } from 'lucide-react';
 import {
   useMaterias,
   useDeleteMateria,
@@ -126,27 +126,28 @@ export const MateriasPage = () => {
       render: (materia) => (
         <Dropdown
           trigger={
-            <Button variant="ghost" size="sm">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
+            <button className="text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100">
+              •••
+            </button>
           }
           items={[
             {
               label: 'Editar',
               onClick: () => handleOpenEdit(materia.id),
+              icon: '✏️',
             },
-            {
-              label: 'Asignar coordinadores',
-              onClick: () => console.log('Assign coordinadores', materia.id), // TODO: Implement in future task
-            },
-            {
-              label: materia.activa ? 'Eliminar' : 'Restaurar',
-              onClick: () =>
-                materia.activa
-                  ? handleDelete(materia.id)
-                  : handleRestore(materia.id),
-              variant: materia.activa ? 'danger' : 'default',
-            },
+            materia.activa
+              ? {
+                  label: 'Eliminar',
+                  onClick: () => handleDelete(materia.id),
+                  icon: '🗑️',
+                  variant: 'danger' as const,
+                }
+              : {
+                  label: 'Restaurar',
+                  onClick: () => handleRestore(materia.id),
+                  icon: '↩️',
+                },
           ]}
         />
       ),

@@ -106,10 +106,10 @@ export const UsuariosPage = () => {
       key: 'rol',
       header: 'Rol',
       render: (usuario) => {
-        const rolColors: Record<RolEnum, 'blue' | 'purple' | 'green'> = {
-          ADMIN: 'purple',
-          COORDINADOR: 'blue',
-          TUTOR: 'green',
+        const rolVariants: Record<RolEnum, 'destructive' | 'info' | 'success'> = {
+          ADMIN: 'destructive',
+          COORDINADOR: 'info',
+          TUTOR: 'success',
         };
         const rolLabels: Record<RolEnum, string> = {
           ADMIN: 'Administrador',
@@ -117,7 +117,7 @@ export const UsuariosPage = () => {
           TUTOR: 'Tutor',
         };
         return (
-          <Badge color={rolColors[usuario.rol]}>
+          <Badge variant={rolVariants[usuario.rol]}>
             {rolLabels[usuario.rol]}
           </Badge>
         );
@@ -127,7 +127,7 @@ export const UsuariosPage = () => {
       key: 'activo',
       header: 'Estado',
       render: (usuario) => (
-        <Badge color={usuario.activo ? 'green' : 'gray'}>
+        <Badge variant={usuario.activo ? 'success' : 'default'}>
           {usuario.activo ? 'Activo' : 'Eliminado'}
         </Badge>
       ),

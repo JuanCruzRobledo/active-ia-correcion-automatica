@@ -168,7 +168,7 @@ export const ComisionesPage = () => {
       key: 'activa',
       header: 'Estado',
       render: (comision) => (
-        <Badge color={comision.activa ? 'green' : 'gray'}>
+        <Badge variant={comision.activa ? 'success' : 'default'}>
           {comision.activa ? 'Activa' : 'Eliminada'}
         </Badge>
       ),
@@ -199,11 +199,6 @@ export const ComisionesPage = () => {
               label: 'Editar',
               onClick: () => handleOpenEdit(comision.id),
               icon: '✏️',
-            },
-            {
-              label: 'Asignar tutores',
-              onClick: () => console.log('Asignar tutores', comision.id),
-              icon: '👥',
             },
             comision.activa
               ? {

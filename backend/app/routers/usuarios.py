@@ -29,7 +29,7 @@ router = APIRouter(prefix="/usuarios", tags=["usuarios"])
 
 @router.get("/", response_model=UsuarioList)
 async def listar_usuarios(
-    include_inactive: bool = Query(False, description="Incluir usuarios eliminados"),
+    activo: bool | None = Query(None, description="Filtrar por estado: true=activos, false=eliminados, omitido=todos"),
     rol: RolEnum | None = Query(None, description="Filtrar por rol"),
     search: str | None = Query(None, description="Buscar por username o nombre"),
     page: int = Query(1, ge=1, description="Número de página"),
@@ -46,7 +46,7 @@ async def listar_usuarios(
 
     service = UsuarioService(db)
     return await service.listar_usuarios(
-        include_inactive=include_inactive,
+        activo=activo,
         rol=rol,
         search=search,
         page=page,

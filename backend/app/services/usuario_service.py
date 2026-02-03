@@ -81,7 +81,7 @@ class UsuarioService:
     async def listar_usuarios(
         self,
         *,
-        include_inactive: bool = False,
+        activo: bool | None = None,
         rol: RolEnum | None = None,
         search: str | None = None,
         page: int = 1,
@@ -91,7 +91,7 @@ class UsuarioService:
         List users with optional filters and pagination.
 
         Args:
-            include_inactive: Include soft-deleted users.
+            activo: Filter by active status. None = all, True = active, False = inactive.
             rol: Filter by role.
             search: Search term for username or nombre.
             page: Page number (1-indexed).
@@ -101,7 +101,7 @@ class UsuarioService:
             UsuarioList with paginated results.
         """
         users, total = await self.repo.get_all(
-            include_inactive=include_inactive,
+            activo=activo,
             rol=rol,
             search=search,
             page=page,
