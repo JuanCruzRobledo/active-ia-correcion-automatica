@@ -5,7 +5,7 @@
  * Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md HU-MAT-01, HU-MAT-02
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
