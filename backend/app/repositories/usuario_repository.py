@@ -67,7 +67,7 @@ class UsuarioRepository:
     async def get_all(
         self,
         *,
-        include_inactive: bool = False,
+        activo: bool | None = None,
         rol: RolEnum | None = None,
         search: str | None = None,
         page: int = 1,
@@ -77,7 +77,7 @@ class UsuarioRepository:
         Get all users with optional filters and pagination.
 
         Args:
-            include_inactive: Include soft-deleted users.
+            activo: Filter by active status. None = all, True = active only, False = inactive only.
             rol: Filter by role.
             search: Search term for username or nombre.
             page: Page number (1-indexed).
@@ -90,8 +90,8 @@ class UsuarioRepository:
         query = select(Usuario)
 
         # Apply filters
-        if not include_inactive:
-            query = query.where(Usuario.activo == True)  # noqa: E712
+        if activo is not None:
+            query = query.where(Usuario.activo == activo)  # noqa: E712
 
         if rol is not None:
             query = query.where(Usuario.rol == rol)
