@@ -36,10 +36,10 @@
 
 | Campo                     | Valor                                   |
 | ------------------------- | --------------------------------------- |
-| **Fase actual**           | Fase 8 - Docker + Deploy                |
-| **Tarea actual**          | Fase 8 completada                       |
-| **Ultima sesion**         | 2026-02-02                              |
-| **Porcentaje completado** | 92%                                     |
+| **Fase actual**           | Post-deploy - Bugfixes                  |
+| **Tarea actual**          | Correcciones ad-hoc post roadmap        |
+| **Ultima sesion**         | 2026-02-03                              |
+| **Porcentaje completado** | 93%                                     |
 
 ---
 
@@ -63,43 +63,31 @@
 
 ## Ultima Sesion
 
-### Fecha: 2026-02-02 (Sesión 24)
+### Fecha: 2026-02-03 (Sesión 25)
 
 ### Que se hizo:
 
-- ✅ **Fase 8: Docker + Deploy** (COMPLETADA - 6/6 tareas)
-  - Archivos principales: backend/Dockerfile, frontend/Dockerfile, docker-compose.yml, docker-compose.local.yml, .env.example, frontend/nginx.conf, docs/DEPLOY.md
-  - Dockerfiles: Backend (Python 3.11-slim con health check), Frontend (multi-stage con Nginx Alpine)
-  - Docker Compose: 2 modos según especificación - HÍBRIDO (BD nube - default) y LOCAL COMPLETO (BD local)
-  - Configuración: .dockerignore para backend/frontend, nginx.conf para SPA routing, .gitignore raíz
-  - Variables de entorno: .env.example completo con todas las variables necesarias
-  - Documentación: docs/DEPLOY.md con guías completas para ambos modos de despliegue
+- ✅ **ChangePasswordPage: Página /change-password funcional** (ad-hoc, fuera de ROADMAP)
+  - Archivos principales: features/auth/pages/ChangePasswordPage.tsx (nuevo), app/router.tsx, features/auth/pages/index.ts, features/perfil/hooks/usePerfil.ts, features/perfil/pages/PerfilPage.tsx
+  - Creada página standalone con guard (redirige a /login si no autenticado, a /dashboard si primer_login=false)
+  - Ruta /change-password al mismo nivel que /login (fuera de AppLayout, sin sidebar)
+  - Validación client-side: contraseña actual requerida, nueva ≥8 chars + al menos 1 número, confirmación debe coincidir, nueva ≠ actual
+  - Build: exitoso (solo error pre-existente en MateriaForm.tsx useState no usado)
 
-### Fase 7 (Testing):
+- 🔧 **Refactor de hooks useChangePassword**
+  - Removido duplicado muerto de useAuth.ts (exports inalterados por barrel index)
+  - Dos versiones intencionales: auth/hooks/useChangePassword.ts (navega a /dashboard, para primer login) y perfil/hooks/usePerfil.ts::useChangePassword (solo toast, para modal de perfil)
+  - PerfilPage actualizado para importar de usePerfil en lugar de useAuth
 
-- ⏭️ **Fase 7 OMITIDA** por decisión del usuario (0/8 tareas)
-- Se priorizó Docker + Deploy para facilitar el despliegue inmediato
+### Problemas encontrados y resueltos:
 
-### Fase 8 Completada:
+- PerfilPage importaba useChangePassword de useAuth — roto al eliminar duplicado. Solucion: agregar hook sin navegacion a usePerfil.ts
+- React Query callbacks aditivos: hook-level onSuccess + inline onSuccess ambos disparan. Motivo de tener dos versiones del hook separadas por contexto.
 
-- ✅ **6/6 tareas** de Docker + Deploy completadas
-- Sistema listo para desplegar con `docker-compose up -d`
-- Soporte para dos modos: producción (BD nube) y desarrollo (BD local)
+### Pendiente (no bloqueante):
 
-### Problemas encontrados:
-
-- Ninguno - Implementación siguió especificaciones de docs/specs/13-INFRAESTRUCTURA-DEPLOY.md
-
-### Notas:
-
-- ✅ **Fase 8 COMPLETADA** (6/6 tareas)
-- Proyecto containerizado completamente con Docker
-- Dos comandos de inicio: `docker-compose up -d` (BD nube) o `docker-compose -f docker-compose.local.yml up -d` (BD local)
-- Health checks implementados en todos los servicios
-- Volúmenes persistentes para uploads, backups y N8N data
-- Documentación completa de deploy, troubleshooting y backups en docs/DEPLOY.md
-- .gitignore actualizado para evitar commits de .env
-- 95/103 tareas totales completadas (8 de testing omitidas)
+- MateriaForm.tsx tiene useState no usado (error pre-existente, no relacionado)
+- ChangePasswordModal.tsx existe pero no se renderiza en ningún lugar (dead code)
 
 ---
 
@@ -119,5 +107,6 @@
 | 2026-02-02 | ESTADO.md optimizado a ~100 líneas          | Eliminar detalles granulares, historial de archivos, logs antiguos            |
 | 2026-02-02 | Omitir Fase 7 (Testing)                     | Priorizar Docker + Deploy para despliegue rápido, testing opcional            |
 | 2026-02-02 | Dos modos de docker-compose                 | docker-compose.yml (BD nube - default), docker-compose.local.yml (BD local)   |
+| 2026-02-03 | Dos hooks useChangePassword separados       | auth/ navega a /dashboard (primer login), perfil/ solo toast (modal de perfil). React Query callbacks son aditivos. |
 
 ---
