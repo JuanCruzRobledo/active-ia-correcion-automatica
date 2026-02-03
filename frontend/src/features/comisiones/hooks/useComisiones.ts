@@ -73,15 +73,18 @@ export const useUpdateComision = () => {
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: ComisionUpdate }) =>
       comisionesService.update(id, data),
-    onSuccess: (updatedComision) => {
-      // Invalidate lists
-      queryClient.invalidateQueries({ queryKey: comisionesKeys.lists() });
-      // Update the specific comision in cache
-      queryClient.setQueryData(
-        comisionesKeys.detail(updatedComision.id),
-        updatedComision
-      );
-    },
+    onSuccess: (_data, variables) => {
+    // refresca todas las listas
+    queryClient.invalidateQueries({
+      queryKey: comisionesKeys.lists(),
+    });
+
+    // refresca el detail REAL (con tutores)
+    queryClient.invalidateQueries({
+      queryKey: comisionesKeys.detail(variables.id),
+    });
+  },
+
   });
 };
 

@@ -64,15 +64,17 @@ export const useUpdateMateria = () => {
   return useMutation({
     mutationFn: ({ id, data }: { id: number; data: MateriaUpdate }) =>
       materiasService.update(id, data),
-    onSuccess: (updatedMateria) => {
-      // Update detail cache
-      queryClient.setQueryData(
-        materiasKeys.detail(updatedMateria.id),
-        updatedMateria
-      );
-      // Invalidate lists
-      queryClient.invalidateQueries({ queryKey: materiasKeys.lists() });
-    },
+    onSuccess: (_data, { id }) => {
+    // Refetch del detail real (con relaciones)
+    queryClient.invalidateQueries({
+      queryKey: materiasKeys.detail(id),
+    });
+
+    // Refetch de las listas
+    queryClient.invalidateQueries({
+      queryKey: materiasKeys.lists(),
+    });
+  },
   });
 };
 
