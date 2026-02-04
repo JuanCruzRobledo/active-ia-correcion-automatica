@@ -122,6 +122,7 @@ class MateriaService:
         search: str | None = None,
         page: int = 1,
         per_page: int = 20,
+        coordinador_id: int | None = None,
     ) -> MateriaList:
         """
         List materias with optional filters and pagination.
@@ -131,6 +132,7 @@ class MateriaService:
             search: Search term for codigo or nombre.
             page: Page number (1-indexed).
             per_page: Items per page.
+            coordinador_id: If set, filter to materias assigned to this coordinator.
 
         Returns:
             MateriaList with paginated results.
@@ -140,6 +142,7 @@ class MateriaService:
             search=search,
             page=page,
             per_page=per_page,
+            coordinador_id=coordinador_id,
         )
 
         # Build list items with counts

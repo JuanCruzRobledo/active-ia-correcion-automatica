@@ -11,8 +11,9 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_admin
+from app.core.permissions import require_admin, require_coordinador_or_admin
 from app.models import Usuario
+from app.models.enums import RolEnum
 from app.schemas.materia import (
     CoordinadoresAssign,
     CoordinadoresResponse,
@@ -37,11 +38,13 @@ async def listar_materias(
     db: AsyncSession = Depends(get_db),
 ) -> MateriaList:
     """
-    Lista todas las materias con filtros y paginación.
+    Lista materias con filtros y paginación.
 
-    Solo administradores pueden acceder a este endpoint.
+    Admin ve todas las materias. Coordinador solo ve sus materias asignadas.
     """
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+
+    coordinador_id = current_user.id if current_user.rol == RolEnum.COORDINADOR else None
 
     service = MateriaService(db)
     return await service.listar_materias(
@@ -49,6 +52,7 @@ async def listar_materias(
         search=search,
         page=page,
         per_page=per_page,
+        coordinador_id=coordinador_id,
     )
 
 

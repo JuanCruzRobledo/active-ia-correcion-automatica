@@ -7,7 +7,7 @@ Endpoints for user management (Admin only).
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 3
 """
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
@@ -38,11 +38,19 @@ async def listar_usuarios(
     db: AsyncSession = Depends(get_db),
 ) -> UsuarioList:
     """
-    Lista todos los usuarios con filtros y paginación.
+    Lista usuarios con filtros y paginación.
 
-    Solo administradores pueden acceder a este endpoint.
+    Admin ve todos los usuarios. Coordinador solo puede consultar tutores
+    (necesario para asignar tutores a comisiones).
     """
-    require_admin(current_user)
+    if current_user.rol == RolEnum.COORDINADOR:
+        if rol != RolEnum.TUTOR:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Coordinadores solo pueden consultar usuarios con rol Tutor",
+            )
+    else:
+        require_admin(current_user)
 
     service = UsuarioService(db)
     return await service.listar_usuarios(
@@ -128,8 +136,6 @@ async def eliminar_usuario(
 
     # Prevent self-deletion
     if current_user.id == user_id:
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No puedes eliminar tu propia cuenta",
