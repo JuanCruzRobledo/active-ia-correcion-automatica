@@ -5,7 +5,7 @@ Ref: docs/specs/07-DISENO-UI-UX.md Section 4.1 - Dashboard designs
 """
 
 from datetime import datetime
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -216,17 +216,6 @@ class DashboardService:
                 Comision.nombre,
                 Comision.anio,
                 func.count(Entrega.id).label("total_alumnos"),
-                func.sum(
-                    func.case(
-                        (
-                            Entrega.estado.in_(
-                                [EstadoEntregaEnum.SUBIDA, EstadoEntregaEnum.PENDIENTE]
-                            ),
-                            1,
-                        ),
-                        else_=0,
-                    )
-                ).label("pendientes"),
             )
             .join(Materia, Comision.materia_id == Materia.id)
             .outerjoin(Entrega, Comision.id == Entrega.comision_id)
@@ -237,16 +226,26 @@ class DashboardService:
         details_result = await db.execute(details_query)
         details_rows = details_result.fetchall()
 
-        comisiones_details = [
-            ComisionDetailItem(
-                id=row.id,
-                nombre=row.materia_nombre,
-                comision=f"{row.nombre} - {row.anio}",
-                alumnos=row.total_alumnos or 0,
-                pendientes=row.pendientes or 0,
+        # Para cada comision, contar pendientes manualmente
+        comisiones_details = []
+        for row in details_rows:
+            # Count pendientes for this comision
+            pendientes_comision = await db.scalar(
+                select(func.count(Entrega.id)).where(
+                    Entrega.comision_id == row.id,
+                    Entrega.estado.in_([EstadoEntregaEnum.SUBIDA, EstadoEntregaEnum.PENDIENTE]),
+                )
             )
-            for row in details_rows
-        ]
+            
+            comisiones_details.append(
+                ComisionDetailItem(
+                    id=row.id,
+                    nombre=row.materia_nombre,
+                    comision=f"{row.nombre} - {row.anio}",
+                    alumnos=row.total_alumnos or 0,
+                    pendientes=pendientes_comision or 0,
+                )
+            )
 
         return TutorStatsResponse(
             comisiones=comisiones_count,
