@@ -131,7 +131,7 @@ class DashboardService:
                 Usuario.nombre.label("tutor_nombre"),
                 func.count(Entrega.id).label("total_entregas"),
                 func.count(Correccion.id).label("completed_entregas"),
-                func.max(Correccion.fecha_correccion).label("last_activity"),
+                func.max(Correccion.created_at).label("last_activity"),
             )
             .join(Materia, Comision.materia_id == Materia.id)
             .join(ComisionTutor, Comision.id == ComisionTutor.comision_id)
