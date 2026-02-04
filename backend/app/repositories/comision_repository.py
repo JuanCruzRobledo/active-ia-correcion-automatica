@@ -73,6 +73,7 @@ class ComisionRepository:
         self,
         *,
         materia_id: int | None = None,
+        tutor_id: int | None = None,
         anio: int | None = None,
         include_inactive: bool = False,
         page: int = 1,
@@ -83,6 +84,7 @@ class ComisionRepository:
 
         Args:
             materia_id: Filter by materia ID.
+            tutor_id: Filter to comisiones assigned to this tutor.
             anio: Filter by academic year.
             include_inactive: Include soft-deleted comisiones.
             page: Page number (1-indexed).
@@ -100,6 +102,9 @@ class ComisionRepository:
 
         if materia_id is not None:
             query = query.where(Comision.materia_id == materia_id)
+
+        if tutor_id is not None:
+            query = query.join(ComisionTutor).where(ComisionTutor.tutor_id == tutor_id)
 
         if anio is not None:
             query = query.where(Comision.anio == anio)

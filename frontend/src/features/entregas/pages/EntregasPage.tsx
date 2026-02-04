@@ -30,7 +30,6 @@ import {
   Trash2,
   FileCheck2,
   Upload,
-  PackageOpen,
 } from 'lucide-react';
 import type { EstadoEntrega, EntregaListItem } from '../types';
 
@@ -58,7 +57,6 @@ export const EntregasPage = () => {
     (searchParams.get('estado') as EstadoEntrega) || 'TODOS'
   );
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   const page = parseInt(searchParams.get('page') || '1', 10);
@@ -245,24 +243,14 @@ export const EntregasPage = () => {
             Gestiona las entregas de los alumnos
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            onClick={() => setShowBulkUploadModal(true)}
-            disabled={!selectedComisionId || !selectedRubricaId}
-          >
-            <PackageOpen className="w-4 h-4" />
-            Subir Lote
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => setShowUploadModal(true)}
-            disabled={!selectedComisionId || !selectedRubricaId}
-          >
-            <FileUp className="w-4 h-4" />
-            Subir Entrega
-          </Button>
-        </div>
+        <Button
+          variant="primary"
+          onClick={() => setShowUploadModal(true)}
+          disabled={!selectedComisionId || !selectedRubricaId}
+        >
+          <FileUp className="w-4 h-4" />
+          Subir Entrega
+        </Button>
       </div>
 
       {/* Selectors: Comisión y Rúbrica */}
@@ -584,25 +572,13 @@ export const EntregasPage = () => {
         )
       )}
 
-      {/* Individual Upload Modal */}
+      {/* Upload Modal */}
       {showUploadModal && selectedComisionId && selectedRubricaId && (
         <CargaEntregaModal
           isOpen={showUploadModal}
           onClose={() => setShowUploadModal(false)}
           comisionId={selectedComisionId}
           rubricaId={selectedRubricaId}
-          mode="individual"
-        />
-      )}
-
-      {/* Bulk Upload Modal */}
-      {showBulkUploadModal && selectedComisionId && selectedRubricaId && (
-        <CargaEntregaModal
-          isOpen={showBulkUploadModal}
-          onClose={() => setShowBulkUploadModal(false)}
-          comisionId={selectedComisionId}
-          rubricaId={selectedRubricaId}
-          mode="masivo"
         />
       )}
     </div>

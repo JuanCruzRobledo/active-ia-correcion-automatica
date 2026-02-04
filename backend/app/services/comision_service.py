@@ -127,6 +127,7 @@ class ComisionService:
         self,
         *,
         materia_id: int | None = None,
+        tutor_id: int | None = None,
         anio: int | None = None,
         include_inactive: bool = False,
         page: int = 1,
@@ -137,6 +138,7 @@ class ComisionService:
 
         Args:
             materia_id: Filter by materia ID.
+            tutor_id: If provided, return only comisiones assigned to this tutor.
             anio: Filter by academic year.
             include_inactive: Include soft-deleted comisiones.
             page: Page number (1-indexed).
@@ -147,6 +149,7 @@ class ComisionService:
         """
         comisiones, total = await self.comision_repo.get_all(
             materia_id=materia_id,
+            tutor_id=tutor_id,
             anio=anio,
             include_inactive=include_inactive,
             page=page,
@@ -164,7 +167,7 @@ class ComisionService:
 
             # Count active entregas
             num_entregas = (
-                len([e for e in comision.entregas if e.activa])
+                len([e for e in comision.entregas if e.activo])
                 if comision.entregas
                 else 0
             )

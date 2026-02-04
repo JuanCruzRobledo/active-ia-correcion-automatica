@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_admin
+from app.core.permissions import require_any_authenticated
 from app.models.enums import EstadoEntregaEnum
 from app.models.usuario import Usuario
 from app.schemas.entrega import (
@@ -53,9 +53,9 @@ async def listar_entregas(
     - `page`: Page number (1-indexed)
     - `per_page`: Items per page (max 100)
 
-    **Authorization:** Admin only (for now)
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
     """
-    require_admin(current_user)
+    require_any_authenticated(current_user)
 
     service = EntregaService(db)
     return await service.listar_entregas(
@@ -74,6 +74,7 @@ async def crear_entrega(
     rubrica_id: int = Form(..., description="ID de la rúbrica"),
     alumno_nombre: str = Form(..., description="Nombre del alumno"),
     sobrescribir: bool = Form(False, description="Sobrescribir entrega existente"),
+    modo_consolidacion: str = Form("solo_codigo", description="Modo de consolidación"),
     archivo: UploadFile = File(..., description="Archivo ZIP o TXT"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -95,9 +96,9 @@ async def crear_entrega(
     - File must be ZIP or TXT
     - If entrega exists and sobrescribir=False, returns 409 Conflict
 
-    **Authorization:** Admin only (for now)
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
     """
-    require_admin(current_user)
+    require_any_authenticated(current_user)
 
     # Build EntregaCreate schema
     data = EntregaCreate(
@@ -112,6 +113,7 @@ async def crear_entrega(
         archivo=archivo,
         subido_por_id=current_user.id,
         sobrescribir=sobrescribir,
+        modo_consolidacion=modo_consolidacion.lower(),
     )
 
 
@@ -131,9 +133,9 @@ async def obtener_entrega(
     - Subido por info (nombre, email)
     - Number of previous versions in history
 
-    **Authorization:** Admin only (for now)
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
     """
-    require_admin(current_user)
+    require_any_authenticated(current_user)
 
     service = EntregaService(db)
     return await service.obtener_entrega(entrega_id)
@@ -150,9 +152,9 @@ async def eliminar_entrega(
 
     The entrega is marked as inactive (activo=False) but not physically deleted.
 
-    **Authorization:** Admin only (for now)
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
     """
-    require_admin(current_user)
+    require_any_authenticated(current_user)
 
     service = EntregaService(db)
     await service.eliminar_entrega(entrega_id)
