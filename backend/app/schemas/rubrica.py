@@ -8,6 +8,8 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 6
 Ref: docs/specs/06-MODELO-DATOS.md seccion 4.1
 """
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.enums import FuenteRubricaEnum, TipoRubricaEnum
@@ -250,6 +252,14 @@ class RubricaResponse(BaseModel):
     created_at: str
     updated_at: str
 
+    @field_validator("created_at", "updated_at", mode="before")
+    @classmethod
+    def convert_datetime_to_str(cls, v):
+        """Convierte datetime a string ISO format."""
+        if isinstance(v, datetime):
+            return v.isoformat()
+        return v if v else ""
+
     model_config = {"from_attributes": True}
 
 
@@ -298,6 +308,14 @@ class RubricaListItem(BaseModel):
     )
     activa: bool
     created_at: str
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def convert_datetime_to_str(cls, v):
+        """Convierte datetime a string ISO format."""
+        if isinstance(v, datetime):
+            return v.isoformat()
+        return v if v else ""
 
     model_config = {"from_attributes": True}
 
