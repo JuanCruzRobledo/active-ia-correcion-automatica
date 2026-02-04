@@ -101,6 +101,7 @@ class EntregaRepository:
             selectinload(Entrega.comision),
             selectinload(Entrega.rubrica),
             selectinload(Entrega.subido_por),
+            selectinload(Entrega.correccion),
         )
 
         # Apply filters

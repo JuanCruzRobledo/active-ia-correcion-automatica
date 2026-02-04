@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_admin
+from app.core.permissions import require_admin, require_any_authenticated
 from app.models.enums import TipoRubricaEnum
 from app.models.usuario import Usuario
 from app.schemas.rubrica import (
@@ -56,9 +56,9 @@ async def listar_rubricas(
     - `page`: Page number (1-indexed)
     - `per_page`: Items per page (max 100)
 
-    **Authorization:** Admin only
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
     """
-    require_admin(current_user)
+    require_any_authenticated(current_user)
 
     service = RubricaService(db)
     return await service.listar_rubricas(

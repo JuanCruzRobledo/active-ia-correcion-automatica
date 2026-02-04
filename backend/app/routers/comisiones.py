@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
 from app.core.permissions import require_admin
+from app.models.enums import RolEnum
 from app.models.usuario import Usuario
 from app.schemas.comision import (
     ComisionCreate,
@@ -53,13 +54,15 @@ async def listar_comisiones(
     - `page`: Page number (1-indexed)
     - `per_page`: Items per page (max 100)
 
-    **Authorization:** Admin only
+    **Authorization:** All roles. Tutors see only their assigned comisiones;
+    coordinadores and admins see all.
     """
-    require_admin(current_user)
+    tutor_id = current_user.id if current_user.rol == RolEnum.TUTOR else None
 
     service = ComisionService(db)
     return await service.listar_comisiones(
         materia_id=materia_id,
+        tutor_id=tutor_id,
         anio=anio,
         include_inactive=include_inactive,
         page=page,

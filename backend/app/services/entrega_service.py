@@ -60,6 +60,7 @@ class EntregaService:
         archivo: UploadFile,
         subido_por_id: int,
         sobrescribir: bool = False,
+        modo_consolidacion: str = "solo_codigo",
     ) -> EntregaResponse:
         """
         Create a new entrega from individual upload.
@@ -111,7 +112,7 @@ class EntregaService:
 
         # Consolidate content
         contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
-            contenido_bytes, archivo_tipo
+            contenido_bytes, archivo_tipo, modo_consolidacion
         )
 
         # Generate preview
@@ -326,6 +327,7 @@ class EntregaService:
         self,
         contenido_bytes: bytes,
         archivo_tipo: str,
+        modo: str = "solo_codigo",
     ) -> tuple[str, list[str]]:
         """
         Consolidate file content.
@@ -333,6 +335,7 @@ class EntregaService:
         Args:
             contenido_bytes: File content as bytes.
             archivo_tipo: File type ('zip' or 'txt').
+            modo: Consolidation mode for ZIP files.
 
         Returns:
             Tuple of (consolidated_content, list_of_files).
@@ -343,7 +346,7 @@ class EntregaService:
 
         if archivo_tipo == "zip":
             return self.consolidacion_service.consolidar_zip(
-                file_obj, modo="solo_codigo"
+                file_obj, modo=modo
             )
         else:  # txt
             return self.consolidacion_service.consolidar_txt(file_obj)
