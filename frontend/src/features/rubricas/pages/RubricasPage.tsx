@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { FileText, MoreVertical, Plus, Search } from 'lucide-react';
+import { FileText, MoreVertical } from 'lucide-react';
 import {
   useRubricas,
   useRubrica,
@@ -27,6 +27,7 @@ import {
   EmptyState,
   Dropdown,
   type TableColumn,
+  type SelectOption,
 } from '@/shared/components/ui';
 import { formatDate } from '@/shared/utils';
 import { useMaterias } from '@/features/materias/hooks';
@@ -123,6 +124,31 @@ export const RubricasPage = () => {
       console.error('Error duplicando rúbrica:', error);
     }
   };
+
+  // Filter options
+  const materiaOptions: SelectOption[] = [
+    { value: '', label: 'Todas las materias' },
+    ...(materiasData?.items || []).map((m) => ({
+      value: String(m.id),
+      label: `${m.codigo} - ${m.nombre}`,
+    })),
+  ];
+
+  const tipoOptions: SelectOption[] = [
+    { value: '', label: 'Todos los tipos' },
+    { value: 'TP', label: 'Trabajo Práctico' },
+    { value: 'PARCIAL_1', label: 'Parcial 1' },
+    { value: 'PARCIAL_2', label: 'Parcial 2' },
+    { value: 'RECUPERATORIO_1', label: 'Recuperatorio 1' },
+    { value: 'RECUPERATORIO_2', label: 'Recuperatorio 2' },
+    { value: 'FINAL', label: 'Final' },
+    { value: 'GLOBAL', label: 'Global' },
+  ];
+
+  const estadoOptions: SelectOption[] = [
+    { value: 'activas', label: 'Activas' },
+    { value: 'todas', label: 'Todas' },
+  ];
 
   // Client-side filter by nombre
   const rubricas = (data?.items || []).filter((rubrica) =>
@@ -229,7 +255,7 @@ export const RubricasPage = () => {
             },
             {
               label: 'Ver detalle',
-              onClick: () => console.log('Ver detalle', rubrica.id), // TODO: Future task
+              onClick: () => console.log('Ver detalle', rubrica.id),
             },
             {
               label: 'Duplicar a otro año',
@@ -259,8 +285,8 @@ export const RubricasPage = () => {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-danger bg-danger/10 p-4">
-        <p className="text-sm text-danger">
+      <div className="rounded-lg border border-destructive bg-destructive/10 p-4">
+        <p className="text-sm text-destructive">
           Error al cargar rúbricas. Por favor, intenta nuevamente.
         </p>
       </div>
@@ -272,177 +298,143 @@ export const RubricasPage = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Rúbricas</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-2xl font-bold text-foreground">Rúbricas</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Gestión de criterios de evaluación
           </p>
         </div>
         <Button onClick={handleOpenCreate}>
-          <Plus className="mr-2 h-4 w-4" />
-          Crear Rúbrica
+          + Crear Rúbrica
         </Button>
       </div>
 
       {/* Filters */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {/* Search by nombre */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="bg-card rounded-lg border border-border p-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <Input
-            type="text"
+            label="Buscar"
             placeholder="Buscar por nombre..."
             value={searchNombre}
             onChange={(e) => setSearchNombre(e.target.value)}
-            className="pl-10"
+          />
+          <Select
+            label="Materia"
+            options={materiaOptions}
+            value={filters.materia_id?.toString() || ''}
+            onChange={(e) => {
+              const value = e.target.value;
+              setFilters({
+                ...filters,
+                materia_id: value ? parseInt(value) : undefined,
+                page: 1,
+              });
+            }}
+          />
+          <Select
+            label="Tipo"
+            options={tipoOptions}
+            value={filters.tipo || ''}
+            onChange={(e) => {
+              const value = e.target.value as TipoRubrica | '';
+              setFilters({
+                ...filters,
+                tipo: value || undefined,
+                page: 1,
+              });
+            }}
+          />
+          <Input
+            label="Año"
+            type="number"
+            placeholder={String(currentYear)}
+            value={filters.anio?.toString() || ''}
+            onChange={(e) => {
+              const value = e.target.value;
+              setFilters({
+                ...filters,
+                anio: value ? parseInt(value) : undefined,
+                page: 1,
+              });
+            }}
+          />
+          <Select
+            label="Estado"
+            options={estadoOptions}
+            value={filters.include_inactive ? 'todas' : 'activas'}
+            onChange={(e) => {
+              setFilters({
+                ...filters,
+                include_inactive: e.target.value === 'todas',
+                page: 1,
+              });
+            }}
           />
         </div>
-
-        {/* Filter by materia */}
-        <Select
-          value={filters.materia_id?.toString() || ''}
-          onChange={(e) => {
-            const value = e.target.value;
-            setFilters({
-              ...filters,
-              materia_id: value ? parseInt(value) : undefined,
-              page: 1,
-            });
-          }}
-        >
-          <option value="">Todas las materias</option>
-          {materiasData?.items.map((materia) => (
-            <option key={materia.id} value={materia.id}>
-              {materia.codigo} - {materia.nombre}
-            </option>
-          ))}
-        </Select>
-
-        {/* Filter by tipo */}
-        <Select
-          value={filters.tipo || ''}
-          onChange={(e) => {
-            const value = e.target.value as TipoRubrica | '';
-            setFilters({
-              ...filters,
-              tipo: value || undefined,
-              page: 1,
-            });
-          }}
-        >
-          <option value="">Todos los tipos</option>
-          <option value="TP">Trabajo Práctico</option>
-          <option value="PARCIAL_1">Parcial 1</option>
-          <option value="PARCIAL_2">Parcial 2</option>
-          <option value="RECUPERATORIO_1">Recuperatorio 1</option>
-          <option value="RECUPERATORIO_2">Recuperatorio 2</option>
-          <option value="FINAL">Final</option>
-          <option value="GLOBAL">Global</option>
-        </Select>
-
-        {/* Filter by año */}
-        <Input
-          type="number"
-          placeholder={`Año (ej: ${currentYear})`}
-          value={filters.anio?.toString() || ''}
-          onChange={(e) => {
-            const value = e.target.value;
-            setFilters({
-              ...filters,
-              anio: value ? parseInt(value) : undefined,
-              page: 1,
-            });
-          }}
-          min={2020}
-          max={2100}
-        />
       </div>
 
-      {/* Estado filter */}
-      <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          id="include-inactive"
-          checked={filters.include_inactive}
-          onChange={(e) =>
-            setFilters({
-              ...filters,
-              include_inactive: e.target.checked,
-              page: 1,
-            })
-          }
-          className="h-4 w-4 rounded border-border"
-        />
-        <label
-          htmlFor="include-inactive"
-          className="text-sm text-muted-foreground"
-        >
-          Incluir inactivas
-        </label>
-      </div>
+      {/* Results summary */}
+      {rubricas.length > 0 && (
+        <div className="text-sm text-muted-foreground">
+          Mostrando {rubricas.length} de {data?.total || 0} rúbricas
+        </div>
+      )}
 
       {/* Table */}
-      {rubricas.length === 0 ? (
-        <EmptyState
-          icon={<FileText className="h-12 w-12 text-muted-foreground" />}
-          title="No hay rúbricas"
-          description={
-            searchNombre || filters.materia_id || filters.tipo || filters.anio
-              ? 'No se encontraron rúbricas con los filtros aplicados'
-              : 'No se encontraron rúbricas. Crea la primera para empezar.'
-          }
-          action={
-            <Button onClick={handleOpenCreate}>
-              <Plus className="mr-2 h-4 w-4" />
-              Crear primera rúbrica
-            </Button>
-          }
-        />
-      ) : (
-        <>
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
+        {rubricas.length > 0 ? (
           <Table
             columns={columns}
             data={rubricas}
             keyExtractor={(rubrica) => rubrica.id}
           />
+        ) : (
+          <EmptyState
+            icon={<FileText className="h-12 w-12 text-muted-foreground" />}
+            title="No hay rúbricas"
+            description={
+              searchNombre || filters.materia_id || filters.tipo || filters.anio
+                ? 'No se encontraron rúbricas con los filtros aplicados'
+                : 'No se encontraron rúbricas. Crea la primera para empezar.'
+            }
+            action={
+              <Button onClick={handleOpenCreate}>
+                + Crear primera rúbrica
+              </Button>
+            }
+          />
+        )}
+      </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-border pt-4">
-              <p className="text-sm text-muted-foreground">
-                Mostrando {(filters.page! - 1) * 20 + 1} -{' '}
-                {Math.min(filters.page! * 20, data?.total || 0)} de{' '}
-                {data?.total || 0} rúbricas
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() =>
-                    setFilters((f) => ({ ...f, page: Math.max(1, f.page! - 1) }))
-                  }
-                  disabled={filters.page === 1}
-                >
-                  Anterior
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() =>
-                    setFilters((f) => ({
-                      ...f,
-                      page: Math.min(totalPages, f.page! + 1),
-                    }))
-                  }
-                  disabled={filters.page === totalPages}
-                >
-                  Siguiente
-                </Button>
-              </div>
-            </div>
-          )}
-        </>
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex justify-center gap-2">
+          <Button
+            variant="secondary"
+            disabled={filters.page === 1}
+            onClick={() =>
+              setFilters((f) => ({ ...f, page: Math.max(1, f.page! - 1) }))
+            }
+          >
+            ← Anterior
+          </Button>
+          <div className="flex items-center px-4 text-sm text-muted-foreground">
+            Página {filters.page} de {totalPages}
+          </div>
+          <Button
+            variant="secondary"
+            disabled={filters.page === totalPages}
+            onClick={() =>
+              setFilters((f) => ({
+                ...f,
+                page: Math.min(totalPages, f.page! + 1),
+              }))
+            }
+          >
+            Siguiente →
+          </Button>
+        </div>
       )}
 
       {/* Create/Edit Modal */}

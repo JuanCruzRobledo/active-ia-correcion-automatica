@@ -89,7 +89,7 @@ class RubricaService:
 
         # Validar niveles de desempeño
         for criterio in criterios_list:
-            niveles = criterio.get("niveles", [])
+            niveles = criterio.get("niveles") or []
             criterio_puntaje_max = criterio.get("puntaje_maximo", 0)
 
             for nivel in niveles:
@@ -194,11 +194,13 @@ class RubricaService:
         # Build list items with counts
         items = []
         for rubrica in rubricas:
+            criterios_data = rubrica.criterios_json or {}
+
             # Extract puntaje_maximo from criterios_json
-            puntaje_maximo = rubrica.criterios_json.get("puntaje_maximo", 100)
+            puntaje_maximo = criterios_data.get("puntaje_maximo", 100)
 
             # Count criterios
-            criterios = rubrica.criterios_json.get("criterios", [])
+            criterios = criterios_data.get("criterios", [])
             num_criterios = len(criterios)
 
             # Count entregas

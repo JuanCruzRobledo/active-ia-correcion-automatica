@@ -55,9 +55,16 @@ apiClient.interceptors.response.use(
     }
     return response;
   },
-  (error: AxiosError<{ message?: string; detail?: string }>) => {
+  (error: AxiosError<{ message?: string; detail?: string | Array<{ msg?: string }> }>) => {
     const status = error.response?.status;
-    const message = error.response?.data?.message || error.response?.data?.detail;
+    const rawDetail = error.response?.data?.detail;
+    const message =
+      error.response?.data?.message ||
+      (Array.isArray(rawDetail)
+        ? rawDetail.map((e) => e.msg).filter(Boolean).join('; ')
+        : typeof rawDetail === 'string'
+          ? rawDetail
+          : undefined);
 
     // Handle different error status codes
     switch (status) {

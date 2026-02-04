@@ -63,31 +63,37 @@
 
 ## Ultima Sesion
 
-### Fecha: 2026-02-03 (Sesión 25)
+### Fecha: 2026-02-03 (Sesión 26)
 
 ### Que se hizo:
 
-- ✅ **ChangePasswordPage: Página /change-password funcional** (ad-hoc, fuera de ROADMAP)
-  - Archivos principales: features/auth/pages/ChangePasswordPage.tsx (nuevo), app/router.tsx, features/auth/pages/index.ts, features/perfil/hooks/usePerfil.ts, features/perfil/pages/PerfilPage.tsx
-  - Creada página standalone con guard (redirige a /login si no autenticado, a /dashboard si primer_login=false)
-  - Ruta /change-password al mismo nivel que /login (fuera de AppLayout, sin sidebar)
-  - Validación client-side: contraseña actual requerida, nueva ≥8 chars + al menos 1 número, confirmación debe coincidir, nueva ≠ actual
-  - Build: exitoso (solo error pre-existente en MateriaForm.tsx useState no usado)
+- ✅ **Refactorizar RubricasPage.tsx — estilo unificado con UsuariosPage** (ad-hoc)
+  - Archivos principales: features/rubricas/pages/RubricasPage.tsx
+  - Filtros en card `bg-card border-border` con Input y Select usando props `label`+`options`
+  - Estado reemplazado de checkbox a Select (Activas/Todas); texto-resumen de resultados agregado
+  - Tabla en card con overflow-hidden; paginación centrada con "Página X de Y"
+  - Build: exitoso
 
-- 🔧 **Refactor de hooks useChangePassword**
-  - Removido duplicado muerto de useAuth.ts (exports inalterados por barrel index)
-  - Dos versiones intencionales: auth/hooks/useChangePassword.ts (navega a /dashboard, para primer login) y perfil/hooks/usePerfil.ts::useChangePassword (solo toast, para modal de perfil)
-  - PerfilPage actualizado para importar de usePerfil en lugar de useAuth
+- ✅ **Agregar modos PDF y JSON al RubricaEditor + fix de inputs** (ad-hoc)
+  - Archivos principales: features/rubricas/components/RubricaEditor.tsx
+  - **Bug fix**: `handleUpdateCriterio` usaba copia local sin notificar a RHF. Solucionado con `update()` de useFieldArray
+  - Selector de 3 modos (Manual/PDF/JSON) con cards interactivas y iconos
+  - Modo PDF: zona de upload con borde punteado, llama a `useGenerarRubricaDesdePDF` (endpoint atómico backend)
+  - Modo JSON: textarea + upload de archivo, parsea JSON → `replace()` de useFieldArray → cambia a modo manual para revisión
+  - Botones del footer condicionales por modo; campos nombre/numero deshabilitados en modo PDF
+  - Build: exitoso
 
 ### Problemas encontrados y resueltos:
 
-- PerfilPage importaba useChangePassword de useAuth — roto al eliminar duplicado. Solucion: agregar hook sin navegacion a usePerfil.ts
-- React Query callbacks aditivos: hook-level onSuccess + inline onSuccess ambos disparan. Motivo de tener dos versiones del hook separadas por contexto.
+- RubricaEditor inputs no persistían: useFieldArray.update() es el método correcto para mutar items individuales del array en RHF; la copia local anterior no notificaba al estado
+- Modo PDF es operación atómica en backend (POST /rubricas/desde-pdf crea y guarda); modal se cierra al éxito
+- Modo JSON es parseo client-side; replace() carga criterios y vuelve a modo manual para editar antes de submit
 
 ### Pendiente (no bloqueante):
 
-- MateriaForm.tsx tiene useState no usado (error pre-existente, no relacionado)
-- ChangePasswordModal.tsx existe pero no se renderiza en ningún lugar (dead code)
+- RubricaEditor.tsx es 732 LOC (excede guideline de 500); incluye subcomponente CriterioItem + 3 secciones de modo
+- MateriaForm.tsx tiene useState no usado (pre-existente)
+- ChangePasswordModal.tsx es dead code (pre-existente)
 
 ---
 
@@ -108,5 +114,6 @@
 | 2026-02-02 | Omitir Fase 7 (Testing)                     | Priorizar Docker + Deploy para despliegue rápido, testing opcional            |
 | 2026-02-02 | Dos modos de docker-compose                 | docker-compose.yml (BD nube - default), docker-compose.local.yml (BD local)   |
 | 2026-02-03 | Dos hooks useChangePassword separados       | auth/ navega a /dashboard (primer login), perfil/ solo toast (modal de perfil). React Query callbacks son aditivos. |
+| 2026-02-03 | PDF mode es atómico, JSON mode es client-side | POST /desde-pdf crea+guarda en backend; JSON solo pre-popula form via replace() para revisión manual antes de submit |
 
 ---

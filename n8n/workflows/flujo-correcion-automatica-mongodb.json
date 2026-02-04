@@ -1,0 +1,242 @@
+{
+  "name": "Corrección Automática MongoDB (Principal)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "automatico-mongodb",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        300
+      ],
+      "id": "webhook-principal-mongodb",
+      "name": "Webhook: Corrección Automática MongoDB",
+      "webhookId": "automatico-mongodb-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "commission-id",
+              "name": "commission_id",
+              "value": "={{ $json.body.commission_id }}",
+              "type": "string"
+            },
+            {
+              "id": "rubric-id",
+              "name": "rubric_id",
+              "value": "={{ $json.body.rubric_id }}",
+              "type": "string"
+            },
+            {
+              "id": "api-key",
+              "name": "gemini_api_key",
+              "value": "={{ $json.body.gemini_api_key }}",
+              "type": "string"
+            },
+            {
+              "id": "rubric-json",
+              "name": "rubric_json",
+              "value": "={{ $json.body.rubric_json }}",
+              "type": "object"
+            },
+            {
+              "id": "backend-url",
+              "name": "backend_url",
+              "value": "={{ $json.body.backend_url || 'http://localhost:5000' }}",
+              "type": "string"
+            },
+            {
+              "id": "auth-token",
+              "name": "auth_token",
+              "value": "={{ $json.body.auth_token }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        140,
+        300
+      ],
+      "id": "extract-datos-principal",
+      "name": "Extraer Datos Request"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_SECONDARY_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "commission_id": "={{ $('Extraer Datos Request').item.json.commission_id }}",
+            "rubric_id": "={{ $('Extraer Datos Request').item.json.rubric_id }}",
+            "gemini_api_key": "={{ $('Extraer Datos Request').item.json.gemini_api_key }}",
+            "rubric_json": "={{ $('Extraer Datos Request').item.json.rubric_json }}",
+            "backend_url": "={{ $('Extraer Datos Request').item.json.backend_url }}",
+            "auth_token": "={{ $('Extraer Datos Request').item.json.auth_token }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "commission_id",
+              "displayName": "commission_id",
+              "type": "string"
+            },
+            {
+              "id": "rubric_id",
+              "displayName": "rubric_id",
+              "type": "string"
+            },
+            {
+              "id": "gemini_api_key",
+              "displayName": "gemini_api_key",
+              "type": "string"
+            },
+            {
+              "id": "rubric_json",
+              "displayName": "rubric_json",
+              "type": "object"
+            },
+            {
+              "id": "backend_url",
+              "displayName": "backend_url",
+              "type": "string"
+            },
+            {
+              "id": "auth_token",
+              "displayName": "auth_token",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        360,
+        300
+      ],
+      "name": "Llamar: Corrección Masiva MongoDB",
+      "id": "call-workflow-masiva-mongodb",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cantidad-corregidos-field",
+              "name": "alumnos_corregidos",
+              "value": "={{ $('Llamar: Corrección Masiva MongoDB').last().json.cantidad_corregidos }}",
+              "type": "number"
+            },
+            {
+              "id": "commission-field",
+              "name": "commission_id",
+              "value": "={{ $('Extraer Datos Request').item.json.commission_id }}",
+              "type": "string"
+            },
+            {
+              "id": "rubric-field",
+              "name": "rubric_id",
+              "value": "={{ $('Extraer Datos Request').item.json.rubric_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        580,
+        300
+      ],
+      "id": "preparar-respuesta-mongodb",
+      "name": "Preparar Respuesta"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"alumnos_corregidos\": {{ $json.alumnos_corregidos }},\n  \"commission_id\": \"{{ $json.commission_id }}\",\n  \"rubric_id\": \"{{ $json.rubric_id }}\",\n  \"message\": \"Corrección automática completada desde MongoDB\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        800,
+        300
+      ],
+      "id": "responder-webhook-mongodb",
+      "name": "Responder Webhook"
+    }
+  ],
+  "connections": {
+    "Webhook: Corrección Automática MongoDB": {
+      "main": [
+        [
+          {
+            "node": "Extraer Datos Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Datos Request": {
+      "main": [
+        [
+          {
+            "node": "Llamar: Corrección Masiva MongoDB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Llamar: Corrección Masiva MongoDB": {
+      "main": [
+        [
+          {
+            "node": "Preparar Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar Respuesta": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

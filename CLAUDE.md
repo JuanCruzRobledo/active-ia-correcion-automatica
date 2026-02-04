@@ -18,34 +18,42 @@ Lee @ROADMAP.md y busca la primera tarea `[ ]` pendiente.
 
 ## PASO 3: Cargar reglas segun el trabajo
 
+- No cargar reglas hasta definir trabajo
+
 ### Para BACKEND (FastAPI + Python):
+
 - Reglas: @.claude/rules/backend.md
 - Skill detallado: @skills/python-fastapi/SKILL.md
 - Modelos de datos: @docs/specs/06-MODELO-DATOS.md
 
 ### Para FRONTEND (React + TypeScript):
+
 - Reglas: @.claude/rules/frontend.md
 - Skill detallado: @skills/react-typescript/SKILL.md
 - Diseno UI: @docs/specs/07-DISENO-UI-UX.md
 
 ### Para CORRECCION IA:
+
 - Skill: @skills/correccion-ia/SKILL.md
 - Integraciones: @docs/specs/10-INTEGRACIONES.md
 
 ### Para RUBRICAS:
+
 - Skill: @skills/rubricas/SKILL.md
 
 ---
 
 ## PASO 4: Consultar especificaciones si necesitas
 
-| Necesitas... | Archivo |
-|--------------|---------|
+- No consultar especificaciones hasta definir trabajo
+
+| Necesitas...           | Archivo                                  |
+| ---------------------- | ---------------------------------------- |
 | Requisitos funcionales | @docs/specs/03-REQUISITOS-FUNCIONALES.md |
-| Modelo de datos | @docs/specs/06-MODELO-DATOS.md |
-| Roles y permisos | @docs/specs/02-USUARIOS-ROLES.md |
-| Seguridad | @docs/specs/11-SEGURIDAD.md |
-| Estilos/colores | @docs/specs/08-SISTEMA-DISENO-ESTILOS.md |
+| Modelo de datos        | @docs/specs/06-MODELO-DATOS.md           |
+| Roles y permisos       | @docs/specs/02-USUARIOS-ROLES.md         |
+| Seguridad              | @docs/specs/11-SEGURIDAD.md              |
+| Estilos/colores        | @docs/specs/08-SISTEMA-DISENO-ESTILOS.md |
 
 ---
 
@@ -65,6 +73,7 @@ Ver @AGENTS.md para reglas globales del proyecto.
 ## REGLAS CRITICAS
 
 ### SIEMPRE
+
 - Leer el skill/reglas correspondiente ANTES de escribir codigo
 - Clean Architecture: `Router -> Service -> Repository`
 - Validar permisos en cada endpoint
@@ -72,6 +81,7 @@ Ver @AGENTS.md para reglas globales del proyecto.
 - Actualizar ESTADO.md al terminar
 
 ### NUNCA
+
 - Logica de negocio en Routers
 - Acceso a BD desde Services
 - `any` en TypeScript

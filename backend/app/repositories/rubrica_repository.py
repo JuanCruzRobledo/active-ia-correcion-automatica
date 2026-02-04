@@ -91,7 +91,10 @@ class RubricaRepository:
             Tuple of (list of rubricas, total count).
         """
         # Base query
-        query = select(Rubrica).options(selectinload(Rubrica.materia))
+        query = select(Rubrica).options(
+            selectinload(Rubrica.materia),
+            selectinload(Rubrica.entregas),
+        )
 
         # Apply filters
         if not include_inactive:
