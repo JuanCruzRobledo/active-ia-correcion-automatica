@@ -88,6 +88,7 @@ class MateriaRepository:
         search: str | None = None,
         page: int = 1,
         per_page: int = 20,
+        coordinador_id: int | None = None,
     ) -> tuple[list[Materia], int]:
         """
         Get all materias with optional filters and pagination.
@@ -97,12 +98,19 @@ class MateriaRepository:
             search: Search term for codigo or nombre.
             page: Page number (1-indexed).
             per_page: Items per page.
+            coordinador_id: If set, filter to materias assigned to this coordinator.
 
         Returns:
             Tuple of (list of materias, total count).
         """
         # Base query
         query = select(Materia)
+
+        # Filter by coordinator assignment
+        if coordinador_id is not None:
+            query = query.join(CoordinadorMateria).where(
+                CoordinadorMateria.coordinador_id == coordinador_id
+            )
 
         # Apply filters
         if not include_inactive:
