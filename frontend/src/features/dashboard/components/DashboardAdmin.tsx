@@ -9,6 +9,7 @@
  * Ref: docs/specs/07-DISENO-UI-UX.md Section 4.1 - Dashboard Admin
  */
 
+import { useNavigate } from 'react-router-dom';
 import { BookOpen, GraduationCap, Users, FileText, Plus } from 'lucide-react';
 import { StatCard } from './StatCard';
 import { QuickActions } from './QuickActions';
@@ -17,6 +18,7 @@ import { useDashboardAdminStats } from '../hooks';
 import { Spinner } from '@/shared/components/ui';
 
 export function DashboardAdmin() {
+  const navigate = useNavigate();
   const { data: stats, isLoading, error } = useDashboardAdminStats();
 
   // Loading state
@@ -53,26 +55,22 @@ export function DashboardAdmin() {
     {
       label: 'Crear Materia',
       icon: Plus,
-      onClick: () => {
-        // TODO: Navigate to /admin/materias/nueva
-        console.log('Crear Materia');
-      },
+      onClick: () => navigate('/materias'),
     },
     {
       label: 'Crear Usuario',
       icon: Plus,
-      onClick: () => {
-        // TODO: Navigate to /admin/usuarios/nuevo
-        console.log('Crear Usuario');
-      },
+      onClick: () => navigate('/usuarios'),
     },
     {
       label: 'Crear Comisión',
       icon: Plus,
-      onClick: () => {
-        // TODO: Navigate to /admin/comisiones/nueva
-        console.log('Crear Comisión');
-      },
+      onClick: () => navigate('/comisiones'),
+    },
+    {
+      label: 'Crear Rúbrica',
+      icon: Plus,
+      onClick: () => navigate('/rubricas'),
     },
   ];
 
