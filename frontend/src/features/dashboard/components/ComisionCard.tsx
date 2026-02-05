@@ -6,6 +6,7 @@
  * Ref: docs/specs/07-DISENO-UI-UX.md Section 4.1 - Dashboard Tutor
  */
 
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/shared/components/ui/Button';
 import { ArrowRight, Users, Clock } from 'lucide-react';
 
@@ -22,9 +23,10 @@ interface ComisionCardProps {
 }
 
 export function ComisionCard({ comision }: ComisionCardProps) {
+  const navigate = useNavigate();
+
   const handleNavigate = () => {
-    // TODO: Navigate to /tutor/entregas?comision={id}
-    console.log('Navigate to entregas', comision.id);
+    navigate(`/entregas?comision=${comision.id}`);
   };
 
   return (
