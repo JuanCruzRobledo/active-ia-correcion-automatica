@@ -58,11 +58,13 @@ async def listar_comisiones(
     coordinadores and admins see all.
     """
     tutor_id = current_user.id if current_user.rol == RolEnum.TUTOR else None
+    coordinador_id = current_user.id if current_user.rol == RolEnum.COORDINADOR else None
 
     service = ComisionService(db)
     return await service.listar_comisiones(
         materia_id=materia_id,
         tutor_id=tutor_id,
+        coordinador_id=coordinador_id,
         anio=anio,
         include_inactive=include_inactive,
         page=page,

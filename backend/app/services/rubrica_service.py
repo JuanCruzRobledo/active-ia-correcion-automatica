@@ -163,6 +163,7 @@ class RubricaService:
         *,
         materia_id: int | None = None,
         tipo: str | None = None,
+        coordinador_id: int | None = None,
         anio: int | None = None,
         include_inactive: bool = False,
         page: int = 1,
@@ -174,6 +175,7 @@ class RubricaService:
         Args:
             materia_id: Filter by materia ID.
             tipo: Filter by rubrica type.
+            coordinador_id: If provided, return only rubricas of materias assigned to this coordinator.
             anio: Filter by academic year.
             include_inactive: Include soft-deleted rubricas.
             page: Page number (1-indexed).
@@ -185,6 +187,7 @@ class RubricaService:
         rubricas, total = await self.rubrica_repo.get_all(
             materia_id=materia_id,
             tipo=tipo,
+            coordinador_id=coordinador_id,
             anio=anio,
             include_inactive=include_inactive,
             page=page,

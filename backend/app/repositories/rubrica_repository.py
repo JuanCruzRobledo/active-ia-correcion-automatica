@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.materia import CoordinadorMateria
 from app.models.rubrica import Rubrica
 
 
@@ -71,6 +72,7 @@ class RubricaRepository:
         *,
         materia_id: int | None = None,
         tipo: str | None = None,
+        coordinador_id: int | None = None,
         anio: int | None = None,
         include_inactive: bool = False,
         page: int = 1,
@@ -82,6 +84,7 @@ class RubricaRepository:
         Args:
             materia_id: Filter by materia ID.
             tipo: Filter by rubrica type.
+            coordinador_id: Filter to rubricas of materias assigned to this coordinator.
             anio: Filter by academic year.
             include_inactive: Include soft-deleted rubricas.
             page: Page number (1-indexed).
@@ -105,6 +108,12 @@ class RubricaRepository:
 
         if tipo is not None:
             query = query.where(Rubrica.tipo == tipo)
+
+        if coordinador_id is not None:
+            query = query.join(
+                CoordinadorMateria,
+                Rubrica.materia_id == CoordinadorMateria.materia_id,
+            ).where(CoordinadorMateria.coordinador_id == coordinador_id)
 
         if anio is not None:
             query = query.where(Rubrica.anio == anio)

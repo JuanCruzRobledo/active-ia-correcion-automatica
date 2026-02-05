@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
 from app.core.permissions import require_admin, require_any_authenticated
-from app.models.enums import TipoRubricaEnum
+from app.models.enums import RolEnum, TipoRubricaEnum
 from app.models.usuario import Usuario
 from app.schemas.rubrica import (
     RubricaCreate,
@@ -59,11 +59,13 @@ async def listar_rubricas(
     **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
     """
     require_any_authenticated(current_user)
+    coordinador_id = current_user.id if current_user.rol == RolEnum.COORDINADOR else None
 
     service = RubricaService(db)
     return await service.listar_rubricas(
         materia_id=materia_id,
         tipo=tipo.value if tipo else None,
+        coordinador_id=coordinador_id,
         anio=anio,
         include_inactive=include_inactive,
         page=page,

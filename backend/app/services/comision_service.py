@@ -128,6 +128,7 @@ class ComisionService:
         *,
         materia_id: int | None = None,
         tutor_id: int | None = None,
+        coordinador_id: int | None = None,
         anio: int | None = None,
         include_inactive: bool = False,
         page: int = 1,
@@ -139,6 +140,7 @@ class ComisionService:
         Args:
             materia_id: Filter by materia ID.
             tutor_id: If provided, return only comisiones assigned to this tutor.
+            coordinador_id: If provided, return only comisiones of materias assigned to this coordinator.
             anio: Filter by academic year.
             include_inactive: Include soft-deleted comisiones.
             page: Page number (1-indexed).
@@ -150,6 +152,7 @@ class ComisionService:
         comisiones, total = await self.comision_repo.get_all(
             materia_id=materia_id,
             tutor_id=tutor_id,
+            coordinador_id=coordinador_id,
             anio=anio,
             include_inactive=include_inactive,
             page=page,
