@@ -31,6 +31,7 @@ import {
 } from '@/shared/components/ui';
 import { formatDate } from '@/shared/utils';
 import { useMaterias } from '@/features/materias/hooks';
+import { useAuth } from '@/features/auth/hooks';
 import { RubricaEditor } from '../components';
 
 // Mapeo de tipos a labels legibles
@@ -73,11 +74,17 @@ export const RubricasPage = () => {
 
   // Queries
   const { data, isLoading, error } = useRubricas(filters);
-  const { data: materiasData } = useMaterias({ page: 1, per_page: 100 });
+  const { data: materiasData, isLoading: materiasLoading } = useMaterias({ page: 1, per_page: 100 });
   const { data: editingRubrica } = useRubrica(editingId || 0);
   const deleteMutation = useDeleteRubrica();
   const restoreMutation = useRestoreRubrica();
   const duplicarMutation = useDuplicarRubrica();
+
+  const { user } = useAuth();
+  const sinMateriasAsignadas =
+    user?.rol === 'COORDINADOR' &&
+    !materiasLoading &&
+    (materiasData?.items?.length ?? 0) === 0;
 
   // Form handlers
   const handleOpenCreate = () => {
@@ -305,12 +312,15 @@ export const RubricasPage = () => {
             Gestión de criterios de evaluación
           </p>
         </div>
-        <Button onClick={handleOpenCreate}>
-          + Crear Rúbrica
-        </Button>
+        {!sinMateriasAsignadas && (
+          <Button onClick={handleOpenCreate}>
+            + Crear Rúbrica
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
+      {!sinMateriasAsignadas && (
       <div className="bg-card rounded-lg border border-border p-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <Input
@@ -373,6 +383,7 @@ export const RubricasPage = () => {
           />
         </div>
       </div>
+      )}
 
       {/* Results summary */}
       {rubricas.length > 0 && (
@@ -392,16 +403,20 @@ export const RubricasPage = () => {
         ) : (
           <EmptyState
             icon={<FileText className="h-12 w-12 text-muted-foreground" />}
-            title="No hay rúbricas"
+            title={sinMateriasAsignadas ? 'Sin materias asignadas' : 'No hay rúbricas'}
             description={
-              searchNombre || filters.materia_id || filters.tipo || filters.anio
-                ? 'No se encontraron rúbricas con los filtros aplicados'
-                : 'No se encontraron rúbricas. Crea la primera para empezar.'
+              sinMateriasAsignadas
+                ? 'No tienes materias asignadas actualmente. Un administrador debe asignarte materias para que puedas gestionar rúbricas.'
+                : searchNombre || filters.materia_id || filters.tipo || filters.anio
+                  ? 'No se encontraron rúbricas con los filtros aplicados'
+                  : 'No se encontraron rúbricas. Crea la primera para empezar.'
             }
             action={
-              <Button onClick={handleOpenCreate}>
-                + Crear primera rúbrica
-              </Button>
+              sinMateriasAsignadas ? undefined : (
+                <Button onClick={handleOpenCreate}>
+                  + Crear primera rúbrica
+                </Button>
+              )
             }
           />
         )}

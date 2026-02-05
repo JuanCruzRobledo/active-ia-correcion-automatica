@@ -31,6 +31,7 @@ import {
 } from '@/shared/components/ui';
 import { formatDate } from '@/shared/utils';
 import { useMaterias } from '@/features/materias/hooks';
+import { useAuth } from '@/features/auth/hooks';
 
 export const ComisionesPage = () => {
   const [filters, setFilters] = useState<ComisionesFilters>({
@@ -47,10 +48,16 @@ export const ComisionesPage = () => {
 
   // Queries
   const { data, isLoading, error } = useComisiones(filters);
-  const { data: materiasData } = useMaterias({ page: 1, per_page: 100 });
+  const { data: materiasData, isLoading: materiasLoading } = useMaterias({ page: 1, per_page: 100 });
   const { data: editingComision } = useComision(editingId || 0);
   const deleteMutation = useDeleteComision();
   const restoreMutation = useRestoreComision();
+
+  const { user } = useAuth();
+  const sinMateriasAsignadas =
+    user?.rol === 'COORDINADOR' &&
+    !materiasLoading &&
+    (materiasData?.items?.length ?? 0) === 0;
 
   // Form handlers
   const handleOpenCreate = () => {
@@ -264,12 +271,15 @@ export const ComisionesPage = () => {
             Gestiona las comisiones de cada materia
           </p>
         </div>
-        <Button onClick={handleOpenCreate}>
-          + Crear Comisión
-        </Button>
+        {!sinMateriasAsignadas && (
+          <Button onClick={handleOpenCreate}>
+            + Crear Comisión
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
+      {!sinMateriasAsignadas && (
       <div className="bg-white rounded-lg border border-gray-200 p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Input
@@ -301,6 +311,7 @@ export const ComisionesPage = () => {
           />
         </div>
       </div>
+      )}
 
       {/* Results summary */}
       {filteredData && filteredData.length > 0 && (
@@ -320,14 +331,16 @@ export const ComisionesPage = () => {
         ) : (
           <EmptyState
             icon="📚"
-            title="No hay comisiones"
+            title={sinMateriasAsignadas ? 'Sin materias asignadas' : 'No hay comisiones'}
             description={
-              hasActiveFilters
-                ? 'No se encontraron comisiones con los filtros aplicados'
-                : 'No hay comisiones creadas aún'
+              sinMateriasAsignadas
+                ? 'No tienes materias asignadas actualmente. Un administrador debe asignarte materias para que puedas gestionar comisiones.'
+                : hasActiveFilters
+                  ? 'No se encontraron comisiones con los filtros aplicados'
+                  : 'No hay comisiones creadas aún'
             }
             action={
-              hasActiveFilters ? (
+              sinMateriasAsignadas ? undefined : hasActiveFilters ? (
                 <Button
                   variant="secondary"
                   onClick={() => {

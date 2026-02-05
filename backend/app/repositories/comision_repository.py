@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.comision import Comision, ComisionTutor
+from app.models.materia import CoordinadorMateria
 
 
 class ComisionRepository:
@@ -74,6 +75,7 @@ class ComisionRepository:
         *,
         materia_id: int | None = None,
         tutor_id: int | None = None,
+        coordinador_id: int | None = None,
         anio: int | None = None,
         include_inactive: bool = False,
         page: int = 1,
@@ -85,6 +87,7 @@ class ComisionRepository:
         Args:
             materia_id: Filter by materia ID.
             tutor_id: Filter to comisiones assigned to this tutor.
+            coordinador_id: Filter to comisiones of materias assigned to this coordinator.
             anio: Filter by academic year.
             include_inactive: Include soft-deleted comisiones.
             page: Page number (1-indexed).
@@ -105,6 +108,12 @@ class ComisionRepository:
 
         if tutor_id is not None:
             query = query.join(ComisionTutor).where(ComisionTutor.tutor_id == tutor_id)
+
+        if coordinador_id is not None:
+            query = query.join(
+                CoordinadorMateria,
+                Comision.materia_id == CoordinadorMateria.materia_id,
+            ).where(CoordinadorMateria.coordinador_id == coordinador_id)
 
         if anio is not None:
             query = query.where(Comision.anio == anio)
