@@ -24,6 +24,9 @@ COPY . .
 # Crear directorios necesarios
 RUN mkdir -p /app/uploads /app/backups
 
+# Configurar PYTHONPATH para que encuentre el módulo 'app'
+ENV PYTHONPATH=/app
+
 # Crear usuario no-root para seguridad
 RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app

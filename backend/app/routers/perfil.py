@@ -127,7 +127,7 @@ async def _validate_gemini_api_key(api_key: str) -> bool:
     Returns:
         True if valid, False otherwise.
     """
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
     payload = {
         "contents": [

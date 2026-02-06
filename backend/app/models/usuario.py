@@ -8,7 +8,7 @@ Ref: docs/specs/06-MODELO-DATOS.md seccion 3.1
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import String, Text
+from sqlalchemy import Enum as SQLEnum, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
@@ -42,7 +42,11 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
     )
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    rol: Mapped[RolEnum] = mapped_column(nullable=False, index=True)
+    rol: Mapped[RolEnum] = mapped_column(
+        SQLEnum(RolEnum, name="rol_enum", create_type=True),
+        nullable=False,
+        index=True,
+    )
 
     # API Key de Gemini (encriptada con AES-256)
     gemini_api_key_encrypted: Mapped[str | None] = mapped_column(

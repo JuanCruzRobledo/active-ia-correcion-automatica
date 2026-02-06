@@ -7,7 +7,7 @@ Ref: docs/specs/06-MODELO-DATOS.md seccion 3.6
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Enum as SQLEnum, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -54,7 +54,10 @@ class Rubrica(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
-    tipo: Mapped[TipoRubricaEnum] = mapped_column(nullable=False)
+    tipo: Mapped[TipoRubricaEnum] = mapped_column(
+        SQLEnum(TipoRubricaEnum, name="tiporubricaenum", create_type=True),
+        nullable=False,
+    )
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     numero: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     anio: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
@@ -63,6 +66,7 @@ class Rubrica(Base, TimestampMixin):
         nullable=False,
     )
     fuente: Mapped[FuenteRubricaEnum] = mapped_column(
+        SQLEnum(FuenteRubricaEnum, name="fuenterubricaenum", create_type=True),
         default=FuenteRubricaEnum.MANUAL,
     )
     archivo_original: Mapped[str | None] = mapped_column(

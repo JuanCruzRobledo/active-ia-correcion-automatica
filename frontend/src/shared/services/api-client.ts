@@ -17,8 +17,26 @@ import toast from 'react-hot-toast';
 const TOKEN_KEY = 'auth_token';
 
 // Create axios instance
+// Ensure baseURL always includes /api/v1
+const getBaseURL = () => {
+  const envURL = import.meta.env.VITE_API_URL;
+
+  // If no env URL, use default
+  if (!envURL) {
+    return '/api/v1';
+  }
+
+  // If env URL already includes /api/v1, use as is
+  if (envURL.includes('/api/v1')) {
+    return envURL;
+  }
+
+  // Otherwise, append /api/v1
+  return `${envURL}/api/v1`;
+};
+
 export const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api/v1',
+  baseURL: getBaseURL(),
   headers: {
     'Content-Type': 'application/json',
   },
