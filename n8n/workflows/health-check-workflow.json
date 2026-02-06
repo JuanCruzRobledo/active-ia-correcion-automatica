@@ -1,0 +1,149 @@
+{
+  "name": "Health Check N8N",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "health",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        300
+      ],
+      "id": "webhook-health",
+      "name": "Webhook: Health Check",
+      "webhookId": "health-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "={{ $json.body.api_key }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        20,
+        300
+      ],
+      "id": "extraer-api-key",
+      "name": "Extraer API Key"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={{ $json.api_key }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{ \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"contents\": [{ \"parts\": [{ \"text\": \"Responde OK\" }] }] }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        240,
+        300
+      ],
+      "id": "test-gemini",
+      "name": "Test Gemini API",
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Evaluar respuesta de Gemini y construir health status\n\nconst response = $input.first().json;\nconst timestamp = new Date().toISOString();\nconst n8nVersion = \"1.0.0\"; // Puede obtenerlo de variables de entorno si está disponible\n\n// Verificar si Gemini respondió correctamente\nif (response.error) {\n  // Error de Gemini\n  const errorCode = response.error.code || 'UNKNOWN';\n  const errorMsg = response.error.message || JSON.stringify(response.error);\n  \n  return [{\n    json: {\n      status: \"degraded\",\n      n8n_version: n8nVersion,\n      gemini_available: false,\n      gemini_error: `[${errorCode}] ${errorMsg}`,\n      timestamp: timestamp\n    }\n  }];\n}\n\n// Verificar si hay respuesta válida de Gemini\nconst candidates = response.candidates;\nif (!candidates || candidates.length === 0) {\n  return [{\n    json: {\n      status: \"degraded\",\n      n8n_version: n8nVersion,\n      gemini_available: false,\n      gemini_error: \"No se recibió respuesta válida de Gemini\",\n      timestamp: timestamp\n    }\n  }];\n}\n\n// Todo OK\nreturn [{\n  json: {\n    status: \"ok\",\n    n8n_version: n8nVersion,\n    gemini_available: true,\n    timestamp: timestamp\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ],
+      "id": "evaluar-health",
+      "name": "Evaluar Health"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        680,
+        300
+      ],
+      "id": "responder-health",
+      "name": "Responder Health"
+    }
+  ],
+  "connections": {
+    "Webhook: Health Check": {
+      "main": [
+        [
+          {
+            "node": "Extraer API Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer API Key": {
+      "main": [
+        [
+          {
+            "node": "Test Gemini API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test Gemini API": {
+      "main": [
+        [
+          {
+            "node": "Evaluar Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluar Health": {
+      "main": [
+        [
+          {
+            "node": "Responder Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

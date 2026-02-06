@@ -33,12 +33,8 @@ async def init_db():
         echo=True,
     )
 
-    # Crear todas las tablas
-    print("📦 Creando tablas...")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    print("✅ Tablas creadas exitosamente")
+    # No crear tablas - Alembic ya las creó al iniciar el backend
+    print("ℹ️  Usando tablas creadas por Alembic...")
 
     # Crear sesión
     async_session = sessionmaker(

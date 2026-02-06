@@ -97,3 +97,53 @@ export const recorregirEntrega = async (entregaId: number): Promise<Correccion> 
   // El backend se encarga de descartar la corrección anterior
   return corregirEntrega(entregaId);
 };
+
+// --- Descarga de documentos ---
+
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
+
+/**
+ * Descarga el PDF de devolución de una entrega corregida.
+ * Obtiene primero la corrección para sacar su ID, luego descarga el PDF.
+ */
+export const descargarPDFCorreccion = async (entregaId: number): Promise<void> => {
+  const correccion = await getCorreccionByEntregaId(entregaId);
+  if (!correccion) {
+    throw new Error('No se encontró corrección para esta entrega');
+  }
+  const response = await apiClient.get(`/documentos/correcciones/${correccion.id}/pdf`, {
+    responseType: 'blob',
+  });
+  downloadBlob(response.data as Blob, `devolucion_entrega_${entregaId}.pdf`);
+};
+
+/**
+ * Descarga un ZIP con todos los PDFs de devolución de una comisión/rúbrica.
+ */
+export const descargarTodosPDFs = async (comisionId: number, rubricaId: number): Promise<void> => {
+  const response = await apiClient.get(
+    `/documentos/comisiones/${comisionId}/rubricas/${rubricaId}/pdfs`,
+    { responseType: 'blob' }
+  );
+  downloadBlob(response.data as Blob, `devoluciones_comision_${comisionId}_rubrica_${rubricaId}.zip`);
+};
+
+/**
+ * Exporta las notas de una comisión/rúbrica en formato Excel.
+ */
+export const exportarExcel = async (comisionId: number, rubricaId: number): Promise<void> => {
+  const response = await apiClient.get(
+    `/documentos/comisiones/${comisionId}/rubricas/${rubricaId}/excel`,
+    { responseType: 'blob' }
+  );
+  downloadBlob(response.data as Blob, `notas_comision_${comisionId}_rubrica_${rubricaId}.xlsx`);
+};

@@ -1,0 +1,278 @@
+{
+  "name": "Generación de Rúbricas desde PDF",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generar-rubrica",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        300
+      ],
+      "id": "webhook-generar-rubrica",
+      "name": "Webhook: Generar Rubrica",
+      "webhookId": "generar-rubrica-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "pdf-base64",
+              "name": "pdf_base64",
+              "value": "={{ $json.body.pdf_base64 }}",
+              "type": "string"
+            },
+            {
+              "id": "filename",
+              "name": "filename",
+              "value": "={{ $json.body.filename }}",
+              "type": "string"
+            },
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "={{ $json.body.api_key }}",
+              "type": "string"
+            },
+            {
+              "id": "tipo-rubrica",
+              "name": "tipo_rubrica",
+              "value": "={{ $json.body.tipo_rubrica || 'TP' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        20,
+        300
+      ],
+      "id": "extraer-datos",
+      "name": "Extraer Datos"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decodificar base64 a binary y preparar para Gemini\n\nconst base64Data = $input.first().json.pdf_base64;\nconst filename = $input.first().json.filename;\nconst apiKey = $input.first().json.api_key;\nconst tipoRubrica = $input.first().json.tipo_rubrica;\n\nif (!base64Data || !apiKey) {\n  throw new Error(\"Faltan datos requeridos: pdf_base64 y api_key\");\n}\n\n// Decodificar base64\nconst buffer = Buffer.from(base64Data, 'base64');\n\n// Preparar para siguiente nodo\nreturn [{\n  json: {\n    api_key: apiKey,\n    tipo_rubrica: tipoRubrica,\n    filename: filename\n  },\n  binary: {\n    pdf: {\n      data: buffer.toString('base64'),\n      mimeType: 'application/pdf',\n      fileName: filename || 'documento.pdf'\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "id": "decodificar-pdf",
+      "name": "Decodificar PDF"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/upload/v1beta/files?key={{ $json.api_key }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{ \"Content-Type\": \"application/pdf\" }",
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        460,
+        300
+      ],
+      "id": "upload-pdf-gemini",
+      "name": "Gemini: Upload PDF",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construir body para Gemini con el PDF subido y el prompt de generación de rúbrica\n\nconst uploadResponse = $input.first().json;\nconst apiKey = $('Decodificar PDF').first().json.api_key;\n\n// Verificar si hubo error en upload\nif (uploadResponse.error) {\n  throw new Error(`Error al subir PDF a Gemini: ${JSON.stringify(uploadResponse.error)}`);\n}\n\nconst fileUri = uploadResponse.file?.uri;\nif (!fileUri) {\n  throw new Error(\"No se obtuvo URI del archivo subido\");\n}\n\n// Prompt completo para generar rúbrica (del workflow original)\nconst prompt = `Rol del sistema\nSos un asistente experto en evaluación académica que convierte instrucciones de trabajos prácticos y exámenes (en PDF) en rúbricas JSON estandarizadas, completas y verificables.\n\nObjetivo\nA partir del contenido del PDF provisto, generá una rúbrica en JSON que describa con precisión cómo evaluar la entrega, incluyendo criterios, pesos, penalizaciones y metadatos. La salida debe ser un único objeto JSON válido (sin texto adicional).\n\nEntrada\n\nUn PDF de trabajo práctico, examen parcial o examen final (puede tener listas, consignas, tablas, consignas numeradas, etc.).\n\nEl PDF puede contener: objetivos, consignas, resultados de aprendizaje, formato de entrega, lenguaje/tecnología requerida, criterios de corrección, puntajes, notas y restricciones.\n\nSalida (SOLO JSON, sin comentarios)\n\nUn objeto que siga el esquema canónico de abajo.\n\nCumplí todas las reglas de \"Normas de salida\" y \"Validaciones\".\n\n... (prompt completo sin cambios) ...\n\n✔ mandatory_fail_conditions sólo si corresponde (sino []).`;\n\n// Construir body para Gemini generateContent\nconst body = {\n  generationConfig: {\n    temperature: 0.3,\n    topK: 40,\n    topP: 0.95,\n    responseMimeType: \"text/plain\"\n  },\n  contents: [\n    {\n      role: \"user\",\n      parts: [\n        {\n          fileData: {\n            fileUri: fileUri,\n            mimeType: \"application/pdf\"\n          }\n        },\n        {\n          text: prompt\n        }\n      ]\n    }\n  ]\n};\n\nreturn [\n  {\n    json: {\n      geminiBody: body,\n      api_key: apiKey\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ],
+      "id": "construir-body-gemini",
+      "name": "Construir Body Gemini"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={{ $json.api_key }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{ \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.geminiBody }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        900,
+        300
+      ],
+      "id": "gemini-generar-rubrica",
+      "name": "Gemini: Generar Rubrica",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 3,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extraer JSON de la respuesta (quitar ```json...```)\n\nconst geminiResponse = $input.first().json;\n\ntry {\n  // Verificar errores de Gemini\n  if (geminiResponse.error) {\n    const errorMsg = geminiResponse.error.message || JSON.stringify(geminiResponse.error);\n    const errorCode = geminiResponse.error.code || 'UNKNOWN';\n    \n    return [{ \n      json: { \n        success: false,\n        error: {\n          code: \"GEMINI_ERROR\",\n          message: `Error de Gemini [${errorCode}]: ${errorMsg}`,\n          retry: errorCode === 503 || errorCode === 500\n        }\n      } \n    }];\n  }\n\n  // Normalizar respuesta\n  let responseArray;\n  if (Array.isArray(geminiResponse)) {\n    responseArray = geminiResponse;\n  } else if (geminiResponse.body && Array.isArray(geminiResponse.body)) {\n    responseArray = geminiResponse.body;\n  } else {\n    responseArray = [geminiResponse];\n  }\n  \n  const candidate = responseArray[0]?.candidates?.[0];\n  if (!candidate) {\n    return [{ \n      json: { \n        success: false,\n        error: {\n          code: \"PARSING_ERROR\",\n          message: \"No se encontró candidate en respuesta\",\n          retry: true\n        }\n      } \n    }];\n  }\n  \n  const textContent = candidate.content?.parts?.[0]?.text;\n  if (!textContent) {\n    return [{ \n      json: { \n        success: false,\n        error: {\n          code: \"PARSING_ERROR\",\n          message: \"No se encontró texto en respuesta\",\n          retry: true\n        }\n      } \n    }];\n  }\n  \n  // Extraer JSON (puede venir envuelto en ```json...```)\n  let jsonText = textContent;\n  const match = textContent.match(/```json\\s*([\\s\\S]*?)```/i) || textContent.match(/```\\s*([\\s\\S]*?)```/);\n  if (match) {\n    jsonText = match[1].trim();\n  }\n  \n  // Parsear JSON\n  const rubricaCompleta = JSON.parse(jsonText);\n  \n  // Pasar al siguiente nodo para mapeo\n  return [{ json: { rubricaCompleta } }];\n  \n} catch (error) {\n  return [{ \n    json: { \n      success: false,\n      error: {\n        code: \"PARSING_ERROR\",\n        message: `Error al parsear JSON: ${error.message}`,\n        retry: false\n      }\n    } \n  }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ],
+      "id": "extraer-json",
+      "name": "Extraer JSON"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Mapear esquema complejo de Gemini al esquema simple del backend\n\nconst data = $input.first().json;\n\n// Si hay error, pasarlo directamente\nif (data.error) {\n  return [{ json: data }];\n}\n\nconst rubricaCompleta = data.rubricaCompleta;\n\nif (!rubricaCompleta || !rubricaCompleta.criteria) {\n  return [{ \n    json: { \n      success: false,\n      error: {\n        code: \"PARSING_ERROR\",\n        message: \"Rúbrica no contiene criterios\",\n        retry: false\n      }\n    } \n  }];\n}\n\n// Mapear criterios: weight (0-1) * 100 = puntaje_maximo\nconst criteriosSimples = rubricaCompleta.criteria.map(c => {\n  return {\n    nombre: c.name,\n    descripcion: c.description,\n    puntaje_maximo: Math.round(c.weight * 100)\n  };\n});\n\n// Verificar que sumen aproximadamente 100\nconst sumaTotal = criteriosSimples.reduce((sum, c) => sum + c.puntaje_maximo, 0);\nif (Math.abs(sumaTotal - 100) > 5) {\n  // Ajustar el último criterio para que sume exactamente 100\n  const diferencia = 100 - sumaTotal;\n  criteriosSimples[criteriosSimples.length - 1].puntaje_maximo += diferencia;\n}\n\n// Construir descripción desde metadata\nlet descripcion = \"\";\nif (rubricaCompleta.metadata?.source_pdf_title) {\n  descripcion = rubricaCompleta.metadata.source_pdf_title;\n} else if (rubricaCompleta.assessment_type) {\n  descripcion = `Evaluación tipo ${rubricaCompleta.assessment_type}`;\n}\n\n// Construir respuesta en formato backend\nconst respuesta = {\n  success: true,\n  rubrica: {\n    nombre_sugerido: rubricaCompleta.title || \"Rúbrica Generada\",\n    descripcion: descripcion,\n    puntaje_maximo: 100,\n    criterios: criteriosSimples\n  },\n  metadata: {\n    assessment_type: rubricaCompleta.assessment_type,\n    language_or_stack: rubricaCompleta.language_or_stack || [],\n    pages_parsed: rubricaCompleta.metadata?.pages_parsed || [],\n    rubrica_completa: rubricaCompleta // Incluir la rúbrica completa por si es útil\n  }\n};\n\nreturn [{ json: respuesta }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ],
+      "id": "mapear-esquema",
+      "name": "Mapear Esquema"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1560,
+        300
+      ],
+      "id": "responder-rubrica",
+      "name": "Responder Rubrica"
+    }
+  ],
+  "connections": {
+    "Webhook: Generar Rubrica": {
+      "main": [
+        [
+          {
+            "node": "Extraer Datos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Datos": {
+      "main": [
+        [
+          {
+            "node": "Decodificar PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decodificar PDF": {
+      "main": [
+        [
+          {
+            "node": "Gemini: Upload PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini: Upload PDF": {
+      "main": [
+        [
+          {
+            "node": "Construir Body Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Body Gemini": {
+      "main": [
+        [
+          {
+            "node": "Gemini: Generar Rubrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini: Generar Rubrica": {
+      "main": [
+        [
+          {
+            "node": "Extraer JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer JSON": {
+      "main": [
+        [
+          {
+            "node": "Mapear Esquema",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mapear Esquema": {
+      "main": [
+        [
+          {
+            "node": "Responder Rubrica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
