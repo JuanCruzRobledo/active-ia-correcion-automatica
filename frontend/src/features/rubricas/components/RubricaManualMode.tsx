@@ -1,11 +1,11 @@
 /**
- * Modo MANUAL del formulario de rúbricas
- * Con estructura jerárquica completa (criterios → subcriterios → evidencias)
+ * Modo MANUAL del formulario de rúbricas.
+ * Editor con estructura jerárquica completa (criterios → subcriterios → evidencias).
  */
 
 import { useState } from 'react';
 import { useFieldArray } from 'react-hook-form';
-import type { Control, UseFormRegister, FieldErrors, UseFormWatch, FieldValues } from 'react-hook-form';
+import type { Control, UseFormRegister, FieldErrors, UseFormWatch, UseFormSetValue } from 'react-hook-form';
 import { Plus, Trash2, GripVertical, ChevronDown, ChevronUp } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -15,23 +15,26 @@ import type { DragEndEvent } from '@dnd-kit/core';
 
 import { Button } from '@/shared/components/ui/Button';
 import { Input } from '@/shared/components/ui/Input';
+import { TagInput } from '@/shared/components/ui/TagInput';
 import { cn } from '@/shared/utils/cn';
 
 interface Props {
-  control: Control<FieldValues>;
-  register: UseFormRegister<FieldValues>;
-  errors: FieldErrors<FieldValues>;
-  watch: UseFormWatch<FieldValues>;
+  control: Control<any>;
+  register: UseFormRegister<any>;
+  errors: FieldErrors<any>;
+  watch: UseFormWatch<any>;
+  setValue: UseFormSetValue<any>;
 }
 
 interface CriterioItemProps {
   id: string;
   index: number;
-  control: Control<FieldValues>;
-  register: UseFormRegister<FieldValues>;
-  errors: FieldErrors<FieldValues>;
+  control: Control<any>;
+  register: UseFormRegister<any>;
+  errors: FieldErrors<any>;
   remove: (index: number) => void;
-  watch: UseFormWatch<FieldValues>;
+  watch: UseFormWatch<any>;
+  setValue: UseFormSetValue<any>;
 }
 
 function SortableCriterioItem({
@@ -42,6 +45,7 @@ function SortableCriterioItem({
   errors,
   remove,
   watch,
+  setValue,
 }: CriterioItemProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id });
@@ -52,15 +56,15 @@ function SortableCriterioItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const { fields: subcriteriosFields, append: appendSubcriterio, remove: removeSubcriterio } =
     useFieldArray({
       control,
-      name: `criterios_jerarquicos.${index}.subcriterios`,
+      name: `criterios.${index}.subcriterios`,
     });
 
-  const criterioErrors = errors?.criterios_jerarquicos?.[index];
+  const criterioErrors = (errors?.criterios as any)?.[index];
 
   return (
     <div
@@ -80,12 +84,12 @@ function SortableCriterioItem({
         </button>
 
         <span className="font-medium text-foreground">
-          Criterio {watch(`criterios_jerarquicos.${index}.id`) || `C${index + 1}`}
+          Criterio {watch(`criterios.${index}.id`) || `C${index + 1}`}
         </span>
 
         <div className="ml-auto flex items-center gap-2">
           <span className="text-sm text-muted-foreground">
-            Peso: {watch(`criterios_jerarquicos.${index}.peso`) || 0}%
+            Peso: {watch(`criterios.${index}.peso`) || 0}%
           </span>
           <button
             type="button"
@@ -110,14 +114,14 @@ function SortableCriterioItem({
           <div className="grid grid-cols-2 gap-3">
             <Input
               label="ID (ej: C1)"
-              {...register(`criterios_jerarquicos.${index}.id`)}
+              {...register(`criterios.${index}.id`)}
               error={criterioErrors?.id?.message}
               placeholder="C1"
             />
             <Input
               label="Peso (%)"
               type="number"
-              {...register(`criterios_jerarquicos.${index}.peso`, { valueAsNumber: true })}
+              {...register(`criterios.${index}.peso`, { valueAsNumber: true })}
               error={criterioErrors?.peso?.message}
               placeholder="30"
               min={1}
@@ -127,7 +131,7 @@ function SortableCriterioItem({
 
           <Input
             label="Nombre"
-            {...register(`criterios_jerarquicos.${index}.nombre`)}
+            {...register(`criterios.${index}.nombre`)}
             error={criterioErrors?.nombre?.message}
             placeholder="Funcionalidad del código"
           />
@@ -137,7 +141,7 @@ function SortableCriterioItem({
               Descripción
             </label>
             <textarea
-              {...register(`criterios_jerarquicos.${index}.descripcion`)}
+              {...register(`criterios.${index}.descripcion`)}
               className={cn(
                 'w-full px-3 py-2 border rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none',
                 criterioErrors?.descripcion ? 'border-destructive' : 'border-input'
@@ -162,7 +166,7 @@ function SortableCriterioItem({
                 size="sm"
                 onClick={() =>
                   appendSubcriterio({
-                    id: `${watch(`criterios_jerarquicos.${index}.id`)}.${subcriteriosFields.length + 1}`,
+                    id: `${watch(`criterios.${index}.id`)}.${subcriteriosFields.length + 1}`,
                     descripcion: '',
                     evidencias: [],
                   })
@@ -182,9 +186,9 @@ function SortableCriterioItem({
                   <div className="flex-1 space-y-3">
                     <Input
                       label="ID (ej: C1.1)"
-                      {...register(`criterios_jerarquicos.${index}.subcriterios.${subIdx}.id`)}
+                      {...register(`criterios.${index}.subcriterios.${subIdx}.id`)}
                       error={criterioErrors?.subcriterios?.[subIdx]?.id?.message}
-                      placeholder={`${watch(`criterios_jerarquicos.${index}.id`)}.${subIdx + 1}`}
+                      placeholder={`${watch(`criterios.${index}.id`)}.${subIdx + 1}`}
                     />
 
                     <div>
@@ -192,7 +196,7 @@ function SortableCriterioItem({
                         Descripción
                       </label>
                       <textarea
-                        {...register(`criterios_jerarquicos.${index}.subcriterios.${subIdx}.descripcion`)}
+                        {...register(`criterios.${index}.subcriterios.${subIdx}.descripcion`)}
                         className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                         rows={2}
                         placeholder="Qué se debe verificar..."
@@ -201,16 +205,20 @@ function SortableCriterioItem({
 
                     <div>
                       <label className="block text-sm font-medium text-foreground mb-1.5">
-                        Evidencias (una por línea)
+                        Evidencias
+                        <span className="text-xs text-muted-foreground ml-2">(checklist verificable por IA)</span>
                       </label>
-                      <textarea
-                        {...register(`criterios_jerarquicos.${index}.subcriterios.${subIdx}.evidencias`, {
-                          setValueAs: (v) => typeof v === 'string' ? v.split('\n').filter(Boolean) : v
-                        })}
-                        className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                        rows={3}
-                        placeholder="Evidencia 1&#10;Evidencia 2&#10;Evidencia 3"
+                      <TagInput
+                        value={watch(`criterios.${index}.subcriterios.${subIdx}.evidencias`) || []}
+                        onChange={(evidencias) => {
+                          setValue(`criterios.${index}.subcriterios.${subIdx}.evidencias`, evidencias);
+                        }}
+                        placeholder="Escribe una evidencia y presiona Enter..."
+                        maxTags={20}
                       />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Ej: "Archivo package.json existe", "Retorna código 201"
+                      </p>
                     </div>
                   </div>
 
@@ -237,7 +245,7 @@ function SortableCriterioItem({
   );
 }
 
-export function RubricaManualMode({ control, register, errors, watch }: Props) {
+export function RubricaManualMode({ control, register, errors, watch, setValue }: Props) {
   const {
     fields: criteriosFields,
     append: appendCriterio,
@@ -245,7 +253,7 @@ export function RubricaManualMode({ control, register, errors, watch }: Props) {
     move: moveCriterio,
   } = useFieldArray({
     control,
-    name: 'criterios_jerarquicos',
+    name: 'criterios',
   });
 
   const sensors = useSensors(
@@ -264,7 +272,7 @@ export function RubricaManualMode({ control, register, errors, watch }: Props) {
     }
   };
 
-  const criteriosJerarquicos = watch('criterios_jerarquicos') as Array<{ peso?: number }> | undefined;
+  const criteriosJerarquicos = watch('criterios') as Array<{ peso?: number }> | undefined;
   const sumaPesos = criteriosJerarquicos?.reduce(
     (sum: number, c) => sum + (c.peso || 0),
     0
@@ -313,6 +321,7 @@ export function RubricaManualMode({ control, register, errors, watch }: Props) {
               errors={errors}
               remove={removeCriterio}
               watch={watch}
+              setValue={setValue}
             />
           ))}
         </SortableContext>

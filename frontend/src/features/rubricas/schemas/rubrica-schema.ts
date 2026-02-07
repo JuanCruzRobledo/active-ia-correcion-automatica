@@ -1,6 +1,6 @@
 // features/rubricas/schemas/rubrica-schema.ts
 /**
- * Zod validation schemas for Rubricas V2.
+ * Zod validation schemas for Rubricas.
  *
  * Validates the structure of rubricas including:
  * - Sum of pesos = 100
@@ -14,7 +14,7 @@
 import { z } from 'zod';
 
 // ============================================================================
-// V2 Schema Validators
+// Schema Validators
 // ============================================================================
 
 export const subcriterioSchema = z.object({

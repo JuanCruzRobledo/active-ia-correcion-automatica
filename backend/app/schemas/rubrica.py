@@ -2,11 +2,11 @@
 """
 Rubrica schemas for Active-IA.
 
-Pydantic schemas for rubric (rubrica) management with hierarchical criteria structure V2.
+Pydantic schemas for rubric (rubrica) management with hierarchical criteria structure.
 
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 6
 Ref: docs/specs/06-MODELO-DATOS.md seccion 4.1
-Ref: docs/specs/Rubrica.md (V2 schema)
+Ref: docs/specs/Rubrica.md
 """
 
 from datetime import datetime
@@ -18,7 +18,7 @@ from app.models.enums import FuenteRubricaEnum, TipoRubricaEnum
 
 
 # ============================================================================
-# Schemas de Estructura V2 (Jerárquica con evidencias)
+# Schemas de Estructura de Criterios
 # ============================================================================
 
 
@@ -65,7 +65,7 @@ class Subcriterio(BaseModel):
 
 class Criterio(BaseModel):
     """
-    Criterio de evaluación dentro de una rúbrica V2.
+    Criterio de evaluación dentro de una rúbrica.
 
     Define un aspecto a evaluar con peso porcentual y subcriterios.
     """
@@ -184,7 +184,7 @@ class CondicionDesaprobacion(BaseModel):
 
 class CriteriosStructure(BaseModel):
     """
-    Estructura completa de una rúbrica V2.
+    Estructura completa de una rúbrica.
 
     Incluye información general, metadata flexible, criterios jerárquicos,
     penalizaciones y condiciones de desaprobación.
@@ -295,7 +295,7 @@ class RubricaBase(BaseModel):
 
 
 class RubricaCreate(RubricaBase):
-    """Schema for creating a new Rubrica V2."""
+    """Schema for creating a new Rubrica."""
 
     materia_id: int = Field(
         ...,
@@ -366,7 +366,7 @@ class RubricaCreate(RubricaBase):
 
 
 class RubricaUpdate(BaseModel):
-    """Schema for updating an existing Rubrica V2."""
+    """Schema for updating an existing Rubrica ."""
 
     titulo: str | None = Field(
         None,
@@ -423,7 +423,7 @@ class RubricaUpdate(BaseModel):
 
 
 class RubricaResponse(BaseModel):
-    """Schema for Rubrica V2 response with all fields."""
+    """Schema for Rubrica  response with all fields."""
 
     id: int
     materia_id: int
@@ -477,7 +477,7 @@ class RubricaDetailResponse(RubricaResponse):
 
 
 class RubricaListItem(BaseModel):
-    """Schema for Rubrica V2 list item with denormalized data."""
+    """Schema for Rubrica  list item with denormalized data."""
 
     id: int
     materia_id: int

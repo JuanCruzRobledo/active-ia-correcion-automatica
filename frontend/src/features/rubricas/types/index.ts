@@ -1,10 +1,9 @@
 // features/rubricas/types/index.ts
 /**
- * TypeScript types for Rubricas V2 feature.
+ * TypeScript types for Rubricas feature.
  *
  * Mirrors backend schemas from app/schemas/rubrica.py
- * Ref: docs/specs/Rubrica.md (V2 schema)
- * Ref: docs/PLAN-MIGRACION-RUBRICA-V2.md
+ * Ref: docs/specs/Rubrica.md
  */
 
 export type TipoRubrica =
@@ -19,7 +18,7 @@ export type TipoRubrica =
 export type FuenteRubrica = 'MANUAL' | 'IA';
 
 // ============================================================================
-// V2 Schema Types (Hierarchical)
+// Schema Types (Hierarchical)
 // ============================================================================
 
 /**
@@ -34,7 +33,7 @@ export interface Subcriterio {
 }
 
 /**
- * Criterio de evaluación V2.
+ * Criterio de evaluación.
  *
  * Define un aspecto a evaluar con peso porcentual y subcriterios.
  */
@@ -66,7 +65,7 @@ export interface CondicionDesaprobacion {
 }
 
 /**
- * Estructura completa de una rúbrica V2.
+ * Estructura completa de una rúbrica.
  *
  * Incluye información general, metadata flexible, criterios jerárquicos,
  * penalizaciones y condiciones de desaprobación.

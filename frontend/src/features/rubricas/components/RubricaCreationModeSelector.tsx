@@ -1,0 +1,55 @@
+import { cn } from '@/shared/utils/cn';
+import { CREATION_MODES } from '../constants/rubrica-constants';
+import type { CreationMode } from '../constants/rubrica-constants';
+
+interface Props {
+  creationMode: CreationMode;
+  setCreationMode: (mode: CreationMode) => void;
+}
+
+export function RubricaCreationModeSelector({ creationMode, setCreationMode }: Props) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-lg font-semibold">Modo de Creación</h3>
+      <div className="grid grid-cols-3 gap-3">
+        {CREATION_MODES.map((mode) => {
+          const Icon = mode.icon;
+          const isActive = creationMode === mode.id;
+          return (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => setCreationMode(mode.id)}
+              className={cn(
+                'flex flex-col items-center p-4 rounded-lg transition-colors',
+                isActive
+                  ? cn('border-2', mode.activeBorder, mode.activeBg)
+                  : 'border border-border bg-card hover:bg-muted'
+              )}
+            >
+              <Icon
+                className={cn('h-6 w-6 mb-2', isActive ? mode.activeText : 'text-muted-foreground')}
+              />
+              <span
+                className={cn(
+                  'text-sm font-medium',
+                  isActive ? mode.activeText : 'text-foreground'
+                )}
+              >
+                {mode.label}
+              </span>
+              <span
+                className={cn(
+                  'text-xs mt-0.5 text-center',
+                  isActive ? 'text-muted-foreground' : 'text-muted-foreground'
+                )}
+              >
+                {mode.description}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
