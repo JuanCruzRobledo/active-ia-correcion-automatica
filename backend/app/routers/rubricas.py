@@ -80,21 +80,27 @@ async def crear_rubrica(
     db: AsyncSession = Depends(get_db),
 ) -> RubricaResponse:
     """
-    Create a new rubrica.
+    Create a new rubrica V2.
 
     **Required fields:**
     - `materia_id`: ID of the materia
     - `tipo`: Rubrica type (TP, PARCIAL_1, PARCIAL_2, etc.)
-    - `nombre`: Rubrica name
+    - `titulo`: Rubrica title (e.g., "TP2 - API REST de Productos")
+    - `descripcion`: Detailed description
     - `numero`: Rubrica number (e.g., 1 for TP1)
     - `anio`: Academic year
-    - `criterios_json`: Criteria structure with puntaje_maximo=100
+    - `criterios_json`: Array of criterios (Criterio → Subcriterio → Evidencias)
+    - `metadata_json`: Flexible metadata (optional)
+    - `penalizaciones_json`: Penalizaciones (optional)
+    - `condiciones_desaprobacion_json`: Condiciones de desaprobación (optional)
 
     **Validation:**
     - Materia must exist and be active
     - Combination of materia + tipo + numero + anio must be unique
-    - Sum of criteria puntajes must equal 100
+    - Sum of criteria pesos must equal 100
     - Criteria IDs must be unique
+    - Each criterio must have at least one subcriterio
+    - Each subcriterio must have at least one evidencia
 
     **Authorization:** Admin only
     """
@@ -271,7 +277,7 @@ async def generar_rubrica_desde_pdf(
     require_admin(current_user)
 
     # Validate API Key is configured
-    if not current_user.api_key_encrypted:
+    if not current_user.gemini_api_key_encrypted:
         from fastapi import HTTPException
 
         raise HTTPException(
@@ -283,7 +289,7 @@ async def generar_rubrica_desde_pdf(
     ia_service = RubricaIAService()
     rubrica_data = await ia_service.generar_rubrica_desde_pdf(
         pdf_file=pdf_file,
-        api_key_encrypted=current_user.api_key_encrypted,
+        api_key_encrypted=current_user.gemini_api_key_encrypted,
         tipo_rubrica=tipo_rubrica,
     )
 

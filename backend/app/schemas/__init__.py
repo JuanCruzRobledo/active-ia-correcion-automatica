@@ -67,9 +67,10 @@ from app.schemas.materia import (
     MateriaUpdate,
 )
 from app.schemas.rubrica import (
-    CriterioBase,
+    CondicionDesaprobacion,
+    Criterio,
     CriteriosStructure,
-    NivelDesempeno,
+    Penalizacion,
     RubricaCreate,
     RubricaDetailResponse,
     RubricaDuplicar,
@@ -77,6 +78,7 @@ from app.schemas.rubrica import (
     RubricaListItem,
     RubricaResponse,
     RubricaUpdate,
+    Subcriterio,
 )
 from app.schemas.usuario import (
     ResetPasswordResponse,
@@ -125,8 +127,10 @@ __all__ = [
     "TutoresAssign",
     "TutoresResponse",
     # Rubrica
-    "NivelDesempeno",
-    "CriterioBase",
+    "Subcriterio",
+    "Criterio",
+    "Penalizacion",
+    "CondicionDesaprobacion",
     "CriteriosStructure",
     "RubricaCreate",
     "RubricaUpdate",

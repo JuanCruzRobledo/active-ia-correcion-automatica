@@ -315,7 +315,7 @@ export const EntregasPage = () => {
                 { value: '', label: 'Selecciona una rúbrica' },
                 ...(rubricasData?.items.map(r => ({
                   value: r.id.toString(),
-                  label: `${r.tipo} ${r.numero} - ${r.nombre}`
+                  label: `${r.tipo} ${r.numero} - ${r.titulo}`
                 })) || [])
               ]}
               disabled={!selectedComisionId || isLoadingRubricas}

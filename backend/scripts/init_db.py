@@ -21,6 +21,13 @@ from app.models.base import Base
 from app.models.usuario import Usuario
 from app.models.enums import RolEnum
 
+# Importar TODOS los modelos para que SQLAlchemy los registre
+from app.models.materia import Materia, CoordinadorMateria
+from app.models.comision import Comision, ComisionTutor
+from app.models.rubrica import Rubrica
+from app.models.entrega import Entrega, EntregaHistorial
+from app.models.correccion import Correccion
+
 
 async def init_db():
     """Inicializa la base de datos con datos mínimos."""
@@ -33,8 +40,14 @@ async def init_db():
         echo=True,
     )
 
-    # No crear tablas - Alembic ya las creó al iniciar el backend
-    print("ℹ️  Usando tablas creadas por Alembic...")
+    # RECREAR TODAS LAS TABLAS desde cero con el esquema actualizado
+    print("⚠️  BORRANDO todas las tablas existentes...")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+    print("✨ Creando tablas con esquema V2 actualizado...")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
     # Crear sesión
     async_session = sessionmaker(

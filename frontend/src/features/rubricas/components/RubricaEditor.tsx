@@ -1,24 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useForm, useFieldArray, type UseFormRegister } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Plus, Trash2, PenLine, FileText, Code, Upload } from 'lucide-react';
+import { PenLine, FileText, Code, Upload, Trash2 } from 'lucide-react';
 
 import { Modal } from '@/shared/components/ui/Modal';
 import { Button } from '@/shared/components/ui/Button';
@@ -30,6 +14,7 @@ import { cn } from '@/shared/utils/cn';
 import { useCreateRubrica, useUpdateRubrica, useGenerarRubricaDesdePDF } from '../hooks/useRubricas';
 import { useMaterias } from '@/features/materias/hooks';
 import type { Rubrica, TipoRubrica } from '../types';
+import { RubricaManualMode } from './RubricaManualMode';
 
 // ========== SCHEMAS ==========
 
@@ -38,6 +23,21 @@ const criterioSchema = z.object({
   nombre: z.string().min(1, 'Nombre requerido').max(100),
   descripcion: z.string().min(10, 'Mínimo 10 caracteres').max(500),
   puntaje_maximo: z.number().min(1, 'Mínimo 1').max(100, 'Máximo 100'),
+});
+
+const subcriterioSchema = z.object({
+  id: z.string().min(1, 'ID requerido'),
+  descripcion: z.string().min(1, 'Descripción requerida'),
+  evidencias: z.array(z.string()),
+});
+
+const criterioJerarquicoSchema = z.object({
+  id: z.string().min(1, 'ID requerido'),
+  nombre: z.string().min(1, 'Nombre requerido').max(100),
+  descripcion: z.string().min(1, 'Descripción requerida').max(500),
+  peso: z.number().min(1, 'Mínimo 1').max(100, 'Máximo 100'),
+  instrucciones_puntuacion: z.string().optional(),
+  subcriterios: z.array(subcriterioSchema).min(1, 'Debe haber al menos un subcriterio'),
 });
 
 const rubricaFormSchema = z.object({
@@ -50,6 +50,7 @@ const rubricaFormSchema = z.object({
     .array(criterioSchema)
     .min(1, 'Debe haber al menos un criterio')
     .max(20, 'Máximo 20 criterios'),
+  criterios_jerarquicos: z.array(criterioJerarquicoSchema).optional(),
 }).refine(
   (data) => {
     const suma = data.criterios.reduce((acc, c) => acc + c.puntaje_maximo, 0);
@@ -62,110 +63,6 @@ const rubricaFormSchema = z.object({
 );
 
 type RubricaFormData = z.infer<typeof rubricaFormSchema>;
-
-// ========== SORTABLE CRITERIO ITEM ==========
-
-interface CriterioItemProps {
-  id: string;
-  index: number;
-  register: UseFormRegister<RubricaFormData>;
-  onRemove: (index: number) => void;
-  errors?: {
-    nombre?: { message?: string };
-    descripcion?: { message?: string };
-    puntaje_maximo?: { message?: string };
-  };
-}
-
-function CriterioItem({
-  id,
-  index,
-  register,
-  onRemove,
-  errors,
-}: CriterioItemProps) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className="flex gap-3 p-4 bg-card border border-border rounded-lg"
-    >
-      {/* Drag Handle */}
-      <button
-        type="button"
-        className="flex-shrink-0 mt-2 text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing"
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-5 w-5" />
-      </button>
-
-      {/* Fields */}
-      <div className="flex-1 space-y-3">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="md:col-span-2">
-            <Input
-              label="Nombre del criterio"
-              {...register(`criterios.${index}.nombre`)}
-              error={errors?.nombre?.message}
-              placeholder="ej: Funcionalidad correcta"
-            />
-          </div>
-          <div>
-            <Input
-              label="Puntaje"
-              type="number"
-              min={1}
-              max={100}
-              {...register(`criterios.${index}.puntaje_maximo`, { valueAsNumber: true })}
-              error={errors?.puntaje_maximo?.message}
-              placeholder="40"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-foreground mb-1.5">
-            Descripción
-          </label>
-          <textarea
-            {...register(`criterios.${index}.descripcion`)}
-            className="w-full px-3 py-2 border border-input rounded-md bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-            rows={2}
-            placeholder="¿Qué se evalúa en este criterio?"
-          />
-          {errors?.descripcion?.message && (
-            <p className="mt-1 text-sm text-destructive">{errors.descripcion.message}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Remove Button */}
-      <button
-        type="button"
-        onClick={() => onRemove(index)}
-        className="flex-shrink-0 mt-2 text-muted-foreground hover:text-destructive"
-      >
-        <Trash2 className="h-5 w-5" />
-      </button>
-    </div>
-  );
-}
 
 // ========== CONSTANTS ==========
 
@@ -237,15 +134,18 @@ export function RubricaEditor({
       ? {
         materia_id: rubrica.materia_id,
         tipo: rubrica.tipo,
-        nombre: rubrica.nombre,
+        nombre: rubrica.titulo, // V2 usa "titulo"
         numero: rubrica.numero,
         anio: rubrica.anio,
-        criterios: rubrica.criterios_json.criterios.map((c) => ({
-          id: c.id,
+        // Adaptar V2 → V1: Convertir criterios jerárquicos a planos (para modo PDF/JSON)
+        criterios: rubrica.criterios_json.map((c) => ({
+          id: crypto.randomUUID().replace(/-/g, '').slice(0, 20),
           nombre: c.nombre,
           descripcion: c.descripcion,
-          puntaje_maximo: c.puntaje_maximo,
+          puntaje_maximo: c.peso, // V2 usa "peso" en lugar de "puntaje_maximo"
         })),
+        // Criterios jerárquicos para modo manual
+        criterios_jerarquicos: rubrica.criterios_json,
       }
       : {
         materia_id: materiaId || 0,
@@ -261,15 +161,38 @@ export function RubricaEditor({
             puntaje_maximo: 100,
           },
         ],
+        criterios_jerarquicos: [
+          {
+            id: 'C1',
+            nombre: '',
+            descripcion: '',
+            peso: 100,
+            instrucciones_puntuacion: '',
+            subcriterios: [
+              {
+                id: 'C1.1',
+                descripcion: '',
+                evidencias: [],
+              },
+            ],
+          },
+        ],
       },
   });
 
-  const { fields, append, remove, move, replace } = useFieldArray({
+  const { replace } = useFieldArray({
     control,
     name: 'criterios',
   });
 
+  // Fields para modo manual (estructura jerárquica)
+  useFieldArray({
+    control,
+    name: 'criterios_jerarquicos',
+  });
+
   const criterios = watch('criterios');
+  const criteriosJerarquicos = watch('criterios_jerarquicos');
 
   // Reset modal state on open
   useEffect(() => {
@@ -286,42 +209,40 @@ export function RubricaEditor({
           numero: 1,
           anio: new Date().getFullYear(),
           criterios: [{ id: crypto.randomUUID().replace(/-/g, '').slice(0, 20), nombre: '', descripcion: '', puntaje_maximo: 100 }],
+          criterios_jerarquicos: [
+            {
+              id: 'C1',
+              nombre: '',
+              descripcion: '',
+              peso: 100,
+              instrucciones_puntuacion: '',
+              subcriterios: [
+                {
+                  id: 'C1.1',
+                  descripcion: '',
+                  evidencias: [],
+                },
+              ],
+            },
+          ],
         });
       }
     }
   }, [isOpen]);
 
-  // Calcular suma de puntajes
+  // Calcular suma de puntajes según el modo
   useEffect(() => {
-    const suma = criterios.reduce((acc, c) => acc + (c.puntaje_maximo || 0), 0);
-    setSumaPuntajes(suma);
-  }, [criterios]);
-
-  // Drag and drop sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = fields.findIndex((field) => field.id === active.id);
-      const newIndex = fields.findIndex((field) => field.id === over.id);
-      move(oldIndex, newIndex);
+    if (creationMode === 'manual') {
+      // En modo manual, usar criterios_jerarquicos (peso)
+      const jerarquicos = (criteriosJerarquicos || []) as Array<{ peso?: number }>;
+      const suma = jerarquicos.reduce((acc, c) => acc + (c.peso || 0), 0);
+      setSumaPuntajes(suma);
+    } else {
+      // En modos PDF/JSON, usar criterios (puntaje_maximo)
+      const suma = criterios.reduce((acc, c) => acc + (c.puntaje_maximo || 0), 0);
+      setSumaPuntajes(suma);
     }
-  };
-
-  const handleAddCriterio = () => {
-    append({
-      id: crypto.randomUUID().replace(/-/g, '').slice(0, 20),
-      nombre: '',
-      descripcion: '',
-      puntaje_maximo: 0,
-    });
-  };
+  }, [criterios, criteriosJerarquicos, creationMode]);
 
   // ── JSON handlers ──
   const handleJSONFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -385,25 +306,34 @@ export function RubricaEditor({
     console.log('🟢 onSubmit disparado', data);
 
     try {
-      const criterios_json = {
-        puntaje_maximo: 100,
-        criterios: data.criterios.map((c) => ({
-          id: c.id,
-          nombre: c.nombre,
-          descripcion: c.descripcion,
-          puntaje_maximo: c.puntaje_maximo,
-        })),
-      };
+      // Usar criterios_jerarquicos si están disponibles (modo manual V2), sino adaptar V1 → V2
+      const criterios_jerarquicos = data.criterios_jerarquicos || data.criterios.map((c, idx) => ({
+        id: `C${idx + 1}`,
+        nombre: c.nombre,
+        descripcion: c.descripcion,
+        peso: c.puntaje_maximo, // peso en % = puntaje en V1
+        instrucciones_puntuacion: '',
+        subcriterios: [
+          {
+            id: `C${idx + 1}.1`,
+            descripcion: c.descripcion,
+            evidencias: ['Cumple con los requisitos especificados'],
+          }
+        ],
+      }));
 
-      console.log('📦 Payload criterios_json:', criterios_json);
+      console.log('📦 Payload V2:', criterios_jerarquicos);
 
       if (isEditing) {
         console.log('✏️ Update rubrica', rubrica.id);
         await updateMutation.mutateAsync({
           id: rubrica.id,
           data: {
-            nombre: data.nombre,
-            criterios_json,
+            titulo: data.nombre, // V2 usa "titulo" no "nombre"
+            descripcion: data.nombre, // Usar nombre como descripción temporal
+            criterios_json: criterios_jerarquicos,
+            penalizaciones_json: [],
+            condiciones_desaprobacion_json: [],
           },
         });
       } else {
@@ -411,10 +341,16 @@ export function RubricaEditor({
         await createMutation.mutateAsync({
           materia_id: data.materia_id,
           tipo: data.tipo,
-          nombre: data.nombre,
           numero: data.numero,
           anio: data.anio,
-          criterios_json,
+          titulo: data.nombre, // V2 usa "titulo" no "nombre"
+          descripcion: data.nombre, // Usar nombre como descripción temporal
+          puntaje_maximo: 100,
+          metadata_json: {},
+          criterios_json: criterios_jerarquicos,
+          penalizaciones_json: [],
+          condiciones_desaprobacion_json: [],
+          fuente: 'MANUAL',
         });
       }
 
@@ -438,7 +374,6 @@ export function RubricaEditor({
 
   const isSubmitting = createMutation.isPending || updateMutation.isPending;
   const isGeneratingPDF = generarPDFMutation.isPending;
-  const puntajeFaltante = 100 - sumaPuntajes;
 
   return (
     <Modal
@@ -557,68 +492,12 @@ export function RubricaEditor({
 
         {/* ── Manual: Editor de Criterios ── */}
         {creationMode === 'manual' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Criterios de Evaluación</h3>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Total:</span>
-                <span
-                  className={`text-lg font-bold ${sumaPuntajes === 100
-                    ? 'text-success'
-                    : sumaPuntajes > 100
-                      ? 'text-destructive'
-                      : 'text-warning'
-                    }`}
-                >
-                  {sumaPuntajes}/100
-                </span>
-                {puntajeFaltante !== 0 && (
-                  <span className="text-sm text-muted-foreground">
-                    ({puntajeFaltante > 0 ? `faltan ${puntajeFaltante}` : `sobran ${Math.abs(puntajeFaltante)}`})
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {errors.criterios && typeof errors.criterios.message === 'string' && (
-              <p className="text-sm text-destructive">{errors.criterios.message}</p>
-            )}
-
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={fields.map((f) => f.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <div className="space-y-3">
-                  {fields.map((field, index) => (
-                    <CriterioItem
-                      key={field.id}
-                      id={field.id}
-                      index={index}
-                      register={register}
-                      onRemove={remove}
-                      errors={errors.criterios?.[index] as CriterioItemProps['errors']}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleAddCriterio}
-              disabled={fields.length >= 20}
-              className="w-full"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Agregar Criterio
-            </Button>
-          </div>
+          <RubricaManualMode
+            control={control}
+            register={register}
+            errors={errors}
+            watch={watch}
+          />
         )}
 
         {/* ── PDF Mode ── */}

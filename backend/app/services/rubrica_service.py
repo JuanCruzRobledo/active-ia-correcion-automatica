@@ -39,44 +39,36 @@ class RubricaService:
         self.rubrica_repo = RubricaRepository(db)
         self.materia_repo = MateriaRepository(db)
 
-    def _validar_criterios_json(self, criterios: dict) -> None:
+    def _validar_criterios_v2(self, criterios_list: list) -> None:
         """
-        Valida la estructura de criterios_json.
+        Valida la estructura de criterios V2.
 
         Verifica:
-        - puntaje_maximo == 100
-        - suma de puntajes de criterios == puntaje_maximo
+        - Existe al menos un criterio
+        - Suma de pesos == 100
         - IDs de criterios únicos
-        - niveles con puntajes válidos
+        - Cada criterio tiene subcriterios
+        - Cada subcriterio tiene evidencias
 
         Args:
-            criterios: Diccionario con estructura de criterios.
+            criterios_list: Lista de criterios V2.
 
         Raises:
             HTTPException 400: Si la validación falla.
         """
-        # Validar puntaje máximo
-        puntaje_maximo = criterios.get("puntaje_maximo")
-        if puntaje_maximo != 100:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El puntaje máximo de la rúbrica debe ser exactamente 100",
-            )
-
         # Validar que existan criterios
-        criterios_list = criterios.get("criterios", [])
         if not criterios_list:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La rúbrica debe tener al menos un criterio",
             )
 
-        # Validar suma de puntajes
-        suma = sum(c.get("puntaje_maximo", 0) for c in criterios_list)
-        if suma != puntaje_maximo:
+        # Validar suma de pesos
+        suma = sum(c.get("peso", 0) for c in criterios_list)
+        if suma != 100:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"La suma de puntajes de criterios ({suma}) debe ser igual al puntaje máximo ({puntaje_maximo})",
+                detail=f"La suma de pesos de criterios ({suma}) debe ser exactamente 100",
             )
 
         # Validar IDs únicos
@@ -87,22 +79,26 @@ class RubricaService:
                 detail="Los IDs de criterios deben ser únicos",
             )
 
-        # Validar niveles de desempeño
+        # Validar que cada criterio tenga subcriterios con evidencias
         for criterio in criterios_list:
-            niveles = criterio.get("niveles") or []
-            criterio_puntaje_max = criterio.get("puntaje_maximo", 0)
+            subcriterios = criterio.get("subcriterios", [])
+            if not subcriterios:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"El criterio {criterio.get('id')} debe tener al menos un subcriterio",
+                )
 
-            for nivel in niveles:
-                nivel_puntaje = nivel.get("puntaje", 0)
-                if nivel_puntaje > criterio_puntaje_max:
+            for subcriterio in subcriterios:
+                evidencias = subcriterio.get("evidencias", [])
+                if not evidencias:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"El puntaje del nivel ({nivel_puntaje}) no puede exceder el puntaje máximo del criterio ({criterio_puntaje_max})",
+                        detail=f"El subcriterio {subcriterio.get('id')} debe tener al menos una evidencia",
                     )
 
     async def crear_rubrica(self, data: RubricaCreate) -> RubricaResponse:
         """
-        Create a new rubrica.
+        Create a new rubrica V2.
 
         Args:
             data: Rubrica creation data.
@@ -113,7 +109,7 @@ class RubricaService:
         Raises:
             HTTPException 404: Materia not found.
             HTTPException 409: Rubrica with same materia+tipo+numero+anio exists.
-            HTTPException 400: Invalid criterios_json structure.
+            HTTPException 400: Invalid estructura V2.
         """
         # Validate materia exists
         materia = await self.materia_repo.get_active_by_id(data.materia_id)
@@ -135,20 +131,24 @@ class RubricaService:
                 detail="Ya existe una rúbrica con ese tipo y número para esta materia y año",
             )
 
-        # Validate criterios_json structure
-        # Note: Pydantic already validates via CriteriosStructure,
+        # Validate criterios V2 structure
+        # Note: Pydantic already validates via RubricaCreate validator,
         # but we double-check for safety
-        criterios_dict = data.criterios_json.model_dump()
-        self._validar_criterios_json(criterios_dict)
+        self._validar_criterios_v2(data.criterios_json)
 
-        # Create rubrica
+        # Create rubrica V2
         rubrica = Rubrica(
             materia_id=data.materia_id,
             tipo=data.tipo,
-            nombre=data.nombre,
             numero=data.numero,
             anio=data.anio,
-            criterios_json=criterios_dict,
+            titulo=data.titulo,
+            descripcion=data.descripcion,
+            puntaje_maximo=data.puntaje_maximo,
+            metadata_json=data.metadata_json,
+            criterios_json=data.criterios_json,
+            penalizaciones_json=data.penalizaciones_json,
+            condiciones_desaprobacion_json=data.condiciones_desaprobacion_json,
             fuente=data.fuente,
             archivo_original=data.archivo_original,
             activa=True,
@@ -197,13 +197,8 @@ class RubricaService:
         # Build list items with counts
         items = []
         for rubrica in rubricas:
-            criterios_data = rubrica.criterios_json or {}
-
-            # Extract puntaje_maximo from criterios_json
-            puntaje_maximo = criterios_data.get("puntaje_maximo", 100)
-
-            # Count criterios
-            criterios = criterios_data.get("criterios", [])
+            # Count criterios (V2: list of criterios)
+            criterios = rubrica.criterios_json or []
             num_criterios = len(criterios)
 
             # Count entregas
@@ -220,10 +215,10 @@ class RubricaService:
                     materia_nombre=rubrica.materia.nombre,
                     materia_codigo=rubrica.materia.codigo,
                     tipo=rubrica.tipo,
-                    nombre=rubrica.nombre,
+                    titulo=rubrica.titulo,
                     numero=rubrica.numero,
                     anio=rubrica.anio,
-                    puntaje_maximo=puntaje_maximo,
+                    puntaje_maximo=rubrica.puntaje_maximo,
                     num_criterios=num_criterios,
                     num_entregas=num_entregas,
                     activa=rubrica.activa,
@@ -273,10 +268,15 @@ class RubricaService:
             id=rubrica.id,
             materia_id=rubrica.materia_id,
             tipo=rubrica.tipo,
-            nombre=rubrica.nombre,
             numero=rubrica.numero,
             anio=rubrica.anio,
+            titulo=rubrica.titulo,
+            descripcion=rubrica.descripcion,
+            puntaje_maximo=rubrica.puntaje_maximo,
+            metadata_json=rubrica.metadata_json,
             criterios_json=rubrica.criterios_json,
+            penalizaciones_json=rubrica.penalizaciones_json,
+            condiciones_desaprobacion_json=rubrica.condiciones_desaprobacion_json,
             fuente=rubrica.fuente,
             archivo_original=rubrica.archivo_original,
             activa=rubrica.activa,
@@ -292,7 +292,7 @@ class RubricaService:
         data: RubricaUpdate,
     ) -> RubricaResponse:
         """
-        Update an existing rubrica.
+        Update an existing rubrica V2.
 
         Args:
             rubrica_id: Rubrica's database ID.
@@ -303,7 +303,7 @@ class RubricaService:
 
         Raises:
             HTTPException 404: Rubrica not found.
-            HTTPException 400: Invalid criterios_json structure.
+            HTTPException 400: Invalid estructura V2.
         """
         rubrica = await self.rubrica_repo.get_by_id(rubrica_id)
 
@@ -314,14 +314,25 @@ class RubricaService:
             )
 
         # Update fields
-        if data.nombre is not None:
-            rubrica.nombre = data.nombre
+        if data.titulo is not None:
+            rubrica.titulo = data.titulo
+
+        if data.descripcion is not None:
+            rubrica.descripcion = data.descripcion
+
+        if data.metadata_json is not None:
+            rubrica.metadata_json = data.metadata_json
 
         if data.criterios_json is not None:
-            # Validate new criterios_json
-            criterios_dict = data.criterios_json.model_dump()
-            self._validar_criterios_json(criterios_dict)
-            rubrica.criterios_json = criterios_dict
+            # Validate new criterios V2
+            self._validar_criterios_v2(data.criterios_json)
+            rubrica.criterios_json = data.criterios_json
+
+        if data.penalizaciones_json is not None:
+            rubrica.penalizaciones_json = data.penalizaciones_json
+
+        if data.condiciones_desaprobacion_json is not None:
+            rubrica.condiciones_desaprobacion_json = data.condiciones_desaprobacion_json
 
         updated_rubrica = await self.rubrica_repo.update(rubrica)
 
@@ -419,16 +430,21 @@ class RubricaService:
                 detail=f"Ya existe una rúbrica con ese tipo y número para el año {data.nuevo_anio}",
             )
 
-        # Create new rubrica (duplicate)
-        nuevo_nombre = data.nuevo_nombre if data.nuevo_nombre else rubrica_original.nombre
+        # Create new rubrica V2 (duplicate)
+        nuevo_titulo = data.nuevo_titulo if data.nuevo_titulo else rubrica_original.titulo
 
         rubrica_nueva = Rubrica(
             materia_id=rubrica_original.materia_id,
             tipo=rubrica_original.tipo,
-            nombre=nuevo_nombre,
             numero=rubrica_original.numero,
             anio=data.nuevo_anio,
-            criterios_json=rubrica_original.criterios_json.copy(),  # Deep copy
+            titulo=nuevo_titulo,
+            descripcion=rubrica_original.descripcion,
+            puntaje_maximo=rubrica_original.puntaje_maximo,
+            metadata_json=rubrica_original.metadata_json.copy() if rubrica_original.metadata_json else {},
+            criterios_json=rubrica_original.criterios_json.copy() if rubrica_original.criterios_json else [],
+            penalizaciones_json=rubrica_original.penalizaciones_json.copy() if rubrica_original.penalizaciones_json else [],
+            condiciones_desaprobacion_json=rubrica_original.condiciones_desaprobacion_json.copy() if rubrica_original.condiciones_desaprobacion_json else [],
             fuente=rubrica_original.fuente,
             archivo_original=rubrica_original.archivo_original,
             activa=True,

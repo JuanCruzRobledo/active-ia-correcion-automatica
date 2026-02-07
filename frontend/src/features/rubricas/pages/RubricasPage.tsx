@@ -157,10 +157,10 @@ export const RubricasPage = () => {
     { value: 'todas', label: 'Todas' },
   ];
 
-  // Client-side filter by nombre
+  // Client-side filter by titulo
   const rubricas = (data?.items || []).filter((rubrica) =>
     searchNombre
-      ? rubrica.nombre.toLowerCase().includes(searchNombre.toLowerCase())
+      ? rubrica.titulo.toLowerCase().includes(searchNombre.toLowerCase())
       : true
   );
 
@@ -199,7 +199,7 @@ export const RubricasPage = () => {
       header: 'Nombre',
       render: (rubrica) => (
         <div>
-          <div className="font-medium text-foreground">{rubrica.nombre}</div>
+          <div className="font-medium text-foreground">{rubrica.titulo}</div>
           <div className="text-xs text-muted-foreground">
             #{rubrica.numero} - {rubrica.anio}
           </div>
@@ -456,7 +456,6 @@ export const RubricasPage = () => {
       <RubricaEditor
         isOpen={showForm}
         onClose={handleCloseForm}
-        materiaId={filters.materia_id}
         rubrica={editingRubrica}
       />
     </div>

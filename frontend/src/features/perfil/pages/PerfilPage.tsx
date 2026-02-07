@@ -231,7 +231,7 @@ export const PerfilPage = () => {
                 encriptada.
               </p>
               <a
-                href="https://ai.google.dev"
+                href="https://aistudio.google.com/api-keys"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-accent hover:underline"

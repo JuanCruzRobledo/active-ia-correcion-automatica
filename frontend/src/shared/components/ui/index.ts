@@ -42,3 +42,9 @@ export type { RadioProps } from './Radio';
 
 export { Alert } from './Alert';
 export type { AlertProps } from './Alert';
+
+export { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './Accordion';
+
+export { TagInput } from './TagInput';
+
+export { KeyValueInput } from './KeyValueInput';
