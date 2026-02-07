@@ -144,18 +144,17 @@ export const useGenerarRubricaDesdePDF = () => {
 
   return useMutation({
     mutationFn: ({
-      materiaId,
       tipo,
-      anio,
       file,
     }: {
-      materiaId: number;
+      materiaId?: number; // Optional params kept for backward compatibility
       tipo: string;
-      anio: number;
+      anio?: number; // Optional params kept for backward compatibility
       file: File;
-    }) => rubricasService.generarDesdePDF(materiaId, tipo, anio, file),
+    }) => rubricasService.generarDesdePDF(tipo, file),
     onSuccess: () => {
-      // Invalidate all rubrica lists to show the new rubrica
+      // Note: The backend returns suggested criteria, not a saved rubrica
+      // The component should handle creating the actual rubrica after review
       queryClient.invalidateQueries({ queryKey: rubricasKeys.lists() });
     },
   });

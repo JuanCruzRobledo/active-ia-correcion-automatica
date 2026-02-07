@@ -1,10 +1,10 @@
 // features/rubricas/types/index.ts
 /**
- * TypeScript types for Rubricas feature.
+ * TypeScript types for Rubricas V2 feature.
  *
  * Mirrors backend schemas from app/schemas/rubrica.py
- * Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 6
- * Ref: docs/specs/06-MODELO-DATOS.md seccion 3.6
+ * Ref: docs/specs/Rubrica.md (V2 schema)
+ * Ref: docs/PLAN-MIGRACION-RUBRICA-V2.md
  */
 
 export type TipoRubrica =
@@ -18,23 +18,72 @@ export type TipoRubrica =
 
 export type FuenteRubrica = 'MANUAL' | 'IA';
 
-export interface NivelDesempeno {
-  puntaje: number;
+// ============================================================================
+// V2 Schema Types (Hierarchical)
+// ============================================================================
+
+/**
+ * Subcriterio dentro de un criterio.
+ *
+ * Representa un aspecto específico a evaluar con evidencias verificables.
+ */
+export interface Subcriterio {
+  id: string; // Format: "C1.1", "C2.3"
   descripcion: string;
+  evidencias: string[]; // Checklist de evidencias para la IA
 }
 
+/**
+ * Criterio de evaluación V2.
+ *
+ * Define un aspecto a evaluar con peso porcentual y subcriterios.
+ */
 export interface Criterio {
-  id: string;
+  id: string; // Format: "C1", "C2"
   nombre: string;
   descripcion: string;
-  puntaje_maximo: number;
-  niveles?: NivelDesempeno[];
+  peso: number; // Peso en % (suma total = 100)
+  instrucciones_puntuacion?: string;
+  subcriterios: Subcriterio[];
 }
 
-export interface CriteriosStructure {
-  puntaje_maximo: number;
-  criterios: Criterio[];
+/**
+ * Penalización que se puede aplicar a una evaluación.
+ */
+export interface Penalizacion {
+  id: string; // Format: "P1", "P2"
+  descripcion: string;
+  descuento_porcentaje: number; // 0-100
 }
+
+/**
+ * Condición automática de desaprobación.
+ */
+export interface CondicionDesaprobacion {
+  id: string; // Format: "CD1", "CD2"
+  condicion: string;
+  nota_final: number; // 0-100
+}
+
+/**
+ * Estructura completa de una rúbrica V2.
+ *
+ * Incluye información general, metadata flexible, criterios jerárquicos,
+ * penalizaciones y condiciones de desaprobación.
+ */
+export interface CriteriosStructure {
+  titulo: string;
+  descripcion: string;
+  puntaje_maximo: number; // Siempre 100
+  metadata: Record<string, any>; // Flexible: materia, carrera, lenguaje, framework, etc.
+  criterios: Criterio[];
+  penalizaciones: Penalizacion[];
+  condiciones_desaprobacion: CondicionDesaprobacion[];
+}
+
+// ============================================================================
+// Rubrica Entity Types
+// ============================================================================
 
 export interface MateriaInfo {
   id: number;
@@ -46,10 +95,15 @@ export interface Rubrica {
   id: number;
   materia_id: number;
   tipo: TipoRubrica;
-  nombre: string;
   numero: number;
   anio: number;
-  criterios_json: CriteriosStructure;
+  titulo: string;
+  descripcion: string;
+  puntaje_maximo: number;
+  metadata_json: Record<string, any>;
+  criterios_json: Criterio[];
+  penalizaciones_json: Penalizacion[];
+  condiciones_desaprobacion_json: CondicionDesaprobacion[];
   fuente: FuenteRubrica;
   archivo_original: string | null;
   activa: boolean;
@@ -68,7 +122,7 @@ export interface RubricaListItem {
   materia_nombre: string;
   materia_codigo: string;
   tipo: TipoRubrica;
-  nombre: string;
+  titulo: string;
   numero: number;
   anio: number;
   puntaje_maximo: number;
@@ -85,25 +139,38 @@ export interface RubricaList {
   per_page: number;
 }
 
+// ============================================================================
+// Request/Form Types
+// ============================================================================
+
 export interface RubricaCreate {
   materia_id: number;
   tipo: TipoRubrica;
-  nombre: string;
   numero: number;
   anio: number;
-  criterios_json: CriteriosStructure;
+  titulo: string;
+  descripcion: string;
+  puntaje_maximo?: number; // Default 100
+  metadata_json?: Record<string, any>;
+  criterios_json: Criterio[];
+  penalizaciones_json?: Penalizacion[];
+  condiciones_desaprobacion_json?: CondicionDesaprobacion[];
   fuente?: FuenteRubrica;
   archivo_original?: string;
 }
 
 export interface RubricaUpdate {
-  nombre?: string;
-  criterios_json?: CriteriosStructure;
+  titulo?: string;
+  descripcion?: string;
+  metadata_json?: Record<string, any>;
+  criterios_json?: Criterio[];
+  penalizaciones_json?: Penalizacion[];
+  condiciones_desaprobacion_json?: CondicionDesaprobacion[];
 }
 
 export interface RubricaDuplicar {
   nuevo_anio: number;
-  nuevo_nombre?: string;
+  nuevo_titulo?: string;
 }
 
 export interface RubricasFilters {

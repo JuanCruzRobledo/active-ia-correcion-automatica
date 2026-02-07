@@ -3,11 +3,12 @@
 Rubrica model for Active-IA.
 
 Ref: docs/specs/06-MODELO-DATOS.md seccion 3.6
+Ref: docs/specs/Rubrica.md (V2 schema)
 """
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Enum as SQLEnum, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Enum as SQLEnum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,29 +22,18 @@ if TYPE_CHECKING:
 
 class Rubrica(Base, TimestampMixin):
     """
-    Rúbrica de evaluación.
+    Rúbrica de evaluación V2.
 
-    Define los criterios de evaluación para un trabajo/examen.
+    Define los criterios de evaluación para un trabajo/examen con estructura jerárquica.
     Las rúbricas pertenecen a una materia y son compartidas por
     todas las comisiones del mismo año académico.
 
-    Estructura de criterios_json:
-    {
-        "puntaje_maximo": 100,
-        "criterios": [
-            {
-                "id": "c1",
-                "nombre": "Funcionalidad correcta",
-                "descripcion": "El programa realiza las operaciones solicitadas",
-                "puntaje_maximo": 40,
-                "niveles": [
-                    {"puntaje": 40, "descripcion": "Excelente"},
-                    {"puntaje": 30, "descripcion": "Bueno"},
-                    ...
-                ]
-            }
-        ]
-    }
+    Estructura V2 (ver docs/specs/Rubrica.md):
+    - Campos estructurados: titulo, descripcion, puntaje_maximo
+    - Metadata flexible (JSONB): materia, carrera, lenguaje, framework, etc.
+    - Criterios jerárquicos (JSONB): Criterio → Subcriterio → Evidencias
+    - Penalizaciones (JSONB): descuentos por incumplimientos
+    - Condiciones de desaprobación (JSONB): reglas automáticas de nota final
     """
 
     __tablename__ = "rubricas"
@@ -58,13 +48,54 @@ class Rubrica(Base, TimestampMixin):
         SQLEnum(TipoRubricaEnum, name="tiporubricaenum", create_type=True),
         nullable=False,
     )
-    nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     numero: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     anio: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    criterios_json: Mapped[dict[str, Any]] = mapped_column(
+
+    # ===== Campos V2 =====
+    titulo: Mapped[str] = mapped_column(
+        String(200),
+        nullable=False,
+        index=True,
+        comment="Título descriptivo de la rúbrica (ej: 'TP2 - API REST de Productos')"
+    )
+    descripcion: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        comment="Descripción detallada de qué evalúa esta rúbrica"
+    )
+    puntaje_maximo: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=100,
+        comment="Puntaje máximo de la rúbrica (siempre 100)"
+    )
+
+    # ===== Campos JSONB V2 =====
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
+        default=dict,
+        comment="Metadata flexible: materia, carrera, lenguaje, framework, formato_entrega, etc."
     )
+    criterios_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        comment="Array de criterios jerárquicos (Criterio → Subcriterio → Evidencias)"
+    )
+    penalizaciones_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        comment="Array de penalizaciones con descuento_porcentaje"
+    )
+    condiciones_desaprobacion_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=list,
+        comment="Array de condiciones automáticas de desaprobación"
+    )
+
+    # ===== Campos de control =====
     fuente: Mapped[FuenteRubricaEnum] = mapped_column(
         SQLEnum(FuenteRubricaEnum, name="fuenterubricaenum", create_type=True),
         default=FuenteRubricaEnum.MANUAL,
@@ -97,4 +128,4 @@ class Rubrica(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        return f"<Rubrica(id={self.id}, nombre='{self.nombre}', tipo={self.tipo})>"
+        return f"<Rubrica(id={self.id}, titulo='{self.titulo}', tipo={self.tipo})>"

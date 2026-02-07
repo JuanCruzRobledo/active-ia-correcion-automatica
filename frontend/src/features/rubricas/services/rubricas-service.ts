@@ -95,20 +95,18 @@ export const rubricasService = {
   /**
    * Generate rubrica from PDF using AI
    * Note: This endpoint uses multipart/form-data
+   * Returns suggested rubrica structure (not a saved rubrica yet)
    */
   generarDesdePDF: async (
-    materiaId: number,
     tipo: string,
-    anio: number,
     file: File
-  ): Promise<Rubrica> => {
+  ): Promise<any> => {
     const formData = new FormData();
-    formData.append('materia_id', String(materiaId));
-    formData.append('tipo', tipo);
-    formData.append('anio', String(anio));
-    formData.append('archivo', file);
+    // Backend expects 'pdf_file' and 'tipo_rubrica'
+    formData.append('pdf_file', file);
+    formData.append('tipo_rubrica', tipo);
 
-    const response = await apiClient.post<Rubrica>(
+    const response = await apiClient.post<any>(
       '/rubricas/desde-pdf',
       formData,
       {

@@ -228,7 +228,7 @@ export const CorreccionesPage = () => {
                 { value: '', label: 'Selecciona una rúbrica' },
                 ...(rubricasData?.items.map((r) => ({
                   value: r.id.toString(),
-                  label: `${r.tipo} ${r.numero} - ${r.nombre}`,
+                  label: `${r.tipo} ${r.numero} - ${r.titulo}`,
                 })) || []),
               ]}
               disabled={!selectedComisionId || isLoadingRubricas}
@@ -402,7 +402,7 @@ export const CorreccionesPage = () => {
           alumno={modalAlumno}
           trabajoNombre={
             selectedRubrica
-              ? `${selectedRubrica.tipo} ${selectedRubrica.numero} - ${selectedRubrica.nombre}`
+              ? `${selectedRubrica.tipo} ${selectedRubrica.numero} - ${selectedRubrica.titulo}`
               : ''
           }
           isOpen={true}

@@ -2,13 +2,15 @@
 """
 Rubrica schemas for Active-IA.
 
-Pydantic schemas for rubric (rubrica) management with hierarchical criteria structure.
+Pydantic schemas for rubric (rubrica) management with hierarchical criteria structure V2.
 
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 6
 Ref: docs/specs/06-MODELO-DATOS.md seccion 4.1
+Ref: docs/specs/Rubrica.md (V2 schema)
 """
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -16,119 +18,212 @@ from app.models.enums import FuenteRubricaEnum, TipoRubricaEnum
 
 
 # ============================================================================
-# Schemas de Estructura de Criterios (Jerárquica)
+# Schemas de Estructura V2 (Jerárquica con evidencias)
 # ============================================================================
 
 
-class NivelDesempeno(BaseModel):
+class Subcriterio(BaseModel):
     """
-    Nivel de desempeño dentro de un criterio.
+    Subcriterio dentro de un criterio.
 
-    Representa un nivel específico de logro con su puntaje y descripción.
-    Ejemplo: "Excelente (40 pts)", "Bueno (30 pts)", etc.
-    """
-
-    puntaje: int = Field(
-        ...,
-        ge=0,
-        le=100,
-        description="Puntaje para este nivel de desempeño",
-        examples=[40, 30, 20],
-    )
-    descripcion: str = Field(
-        ...,
-        min_length=1,
-        max_length=500,
-        description="Descripción del nivel de desempeño",
-        examples=["Excelente: todas las funciones operan correctamente"],
-    )
-
-
-class CriterioBase(BaseModel):
-    """
-    Criterio de evaluación dentro de una rúbrica.
-
-    Define un aspecto a evaluar con su puntaje máximo y opcionalmente
-    niveles de desempeño específicos.
+    Representa un aspecto específico a evaluar con evidencias verificables.
     """
 
     id: str = Field(
         ...,
         min_length=1,
         max_length=20,
-        pattern=r"^[a-z0-9_]+$",
-        description="Identificador único del criterio (ej: 'c1', 'funcionalidad')",
-        examples=["c1", "funcionalidad", "estilo"],
+        pattern=r"^[A-Z0-9]+\.[0-9]+$",
+        description="Identificador único del subcriterio (ej: 'C1.1', 'C2.3')",
+        examples=["C1.1", "C2.3"],
+    )
+    descripcion: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Descripción del subcriterio",
+        examples=["package.json con dependencias correctas"],
+    )
+    evidencias: list[str] = Field(
+        ...,
+        min_length=1,
+        description="Checklist de evidencias verificables por la IA",
+        examples=[["Archivo package.json existe", "Dependencia express presente"]],
+    )
+
+    @field_validator("evidencias")
+    @classmethod
+    def validar_evidencias_no_vacias(cls, v: list[str]) -> list[str]:
+        """Valida que todas las evidencias tengan contenido."""
+        if not v:
+            raise ValueError("Debe haber al menos una evidencia")
+        for evidencia in v:
+            if not evidencia.strip():
+                raise ValueError("Las evidencias no pueden estar vacías")
+        return v
+
+
+class Criterio(BaseModel):
+    """
+    Criterio de evaluación dentro de una rúbrica V2.
+
+    Define un aspecto a evaluar con peso porcentual y subcriterios.
+    """
+
+    id: str = Field(
+        ...,
+        min_length=1,
+        max_length=20,
+        pattern=r"^[A-Z0-9]+$",
+        description="Identificador único del criterio (ej: 'C1', 'C2')",
+        examples=["C1", "C2", "C3"],
     )
     nombre: str = Field(
         ...,
         min_length=1,
         max_length=100,
         description="Nombre del criterio",
-        examples=["Funcionalidad correcta", "Estilo y legibilidad"],
+        examples=["Estructura del proyecto", "Endpoints CRUD"],
     )
     descripcion: str = Field(
         ...,
         min_length=1,
         max_length=500,
         description="Descripción detallada del criterio",
-        examples=["El programa realiza todas las operaciones solicitadas"],
+        examples=["Organización correcta de archivos y configuración inicial"],
     )
-    puntaje_maximo: int = Field(
+    peso: int = Field(
         ...,
         ge=1,
         le=100,
-        description="Puntaje máximo para este criterio",
-        examples=[40, 30, 20],
+        description="Peso porcentual del criterio (la suma total debe ser 100)",
+        examples=[15, 40, 25],
     )
-    niveles: list[NivelDesempeno] | None = Field(
+    instrucciones_puntuacion: str | None = Field(
         None,
-        description="Niveles de desempeño opcionales con puntajes específicos",
+        max_length=500,
+        description="Instrucciones opcionales para asignar puntaje dentro del criterio",
+        examples=["Dividir proporcionalmente entre subcriterios"],
+    )
+    subcriterios: list[Subcriterio] = Field(
+        ...,
+        min_length=1,
+        description="Lista de subcriterios con evidencias",
     )
 
-    @field_validator("niveles")
-    @classmethod
-    def validar_niveles(
-        cls,
-        niveles: list[NivelDesempeno] | None,
-        info,
-    ) -> list[NivelDesempeno] | None:
-        """Valida que los puntajes de niveles no excedan el puntaje máximo del criterio."""
-        if niveles is None:
-            return niveles
+    @model_validator(mode="after")
+    def validar_subcriterio_ids_unicos(self) -> "Criterio":
+        """Valida que los IDs de subcriterios sean únicos dentro del criterio."""
+        ids = [s.id for s in self.subcriterios]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"Los IDs de subcriterios en {self.id} deben ser únicos")
+        return self
 
-        # Obtener puntaje_maximo del contexto
-        puntaje_maximo = info.data.get("puntaje_maximo")
-        if puntaje_maximo is None:
-            return niveles
 
-        # Validar que ningún nivel exceda el puntaje máximo
-        for nivel in niveles:
-            if nivel.puntaje > puntaje_maximo:
-                raise ValueError(
-                    f"El puntaje del nivel ({nivel.puntaje}) no puede exceder "
-                    f"el puntaje máximo del criterio ({puntaje_maximo})"
-                )
+class Penalizacion(BaseModel):
+    """
+    Penalización que se puede aplicar a una evaluación.
 
-        return niveles
+    Define un descuento porcentual por incumplimientos específicos.
+    """
+
+    id: str = Field(
+        ...,
+        min_length=1,
+        max_length=20,
+        pattern=r"^P[0-9]+$",
+        description="Identificador único de la penalización (ej: 'P1', 'P2')",
+        examples=["P1", "P2"],
+    )
+    descripcion: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Descripción de la penalización",
+        examples=["Repositorio privado o inaccesible"],
+    )
+    descuento_porcentaje: int = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Descuento porcentual a aplicar (0-100)",
+        examples=[100, 50, 20],
+    )
+
+
+class CondicionDesaprobacion(BaseModel):
+    """
+    Condición automática de desaprobación.
+
+    Define reglas que establecen una nota final específica automáticamente.
+    """
+
+    id: str = Field(
+        ...,
+        min_length=1,
+        max_length=20,
+        pattern=r"^CD[0-9]+$",
+        description="Identificador único de la condición (ej: 'CD1', 'CD2')",
+        examples=["CD1", "CD2"],
+    )
+    condicion: str = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Descripción de la condición de desaprobación",
+        examples=["Plagio detectado", "No implementa al menos 3 endpoints CRUD"],
+    )
+    nota_final: int = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Nota final a asignar si se cumple la condición",
+        examples=[0, 30],
+    )
 
 
 class CriteriosStructure(BaseModel):
     """
-    Estructura completa de criterios de una rúbrica.
+    Estructura completa de una rúbrica V2.
 
-    Contiene el puntaje máximo total (debe ser 100) y la lista de criterios.
+    Incluye información general, metadata flexible, criterios jerárquicos,
+    penalizaciones y condiciones de desaprobación.
     """
 
-    puntaje_maximo: int = Field(
+    titulo: str = Field(
         ...,
-        description="Puntaje máximo total de la rúbrica (debe ser 100)",
-        examples=[100],
+        min_length=1,
+        max_length=200,
+        description="Título descriptivo de la rúbrica",
+        examples=["TP2 - API REST de Productos"],
     )
-    criterios: list[CriterioBase] = Field(
+    descripcion: str = Field(
+        ...,
+        min_length=1,
+        description="Descripción detallada de qué evalúa esta rúbrica",
+        examples=["Desarrollo de una API REST con Express.js..."],
+    )
+    puntaje_maximo: int = Field(
+        default=100,
+        description="Puntaje máximo total (siempre 100)",
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Metadata flexible: materia, carrera, lenguaje, framework, etc.",
+        examples=[{"materia": "Programación Backend", "lenguaje": "JavaScript"}],
+    )
+    criterios: list[Criterio] = Field(
         ...,
         min_length=1,
         description="Lista de criterios de evaluación",
+    )
+    penalizaciones: list[Penalizacion] = Field(
+        default_factory=list,
+        description="Lista de penalizaciones opcionales",
+    )
+    condiciones_desaprobacion: list[CondicionDesaprobacion] = Field(
+        default_factory=list,
+        description="Lista de condiciones de desaprobación automáticas",
     )
 
     @field_validator("puntaje_maximo")
@@ -140,22 +235,35 @@ class CriteriosStructure(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validar_suma_puntajes(self) -> "CriteriosStructure":
-        """Valida que la suma de puntajes de criterios sea igual al puntaje máximo."""
-        suma = sum(c.puntaje_maximo for c in self.criterios)
-        if suma != self.puntaje_maximo:
+    def validar_suma_pesos(self) -> "CriteriosStructure":
+        """Valida que la suma de pesos de criterios sea exactamente 100."""
+        suma = sum(c.peso for c in self.criterios)
+        if suma != 100:
             raise ValueError(
-                f"La suma de puntajes de criterios ({suma}) debe ser igual "
-                f"al puntaje máximo ({self.puntaje_maximo})"
+                f"La suma de pesos de criterios ({suma}) debe ser exactamente 100"
             )
         return self
 
     @model_validator(mode="after")
     def validar_ids_unicos(self) -> "CriteriosStructure":
-        """Valida que los IDs de criterios sean únicos."""
-        ids = [c.id for c in self.criterios]
-        if len(ids) != len(set(ids)):
+        """Valida que todos los IDs sean únicos en sus respectivos niveles."""
+        # IDs de criterios
+        criterio_ids = [c.id for c in self.criterios]
+        if len(criterio_ids) != len(set(criterio_ids)):
             raise ValueError("Los IDs de criterios deben ser únicos")
+
+        # IDs de penalizaciones
+        if self.penalizaciones:
+            pen_ids = [p.id for p in self.penalizaciones]
+            if len(pen_ids) != len(set(pen_ids)):
+                raise ValueError("Los IDs de penalizaciones deben ser únicos")
+
+        # IDs de condiciones de desaprobación
+        if self.condiciones_desaprobacion:
+            cond_ids = [c.id for c in self.condiciones_desaprobacion]
+            if len(cond_ids) != len(set(cond_ids)):
+                raise ValueError("Los IDs de condiciones de desaprobación deben ser únicos")
+
         return self
 
 
@@ -167,13 +275,6 @@ class CriteriosStructure(BaseModel):
 class RubricaBase(BaseModel):
     """Base schema for Rubrica with common fields."""
 
-    nombre: str = Field(
-        ...,
-        min_length=1,
-        max_length=100,
-        description="Nombre de la rúbrica",
-        examples=["TP1 - Listas en Python", "Parcial 1 - Programación"],
-    )
     tipo: TipoRubricaEnum = Field(
         ...,
         description="Tipo de rúbrica (TP, PARCIAL_1, etc.)",
@@ -194,16 +295,45 @@ class RubricaBase(BaseModel):
 
 
 class RubricaCreate(RubricaBase):
-    """Schema for creating a new Rubrica."""
+    """Schema for creating a new Rubrica V2."""
 
     materia_id: int = Field(
         ...,
         gt=0,
         description="ID de la materia a la que pertenece la rúbrica",
     )
-    criterios_json: CriteriosStructure = Field(
+    titulo: str = Field(
         ...,
-        description="Estructura de criterios de evaluación",
+        min_length=1,
+        max_length=200,
+        description="Título de la rúbrica",
+        examples=["TP2 - API REST de Productos"],
+    )
+    descripcion: str = Field(
+        ...,
+        min_length=1,
+        description="Descripción de la rúbrica",
+    )
+    puntaje_maximo: int = Field(
+        default=100,
+        description="Puntaje máximo (siempre 100)",
+    )
+    metadata_json: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Metadata flexible",
+    )
+    criterios_json: list[dict[str, Any]] = Field(
+        ...,
+        min_length=1,
+        description="Array de criterios jerárquicos",
+    )
+    penalizaciones_json: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Array de penalizaciones",
+    )
+    condiciones_desaprobacion_json: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Array de condiciones de desaprobación",
     )
     fuente: FuenteRubricaEnum = Field(
         default=FuenteRubricaEnum.MANUAL,
@@ -215,20 +345,76 @@ class RubricaCreate(RubricaBase):
         description="Ruta del archivo original (si fuente es IA)",
     )
 
+    @model_validator(mode="after")
+    def validar_estructura_completa(self) -> "RubricaCreate":
+        """Valida la estructura completa usando CriteriosStructure."""
+        try:
+            CriteriosStructure(
+                titulo=self.titulo,
+                descripcion=self.descripcion,
+                puntaje_maximo=self.puntaje_maximo,
+                metadata=self.metadata_json,
+                criterios=[Criterio(**c) for c in self.criterios_json],
+                penalizaciones=[Penalizacion(**p) for p in self.penalizaciones_json],
+                condiciones_desaprobacion=[
+                    CondicionDesaprobacion(**cd) for cd in self.condiciones_desaprobacion_json
+                ],
+            )
+        except Exception as e:
+            raise ValueError(f"Error en la estructura de la rúbrica: {str(e)}")
+        return self
+
 
 class RubricaUpdate(BaseModel):
-    """Schema for updating an existing Rubrica."""
+    """Schema for updating an existing Rubrica V2."""
 
-    nombre: str | None = Field(
+    titulo: str | None = Field(
         None,
         min_length=1,
-        max_length=100,
-        description="Nuevo nombre de la rúbrica",
+        max_length=200,
+        description="Nuevo título de la rúbrica",
     )
-    criterios_json: CriteriosStructure | None = Field(
+    descripcion: str | None = Field(
         None,
-        description="Nueva estructura de criterios",
+        min_length=1,
+        description="Nueva descripción",
     )
+    metadata_json: dict[str, Any] | None = Field(
+        None,
+        description="Nueva metadata",
+    )
+    criterios_json: list[dict[str, Any]] | None = Field(
+        None,
+        description="Nuevos criterios",
+    )
+    penalizaciones_json: list[dict[str, Any]] | None = Field(
+        None,
+        description="Nuevas penalizaciones",
+    )
+    condiciones_desaprobacion_json: list[dict[str, Any]] | None = Field(
+        None,
+        description="Nuevas condiciones de desaprobación",
+    )
+
+    @model_validator(mode="after")
+    def validar_estructura_si_presente(self) -> "RubricaUpdate":
+        """Valida la estructura si se proporcionan criterios."""
+        if self.criterios_json is not None:
+            try:
+                # Construir estructura temporal para validar
+                estructura = {
+                    "titulo": self.titulo or "Temporal",
+                    "descripcion": self.descripcion or "Temporal",
+                    "puntaje_maximo": 100,
+                    "metadata": self.metadata_json or {},
+                    "criterios": self.criterios_json,
+                    "penalizaciones": self.penalizaciones_json or [],
+                    "condiciones_desaprobacion": self.condiciones_desaprobacion_json or [],
+                }
+                CriteriosStructure(**estructura)
+            except Exception as e:
+                raise ValueError(f"Error en la estructura de criterios: {str(e)}")
+        return self
 
 
 # ============================================================================
@@ -237,15 +423,20 @@ class RubricaUpdate(BaseModel):
 
 
 class RubricaResponse(BaseModel):
-    """Schema for Rubrica response with all fields."""
+    """Schema for Rubrica V2 response with all fields."""
 
     id: int
     materia_id: int
     tipo: TipoRubricaEnum
-    nombre: str
     numero: int
     anio: int
-    criterios_json: dict  # Devolvemos como dict para flexibilidad en frontend
+    titulo: str
+    descripcion: str
+    puntaje_maximo: int
+    metadata_json: dict[str, Any]
+    criterios_json: list[dict[str, Any]]
+    penalizaciones_json: list[dict[str, Any]]
+    condiciones_desaprobacion_json: list[dict[str, Any]]
     fuente: FuenteRubricaEnum
     archivo_original: str | None
     activa: bool
@@ -286,18 +477,18 @@ class RubricaDetailResponse(RubricaResponse):
 
 
 class RubricaListItem(BaseModel):
-    """Schema for Rubrica list item with denormalized data."""
+    """Schema for Rubrica V2 list item with denormalized data."""
 
     id: int
     materia_id: int
     materia_nombre: str
     materia_codigo: str
     tipo: TipoRubricaEnum
-    nombre: str
+    titulo: str
     numero: int
     anio: int
     puntaje_maximo: int = Field(
-        description="Puntaje máximo (extraído de criterios_json)",
+        description="Puntaje máximo (siempre 100)",
     )
     num_criterios: int = Field(
         description="Cantidad de criterios en la rúbrica",
@@ -344,9 +535,9 @@ class RubricaDuplicar(BaseModel):
         description="Año académico para la rúbrica duplicada",
         examples=[2027],
     )
-    nuevo_nombre: str | None = Field(
+    nuevo_titulo: str | None = Field(
         None,
         min_length=1,
-        max_length=100,
-        description="Nuevo nombre opcional (si no se provee, se usa el original)",
+        max_length=200,
+        description="Nuevo título opcional (si no se provee, se usa el original)",
     )

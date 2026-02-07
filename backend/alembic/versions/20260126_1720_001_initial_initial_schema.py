@@ -129,16 +129,23 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_comision_tutor_id'), 'comision_tutor', ['id'], unique=False)
     
-    # Create rubricas table
+    # Create rubricas table (V2 schema)
     op.create_table(
         'rubricas',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('materia_id', sa.Integer(), nullable=False),
         sa.Column('tipo', postgresql.ENUM('TP', 'PARCIAL_1', 'PARCIAL_2', 'RECUPERATORIO_1', 'RECUPERATORIO_2', 'FINAL', 'GLOBAL', name='tipo_rubrica_enum', create_type=False), nullable=False),
-        sa.Column('nombre', sa.String(length=100), nullable=False),
         sa.Column('numero', sa.Integer(), nullable=False, server_default='1'),
         sa.Column('anio', sa.Integer(), nullable=False),
+        # V2 fields
+        sa.Column('titulo', sa.String(length=200), nullable=False),
+        sa.Column('descripcion', sa.Text(), nullable=False),
+        sa.Column('puntaje_maximo', sa.Integer(), nullable=False, server_default='100'),
+        sa.Column('metadata_json', postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default='{}'),
         sa.Column('criterios_json', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column('penalizaciones_json', postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default='[]'),
+        sa.Column('condiciones_desaprobacion_json', postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default='[]'),
+        # Control fields
         sa.Column('fuente', postgresql.ENUM('manual', 'pdf', name='fuente_rubrica_enum', create_type=False), nullable=False, server_default='manual'),
         sa.Column('archivo_original', sa.String(length=255), nullable=True),
         sa.Column('activa', sa.Boolean(), nullable=False, server_default='true'),
@@ -151,6 +158,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_rubricas_id'), 'rubricas', ['id'], unique=False)
     op.create_index(op.f('ix_rubricas_materia_id'), 'rubricas', ['materia_id'], unique=False)
     op.create_index(op.f('ix_rubricas_anio'), 'rubricas', ['anio'], unique=False)
+    op.create_index(op.f('ix_rubricas_titulo'), 'rubricas', ['titulo'], unique=False)
     op.create_index(op.f('ix_rubricas_activa'), 'rubricas', ['activa'], unique=False)
     
     # Create entregas table
@@ -256,6 +264,7 @@ def downgrade() -> None:
     op.drop_table('entregas')
     
     op.drop_index(op.f('ix_rubricas_activa'), table_name='rubricas')
+    op.drop_index(op.f('ix_rubricas_titulo'), table_name='rubricas')
     op.drop_index(op.f('ix_rubricas_anio'), table_name='rubricas')
     op.drop_index(op.f('ix_rubricas_materia_id'), table_name='rubricas')
     op.drop_index(op.f('ix_rubricas_id'), table_name='rubricas')
