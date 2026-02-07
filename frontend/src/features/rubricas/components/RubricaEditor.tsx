@@ -1,97 +1,65 @@
 import { useEffect, useState } from 'react';
-import { useForm, useFieldArray } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { PenLine, FileText, Code, Upload, Trash2 } from 'lucide-react';
+import { Code, Upload, Database, ListChecks, AlertTriangle, XCircle } from 'lucide-react';
 
 import { Modal } from '@/shared/components/ui/Modal';
 import { Button } from '@/shared/components/ui/Button';
-import { Input } from '@/shared/components/ui/Input';
-import { Select } from '@/shared/components/ui/Select';
 import { Spinner } from '@/shared/components/ui/Spinner';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/shared/components/ui/Accordion';
+import { KeyValueInput } from '@/shared/components/ui/KeyValueInput';
 import { cn } from '@/shared/utils/cn';
 
 import { useCreateRubrica, useUpdateRubrica, useGenerarRubricaDesdePDF } from '../hooks/useRubricas';
 import { useMaterias } from '@/features/materias/hooks';
-import type { Rubrica, TipoRubrica } from '../types';
+import type { Rubrica } from '../types';
+import { criterioSchema } from '../schemas/rubrica-schema';
 import { RubricaManualMode } from './RubricaManualMode';
+import { PenalizacionesEditor } from './PenalizacionesEditor';
+import { CondicionesEditor } from './CondicionesEditor';
+import { RubricaGeneralInfo } from './RubricaGeneralInfo';
+import { RubricaCreationModeSelector } from './RubricaCreationModeSelector';
+import { RubricaPDFMode } from './RubricaPDFMode';
+import { RubricaJSONMode } from './RubricaJSONMode';
+import type { CreationMode } from '../constants/rubrica-constants';
 
 // ========== SCHEMAS ==========
-
-const criterioSchema = z.object({
-  id: z.string(),
-  nombre: z.string().min(1, 'Nombre requerido').max(100),
-  descripcion: z.string().min(10, 'Mínimo 10 caracteres').max(500),
-  puntaje_maximo: z.number().min(1, 'Mínimo 1').max(100, 'Máximo 100'),
-});
-
-const subcriterioSchema = z.object({
-  id: z.string().min(1, 'ID requerido'),
-  descripcion: z.string().min(1, 'Descripción requerida'),
-  evidencias: z.array(z.string()),
-});
-
-const criterioJerarquicoSchema = z.object({
-  id: z.string().min(1, 'ID requerido'),
-  nombre: z.string().min(1, 'Nombre requerido').max(100),
-  descripcion: z.string().min(1, 'Descripción requerida').max(500),
-  peso: z.number().min(1, 'Mínimo 1').max(100, 'Máximo 100'),
-  instrucciones_puntuacion: z.string().optional(),
-  subcriterios: z.array(subcriterioSchema).min(1, 'Debe haber al menos un subcriterio'),
-});
 
 const rubricaFormSchema = z.object({
   materia_id: z.number().min(1, 'Materia requerida'),
   tipo: z.enum(['TP', 'PARCIAL_1', 'PARCIAL_2', 'RECUPERATORIO_1', 'RECUPERATORIO_2', 'FINAL', 'GLOBAL']),
-  nombre: z.string().min(1, 'Nombre requerido').max(200),
+  titulo: z.string().min(1, 'Título requerido').max(200),
+  descripcion: z.string().min(1, 'Descripción requerida'),
   numero: z.number().min(1).max(999),
   anio: z.number().min(2020).max(2100),
+  metadata: z.record(z.string(), z.any()),
   criterios: z
     .array(criterioSchema)
     .min(1, 'Debe haber al menos un criterio')
     .max(20, 'Máximo 20 criterios'),
-  criterios_jerarquicos: z.array(criterioJerarquicoSchema).optional(),
+  penalizaciones: z.array(z.object({
+    id: z.string().min(1),
+    descripcion: z.string().min(1),
+    descuento_porcentaje: z.number().min(0).max(100),
+  })),
+  condiciones_desaprobacion: z.array(z.object({
+    id: z.string().min(1),
+    condicion: z.string().min(1),
+    nota_final: z.number().min(0).max(100),
+  })),
 }).refine(
   (data) => {
-    const suma = data.criterios.reduce((acc, c) => acc + c.puntaje_maximo, 0);
+    const suma = data.criterios.reduce((acc, c) => acc + c.peso, 0);
     return suma === 100;
   },
   {
-    message: 'La suma de puntajes debe ser exactamente 100',
+    message: 'La suma de pesos debe ser exactamente 100',
     path: ['criterios'],
   }
 );
 
 type RubricaFormData = z.infer<typeof rubricaFormSchema>;
-
-// ========== CONSTANTS ==========
-
-const TIPO_LABELS: Record<TipoRubrica, string> = {
-  TP: 'Trabajo Práctico',
-  PARCIAL_1: 'Parcial 1',
-  PARCIAL_2: 'Parcial 2',
-  RECUPERATORIO_1: 'Recuperatorio 1',
-  RECUPERATORIO_2: 'Recuperatorio 2',
-  FINAL: 'Final',
-  GLOBAL: 'Global',
-};
-
-type CreationMode = 'manual' | 'pdf' | 'json';
-
-const CREATION_MODES: { id: CreationMode; icon: typeof PenLine; label: string; description: string; activeBorder: string; activeText: string; activeBg: string }[] = [
-  { id: 'manual', icon: PenLine, label: 'Manual', description: 'Define criterios manualmente', activeBorder: 'border-accent', activeText: 'text-accent', activeBg: 'bg-accent/10' },
-  { id: 'pdf', icon: FileText, label: 'Desde PDF', description: 'Extrae criterios con IA', activeBorder: 'border-success', activeText: 'text-success', activeBg: 'bg-success/10' },
-  { id: 'json', icon: Code, label: 'Desde JSON', description: 'Carga desde archivo JSON', activeBorder: 'border-warning', activeText: 'text-warning', activeBg: 'bg-warning/10' },
-];
-
-const JSON_EXAMPLE = JSON.stringify({
-  criterios: [
-    { nombre: 'Funcionalidad correcta', descripcion: 'El programa realiza todas las operaciones solicitadas en la consigna', puntaje_maximo: 40 },
-    { nombre: 'Uso correcto de estructuras', descripcion: 'Implementa las estructuras de datos requeridas según lo indicado', puntaje_maximo: 30 },
-    { nombre: 'Estilo y legibilidad', descripcion: 'Código limpio, bien indentado, con nombres de variables descriptivos', puntaje_maximo: 20 },
-    { nombre: 'Manejo de errores', descripcion: 'Validación de entradas y tratamiento de casos borde', puntaje_maximo: 10 },
-  ],
-}, null, 2);
 
 // ========== MAIN COMPONENT ==========
 
@@ -114,11 +82,11 @@ export function RubricaEditor({
   const generarPDFMutation = useGenerarRubricaDesdePDF();
   const { data: materiasData } = useMaterias({ page: 1, per_page: 100 });
 
-  const [creationMode, setCreationMode] = useState<CreationMode>('manual');
+  const [creationMode, setCreationMode] = useState<CreationMode>('pdf');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
-  const [sumaPuntajes, setSumaPuntajes] = useState(0);
+  const [sumaPesos, setSumaPesos] = useState(0);
 
   const {
     register,
@@ -134,34 +102,24 @@ export function RubricaEditor({
       ? {
         materia_id: rubrica.materia_id,
         tipo: rubrica.tipo,
-        nombre: rubrica.titulo, // V2 usa "titulo"
+        titulo: rubrica.titulo,
+        descripcion: rubrica.descripcion,
         numero: rubrica.numero,
         anio: rubrica.anio,
-        // Adaptar V2 → V1: Convertir criterios jerárquicos a planos (para modo PDF/JSON)
-        criterios: rubrica.criterios_json.map((c) => ({
-          id: crypto.randomUUID().replace(/-/g, '').slice(0, 20),
-          nombre: c.nombre,
-          descripcion: c.descripcion,
-          puntaje_maximo: c.peso, // V2 usa "peso" en lugar de "puntaje_maximo"
-        })),
-        // Criterios jerárquicos para modo manual
-        criterios_jerarquicos: rubrica.criterios_json,
+        metadata: rubrica.metadata_json || {},
+        criterios: rubrica.criterios_json,
+        penalizaciones: rubrica.penalizaciones_json || [],
+        condiciones_desaprobacion: rubrica.condiciones_desaprobacion_json || [],
       }
       : {
         materia_id: materiaId || 0,
         tipo: 'TP',
-        nombre: '',
+        titulo: '',
+        descripcion: '',
         numero: 1,
         anio: new Date().getFullYear(),
+        metadata: {},
         criterios: [
-          {
-            id: crypto.randomUUID().replace(/-/g, '').slice(0, 20),
-            nombre: '',
-            descripcion: '',
-            puntaje_maximo: 100,
-          },
-        ],
-        criterios_jerarquicos: [
           {
             id: 'C1',
             nombre: '',
@@ -177,27 +135,18 @@ export function RubricaEditor({
             ],
           },
         ],
+        penalizaciones: [],
+        condiciones_desaprobacion: [],
       },
   });
 
-  const { replace } = useFieldArray({
-    control,
-    name: 'criterios',
-  });
-
-  // Fields para modo manual (estructura jerárquica)
-  useFieldArray({
-    control,
-    name: 'criterios_jerarquicos',
-  });
 
   const criterios = watch('criterios');
-  const criteriosJerarquicos = watch('criterios_jerarquicos');
 
   // Reset modal state on open
   useEffect(() => {
     if (isOpen) {
-      setCreationMode('manual');
+      setCreationMode('pdf');
       setPdfFile(null);
       setJsonText('');
       setJsonError(null);
@@ -205,11 +154,12 @@ export function RubricaEditor({
         reset({
           materia_id: materiaId || 0,
           tipo: 'TP',
-          nombre: '',
+          titulo: '',
+          descripcion: '',
           numero: 1,
           anio: new Date().getFullYear(),
-          criterios: [{ id: crypto.randomUUID().replace(/-/g, '').slice(0, 20), nombre: '', descripcion: '', puntaje_maximo: 100 }],
-          criterios_jerarquicos: [
+          metadata: {},
+          criterios: [
             {
               id: 'C1',
               nombre: '',
@@ -225,59 +175,42 @@ export function RubricaEditor({
               ],
             },
           ],
+          penalizaciones: [],
+          condiciones_desaprobacion: [],
         });
       }
     }
-  }, [isOpen]);
+  }, [isOpen, rubrica, materiaId, reset]);
 
-  // Calcular suma de puntajes según el modo
+  // Calcular suma de pesos
   useEffect(() => {
-    if (creationMode === 'manual') {
-      // En modo manual, usar criterios_jerarquicos (peso)
-      const jerarquicos = (criteriosJerarquicos || []) as Array<{ peso?: number }>;
-      const suma = jerarquicos.reduce((acc, c) => acc + (c.peso || 0), 0);
-      setSumaPuntajes(suma);
-    } else {
-      // En modos PDF/JSON, usar criterios (puntaje_maximo)
-      const suma = criterios.reduce((acc, c) => acc + (c.puntaje_maximo || 0), 0);
-      setSumaPuntajes(suma);
-    }
-  }, [criterios, criteriosJerarquicos, creationMode]);
+    const suma = criterios.reduce((acc, c) => acc + (c.peso || 0), 0);
+    setSumaPesos(suma);
+  }, [criterios]);
 
   // ── JSON handlers ──
-  const handleJSONFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setJsonText(event.target?.result as string);
-      setJsonError(null);
-    };
-    reader.readAsText(file);
-  };
-
   const handleLoadJSON = () => {
     setJsonError(null);
     try {
       const parsed = JSON.parse(jsonText);
-      const raw: unknown[] = Array.isArray(parsed) ? parsed : parsed.criterios;
-      if (!Array.isArray(raw) || raw.length === 0) {
-        setJsonError('No se encontraron criterios válidos en el JSON');
+
+      // Validar estructura mínima
+      if (!parsed.titulo || !parsed.descripcion || !parsed.criterios || !Array.isArray(parsed.criterios)) {
+        setJsonError('El JSON debe contener: titulo, descripcion y criterios (array)');
         return;
       }
-      const mapped = raw.map((c) => {
-        const obj = c as Record<string, unknown>;
-        return {
-          id: (typeof obj.id === 'string' && obj.id) || crypto.randomUUID().replace(/-/g, '').slice(0, 20),
-          nombre: String(obj.nombre || ''),
-          descripcion: String(obj.descripcion || ''),
-          puntaje_maximo: Number(obj.puntaje_maximo) || 0,
-        };
-      });
-      replace(mapped);
+
+      // Cargar datos en el formulario
+      setValue('titulo', parsed.titulo);
+      setValue('descripcion', parsed.descripcion);
+      setValue('metadata', parsed.metadata || {});
+      setValue('criterios', parsed.criterios);
+      setValue('penalizaciones', parsed.penalizaciones || []);
+      setValue('condiciones_desaprobacion', parsed.condiciones_desaprobacion || []);
+
       setCreationMode('manual');
       setJsonText('');
-    } catch {
+    } catch (error) {
       setJsonError('JSON inválido. Revisa la sintaxis.');
     }
   };
@@ -303,69 +236,46 @@ export function RubricaEditor({
 
   // ── Form submit ──
   const onSubmit = async (data: RubricaFormData) => {
-    console.log('🟢 onSubmit disparado', data);
-
     try {
-      // Usar criterios_jerarquicos si están disponibles (modo manual V2), sino adaptar V1 → V2
-      const criterios_jerarquicos = data.criterios_jerarquicos || data.criterios.map((c, idx) => ({
-        id: `C${idx + 1}`,
-        nombre: c.nombre,
-        descripcion: c.descripcion,
-        peso: c.puntaje_maximo, // peso en % = puntaje en V1
-        instrucciones_puntuacion: '',
-        subcriterios: [
-          {
-            id: `C${idx + 1}.1`,
-            descripcion: c.descripcion,
-            evidencias: ['Cumple con los requisitos especificados'],
-          }
-        ],
-      }));
-
-      console.log('📦 Payload V2:', criterios_jerarquicos);
-
       if (isEditing) {
-        console.log('✏️ Update rubrica', rubrica.id);
         await updateMutation.mutateAsync({
           id: rubrica.id,
           data: {
-            titulo: data.nombre, // V2 usa "titulo" no "nombre"
-            descripcion: data.nombre, // Usar nombre como descripción temporal
-            criterios_json: criterios_jerarquicos,
-            penalizaciones_json: [],
-            condiciones_desaprobacion_json: [],
+            titulo: data.titulo,
+            descripcion: data.descripcion,
+            metadata_json: data.metadata,
+            criterios_json: data.criterios,
+            penalizaciones_json: data.penalizaciones,
+            condiciones_desaprobacion_json: data.condiciones_desaprobacion,
           },
         });
       } else {
-        console.log('➕ Create rubrica');
         await createMutation.mutateAsync({
           materia_id: data.materia_id,
           tipo: data.tipo,
           numero: data.numero,
           anio: data.anio,
-          titulo: data.nombre, // V2 usa "titulo" no "nombre"
-          descripcion: data.nombre, // Usar nombre como descripción temporal
+          titulo: data.titulo,
+          descripcion: data.descripcion,
           puntaje_maximo: 100,
-          metadata_json: {},
-          criterios_json: criterios_jerarquicos,
-          penalizaciones_json: [],
-          condiciones_desaprobacion_json: [],
+          metadata_json: data.metadata,
+          criterios_json: data.criterios,
+          penalizaciones_json: data.penalizaciones,
+          condiciones_desaprobacion_json: data.condiciones_desaprobacion,
           fuente: 'MANUAL',
         });
       }
 
-      console.log('✅ Guardado OK');
       reset();
       onClose();
     } catch (error) {
-      console.error('❌ Error guardando rúbrica:', error);
+      console.error('Error guardando rúbrica:', error);
     }
   };
 
-
   const handleClose = () => {
     reset();
-    setCreationMode('manual');
+    setCreationMode('pdf');
     setPdfFile(null);
     setJsonText('');
     setJsonError(null);
@@ -384,216 +294,147 @@ export function RubricaEditor({
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         {/* ── Información General ── */}
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Información General</h3>
-
-          <Select
-            label="Materia"
-            value={watch('materia_id')?.toString() || ''}
-            onChange={(e) =>
-              setValue('materia_id', e.target.value ? parseInt(e.target.value) : 0, { shouldValidate: true })
-            }
-            error={errors.materia_id?.message}
-            disabled={isEditing}
-          >
-            <option value="">Seleccionar materia</option>
-            {(materiasData?.items || []).map((m) => (
-              <option key={m.id} value={m.id.toString()}>
-                {m.codigo} - {m.nombre}
-              </option>
-            ))}
-          </Select>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Select
-              label="Tipo"
-              {...register('tipo')}
-              error={errors.tipo?.message}
-              disabled={isEditing}
-            >
-              <option value="">Seleccionar tipo</option>
-              {Object.entries(TIPO_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </Select>
-
-            <Input
-              label="Número"
-              type="number"
-              min={1}
-              max={999}
-              {...register('numero', { valueAsNumber: true })}
-              error={errors.numero?.message}
-              disabled={isEditing || creationMode === 'pdf'}
-            />
-
-            <Input
-              label="Año"
-              type="number"
-              min={2020}
-              max={2100}
-              {...register('anio', { valueAsNumber: true })}
-              error={errors.anio?.message}
-              disabled={isEditing}
-            />
-          </div>
-
-          <div>
-            <Input
-              label="Nombre"
-              {...register('nombre')}
-              error={errors.nombre?.message}
-              placeholder="ej: TP1 - Listas en Python"
-              disabled={creationMode === 'pdf'}
-            />
-            {creationMode === 'pdf' && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                Se genera automáticamente desde el PDF
-              </p>
-            )}
-          </div>
-        </div>
+        <RubricaGeneralInfo
+          register={register}
+          errors={errors}
+          watch={watch}
+          setValue={setValue}
+          materiasData={materiasData}
+          isEditing={isEditing}
+          creationMode={creationMode}
+        />
 
         {/* ── Modo de Creación (solo al crear) ── */}
         {!isEditing && (
-          <div className="space-y-3">
-            <h3 className="text-lg font-semibold">Modo de Creación</h3>
-            <div className="grid grid-cols-3 gap-3">
-              {CREATION_MODES.map((mode) => {
-                const Icon = mode.icon;
-                const isActive = creationMode === mode.id;
-                return (
-                  <button
-                    key={mode.id}
-                    type="button"
-                    onClick={() => setCreationMode(mode.id)}
-                    className={cn(
-                      'flex flex-col items-center p-4 rounded-lg transition-colors',
-                      isActive
-                        ? cn('border-2', mode.activeBorder, mode.activeBg)
-                        : 'border border-border bg-card hover:bg-muted'
-                    )}
-                  >
-                    <Icon className={cn('h-6 w-6 mb-2', isActive ? mode.activeText : 'text-muted-foreground')} />
-                    <span className={cn('text-sm font-medium', isActive ? mode.activeText : 'text-foreground')}>
-                      {mode.label}
-                    </span>
-                    <span className={cn('text-xs mt-0.5 text-center', isActive ? 'text-muted-foreground' : 'text-muted-foreground')}>
-                      {mode.description}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <RubricaCreationModeSelector
+            creationMode={creationMode}
+            setCreationMode={setCreationMode}
+          />
         )}
 
-        {/* ── Manual: Editor de Criterios ── */}
+        {/* ── Manual: Editor Completo con Accordion ── */}
         {creationMode === 'manual' && (
-          <RubricaManualMode
-            control={control}
-            register={register}
-            errors={errors}
-            watch={watch}
-          />
+          <Accordion defaultValue={[]} multiple>
+            {/* Sección 1: Metadata (opcional) */}
+            <AccordionItem value="metadata">
+              <AccordionTrigger
+                value="metadata"
+                icon={<Database className="h-4 w-4" />}
+                badge={
+                  Object.keys(watch('metadata') || {}).length > 0 && (
+                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-accent/20 text-accent rounded-full">
+                      {Object.keys(watch('metadata') || {}).length}
+                    </span>
+                  )
+                }
+              >
+                Metadata (opcional)
+              </AccordionTrigger>
+              <AccordionContent value="metadata">
+                <KeyValueInput
+                  value={watch('metadata') || {}}
+                  onChange={(metadata) => setValue('metadata', metadata)}
+                  placeholder={{ key: 'lenguaje', value: 'JavaScript' }}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Sección 2: Criterios */}
+            <AccordionItem value="criterios">
+              <AccordionTrigger
+                value="criterios"
+                icon={<ListChecks className="h-4 w-4" />}
+                badge={
+                  <span className={cn(
+                    "ml-2 px-2 py-0.5 text-xs font-medium rounded-full",
+                    sumaPesos === 100
+                      ? "bg-success/20 text-success"
+                      : "bg-destructive/20 text-destructive"
+                  )}>
+                    {sumaPesos}%
+                  </span>
+                }
+              >
+                Criterios de Evaluación
+              </AccordionTrigger>
+              <AccordionContent value="criterios">
+                <RubricaManualMode
+                  control={control}
+                  register={register}
+                  errors={errors}
+                  watch={watch}
+                  setValue={setValue}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Sección 3: Penalizaciones (opcional) */}
+            <AccordionItem value="penalizaciones">
+              <AccordionTrigger
+                value="penalizaciones"
+                icon={<AlertTriangle className="h-4 w-4" />}
+                badge={
+                  (watch('penalizaciones') || []).length > 0 && (
+                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full">
+                      {(watch('penalizaciones') || []).length}
+                    </span>
+                  )
+                }
+              >
+                Penalizaciones (opcional)
+              </AccordionTrigger>
+              <AccordionContent value="penalizaciones">
+                <PenalizacionesEditor
+                  control={control}
+                  register={register}
+                  errors={errors}
+                />
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* Sección 4: Condiciones de Desaprobación (opcional) */}
+            <AccordionItem value="condiciones">
+              <AccordionTrigger
+                value="condiciones"
+                icon={<XCircle className="h-4 w-4" />}
+                badge={
+                  (watch('condiciones_desaprobacion') || []).length > 0 && (
+                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-red-500/20 text-red-600 dark:text-red-400 rounded-full">
+                      {(watch('condiciones_desaprobacion') || []).length}
+                    </span>
+                  )
+                }
+              >
+                Condiciones de Desaprobación (opcional)
+              </AccordionTrigger>
+              <AccordionContent value="condiciones">
+                <CondicionesEditor
+                  control={control}
+                  register={register}
+                  errors={errors}
+                />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         )}
 
         {/* ── PDF Mode ── */}
         {creationMode === 'pdf' && !isEditing && (
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Subir PDF de Consigna</h3>
-            <p className="text-sm text-muted-foreground">
-              La IA extraerá los criterios de evaluación del PDF automáticamente.
-            </p>
-
-            {!pdfFile ? (
-              <label className="flex flex-col items-center justify-center w-full h-40 px-4 bg-card border-2 border-dashed border-border rounded-lg cursor-pointer hover:bg-muted transition-colors">
-                <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  <span className="font-semibold text-accent">Haz clic</span> o arrastra un PDF aquí
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">Solo archivos PDF (máx. 10 MB)</p>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) setPdfFile(file);
-                  }}
-                />
-              </label>
-            ) : (
-              <div className="flex items-center justify-between bg-muted rounded-md px-3 py-2.5">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-accent" />
-                  <span className="text-sm text-foreground">{pdfFile.name}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPdfFile(null)}
-                  className="text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-            )}
-
-            {generarPDFMutation.isError && (
-              <p className="text-sm text-destructive">
-                Error al generar la rúbrica. Verifica tu API Key y vuelve a intentar.
-              </p>
-            )}
-          </div>
+          <RubricaPDFMode
+            pdfFile={pdfFile}
+            setPdfFile={setPdfFile}
+            isError={generarPDFMutation.isError}
+          />
         )}
 
         {/* ── JSON Mode ── */}
         {creationMode === 'json' && !isEditing && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Cargar desde JSON</h3>
-              <label className="flex items-center gap-1.5 text-xs text-accent cursor-pointer hover:underline">
-                <Upload className="h-3.5 w-3.5" />
-                Subir archivo .json
-                <input
-                  type="file"
-                  accept=".json"
-                  className="sr-only"
-                  onChange={handleJSONFileUpload}
-                />
-              </label>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Pega o sube un JSON con la estructura de criterios. Se cargará en el editor para revisión.
-            </p>
-
-            {/* Ejemplo visible */}
-            <div className="rounded-md border border-border bg-muted overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
-                <span className="text-xs font-medium text-muted-foreground">Ejemplo de formato válido</span>
-                <button
-                  type="button"
-                  onClick={() => { setJsonText(JSON_EXAMPLE); setJsonError(null); }}
-                  className="text-xs text-warning font-medium hover:underline"
-                >
-                  Usar este ejemplo
-                </button>
-              </div>
-              <pre className="px-3 py-2 text-xs font-mono text-foreground whitespace-pre-wrap overflow-x-auto max-h-36 overflow-y-auto">
-                {JSON_EXAMPLE}
-              </pre>
-            </div>
-
-            <textarea
-              value={jsonText}
-              onChange={(e) => { setJsonText(e.target.value); setJsonError(null); }}
-              className="w-full h-40 px-3 py-2 border border-input rounded-md bg-background text-foreground text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-              placeholder="Pega tu JSON aquí..."
-            />
-            {jsonError && <p className="text-sm text-destructive">{jsonError}</p>}
-          </div>
+          <RubricaJSONMode
+            jsonText={jsonText}
+            setJsonText={setJsonText}
+            jsonError={jsonError}
+            setJsonError={setJsonError}
+          />
         )}
 
         {/* ── Footer ── */}
@@ -626,7 +467,7 @@ export function RubricaEditor({
           ) : (
             <Button
               type="submit"
-              disabled={isSubmitting || sumaPuntajes !== 100}
+              disabled={isSubmitting || sumaPesos !== 100}
               className="min-w-[120px]"
             >
               {isSubmitting ? (
