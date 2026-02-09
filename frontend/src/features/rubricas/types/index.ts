@@ -42,7 +42,7 @@ export interface Criterio {
   nombre: string;
   descripcion: string;
   peso: number; // Peso en % (suma total = 100)
-  instrucciones_puntuacion?: string;
+  instrucciones_puntuacion?: string | null;
   subcriterios: Subcriterio[];
 }
 
