@@ -82,7 +82,7 @@ export function RubricaEditor({
   const generarPDFMutation = useGenerarRubricaDesdePDF();
   const { data: materiasData } = useMaterias({ page: 1, per_page: 100 });
 
-  const [creationMode, setCreationMode] = useState<CreationMode>('pdf');
+  const [creationMode, setCreationMode] = useState<CreationMode>(rubrica ? 'manual' : 'pdf');
   const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
@@ -143,42 +143,60 @@ export function RubricaEditor({
 
   const criterios = watch('criterios');
 
-  // Reset modal state on open
+
+  // Reset modal state on open or when rubrica changes
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+
+    setPdfFile(null);
+    setJsonText('');
+    setJsonError(null);
+
+    if (rubrica) {
+      // EDICIÓN: Cargar datos existentes en modo manual
+      setCreationMode('manual');
+      reset({
+        materia_id: rubrica.materia_id,
+        tipo: rubrica.tipo,
+        titulo: rubrica.titulo,
+        descripcion: rubrica.descripcion,
+        numero: rubrica.numero,
+        anio: rubrica.anio,
+        metadata: rubrica.metadata_json || {},
+        criterios: rubrica.criterios_json,
+        penalizaciones: rubrica.penalizaciones_json || [],
+        condiciones_desaprobacion: rubrica.condiciones_desaprobacion_json || [],
+      });
+    } else {
+      // CREACIÓN: Empezar en modo PDF con datos vacíos
       setCreationMode('pdf');
-      setPdfFile(null);
-      setJsonText('');
-      setJsonError(null);
-      if (!rubrica) {
-        reset({
-          materia_id: materiaId || 0,
-          tipo: 'TP',
-          titulo: '',
-          descripcion: '',
-          numero: 1,
-          anio: new Date().getFullYear(),
-          metadata: {},
-          criterios: [
-            {
-              id: 'C1',
-              nombre: '',
-              descripcion: '',
-              peso: 100,
-              instrucciones_puntuacion: '',
-              subcriterios: [
-                {
-                  id: 'C1.1',
-                  descripcion: '',
-                  evidencias: [],
-                },
-              ],
-            },
-          ],
-          penalizaciones: [],
-          condiciones_desaprobacion: [],
-        });
-      }
+      reset({
+        materia_id: materiaId || 0,
+        tipo: 'TP',
+        titulo: '',
+        descripcion: '',
+        numero: 1,
+        anio: new Date().getFullYear(),
+        metadata: {},
+        criterios: [
+          {
+            id: 'C1',
+            nombre: '',
+            descripcion: '',
+            peso: 100,
+            instrucciones_puntuacion: '',
+            subcriterios: [
+              {
+                id: 'C1.1',
+                descripcion: '',
+                evidencias: [],
+              },
+            ],
+          },
+        ],
+        penalizaciones: [],
+        condiciones_desaprobacion: [],
+      });
     }
   }, [isOpen, rubrica, materiaId, reset]);
 
@@ -219,16 +237,26 @@ export function RubricaEditor({
   const handleGenerarPDF = async () => {
     if (!pdfFile) return;
     try {
-      await generarPDFMutation.mutateAsync({
+      const response = await generarPDFMutation.mutateAsync({
         materiaId: watch('materia_id'),
         tipo: watch('tipo'),
         anio: watch('anio'),
         file: pdfFile,
       });
-      reset();
+
+      // Cargar la rúbrica V2 generada en el formulario
+      if (response) {
+        setValue('titulo', response.titulo || '');
+        setValue('descripcion', response.descripcion || '');
+        setValue('metadata', response.metadata || {});
+        setValue('criterios', response.criterios || []);
+        setValue('penalizaciones', response.penalizaciones || []);
+        setValue('condiciones_desaprobacion', response.condiciones_desaprobacion || []);
+      }
+
       setPdfFile(null);
       setCreationMode('manual');
-      onClose();
+      // NO cerrar el modal - permitir que el usuario revise y edite
     } catch (error) {
       console.error('Error generando rúbrica:', error);
     }
@@ -236,6 +264,8 @@ export function RubricaEditor({
 
   // ── Form submit ──
   const onSubmit = async (data: RubricaFormData) => {
+    console.log('📝 Intentando crear rúbrica con datos:', data);
+    console.log('📝 Criterios JSON:', JSON.stringify(data.criterios, null, 2));
     try {
       if (isEditing) {
         await updateMutation.mutateAsync({
@@ -262,14 +292,19 @@ export function RubricaEditor({
           criterios_json: data.criterios,
           penalizaciones_json: data.penalizaciones,
           condiciones_desaprobacion_json: data.condiciones_desaprobacion,
-          fuente: 'MANUAL',
+          fuente: 'manual',
         });
       }
 
       reset();
       onClose();
-    } catch (error) {
-      console.error('Error guardando rúbrica:', error);
+    } catch (error: any) {
+      console.error('❌ Error guardando rúbrica:', error);
+      console.error('❌ Detalle de respuesta:', error?.response?.data);
+      // Mostrar error al usuario
+      if (error?.response?.data?.detail) {
+        alert(`Error: ${JSON.stringify(error.response.data.detail, null, 2)}`);
+      }
     }
   };
 
@@ -292,7 +327,14 @@ export function RubricaEditor({
       title={isEditing ? 'Editar Rúbrica' : 'Crear Rúbrica'}
       size="xl"
     >
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form
+        onSubmit={(e) => {
+          console.log('🚀 Form submit triggered');
+          console.log('📋 Errores de validación:', errors);
+          handleSubmit(onSubmit)(e);
+        }}
+        className="space-y-6"
+      >
         {/* ── Información General ── */}
         <RubricaGeneralInfo
           register={register}
@@ -304,13 +346,11 @@ export function RubricaEditor({
           creationMode={creationMode}
         />
 
-        {/* ── Modo de Creación (solo al crear) ── */}
-        {!isEditing && (
-          <RubricaCreationModeSelector
-            creationMode={creationMode}
-            setCreationMode={setCreationMode}
-          />
-        )}
+        {/* ── Modo de Creación ── */}
+        <RubricaCreationModeSelector
+          creationMode={creationMode}
+          setCreationMode={setCreationMode}
+        />
 
         {/* ── Manual: Editor Completo con Accordion ── */}
         {creationMode === 'manual' && (
@@ -419,7 +459,7 @@ export function RubricaEditor({
         )}
 
         {/* ── PDF Mode ── */}
-        {creationMode === 'pdf' && !isEditing && (
+        {creationMode === 'pdf' && (
           <RubricaPDFMode
             pdfFile={pdfFile}
             setPdfFile={setPdfFile}
@@ -428,7 +468,7 @@ export function RubricaEditor({
         )}
 
         {/* ── JSON Mode ── */}
-        {creationMode === 'json' && !isEditing && (
+        {creationMode === 'json' && (
           <RubricaJSONMode
             jsonText={jsonText}
             setJsonText={setJsonText}
@@ -443,7 +483,7 @@ export function RubricaEditor({
             Cancelar
           </Button>
 
-          {creationMode === 'pdf' && !isEditing ? (
+          {creationMode === 'pdf' ? (
             <Button
               type="button"
               onClick={handleGenerarPDF}
@@ -459,7 +499,7 @@ export function RubricaEditor({
                 </>
               )}
             </Button>
-          ) : creationMode === 'json' && !isEditing ? (
+          ) : creationMode === 'json' ? (
             <Button type="button" onClick={handleLoadJSON} disabled={!jsonText.trim()}>
               <Code className="h-4 w-4 mr-2" />
               Cargar criterios

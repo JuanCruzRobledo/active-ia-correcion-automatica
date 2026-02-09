@@ -108,7 +108,16 @@ class RubricaIAService:
         # Parse and validate response
         try:
             rubrica_data = self._parse_rubrica_response(result)
+
+            # Log para debug
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"✅ Rúbrica V2 generada exitosamente: {rubrica_data.get('titulo', 'Sin título')}")
+
         except ValidationError as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"❌ Error validando rúbrica V2: {e.message}")
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Respuesta de IA malformada: {e.message}",
@@ -149,13 +158,13 @@ class RubricaIAService:
 
     def _parse_rubrica_response(self, response: dict[str, Any]) -> dict[str, Any]:
         """
-        Parse and validate rubrica response from N8N.
+        Parse and validate rubrica V2 response from N8N.
 
         Args:
             response: Raw response from N8N.
 
         Returns:
-            Validated rubrica data.
+            Validated rubrica V2 data.
 
         Raises:
             ValidationError: If response is invalid.
@@ -171,14 +180,20 @@ class RubricaIAService:
                     field="n8n_response",
                 )
 
-            # Extract rubrica data
+            # Extract rubrica V2 data
             rubrica_data = response.get("rubrica", {})
 
-            # Validate required fields
-            if not rubrica_data.get("nombre_sugerido"):
+            # Validate required fields (V2 schema)
+            if not rubrica_data.get("titulo"):
                 raise ValidationError(
-                    message="Respuesta no contiene nombre sugerido",
-                    field="nombre_sugerido",
+                    message="Respuesta no contiene titulo",
+                    field="titulo",
+                )
+
+            if not rubrica_data.get("descripcion"):
+                raise ValidationError(
+                    message="Respuesta no contiene descripcion",
+                    field="descripcion",
                 )
 
             if not rubrica_data.get("criterios"):
@@ -187,7 +202,7 @@ class RubricaIAService:
                     field="criterios",
                 )
 
-            # Validate criterios structure
+            # Validate criterios structure (V2)
             criterios = rubrica_data["criterios"]
             if not isinstance(criterios, list) or len(criterios) == 0:
                 raise ValidationError(
@@ -195,13 +210,20 @@ class RubricaIAService:
                     field="criterios",
                 )
 
-            # Validate each criterio
-            total_puntaje = 0
+            # Validate each criterio (V2 schema)
+            total_peso = 0
             for i, criterio in enumerate(criterios):
                 if not isinstance(criterio, dict):
                     raise ValidationError(
                         message=f"Criterio {i} no es un objeto válido",
                         field=f"criterios[{i}]",
+                    )
+
+                # Validate criterio V2 fields
+                if not criterio.get("id"):
+                    raise ValidationError(
+                        message=f"Criterio {i} no tiene id",
+                        field=f"criterios[{i}].id",
                     )
 
                 if not criterio.get("nombre"):
@@ -216,28 +238,66 @@ class RubricaIAService:
                         field=f"criterios[{i}].descripcion",
                     )
 
-                puntaje = criterio.get("puntaje_maximo")
-                if not isinstance(puntaje, (int, float)) or puntaje <= 0:
+                # Validate peso (not puntaje_maximo)
+                peso = criterio.get("peso")
+                if not isinstance(peso, (int, float)) or peso <= 0 or peso > 100:
                     raise ValidationError(
-                        message=f"Criterio {i} tiene puntaje inválido",
-                        field=f"criterios[{i}].puntaje_maximo",
+                        message=f"Criterio {i} tiene peso inválido (debe ser 1-100)",
+                        field=f"criterios[{i}].peso",
                     )
 
-                total_puntaje += puntaje
+                total_peso += peso
 
-            # Validate total score is 100 (with tolerance)
-            if abs(total_puntaje - 100) > 5:
+                # Validate subcriterios
+                subcriterios = criterio.get("subcriterios", [])
+                if not isinstance(subcriterios, list) or len(subcriterios) == 0:
+                    raise ValidationError(
+                        message=f"Criterio {i} debe tener al menos un subcriterio",
+                        field=f"criterios[{i}].subcriterios",
+                    )
+
+                # Validate each subcriterio
+                for j, sub in enumerate(subcriterios):
+                    if not sub.get("id"):
+                        raise ValidationError(
+                            message=f"Subcriterio {j} del criterio {i} no tiene id",
+                            field=f"criterios[{i}].subcriterios[{j}].id",
+                        )
+
+                    if not sub.get("descripcion"):
+                        raise ValidationError(
+                            message=f"Subcriterio {j} del criterio {i} no tiene descripcion",
+                            field=f"criterios[{i}].subcriterios[{j}].descripcion",
+                        )
+
+                    evidencias = sub.get("evidencias", [])
+                    if not isinstance(evidencias, list) or len(evidencias) == 0:
+                        raise ValidationError(
+                            message=f"Subcriterio {j} del criterio {i} debe tener al menos una evidencia",
+                            field=f"criterios[{i}].subcriterios[{j}].evidencias",
+                        )
+
+            # Validate total peso is 100 (with tolerance of ±1)
+            if abs(total_peso - 100) > 1:
                 raise ValidationError(
-                    message=f"La suma de puntajes debe ser 100 (actual: {total_puntaje})",
+                    message=f"La suma de pesos debe ser 100 (actual: {total_peso})",
                     field="criterios",
                 )
 
             # Ensure puntaje_maximo is set to 100
             rubrica_data["puntaje_maximo"] = 100
 
-            # Add default description if missing
-            if not rubrica_data.get("descripcion"):
-                rubrica_data["descripcion"] = ""
+            # Validate metadata exists (can be empty)
+            if "metadata" not in rubrica_data:
+                rubrica_data["metadata"] = {}
+
+            # Validate penalizaciones (optional)
+            if "penalizaciones" not in rubrica_data:
+                rubrica_data["penalizaciones"] = []
+
+            # Validate condiciones_desaprobacion (optional)
+            if "condiciones_desaprobacion" not in rubrica_data:
+                rubrica_data["condiciones_desaprobacion"] = []
 
             return rubrica_data
 

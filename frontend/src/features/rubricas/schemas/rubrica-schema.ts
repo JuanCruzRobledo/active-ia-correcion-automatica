@@ -184,7 +184,7 @@ export const rubricaCreateSchema = z.object({
   condiciones_desaprobacion_json: z
     .array(condicionDesaprobacionSchema)
     .default([]),
-  fuente: z.enum(['MANUAL', 'IA']).default('MANUAL'),
+  fuente: z.enum(['manual', 'pdf']).default('manual'),
   archivo_original: z.string().optional(),
 });
 
