@@ -15,7 +15,7 @@ export type TipoRubrica =
   | 'FINAL'
   | 'GLOBAL';
 
-export type FuenteRubrica = 'MANUAL' | 'IA';
+export type FuenteRubrica = 'manual' | 'pdf';
 
 // ============================================================================
 // Schema Types (Hierarchical)

@@ -216,6 +216,11 @@ function SortableCriterioItem({
                         placeholder="Escribe una evidencia y presiona Enter..."
                         maxTags={20}
                       />
+                      {criterioErrors?.subcriterios?.[subIdx]?.evidencias && (
+                        <p className="text-xs text-destructive mt-1">
+                          {criterioErrors.subcriterios[subIdx].evidencias.message}
+                        </p>
+                      )}
                       <p className="text-xs text-muted-foreground mt-1">
                         Ej: "Archivo package.json existe", "Retorna código 201"
                       </p>

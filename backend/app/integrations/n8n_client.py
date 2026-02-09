@@ -92,7 +92,13 @@ class N8NClient:
                     timeout=self.rubric_timeout,
                 )
                 response.raise_for_status()
-                return response.json()
+                result = response.json()
+
+                # N8N returns an array with a single object, extract it
+                if isinstance(result, list) and len(result) > 0:
+                    return result[0]
+
+                return result
 
             except httpx.TimeoutException:
                 raise N8NTimeoutError("Timeout generando rúbrica desde PDF")
