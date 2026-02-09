@@ -39,7 +39,7 @@ export const criterioSchema = z.object({
     .number()
     .min(1, 'Peso debe ser al menos 1')
     .max(100, 'Peso no puede exceder 100'),
-  instrucciones_puntuacion: z.string().max(500).optional(),
+  instrucciones_puntuacion: z.string().max(500).nullish(),
   subcriterios: z
     .array(subcriterioSchema)
     .min(1, 'Debe haber al menos un subcriterio'),
