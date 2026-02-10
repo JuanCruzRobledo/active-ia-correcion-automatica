@@ -16,8 +16,6 @@
 
 import { useState } from 'react';
 import {
-  X,
-  FileCode,
   ChevronDown,
   ChevronRight,
   FileText,
@@ -57,9 +55,20 @@ export default function EntregaViewModal({
   onClose,
 }: EntregaViewModalProps) {
   const [isFilesExpanded, setIsFilesExpanded] = useState(true);
+  const [isCodeExpanded, setIsCodeExpanded] = useState(false);
 
   // Fetch code content from backend
   const { data: contenido, isLoading, isError, error } = useEntregaContenido(entregaId);
+
+  // Determine if we should show preview mode
+  const PREVIEW_LENGTH = 1000; // characters
+  const shouldShowPreview = contenido && contenido.contenido_consolidado.length > PREVIEW_LENGTH && !isCodeExpanded;
+  const displayContent = shouldShowPreview
+    ? contenido.contenido_consolidado.substring(0, PREVIEW_LENGTH) + '\n\n...'
+    : contenido?.contenido_consolidado;
+
+  // Check if content is limited (old entregas with only preview)
+  const isLimitedContent = contenido && contenido.total_caracteres < 600; // Likely just preview
 
   /**
    * Format number with thousand separators.
@@ -69,37 +78,65 @@ export default function EntregaViewModal({
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="2xl">
-      {/* Header */}
-      <div className="flex items-start justify-between border-b border-border pb-4 mb-6">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <FileCode className="h-5 w-5 text-accent" />
-            <h2 className="text-xl font-semibold text-foreground">
-              Código de Entrega
-            </h2>
-          </div>
-          <div className="space-y-0.5">
-            <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Alumno:</span> {alumno}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">Archivo:</span> {archivoNombre}
-            </p>
-          </div>
+    <Modal isOpen={isOpen} onClose={onClose} size="2xl" title="Código de Entrega">
+      {/* Info and Statistics - No scrollable */}
+      <div className="border-b border-border pb-4 mb-4 -mt-6">
+        <div className="space-y-0.5 mb-4">
+          <p className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">Alumno:</span> {alumno}
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">Archivo:</span> {archivoNombre}
+          </p>
         </div>
 
-        <button
-          onClick={onClose}
-          className="text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Cerrar modal"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        {/* Statistics Cards - In Header */}
+        {contenido && (
+          <div className={`grid gap-3 ${contenido.archivos_incluidos.length > 1 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+            {/* Only show Archivos card if more than 1 file (ZIP case) */}
+            {contenido.archivos_incluidos.length > 1 && (
+              <div className="bg-muted/50 rounded-lg p-3 border border-border">
+                <div className="flex items-center gap-2 mb-1">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Archivos
+                  </span>
+                </div>
+                <div className="text-xl font-bold text-foreground">
+                  {contenido.archivos_incluidos.length}
+                </div>
+              </div>
+            )}
+
+            <div className="bg-muted/50 rounded-lg p-3 border border-border">
+              <div className="flex items-center gap-2 mb-1">
+                <Hash className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Líneas
+                </span>
+              </div>
+              <div className="text-xl font-bold text-foreground">
+                {formatNumber(contenido.total_lineas)}
+              </div>
+            </div>
+
+            <div className="bg-muted/50 rounded-lg p-3 border border-border">
+              <div className="flex items-center gap-2 mb-1">
+                <Type className="h-4 w-4 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Caracteres
+                </span>
+              </div>
+              <div className="text-xl font-bold text-foreground">
+                {formatNumber(contenido.total_caracteres)}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Content - Scrollable */}
-      <div className="space-y-4 max-h-[calc(100vh-16rem)] overflow-y-auto pr-2">
+      {/* Content - Single Scrollable Area */}
+      <div className="space-y-4 max-h-[calc(100vh-22rem)] overflow-y-auto pr-2">
         {/* Loading State */}
         {isLoading && (
           <div className="flex items-center justify-center py-12">
@@ -133,45 +170,6 @@ export default function EntregaViewModal({
         {/* Success State - Show Content */}
         {contenido && (
           <>
-            {/* Code Statistics */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-muted/50 rounded-lg p-3 border border-border">
-                <div className="flex items-center gap-2 mb-1">
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Archivos
-                  </span>
-                </div>
-                <div className="text-xl font-bold text-foreground">
-                  {contenido.archivos_incluidos.length}
-                </div>
-              </div>
-
-              <div className="bg-muted/50 rounded-lg p-3 border border-border">
-                <div className="flex items-center gap-2 mb-1">
-                  <Hash className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Líneas
-                  </span>
-                </div>
-                <div className="text-xl font-bold text-foreground">
-                  {formatNumber(contenido.total_lineas)}
-                </div>
-              </div>
-
-              <div className="bg-muted/50 rounded-lg p-3 border border-border">
-                <div className="flex items-center gap-2 mb-1">
-                  <Type className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                    Caracteres
-                  </span>
-                </div>
-                <div className="text-xl font-bold text-foreground">
-                  {formatNumber(contenido.total_caracteres)}
-                </div>
-              </div>
-            </div>
-
             {/* Included Files Section - Collapsible */}
             {contenido.archivos_incluidos.length > 0 && (
               <div className="border border-border rounded-lg overflow-hidden">
@@ -214,46 +212,74 @@ export default function EntregaViewModal({
               </div>
             )}
 
-            {/* Code Container - Terminal/IDE Style */}
+            {/* Warning for limited content */}
+            {isLimitedContent && (
+              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 flex items-start gap-2">
+                <AlertCircle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Vista Limitada</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Solo se muestran los primeros 500 caracteres. Para ver el código completo, re-sube esta entrega.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Code Container - Using Theme Colors */}
             <div className="border border-border rounded-lg overflow-hidden">
               {/* Code Header */}
-              <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
+              <div className="flex items-center justify-between px-4 py-2 bg-muted border-b border-border">
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-red-500" />
-                    <div className="w-3 h-3 rounded-full bg-yellow-500" />
-                    <div className="w-3 h-3 rounded-full bg-green-500" />
+                    <div className="w-3 h-3 rounded-full bg-destructive" />
+                    <div className="w-3 h-3 rounded-full bg-warning" />
+                    <div className="w-3 h-3 rounded-full bg-success" />
                   </div>
-                  <span className="text-xs font-mono text-gray-400 ml-2">
-                    Código consolidado
+                  <span className="text-xs font-mono text-muted-foreground ml-2">
+                    {isLimitedContent ? 'Código (preview)' : 'Código consolidado'}
                   </span>
                 </div>
-                <Badge variant="outline" className="bg-gray-700 text-gray-300 border-gray-600">
-                  Read-only
-                </Badge>
+                <div className="flex items-center gap-2">
+                  {!isLimitedContent && shouldShowPreview && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsCodeExpanded(!isCodeExpanded)}
+                      className="text-xs h-7"
+                    >
+                      {isCodeExpanded ? 'Ver menos' : 'Ver todo'}
+                    </Button>
+                  )}
+                  <Badge variant="outline">
+                    Read-only
+                  </Badge>
+                </div>
               </div>
 
-              {/* Code Content - Scrollable */}
-              <div className="bg-gray-900 max-h-[600px] overflow-auto">
+              {/* Code Content - No internal scroll */}
+              <div className="bg-muted/30">
                 <pre className="p-4 text-sm leading-relaxed">
-                  <code className="font-mono text-gray-100 whitespace-pre">
-                    {contenido.contenido_consolidado}
+                  <code className="font-mono text-foreground whitespace-pre">
+                    {displayContent}
                   </code>
                 </pre>
               </div>
+
+              {/* Expand Button at Bottom */}
+              {!isLimitedContent && shouldShowPreview && (
+                <div className="border-t border-border bg-muted/50 px-4 py-2 text-center">
+                  <button
+                    onClick={() => setIsCodeExpanded(true)}
+                    className="text-sm text-accent hover:text-accent/80 font-medium transition-colors"
+                  >
+                    Ver {formatNumber(contenido.total_caracteres - PREVIEW_LENGTH)} caracteres más...
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}
       </div>
-
-      {/* Footer */}
-      {!isLoading && !isError && (
-        <div className="flex items-center justify-end gap-3 border-t border-border pt-4 mt-6">
-          <Button variant="outline" onClick={onClose}>
-            Cerrar
-          </Button>
-        </div>
-      )}
     </Modal>
   );
 }

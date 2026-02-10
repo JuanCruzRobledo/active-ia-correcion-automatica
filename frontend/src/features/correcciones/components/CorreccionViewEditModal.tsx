@@ -240,51 +240,36 @@ export default function CorreccionViewEditModal({
   const isViewMode = mode === 'view';
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} size="2xl">
-      {/* Header */}
-      <div className="flex items-start justify-between border-b border-border pb-4 mb-6">
-        <div className="flex-1">
-          <h2 className="text-xl font-semibold text-foreground">
-            Corrección: {alumno}
-          </h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            {trabajoNombre}
-          </p>
-        </div>
+    <Modal isOpen={isOpen} onClose={handleClose} size="2xl" title={`Corrección: ${alumno}`}>
+      {/* Info and Mode Toggle - No scrollable */}
+      <div className="flex items-center justify-between border-b border-border pb-4 mb-4 -mt-6">
+        <p className="text-sm text-muted-foreground">
+          {trabajoNombre}
+        </p>
 
         {/* Mode Toggle Button */}
-        <div className="flex items-center gap-3">
-          <Button
-            variant={isViewMode ? 'outline' : 'primary'}
-            size="sm"
-            onClick={() => setMode(isViewMode ? 'edit' : 'view')}
-            className="gap-2"
-          >
-            {isViewMode ? (
-              <>
-                <Pencil className="h-4 w-4" />
-                Editar
-              </>
-            ) : (
-              <>
-                <Eye className="h-4 w-4" />
-                Ver
-              </>
-            )}
-          </Button>
-
-          <button
-            onClick={handleClose}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Cerrar modal"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
+        <Button
+          variant={isViewMode ? 'outline' : 'primary'}
+          size="sm"
+          onClick={() => setMode(isViewMode ? 'edit' : 'view')}
+          className="gap-2"
+        >
+          {isViewMode ? (
+            <>
+              <Pencil className="h-4 w-4" />
+              Editar
+            </>
+          ) : (
+            <>
+              <Eye className="h-4 w-4" />
+              Ver
+            </>
+          )}
+        </Button>
       </div>
 
       {/* Content - Scrollable */}
-      <div className="space-y-6 max-h-[calc(100vh-16rem)] overflow-y-auto pr-2">
+      <div className="space-y-6 max-h-[calc(100vh-22rem)] overflow-y-auto pr-2">
         {/* 1. NOTA FINAL - Always visible, prominently displayed */}
         <section className="bg-gradient-to-br from-muted/80 to-muted/40 rounded-lg p-6 border border-border shadow-sm">
           <div className="flex items-center justify-between mb-4">

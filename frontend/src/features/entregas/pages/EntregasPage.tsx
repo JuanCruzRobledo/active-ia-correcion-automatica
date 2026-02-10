@@ -100,13 +100,13 @@ export const EntregasPage = () => {
   const { data, isLoading, error } = useEntregas(
     selectedComisionId && selectedRubricaId
       ? {
-          comision_id: selectedComisionId,
-          rubrica_id: selectedRubricaId,
-          estado: estadoFilter !== 'TODOS' ? estadoFilter : undefined,
-          search: searchTerm || undefined,
-          page,
-          per_page: perPage,
-        }
+        comision_id: selectedComisionId,
+        rubrica_id: selectedRubricaId,
+        estado: estadoFilter !== 'TODOS' ? estadoFilter : undefined,
+        search: searchTerm || undefined,
+        page,
+        per_page: perPage,
+      }
       : undefined,
     { enabled: !!selectedComisionId && !!selectedRubricaId }
   );
@@ -440,54 +440,54 @@ export const EntregasPage = () => {
       {/* Filters and Actions */}
       {selectedComisionId && selectedRubricaId && (
         <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="flex flex-col lg:flex-row gap-4">
-          {/* Search */}
-          <div className="flex-1">
-            <Input
-              type="text"
-              placeholder="Buscar por nombre de alumno..."
-              value={searchTerm}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              startIcon={<Search className="w-4 h-4" />}
-            />
-          </div>
-
-          {/* Estado Filter */}
-          <div className="w-full lg:w-64">
-            <Select
-              value={estadoFilter}
-              onChange={(e) => handleEstadoChange(e.target.value)}
-              options={ESTADO_OPTIONS}
-            />
-          </div>
-
-          {/* Batch Action Button */}
-          {selectedIds.length > 0 ? (
-            <div className="flex gap-2">
-              <Button
-                variant="primary"
-                onClick={handleCorregirSeleccionados}
-                isLoading={corregirMasivaMutation.isPending}
-              >
-                <FileCheck2 className="w-4 h-4" />
-                Corregir ({selectedIds.length})
-              </Button>
+          <div className="flex flex-col lg:flex-row gap-4">
+            {/* Search */}
+            <div className="flex-1">
+              <Input
+                type="text"
+                placeholder="Buscar por nombre de alumno..."
+                value={searchTerm}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                startIcon={<Search className="w-4 h-4" />}
+              />
             </div>
-          ) : (
-            pendientesCount > 0 && (
-              <Button
-                variant="primary"
-                onClick={() => {
-                  handleEstadoChange('PENDIENTE');
-                }}
-              >
-                <FileCheck2 className="w-4 h-4" />
-                Ver Pendientes ({pendientesCount})
-              </Button>
-            )
-          )}
+
+            {/* Estado Filter */}
+            <div className="w-full lg:w-64">
+              <Select
+                value={estadoFilter}
+                onChange={(e) => handleEstadoChange(e.target.value)}
+                options={ESTADO_OPTIONS}
+              />
+            </div>
+
+            {/* Batch Action Button */}
+            {selectedIds.length > 0 ? (
+              <div className="flex gap-2">
+                <Button
+                  variant="primary"
+                  onClick={handleCorregirSeleccionados}
+                  isLoading={corregirMasivaMutation.isPending}
+                >
+                  <FileCheck2 className="w-4 h-4" />
+                  Corregir ({selectedIds.length})
+                </Button>
+              </div>
+            ) : (
+              pendientesCount > 0 && (
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    handleEstadoChange('PENDIENTE');
+                  }}
+                >
+                  <FileCheck2 className="w-4 h-4" />
+                  Ver Pendientes ({pendientesCount})
+                </Button>
+              )
+            )}
+          </div>
         </div>
-      </div>
       )}
 
       {/* Empty State when no selection */}
@@ -502,134 +502,134 @@ export const EntregasPage = () => {
       {/* Table or Empty State */}
       {selectedComisionId && selectedRubricaId && (
         entregas.length === 0 ? (
-        <EmptyState
-          icon={<Upload className="w-12 h-12 text-gray-400" />}
-          title="No hay entregas"
-          description={
-            searchTerm || estadoFilter !== 'TODOS'
-              ? 'No se encontraron entregas con los filtros aplicados'
-              : 'Sube la primera entrega usando el botón "Subir Entrega"'
-          }
-          action={
-            !searchTerm && estadoFilter === 'TODOS' ? (
-              <Button onClick={() => setShowUploadModal(true)}>
-                Subir Entrega
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setSearchTerm('');
-                  setEstadoFilter('TODOS');
-                  setSearchParams({});
-                }}
-              >
-                Limpiar Filtros
-              </Button>
-            )
-          }
-        />
-      ) : (
-        <>
-          {/* Table */}
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 w-4">
-                      <Checkbox
-                        checked={allSelected}
-                        onChange={(e) => handleSelectAll(e.target.checked)}
-                      />
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Alumno
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Archivo
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Estado
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Nota
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Fecha
-                    </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Acciones
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {entregas.map((entrega: EntregaListItem) => {
-                    const isCorregida = entrega.estado === 'CORREGIDA';
-                    const isPendiente = entrega.estado === 'PENDIENTE' || entrega.estado === 'SUBIDA' || entrega.estado === 'ERROR';
+          <EmptyState
+            icon={<Upload className="w-12 h-12 text-gray-400" />}
+            title="No hay entregas"
+            description={
+              searchTerm || estadoFilter !== 'TODOS'
+                ? 'No se encontraron entregas con los filtros aplicados'
+                : 'Sube la primera entrega usando el botón "Subir Entrega"'
+            }
+            action={
+              !searchTerm && estadoFilter === 'TODOS' ? (
+                <Button onClick={() => setShowUploadModal(true)}>
+                  Subir Entrega
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSearchTerm('');
+                    setEstadoFilter('TODOS');
+                    setSearchParams({});
+                  }}
+                >
+                  Limpiar Filtros
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <>
+            {/* Table */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 w-4">
+                        <Checkbox
+                          checked={allSelected}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                        />
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Alumno
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Archivo
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Estado
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Nota
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Fecha
+                      </th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Acciones
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {entregas.map((entrega: EntregaListItem) => {
+                      const isCorregida = entrega.estado === 'CORREGIDA';
+                      const isPendiente = entrega.estado === 'PENDIENTE' || entrega.estado === 'SUBIDA' || entrega.estado === 'ERROR';
 
-                    return (
-                      <tr key={entrega.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <Checkbox
-                            checked={selectedIds.includes(entrega.id)}
-                            onChange={(e) => handleSelectOne(entrega.id, e.target.checked)}
-                          />
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">
-                            {entrega.alumno_nombre}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-900">
-                            {entrega.archivo_nombre}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {formatFileSize(entrega.archivo_tamanio)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {getEstadoBadge(entrega.estado)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {entrega.nota !== null ? (
-                              <span className="font-medium">{entrega.nota}</span>
-                            ) : (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatDate(entrega.created_at)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <Dropdown
-                            trigger={
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                              >
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            }
-                            items={[
-                              // Ver Entrega - always visible
-                              {
-                                label: 'Ver Entrega',
-                                icon: <Eye className="w-4 h-4" />,
-                                onClick: () => {
-                                  setViewEntregaId(entrega.id);
-                                  setViewAlumno(entrega.alumno_nombre);
-                                  setViewArchivo(entrega.archivo_nombre);
+                      return (
+                        <tr key={entrega.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <Checkbox
+                              checked={selectedIds.includes(entrega.id)}
+                              onChange={(e) => handleSelectOne(entrega.id, e.target.checked)}
+                            />
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">
+                              {entrega.alumno_nombre}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="text-sm text-gray-900">
+                              {entrega.archivo_nombre}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {formatFileSize(entrega.archivo_tamanio)}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            {getEstadoBadge(entrega.estado)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">
+                              {entrega.nota !== null ? (
+                                <span className="font-medium">{entrega.nota}</span>
+                              ) : (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {formatDate(entrega.created_at)}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <Dropdown
+                              trigger={
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                >
+                                  <MoreVertical className="w-4 h-4" />
+                                </Button>
+                              }
+                              items={[
+                                // Ver Entrega - always visible
+                                {
+                                  label: 'Ver Entrega',
+                                  icon: <Eye className="w-4 h-4" />,
+                                  onClick: () => {
+                                    setViewEntregaId(entrega.id);
+                                    setViewAlumno(entrega.alumno_nombre);
+                                    setViewArchivo(entrega.archivo_nombre);
+                                  },
                                 },
-                              },
-                              // Actions for CORREGIDA state
-                              ...(isCorregida
-                                ? [
+                                // Actions for CORREGIDA state
+                                ...(isCorregida
+                                  ? [
                                     {
-                                      label: 'Ver / Editar',
+                                      label: 'Ver / Editar Corrección',
                                       icon: <Eye className="w-4 h-4" />,
                                       onClick: () => {
                                         setModalEntregaId(entrega.id);
@@ -652,10 +652,10 @@ export const EntregasPage = () => {
                                       disabled: downloadingPDFId === entrega.id,
                                     },
                                   ]
-                                : []),
-                              // Actions for PENDIENTE/SUBIDA/ERROR states
-                              ...(isPendiente
-                                ? [
+                                  : []),
+                                // Actions for PENDIENTE/SUBIDA/ERROR states
+                                ...(isPendiente
+                                  ? [
                                     {
                                       label: 'Corregir',
                                       icon: <FileCheck2 className="w-4 h-4" />,
@@ -663,54 +663,54 @@ export const EntregasPage = () => {
                                       disabled: corregirMutation.isPending,
                                     },
                                   ]
-                                : []),
-                              // Delete is always available
-                              {
-                                label: 'Eliminar',
-                                icon: <Trash2 className="w-4 h-4" />,
-                                onClick: () => handleDelete(entrega.id),
-                                variant: 'danger',
-                              },
-                            ]}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-200">
-                <div className="text-sm text-gray-700">
-                  Mostrando {(page - 1) * perPage + 1} -{' '}
-                  {Math.min(page * perPage, data?.total || 0)} de {data?.total}{' '}
-                  entregas
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={page === 1}
-                    onClick={() => handlePageChange(page - 1)}
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    disabled={page >= totalPages}
-                    onClick={() => handlePageChange(page + 1)}
-                  >
-                    Siguiente
-                  </Button>
-                </div>
+                                  : []),
+                                // Delete is always available
+                                {
+                                  label: 'Eliminar',
+                                  icon: <Trash2 className="w-4 h-4" />,
+                                  onClick: () => handleDelete(entrega.id),
+                                  variant: 'danger',
+                                },
+                              ]}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            )}
-          </div>
-        </>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-200">
+                  <div className="text-sm text-gray-700">
+                    Mostrando {(page - 1) * perPage + 1} -{' '}
+                    {Math.min(page * perPage, data?.total || 0)} de {data?.total}{' '}
+                    entregas
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={page === 1}
+                      onClick={() => handlePageChange(page - 1)}
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={page >= totalPages}
+                      onClick={() => handlePageChange(page + 1)}
+                    >
+                      Siguiente
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
         )
       )}
 
