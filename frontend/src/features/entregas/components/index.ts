@@ -4,3 +4,4 @@
  */
 
 export { CargaEntregaModal } from './CargaEntregaModal';
+export { default as EntregaViewModal } from './EntregaViewModal';

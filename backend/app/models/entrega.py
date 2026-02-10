@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Enum as SQLEnum, ForeignKey, Index, Integer, Numeric, String, Text, text
+from sqlalchemy import Enum as SQLEnum, ForeignKey, Index, Integer, Numeric, String, Text, text, ARRAY
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -60,6 +60,14 @@ class Entrega(Base, TimestampMixin, SoftDeleteMixin):
         Text,
         nullable=True,
     )  # Primeros 500 caracteres
+    contenido_consolidado: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )  # Full consolidated content
+    archivos_incluidos: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String),
+        nullable=True,
+    )  # List of files included in consolidation
     estado: Mapped[EstadoEntregaEnum] = mapped_column(
         SQLEnum(EstadoEntregaEnum, name="estadoentregaenum", create_type=True),
         default=EstadoEntregaEnum.SUBIDA,

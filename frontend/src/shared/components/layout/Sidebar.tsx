@@ -35,13 +35,7 @@ const navItems: NavItem[] = [
     label: 'Rúbricas',
     roles: ['ADMIN', 'COORDINADOR'],
   },
-  { to: '/entregas', icon: FileText, label: 'Entregas', roles: ['TUTOR'] },
-  {
-    to: '/correcciones',
-    icon: CheckSquare,
-    label: 'Correcciones',
-    roles: ['TUTOR'],
-  },
+  { to: '/entregas', icon: CheckSquare, label: 'Entregas', roles: ['TUTOR'] },
 ];
 
 export const Sidebar = () => {
