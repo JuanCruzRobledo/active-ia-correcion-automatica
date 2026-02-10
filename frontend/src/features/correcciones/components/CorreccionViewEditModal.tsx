@@ -270,48 +270,50 @@ export default function CorreccionViewEditModal({
 
       {/* Content - Scrollable */}
       <div className="space-y-6 max-h-[calc(100vh-22rem)] overflow-y-auto pr-2">
-        {/* 1. NOTA FINAL - Always visible, prominently displayed */}
-        <section className="bg-gradient-to-br from-muted/80 to-muted/40 rounded-lg p-6 border border-border shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
-              Nota Final
-            </h3>
-            {!isViewMode && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRecalcularNota}
-                className="gap-2"
-              >
-                <Calculator className="h-4 w-4" />
-                Recalcular
-              </Button>
-            )}
-          </div>
+        {/* 1. NOTA FINAL - Compact and prominent */}
+        <section className="bg-gradient-to-br from-muted/80 to-muted/40 rounded-lg p-4 border border-border">
+          <div className="flex items-center justify-between gap-4">
+            {/* Left: Label and Recalcular button */}
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
+                Nota Final
+              </h3>
+              {!isViewMode && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRecalcularNota}
+                  className="gap-1.5 text-xs"
+                >
+                  <Calculator className="h-3.5 w-3.5" />
+                  Recalcular
+                </Button>
+              )}
+            </div>
 
-          <div className="bg-background rounded-lg p-8 text-center border border-border/50">
-            {isViewMode ? (
-              <div className={cn('text-6xl font-bold', getNotaColor(nota))}>
-                {nota.toFixed(1)}
-              </div>
-            ) : (
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="0.1"
-                value={nota}
-                onChange={(e) => setNota(Number(e.target.value))}
-                className={cn(
-                  'text-6xl font-bold text-center w-40 bg-transparent',
-                  'border-b-2 border-border focus:border-accent focus:outline-none',
-                  'transition-colors',
-                  getNotaColor(nota)
-                )}
-              />
-            )}
-            <div className="text-xl text-muted-foreground mt-3">
-              de 100 puntos
+            {/* Right: Nota display */}
+            <div className="flex items-baseline gap-2">
+              {isViewMode ? (
+                <div className={cn('text-4xl font-bold', getNotaColor(nota))}>
+                  {nota.toFixed(1)}
+                </div>
+              ) : (
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={nota}
+                  onChange={(e) => setNota(Number(e.target.value))}
+                  className={cn(
+                    'text-4xl font-bold text-center w-28 bg-transparent',
+                    'border-b-2 border-border focus:border-accent focus:outline-none',
+                    'transition-colors',
+                    getNotaColor(nota)
+                  )}
+                />
+              )}
+              <span className="text-sm text-muted-foreground">/ 100</span>
             </div>
           </div>
         </section>
@@ -331,18 +333,30 @@ export default function CorreccionViewEditModal({
               Criterios de Evaluación
             </AccordionTrigger>
             <AccordionContent value="criterios">
-              <div className="space-y-3">
-                {criterios.map((criterio, index) => (
-                  <CriterioCard
-                    key={criterio.id}
-                    criterio={criterio}
-                    isViewMode={isViewMode}
-                    onChange={(field, value) =>
-                      handleCriterioChange(index, field, value)
-                    }
-                  />
-                ))}
-              </div>
+              {criterios.length > 0 ? (
+                <div className="space-y-3">
+                  {criterios.map((criterio, index) => (
+                    <CriterioCard
+                      key={criterio.id}
+                      criterio={criterio}
+                      isViewMode={isViewMode}
+                      onChange={(field, value) =>
+                        handleCriterioChange(index, field, value)
+                      }
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 bg-muted/30 rounded-lg border border-dashed border-border">
+                  <ListChecks className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
+                  <p className="text-sm font-medium text-foreground mb-1">
+                    No hay criterios de evaluación
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Esta corrección no tiene criterios definidos. Contacta al administrador.
+                  </p>
+                </div>
+              )}
             </AccordionContent>
           </AccordionItem>
 

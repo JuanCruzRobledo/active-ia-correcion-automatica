@@ -62,7 +62,7 @@ class CorreccionResponse(BaseModel):
     id: int
     entrega_id: int
     nota: Decimal = Field(..., description="Final grade (0-100)")
-    criterios: list[CriterioEvaluado] = Field(..., alias="criterios_json", description="Evaluated criteria")
+    criterios: list[CriterioEvaluado] = Field(default_factory=list, description="Evaluated criteria")
     fortalezas: list[str] = Field(default_factory=list, description="Code strengths")
     recomendaciones: list[str] = Field(default_factory=list, description="Improvement recommendations")
     comentario_general: str = Field(..., description="General pedagogical feedback")
@@ -71,15 +71,36 @@ class CorreccionResponse(BaseModel):
     created_at: datetime = Field(..., serialization_alias="fecha_correccion", description="Correction date")
     updated_at: datetime = Field(..., description="Last modification date")
 
-    @field_validator('criterios', mode='before')
     @classmethod
-    def extract_criterios_from_json(cls, v):
-        """Extract criterios array from criterios_json dict if needed."""
-        # If coming from SQLAlchemy model, criterios_json is a dict like {"criterios": [...]}
-        if isinstance(v, dict) and 'criterios' in v:
-            return [CriterioEvaluado(**c) for c in v['criterios']]
-        # If already a list, return as is
-        return v
+    def model_validate(cls, obj, **kwargs):
+        """Custom validation to extract criterios from criterios_json."""
+        # If obj is a SQLAlchemy model with criterios_json attribute
+        if hasattr(obj, 'criterios_json'):
+            criterios_json = obj.criterios_json
+            # Extract criterios array from dict structure
+            if isinstance(criterios_json, dict) and 'criterios' in criterios_json:
+                criterios_list = [CriterioEvaluado(**c) for c in criterios_json['criterios']]
+            else:
+                criterios_list = []
+
+            # Create dict with all attributes
+            data = {
+                'id': obj.id,
+                'entrega_id': obj.entrega_id,
+                'nota': obj.nota,
+                'criterios': criterios_list,
+                'fortalezas': obj.fortalezas if obj.fortalezas else [],
+                'recomendaciones': obj.recomendaciones if obj.recomendaciones else [],
+                'comentario_general': obj.comentario_general if obj.comentario_general else '',
+                'editado_manualmente': obj.editado_manualmente,
+                'corregido_por_id': obj.corregido_por_id,
+                'created_at': obj.created_at,
+                'updated_at': obj.updated_at,
+            }
+            return super().model_validate(data, **kwargs)
+
+        # Otherwise, use default validation
+        return super().model_validate(obj, **kwargs)
 
     class Config:
         from_attributes = True
@@ -95,15 +116,8 @@ class CorreccionUpdate(BaseModel):
     recomendaciones: Optional[list[str]] = Field(None, description="Updated recommendations")
     comentario_general: Optional[str] = Field(None, description="Updated general comment")
 
-    @field_validator('criterios')
-    @classmethod
-    def validate_criterios_sum(cls, v):
-        """Validate that criteria sum to 100 if provided."""
-        if v is not None:
-            suma = sum(c.puntaje_obtenido for c in v)
-            if abs(suma - 100) > 1:  # Tolerance of 1 point
-                raise ValueError(f"La suma de puntajes debe ser 100, es {suma}")
-        return v
+    # No validation here - users can edit individual criteria without constraints
+    # The nota field can be manually adjusted or recalculated on frontend
 
 
 class CorreccionCreate(BaseModel):

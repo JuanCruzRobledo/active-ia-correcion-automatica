@@ -166,30 +166,81 @@ class PDFService:
         story = []
         styles = getSampleStyleSheet()
 
-        # Custom styles
+        # ==================== CUSTOM STYLES ====================
+
+        # Main title style
         title_style = ParagraphStyle(
             "CustomTitle",
             parent=styles["Heading1"],
-            fontSize=18,
-            textColor=colors.HexColor("#1e40af"),
+            fontSize=22,
+            textColor=colors.HexColor("#1e3a8a"),  # Deep blue
+            spaceAfter=6,
+            alignment=1,  # Center
+            fontName="Helvetica-Bold",
+        )
+
+        # Subtitle style
+        subtitle_style = ParagraphStyle(
+            "CustomSubtitle",
+            parent=styles["Normal"],
+            fontSize=11,
+            textColor=colors.HexColor("#64748b"),  # Slate gray
             spaceAfter=12,
             alignment=1,  # Center
         )
 
+        # Section heading style
         heading_style = ParagraphStyle(
             "CustomHeading",
             parent=styles["Heading2"],
-            fontSize=14,
-            textColor=colors.HexColor("#1e40af"),
+            fontSize=13,
+            textColor=colors.HexColor("#1e3a8a"),
             spaceAfter=10,
+            spaceBefore=6,
+            fontName="Helvetica-Bold",
+            borderPadding=(0, 0, 8, 0),
         )
 
-        # Header
-        story.append(Paragraph("ACTIVE-IA", title_style))
-        story.append(Paragraph("Devolución de Trabajo Práctico", styles["Normal"]))
-        story.append(Spacer(1, 0.3 * inch))
+        # Body text style
+        body_style = ParagraphStyle(
+            "CustomBody",
+            parent=styles["Normal"],
+            fontSize=10,
+            textColor=colors.HexColor("#334155"),
+            leading=14,
+        )
 
-        # Info section
+        # List item style
+        list_style = ParagraphStyle(
+            "CustomList",
+            parent=styles["Normal"],
+            fontSize=10,
+            textColor=colors.HexColor("#334155"),
+            leftIndent=20,
+            leading=14,
+        )
+
+        # ==================== HEADER ====================
+
+        # Top decorative line
+        header_line = Table([[""]], colWidths=[6.5 * inch])
+        header_line.setStyle(
+            TableStyle([
+                ("LINEABOVE", (0, 0), (-1, 0), 3, colors.HexColor("#1e3a8a")),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ])
+        )
+        story.append(header_line)
+        story.append(Spacer(1, 0.15 * inch))
+
+        # Title
+        story.append(Paragraph("ACTIVE-IA", title_style))
+        story.append(Paragraph("Devolución de Trabajo Práctico", subtitle_style))
+        story.append(Spacer(1, 0.25 * inch))
+
+        # ==================== INFO SECTION ====================
+
         entrega = correccion.entrega
         comision = entrega.comision
         materia = comision.materia
@@ -197,97 +248,148 @@ class PDFService:
 
         info_data = [
             ["Materia:", f"{materia.codigo} - {materia.nombre}"],
-            ["Comisión:", f"{comision.nombre} - {comision.anio}"],
+            ["Comisión:", f"{comision.nombre} ({comision.anio})"],
             ["Trabajo:", rubrica.titulo],
             ["Alumno:", entrega.alumno_nombre],
-            [
-                "Fecha de corrección:",
-                correccion.created_at.strftime("%d/%m/%Y %H:%M"),
-            ],
         ]
 
-        info_table = Table(info_data, colWidths=[1.5 * inch, 4.5 * inch])
+        info_table = Table(info_data, colWidths=[1.3 * inch, 5.2 * inch])
         info_table.setStyle(
-            TableStyle(
-                [
-                    ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
-                    ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 10),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ]
-            )
+            TableStyle([
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#475569")),
+                ("TEXTCOLOR", (1, 0), (1, -1), colors.HexColor("#1e293b")),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#cbd5e1")),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+            ])
         )
         story.append(info_table)
         story.append(Spacer(1, 0.3 * inch))
 
-        # Grade section
-        nota_style = ParagraphStyle(
-            "Nota",
-            parent=styles["Normal"],
-            fontSize=24,
-            textColor=self._get_nota_color(correccion.nota),
-            alignment=1,  # Center
-            spaceAfter=20,
+        # ==================== GRADE SECTION ====================
+
+        nota_color = self._get_nota_color(correccion.nota)
+        nota_bg = self._get_nota_bg_color(correccion.nota)
+
+        grade_data = [[f"Calificación Final: {int(correccion.nota)}/100"]]
+        grade_table = Table(grade_data, colWidths=[6.5 * inch])
+        grade_table.setStyle(
+            TableStyle([
+                ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 20),
+                ("TEXTCOLOR", (0, 0), (-1, -1), nota_color),
+                ("BACKGROUND", (0, 0), (-1, -1), nota_bg),
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("BOX", (0, 0), (-1, -1), 2, nota_color),
+                ("TOPPADDING", (0, 0), (-1, -1), 16),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 16),
+            ])
         )
-        story.append(Paragraph(f"CALIFICACIÓN: {correccion.nota}/100", nota_style))
-        story.append(Spacer(1, 0.2 * inch))
+        story.append(grade_table)
+        story.append(Spacer(1, 0.35 * inch))
 
-        # Criteria evaluation
+        # ==================== CRITERIA EVALUATION ====================
+
         story.append(Paragraph("EVALUACIÓN POR CRITERIOS", heading_style))
+        story.append(Spacer(1, 0.15 * inch))
 
-        criterios = correccion.criterios_json
-        for criterio in criterios:
-            criterio_data = self._format_criterio(criterio)
-            story.append(criterio_data)
-            story.append(Spacer(1, 0.15 * inch))
+        # Extract criterios list from criterios_json dict
+        criterios = correccion.criterios_json.get("criterios", [])
+        for i, criterio in enumerate(criterios):
+            criterio_element = self._format_criterio(criterio, i + 1)
+            story.append(criterio_element)
+            story.append(Spacer(1, 0.12 * inch))
 
-        # Fortalezas
-        if correccion.fortalezas:
-            story.append(Spacer(1, 0.2 * inch))
+        # ==================== FORTALEZAS ====================
+
+        if correccion.fortalezas and len(correccion.fortalezas) > 0:
+            story.append(Spacer(1, 0.25 * inch))
             story.append(Paragraph("FORTALEZAS", heading_style))
+            story.append(Spacer(1, 0.1 * inch))
+
             for fortaleza in correccion.fortalezas:
-                story.append(Paragraph(f"• {fortaleza}", styles["Normal"]))
-                story.append(Spacer(1, 0.05 * inch))
+                bullet = Paragraph(f"• {fortaleza}", list_style)
+                story.append(bullet)
+                story.append(Spacer(1, 0.08 * inch))
 
-        # Recomendaciones
-        if correccion.recomendaciones:
-            story.append(Spacer(1, 0.2 * inch))
+        # ==================== RECOMENDACIONES ====================
+
+        if correccion.recomendaciones and len(correccion.recomendaciones) > 0:
+            story.append(Spacer(1, 0.25 * inch))
             story.append(Paragraph("RECOMENDACIONES", heading_style))
+            story.append(Spacer(1, 0.1 * inch))
+
             for i, recomendacion in enumerate(correccion.recomendaciones, 1):
-                story.append(Paragraph(f"{i}. {recomendacion}", styles["Normal"]))
-                story.append(Spacer(1, 0.05 * inch))
+                rec_para = Paragraph(f"{i}. {recomendacion}", list_style)
+                story.append(rec_para)
+                story.append(Spacer(1, 0.08 * inch))
 
-        # Comentario general
+        # ==================== COMENTARIO GENERAL ====================
+
         if correccion.comentario_general:
-            story.append(Spacer(1, 0.2 * inch))
+            story.append(Spacer(1, 0.25 * inch))
             story.append(Paragraph("COMENTARIOS DEL EVALUADOR", heading_style))
-            story.append(Paragraph(correccion.comentario_general, styles["Normal"]))
+            story.append(Spacer(1, 0.1 * inch))
 
-        # Footer
+            comment_data = [[Paragraph(correccion.comentario_general, body_style)]]
+            comment_table = Table(comment_data, colWidths=[6.5 * inch])
+            comment_table.setStyle(
+                TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#cbd5e1")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 12),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ])
+            )
+            story.append(comment_table)
+
+        # ==================== FOOTER ====================
+
+        story.append(Spacer(1, 0.4 * inch))
+
+        # Bottom line
+        footer_line = Table([[""]], colWidths=[6.5 * inch])
+        footer_line.setStyle(
+            TableStyle([
+                ("LINEABOVE", (0, 0), (-1, 0), 1, colors.HexColor("#cbd5e1")),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ])
+        )
+        story.append(footer_line)
+
+        # Footer text
+        footer_style = ParagraphStyle(
+            "Footer",
+            parent=styles["Normal"],
+            fontSize=8,
+            textColor=colors.HexColor("#94a3b8"),
+            alignment=1,
+        )
+
+        footer_text = "Documento generado por ACTIVE-IA"
         if correccion.editado_manualmente:
-            story.append(Spacer(1, 0.3 * inch))
-            footer_style = ParagraphStyle(
-                "Footer",
-                parent=styles["Normal"],
-                fontSize=8,
-                textColor=colors.grey,
-                alignment=1,
-            )
-            story.append(
-                Paragraph(
-                    "Esta corrección fue editada manualmente por el tutor",
-                    footer_style,
-                )
-            )
+            footer_text += " • Corrección editada manualmente por el tutor"
+
+        story.append(Paragraph(footer_text, footer_style))
 
         return story
 
-    def _format_criterio(self, criterio: dict[str, Any]) -> Table:
+    def _format_criterio(self, criterio: dict[str, Any], numero: int) -> Table:
         """
-        Format a criterion as a table.
+        Format a criterion as a professional table with progress bar.
 
         Args:
             criterio: Criterion dictionary.
+            numero: Criterion number (for display).
 
         Returns:
             ReportLab Table.
@@ -298,51 +400,102 @@ class PDFService:
         estado = criterio.get("estado", "OK")
         feedback = criterio.get("feedback", "")
 
-        # Estado icon and color
-        estado_info = self._get_estado_info(estado)
+        # Get estado colors (without icons)
+        estado_color = self._get_estado_color(estado)
+        estado_bg = self._get_estado_bg_color(estado)
 
-        # Build table
-        data = [
+        # Calculate percentage for progress bar
+        percentage = (puntaje_obtenido / puntaje_maximo * 100) if puntaje_maximo > 0 else 0
+
+        # Build main criterion data
+        criterio_header = [
             [
-                f"{nombre}",
-                f"{puntaje_obtenido}/{puntaje_maximo}",
-                f"{estado_info['icon']} {estado}",
-            ],
-            [feedback, "", ""],
+                f"C{numero}: {nombre}",
+                f"{int(puntaje_obtenido)}/{int(puntaje_maximo)}",
+            ]
         ]
 
-        table = Table(data, colWidths=[3.5 * inch, 1 * inch, 1.5 * inch])
+        # Progress bar (visual representation)
+        progress_bar_data = self._create_progress_bar(percentage, estado_color)
+
+        # Feedback section
+        styles = getSampleStyleSheet()
+        feedback_style = ParagraphStyle(
+            "FeedbackStyle",
+            parent=styles["Normal"],
+            fontSize=9,
+            textColor=colors.HexColor("#475569"),
+            leading=12,
+        )
+
+        feedback_para = Paragraph(feedback, feedback_style)
+
+        # Complete table data
+        data = [
+            criterio_header[0],  # Header with name and score
+            [progress_bar_data, ""],  # Progress bar
+            [feedback_para, ""],  # Feedback
+        ]
+
+        table = Table(data, colWidths=[5.2 * inch, 1.3 * inch])
         table.setStyle(
-            TableStyle(
-                [
-                    # Header row
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, 0), 11),
-                    ("TEXTCOLOR", (2, 0), (2, 0), estado_info["color"]),
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f3f4f6")),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 8),
-                    ("TOPPADDING", (0, 0), (-1, 0), 8),
-                    # Feedback row
-                    ("FONTNAME", (0, 1), (-1, 1), "Helvetica"),
-                    ("FONTSIZE", (0, 1), (-1, 1), 9),
-                    ("SPAN", (0, 1), (-1, 1)),
-                    ("TOPPADDING", (0, 1), (-1, 1), 6),
-                    ("BOTTOMPADDING", (0, 1), (-1, 1), 6),
-                    # Border
-                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#d1d5db")),
-                    ("LINEBELOW", (0, 0), (-1, 0), 1, colors.HexColor("#d1d5db")),
-                ]
-            )
+            TableStyle([
+                # Header row (criterion name and score)
+                ("FONTNAME", (0, 0), (0, 0), "Helvetica-Bold"),
+                ("FONTNAME", (1, 0), (1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (0, 0), 10),
+                ("FONTSIZE", (1, 0), (1, 0), 11),
+                ("TEXTCOLOR", (0, 0), (0, 0), colors.HexColor("#1e293b")),
+                ("TEXTCOLOR", (1, 0), (1, 0), estado_color),
+                ("BACKGROUND", (0, 0), (-1, 0), estado_bg),
+                ("ALIGN", (1, 0), (1, 0), "CENTER"),
+                ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, 0), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 10),
+                ("LEFTPADDING", (0, 0), (-1, 0), 12),
+                ("RIGHTPADDING", (0, 0), (-1, 0), 12),
+
+                # Progress bar row
+                ("SPAN", (0, 1), (-1, 1)),
+                ("TOPPADDING", (0, 1), (-1, 1), 8),
+                ("BOTTOMPADDING", (0, 1), (-1, 1), 8),
+                ("LEFTPADDING", (0, 1), (-1, 1), 12),
+                ("RIGHTPADDING", (0, 1), (-1, 1), 12),
+
+                # Feedback row
+                ("SPAN", (0, 2), (-1, 2)),
+                ("FONTNAME", (0, 2), (-1, 2), "Helvetica"),
+                ("FONTSIZE", (0, 2), (-1, 2), 9),
+                ("TOPPADDING", (0, 2), (-1, 2), 8),
+                ("BOTTOMPADDING", (0, 2), (-1, 2), 10),
+                ("LEFTPADDING", (0, 2), (-1, 2), 12),
+                ("RIGHTPADDING", (0, 2), (-1, 2), 12),
+                ("BACKGROUND", (0, 2), (-1, 2), colors.HexColor("#fafafa")),
+
+                # Overall border
+                ("BOX", (0, 0), (-1, -1), 1.5, colors.HexColor("#cbd5e1")),
+                ("LINEBELOW", (0, 0), (-1, 0), 1, colors.HexColor("#cbd5e1")),
+                ("LINEBELOW", (0, 1), (-1, 1), 1, colors.HexColor("#e2e8f0")),
+            ])
         )
 
         return table
 
-    def _get_estado_info(self, estado: str) -> dict[str, Any]:
-        """Get icon and color for estado."""
+    def _get_estado_color(self, estado: str) -> colors.Color:
+        """Get color for estado (without icons)."""
         estado_map = {
-            "OK": {"icon": "✓", "color": colors.HexColor("#16a34a")},
-            "WARNING": {"icon": "⚠", "color": colors.HexColor("#ca8a04")},
-            "ERROR": {"icon": "✗", "color": colors.HexColor("#dc2626")},
+            "OK": colors.HexColor("#16a34a"),      # Green
+            "WARNING": colors.HexColor("#d97706"),  # Amber
+            "ERROR": colors.HexColor("#dc2626"),    # Red
+        }
+        return estado_map.get(estado, estado_map["OK"])
+
+    def _get_estado_bg_color(self, estado: str) -> colors.Color:
+        """Get background color for estado."""
+        estado_map = {
+            "OK": colors.HexColor("#f0fdf4"),      # Light green
+            "WARNING": colors.HexColor("#fef3c7"), # Light amber
+            "ERROR": colors.HexColor("#fef2f2"),   # Light red
         }
         return estado_map.get(estado, estado_map["OK"])
 
@@ -351,9 +504,74 @@ class PDFService:
         if nota >= 80:
             return colors.HexColor("#16a34a")  # Green
         elif nota >= 60:
-            return colors.HexColor("#ca8a04")  # Yellow
+            return colors.HexColor("#d97706")  # Amber
         else:
             return colors.HexColor("#dc2626")  # Red
+
+    def _get_nota_bg_color(self, nota: float) -> colors.Color:
+        """Get background color for nota based on value."""
+        if nota >= 80:
+            return colors.HexColor("#f0fdf4")  # Light green
+        elif nota >= 60:
+            return colors.HexColor("#fef3c7")  # Light amber
+        else:
+            return colors.HexColor("#fef2f2")  # Light red
+
+    def _create_progress_bar(self, percentage: float, color: colors.Color) -> Table:
+        """
+        Create a visual progress bar for criterion score.
+
+        Args:
+            percentage: Percentage of score achieved (0-100).
+            color: Color for the filled portion.
+
+        Returns:
+            Table representing the progress bar.
+        """
+        # Progress bar dimensions
+        bar_width = 4.5 * inch
+        bar_height = 0.15 * inch
+
+        # Calculate filled width
+        filled_width = bar_width * (percentage / 100)
+        empty_width = bar_width - filled_width
+
+        # Create progress bar cells
+        if percentage > 0:
+            progress_data = [["", ""]]
+            col_widths = [filled_width, empty_width] if empty_width > 0 else [filled_width]
+        else:
+            progress_data = [[""]]
+            col_widths = [bar_width]
+
+        progress_table = Table(progress_data, colWidths=col_widths, rowHeights=[bar_height])
+
+        if percentage > 0:
+            progress_table.setStyle(
+                TableStyle([
+                    ("BACKGROUND", (0, 0), (0, 0), color),  # Filled portion
+                    ("BACKGROUND", (1, 0), (1, 0), colors.HexColor("#e2e8f0")) if empty_width > 0 else ("BACKGROUND", (0, 0), (0, 0), color),  # Empty portion
+                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#cbd5e1")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ])
+            )
+        else:
+            # 0% - empty bar
+            progress_table.setStyle(
+                TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#e2e8f0")),
+                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#cbd5e1")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ])
+            )
+
+        return progress_table
 
     def _sanitize_filename(self, filename: str) -> str:
         """

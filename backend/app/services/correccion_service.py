@@ -319,8 +319,23 @@ class CorreccionService:
         if "nota" in update_data:
             correccion.nota = Decimal(str(update_data["nota"]))
 
-        if "criterios_json" in update_data:
-            correccion.criterios_json = update_data["criterios_json"]
+        # Handle criterios: frontend sends 'criterios' but DB field is 'criterios_json'
+        if "criterios" in update_data:
+            # Convert list of CriterioEvaluado to criterios_json format
+            criterios_list = update_data["criterios"]
+            # Convert Decimal to float for JSON serialization
+            criterios_serialized = [
+                {
+                    "id": c["id"],
+                    "nombre": c["nombre"],
+                    "puntaje_obtenido": float(c["puntaje_obtenido"]),
+                    "puntaje_maximo": float(c["puntaje_maximo"]),
+                    "estado": c["estado"],
+                    "feedback": c["feedback"],
+                }
+                for c in criterios_list
+            ]
+            correccion.criterios_json = {"criterios": criterios_serialized}
 
         if "fortalezas" in update_data:
             correccion.fortalezas = update_data["fortalezas"]

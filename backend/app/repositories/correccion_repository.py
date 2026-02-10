@@ -56,16 +56,24 @@ class CorreccionRepository:
         """
         Get correccion by ID with all relations loaded.
 
+        Loads nested relations needed for PDF generation:
+        - entrega (with comision, materia, rubrica)
+        - corregido_por
+
         Args:
             correccion_id: Correccion's database ID.
 
         Returns:
             Correccion object with relations if found, None otherwise.
         """
+        from app.models.entrega import Entrega
+        from app.models.comision import Comision
+
         result = await self.db.execute(
             select(Correccion)
             .options(
-                selectinload(Correccion.entrega),
+                selectinload(Correccion.entrega).selectinload(Entrega.comision).selectinload(Comision.materia),
+                selectinload(Correccion.entrega).selectinload(Entrega.rubrica),
                 selectinload(Correccion.corregido_por),
             )
             .where(Correccion.id == correccion_id)
@@ -96,16 +104,24 @@ class CorreccionRepository:
         """
         Get correccion by entrega ID with all relations loaded.
 
+        Loads nested relations needed for PDF generation:
+        - entrega (with comision, materia, rubrica)
+        - corregido_por
+
         Args:
             entrega_id: ID of the entrega.
 
         Returns:
             Correccion object with relations if found, None otherwise.
         """
+        from app.models.entrega import Entrega
+        from app.models.comision import Comision
+
         result = await self.db.execute(
             select(Correccion)
             .options(
-                selectinload(Correccion.entrega),
+                selectinload(Correccion.entrega).selectinload(Entrega.comision).selectinload(Comision.materia),
+                selectinload(Correccion.entrega).selectinload(Entrega.rubrica),
                 selectinload(Correccion.corregido_por),
             )
             .where(Correccion.entrega_id == entrega_id)
@@ -139,9 +155,12 @@ class CorreccionRepository:
         # Import here to avoid circular dependency
         from app.models.entrega import Entrega
 
-        # Base query
+        # Base query with nested relations for PDF generation
+        from app.models.comision import Comision
+
         query = select(Correccion).options(
-            selectinload(Correccion.entrega),
+            selectinload(Correccion.entrega).selectinload(Entrega.comision).selectinload(Comision.materia),
+            selectinload(Correccion.entrega).selectinload(Entrega.rubrica),
             selectinload(Correccion.corregido_por),
         )
 
@@ -278,16 +297,24 @@ class CorreccionRepository:
         """
         Get multiple correcciones by their IDs.
 
+        Loads nested relations needed for PDF generation:
+        - entrega (with comision, materia, rubrica)
+        - corregido_por
+
         Args:
             correccion_ids: List of correccion IDs.
 
         Returns:
             List of Correccion objects.
         """
+        from app.models.entrega import Entrega
+        from app.models.comision import Comision
+
         result = await self.db.execute(
             select(Correccion)
             .options(
-                selectinload(Correccion.entrega),
+                selectinload(Correccion.entrega).selectinload(Entrega.comision).selectinload(Comision.materia),
+                selectinload(Correccion.entrega).selectinload(Entrega.rubrica),
                 selectinload(Correccion.corregido_por),
             )
             .where(Correccion.id.in_(correccion_ids))
