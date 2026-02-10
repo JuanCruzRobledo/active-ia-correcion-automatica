@@ -7,7 +7,6 @@ import { MateriasPage } from '@/features/materias/pages/MateriasPage';
 import { ComisionesPage } from '@/features/comisiones/pages/ComisionesPage';
 import { RubricasPage } from '@/features/rubricas/pages/RubricasPage';
 import { EntregasPage } from '@/features/entregas/pages/EntregasPage';
-import { CorreccionesPage } from '@/features/correcciones/pages/CorreccionesPage';
 import { PerfilPage } from '@/features/perfil/pages/PerfilPage';
 
 export const router = createBrowserRouter([
@@ -53,10 +52,6 @@ export const router = createBrowserRouter([
       {
         path: 'entregas',
         element: <EntregasPage />,
-      },
-      {
-        path: 'correcciones',
-        element: <CorreccionesPage />,
       },
       // Common routes
       {

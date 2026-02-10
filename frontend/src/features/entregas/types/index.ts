@@ -154,11 +154,12 @@ export interface CargaMasivaResponse {
 }
 
 export interface EntregaContenido {
-  id: number;
+  entrega_id: number;
   alumno_nombre: string;
-  archivo_nombre: string;
-  contenido_completo: string;
-  lenguaje: string; // Para syntax highlighting (py, java, js, etc.)
+  contenido_consolidado: string;
+  archivos_incluidos: string[];
+  total_lineas: number;
+  total_caracteres: number;
 }
 
 export interface EntregasFilters {

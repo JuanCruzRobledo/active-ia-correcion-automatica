@@ -59,7 +59,7 @@ export const getCorreccionByEntregaId = async (
 ): Promise<Correccion | null> => {
   try {
     const response = await apiClient.get<Correccion>(
-      `/entregas/${entregaId}/correccion`
+      `/correcciones/entregas/${entregaId}`
     );
     return response.data;
   } catch (error) {

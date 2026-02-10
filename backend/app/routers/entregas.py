@@ -16,6 +16,7 @@ from app.core.permissions import require_any_authenticated
 from app.models.enums import EstadoEntregaEnum
 from app.models.usuario import Usuario
 from app.schemas.entrega import (
+    ContenidoEntrega,
     EntregaCreate,
     EntregaDetailResponse,
     EntregaList,
@@ -139,6 +140,32 @@ async def obtener_entrega(
 
     service = EntregaService(db)
     return await service.obtener_entrega(entrega_id)
+
+
+@router.get("/{entrega_id}/contenido", response_model=ContenidoEntrega)
+async def obtener_contenido_entrega(
+    entrega_id: int,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ContenidoEntrega:
+    """
+    Get the full consolidated content of an entrega.
+
+    **Returns:**
+    - Full code content (consolidated from ZIP or TXT)
+    - List of files included in consolidation
+    - Alumno name and entrega ID
+
+    **Use case:**
+    - View student's submitted code in the UI
+    - Review code before/during correction
+
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
+    """
+    require_any_authenticated(current_user)
+
+    service = EntregaService(db)
+    return await service.obtener_contenido(entrega_id)
 
 
 @router.delete("/{entrega_id}", status_code=status.HTTP_204_NO_CONTENT)

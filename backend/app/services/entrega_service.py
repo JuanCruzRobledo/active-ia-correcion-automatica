@@ -143,6 +143,8 @@ class EntregaService:
             entrega_existente.archivo_tamanio = archivo_tamanio
             entrega_existente.archivo_tipo = archivo_tipo
             entrega_existente.contenido_preview = contenido_preview
+            entrega_existente.contenido_consolidado = contenido_consolidado
+            entrega_existente.archivos_incluidos = archivos_incluidos
             entrega_existente.hash_sha256 = hash_sha256
             entrega_existente.estado = EstadoEntregaEnum.SUBIDA
             entrega_existente.subido_por_id = subido_por_id
@@ -166,6 +168,8 @@ class EntregaService:
             archivo_tamanio=archivo_tamanio,
             archivo_tipo=archivo_tipo,
             contenido_preview=contenido_preview,
+            contenido_consolidado=contenido_consolidado,
+            archivos_incluidos=archivos_incluidos,
             estado=EstadoEntregaEnum.SUBIDA,
             hash_sha256=hash_sha256,
             subido_por_id=subido_por_id,
@@ -322,6 +326,46 @@ class EntregaService:
             )
 
         await self.entrega_repo.soft_delete(entrega)
+
+    async def obtener_contenido(self, entrega_id: int) -> ContenidoEntrega:
+        """
+        Get the full consolidated content of an entrega.
+
+        Args:
+            entrega_id: ID of the entrega.
+
+        Returns:
+            ContenidoEntrega with full content and metadata.
+
+        Raises:
+            HTTPException 404: Entrega not found or deleted.
+            HTTPException 400: Content not available.
+        """
+        # Get entrega
+        entrega = await self.entrega_repo.get_active_by_id(entrega_id)
+        if not entrega:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Entrega no encontrada o eliminada",
+            )
+
+        # Use contenido_consolidado if available, fallback to preview for old entregas
+        contenido = entrega.contenido_consolidado or entrega.contenido_preview
+
+        if not contenido:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El contenido no está disponible para esta entrega",
+            )
+
+        return ContenidoEntrega(
+            entrega_id=entrega.id,
+            alumno_nombre=entrega.alumno_nombre,
+            contenido_consolidado=contenido,
+            archivos_incluidos=entrega.archivos_incluidos or [],
+            total_lineas=len(contenido.splitlines()),
+            total_caracteres=len(contenido),
+        )
 
     async def _consolidar_archivo(
         self,

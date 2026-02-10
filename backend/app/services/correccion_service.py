@@ -403,8 +403,11 @@ class CorreccionService:
         Returns:
             Payload dictionary for N8N.
         """
+        # Use contenido_consolidado if available, fallback to preview for old entregas
+        codigo = entrega.contenido_consolidado or entrega.contenido_preview
+
         return {
-            "codigo": entrega.contenido_preview,  # Full consolidated code
+            "codigo": codigo,
             "rubrica": {
                 "titulo": rubrica.titulo,
                 "descripcion": rubrica.descripcion or "",
