@@ -61,7 +61,7 @@ async def corregir_entrega(
     require_tutor(current_user)
 
     # Validate API Key is configured
-    if not current_user.api_key_encrypted:
+    if not current_user.gemini_api_key_encrypted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Debes configurar tu API Key de Gemini en tu perfil antes de corregir",
@@ -70,7 +70,7 @@ async def corregir_entrega(
     service = CorreccionService(db)
     return await service.corregir_individual(
         entrega_id=entrega_id,
-        api_key_encrypted=current_user.api_key_encrypted,
+        api_key_encrypted=current_user.gemini_api_key_encrypted,
         corregido_por_id=current_user.id,
     )
 
@@ -101,7 +101,7 @@ async def recorregir_entrega(
     """
     require_tutor(current_user)
 
-    if not current_user.api_key_encrypted:
+    if not current_user.gemini_api_key_encrypted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Debes configurar tu API Key de Gemini en tu perfil",
@@ -110,7 +110,7 @@ async def recorregir_entrega(
     service = CorreccionService(db)
     return await service.recorregir(
         entrega_id=entrega_id,
-        api_key_encrypted=current_user.api_key_encrypted,
+        api_key_encrypted=current_user.gemini_api_key_encrypted,
         corregido_por_id=current_user.id,
     )
 
@@ -144,7 +144,7 @@ async def corregir_lote(
     """
     require_tutor(current_user)
 
-    if not current_user.api_key_encrypted:
+    if not current_user.gemini_api_key_encrypted:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Debes configurar tu API Key de Gemini en tu perfil",
@@ -153,7 +153,7 @@ async def corregir_lote(
     service = CorreccionService(db)
     return await service.corregir_lote(
         data=data,
-        api_key_encrypted=current_user.api_key_encrypted,
+        api_key_encrypted=current_user.gemini_api_key_encrypted,
         corregido_por_id=current_user.id,
     )
 

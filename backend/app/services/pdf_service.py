@@ -145,7 +145,7 @@ class PDFService:
         # Get materia and rubrica info from first correction
         first_correccion = correcciones["items"][0]
         materia_codigo = first_correccion.entrega.comision.materia.codigo
-        rubrica_nombre = first_correccion.entrega.rubrica.nombre
+        rubrica_nombre = first_correccion.entrega.rubrica.titulo
         fecha = datetime.now().strftime("%Y%m%d")
 
         zip_filename = f"devoluciones_{materia_codigo}_{rubrica_nombre}_{fecha}.zip"
@@ -198,7 +198,7 @@ class PDFService:
         info_data = [
             ["Materia:", f"{materia.codigo} - {materia.nombre}"],
             ["Comisión:", f"{comision.nombre} - {comision.anio}"],
-            ["Trabajo:", rubrica.nombre],
+            ["Trabajo:", rubrica.titulo],
             ["Alumno:", entrega.alumno_nombre],
             [
                 "Fecha de corrección:",

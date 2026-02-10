@@ -110,12 +110,12 @@ class CorreccionService:
                 detail=f"Error al desencriptar API Key: {str(e)}",
             )
 
+        # Build payload for N8N BEFORE updating (to avoid lazy loading issues)
+        payload = self._build_correction_payload(entrega, rubrica, api_key)
+
         # Update entrega state to PENDIENTE
         entrega.estado = EstadoEntregaEnum.PENDIENTE
         await self.entrega_repo.update(entrega)
-
-        # Build payload for N8N
-        payload = self._build_correction_payload(entrega, rubrica, api_key)
 
         # Call N8N with retry logic
         try:
@@ -158,20 +158,51 @@ class CorreccionService:
             # Delete old correction (hard delete for re-correction)
             await self.correccion_repo.delete(existing_correccion)
 
+        # Convert CriterioGeminiSchema to CriterioEvaluado
+        from app.schemas.correccion import CriterioEvaluado
+        from decimal import Decimal as Dec
+
+        criterios_evaluados = [
+            CriterioEvaluado(
+                id=c.id,
+                nombre=c.nombre,
+                puntaje_obtenido=Dec(str(c.puntaje_obtenido)),
+                puntaje_maximo=Dec(str(c.puntaje_maximo)),
+                estado=c.estado,
+                feedback=c.feedback
+            )
+            for c in gemini_response.criterios
+        ]
+
         # Create new correction
         correccion_data = CorreccionCreate(
             entrega_id=entrega_id,
             nota=Decimal(str(gemini_response.nota)),
-            criterios_json={"criterios": [c.model_dump() for c in gemini_response.criterios]},
+            criterios=criterios_evaluados,
             fortalezas=gemini_response.fortalezas,
             recomendaciones=gemini_response.recomendaciones,
             comentario_general=gemini_response.comentario_general,
-            editado_manualmente=False,
-            raw_response=result,
             corregido_por_id=corregido_por_id,
+            raw_response=result,
         )
 
-        correccion = Correccion(**correccion_data.model_dump())
+        # Convert to SQLAlchemy model - map 'criterios' to 'criterios_json'
+        data_dict = correccion_data.model_dump()
+        criterios_list = data_dict.pop('criterios')  # Remove 'criterios'
+
+        # Convert Decimal to float for JSON serialization
+        criterios_for_json = []
+        for c in criterios_list:
+            criterio_dict = dict(c) if isinstance(c, dict) else c
+            criterio_dict['puntaje_obtenido'] = float(criterio_dict['puntaje_obtenido'])
+            criterio_dict['puntaje_maximo'] = float(criterio_dict['puntaje_maximo'])
+            criterios_for_json.append(criterio_dict)
+
+        data_dict['criterios_json'] = {
+            "criterios": criterios_for_json  # Store as JSON structure with float values
+        }
+
+        correccion = Correccion(**data_dict)
         created_correccion = await self.correccion_repo.create(correccion)
 
         # Update entrega state to CORREGIDA
@@ -375,10 +406,14 @@ class CorreccionService:
         return {
             "codigo": entrega.contenido_preview,  # Full consolidated code
             "rubrica": {
-                "nombre": rubrica.nombre,
+                "titulo": rubrica.titulo,
+                "descripcion": rubrica.descripcion or "",
                 "tipo": rubrica.tipo.value,
-                "puntaje_maximo": 100,
-                "criterios": rubrica.criterios_json.get("criterios", []),
+                "puntaje_maximo": rubrica.puntaje_maximo,
+                "metadata": rubrica.metadata_json or {},
+                "criterios": rubrica.criterios_json or [],
+                "penalizaciones": rubrica.penalizaciones_json or [],
+                "condiciones_desaprobacion": rubrica.condiciones_desaprobacion_json or [],
             },
             "api_key": api_key,
             "contexto": {

@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.comision import Comision
 from app.models.entrega import Entrega
 
 
@@ -62,7 +63,7 @@ class EntregaRepository:
         result = await self.db.execute(
             select(Entrega)
             .options(
-                selectinload(Entrega.comision),
+                selectinload(Entrega.comision).selectinload(Comision.materia),
                 selectinload(Entrega.rubrica),
                 selectinload(Entrega.subido_por),
                 selectinload(Entrega.correccion),

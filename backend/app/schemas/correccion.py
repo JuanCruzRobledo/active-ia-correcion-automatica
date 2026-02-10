@@ -62,17 +62,28 @@ class CorreccionResponse(BaseModel):
     id: int
     entrega_id: int
     nota: Decimal = Field(..., description="Final grade (0-100)")
-    criterios: list[CriterioEvaluado] = Field(..., description="Evaluated criteria")
+    criterios: list[CriterioEvaluado] = Field(..., alias="criterios_json", description="Evaluated criteria")
     fortalezas: list[str] = Field(default_factory=list, description="Code strengths")
     recomendaciones: list[str] = Field(default_factory=list, description="Improvement recommendations")
     comentario_general: str = Field(..., description="General pedagogical feedback")
     editado_manualmente: bool = Field(default=False, description="True if manually edited by tutor")
     corregido_por_id: int = Field(..., description="ID of user who corrected/edited")
-    created_at: datetime = Field(..., description="Correction date")
+    created_at: datetime = Field(..., serialization_alias="fecha_correccion", description="Correction date")
     updated_at: datetime = Field(..., description="Last modification date")
+
+    @field_validator('criterios', mode='before')
+    @classmethod
+    def extract_criterios_from_json(cls, v):
+        """Extract criterios array from criterios_json dict if needed."""
+        # If coming from SQLAlchemy model, criterios_json is a dict like {"criterios": [...]}
+        if isinstance(v, dict) and 'criterios' in v:
+            return [CriterioEvaluado(**c) for c in v['criterios']]
+        # If already a list, return as is
+        return v
 
     class Config:
         from_attributes = True
+        populate_by_name = True
 
 
 class CorreccionUpdate(BaseModel):
@@ -109,11 +120,18 @@ class CorreccionCreate(BaseModel):
 
     @field_validator('criterios')
     @classmethod
-    def validate_criterios_sum(cls, v):
-        """Validate that criteria sum to 100."""
-        suma = sum(c.puntaje_obtenido for c in v)
-        if abs(suma - 100) > 1:  # Tolerance of 1 point
-            raise ValueError(f"La suma de puntajes debe ser 100, es {suma}")
+    def validate_criterios_sum(cls, v, info):
+        """Validate that sum of puntaje_obtenido matches nota."""
+        if 'nota' not in info.data:
+            return v
+
+        nota = float(info.data['nota'])
+        suma = sum(float(c.puntaje_obtenido) for c in v)
+
+        if abs(suma - nota) > 1:  # Tolerance of 1 point
+            raise ValueError(
+                f"La suma de puntajes obtenidos ({suma}) debe ser igual a la nota ({nota})"
+            )
         return v
 
 

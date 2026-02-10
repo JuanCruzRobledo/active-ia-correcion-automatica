@@ -70,7 +70,7 @@ class ExcelService:
         # Get materia and rubrica info from first entrega
         first_entrega = entregas_result["items"][0]
         materia_nombre = first_entrega.comision.materia.nombre
-        rubrica_nombre = first_entrega.rubrica.nombre
+        rubrica_nombre = first_entrega.rubrica.titulo
 
         # Add title
         ws.merge_cells("A1:E1")
