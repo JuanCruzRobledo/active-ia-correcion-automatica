@@ -59,6 +59,17 @@ export interface Correccion {
   editado_manualmente: boolean;
 }
 
+export interface CorregirLoteResponse {
+  total: number;
+  exitosas: number;
+  fallidas: number;
+  correcciones: Correccion[];
+  errores: {
+    entrega_id: number;
+    error: string;
+  }[];
+}
+
 export interface Entrega {
   id: number;
   comision_id: number;

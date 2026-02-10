@@ -217,7 +217,7 @@ class EntregaService:
                     comision_id=entrega.comision_id,
                     comision_nombre=entrega.comision.nombre,
                     rubrica_id=entrega.rubrica_id,
-                    rubrica_nombre=entrega.rubrica.nombre,
+                    rubrica_nombre=entrega.rubrica.titulo,
                     rubrica_tipo=entrega.rubrica.tipo.value,
                     alumno_nombre=entrega.alumno_nombre,
                     archivo_nombre=entrega.archivo_nombre,
@@ -290,7 +290,7 @@ class EntregaService:
             },
             rubrica={
                 "id": entrega.rubrica.id,
-                "nombre": entrega.rubrica.nombre,
+                "nombre": entrega.rubrica.titulo,
                 "tipo": entrega.rubrica.tipo.value,
                 "numero": entrega.rubrica.numero,
             },

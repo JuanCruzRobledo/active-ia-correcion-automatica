@@ -19,6 +19,7 @@ import type {
   EntregaContenido,
   EntregasFilters,
   Correccion,
+  CorregirLoteResponse,
 } from '../types';
 
 export const entregasService = {
@@ -155,16 +156,16 @@ export const entregasService = {
    * Trigger AI correction for a specific entrega.
    */
   corregir: async (id: number): Promise<Correccion> => {
-    const { data } = await apiClient.post<Correccion>(`/entregas/${id}/corregir`);
+    const { data } = await apiClient.post<Correccion>(`/correcciones/entregas/${id}/corregir`);
     return data;
   },
 
   /**
    * Trigger AI correction for multiple entregas.
    */
-  corregirLote: async (ids: number[]): Promise<Correccion[]> => {
-    const { data } = await apiClient.post<Correccion[]>('/entregas/corregir-lote', {
-      ids,
+  corregirLote: async (ids: number[]): Promise<CorregirLoteResponse> => {
+    const { data } = await apiClient.post<CorregirLoteResponse>('/correcciones/lote', {
+      entrega_ids: ids,
     });
     return data;
   },

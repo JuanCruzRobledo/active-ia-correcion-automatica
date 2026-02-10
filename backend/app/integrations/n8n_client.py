@@ -53,7 +53,18 @@ class N8NClient:
                     timeout=self.correction_timeout,
                 )
                 response.raise_for_status()
-                return response.json()
+
+                # Try to parse JSON response
+                try:
+                    return response.json()
+                except Exception as json_error:
+                    # Log the raw response for debugging
+                    raise N8NError(
+                        f"Error parseando respuesta JSON de N8N. "
+                        f"Status: {response.status_code}, "
+                        f"Content-Type: {response.headers.get('content-type', 'unknown')}, "
+                        f"Body (first 500 chars): {response.text[:500]}"
+                    )
 
             except httpx.TimeoutException:
                 raise N8NTimeoutError("Timeout esperando respuesta de N8N")
