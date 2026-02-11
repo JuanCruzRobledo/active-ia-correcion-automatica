@@ -13,7 +13,7 @@ from sqlalchemy import Enum as SQLEnum, ForeignKey, Index, Integer, Numeric, Str
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, SoftDeleteMixin, TimestampMixin
+from app.models.base import Base, TimestampMixin
 from app.models.enums import EstadoEntregaEnum
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from app.models.usuario import Usuario
 
 
-class Entrega(Base, TimestampMixin, SoftDeleteMixin):
+class Entrega(Base, TimestampMixin):
     """
     Entrega de alumno.
 
@@ -82,17 +82,14 @@ class Entrega(Base, TimestampMixin, SoftDeleteMixin):
         ForeignKey("usuarios.id"),
         nullable=False,
     )
-    activo: Mapped[bool] = mapped_column(default=True, index=True)
 
     __table_args__ = (
-        # Índice único parcial: solo entregas activas
-        # Permite que un alumno tenga solo una entrega activa por rúbrica
+        # Índice único: solo permite una entrega por alumno y rúbrica
         Index(
-            "uq_entrega_rubrica_alumno_activo",
+            "uq_entrega_rubrica_alumno",
             "rubrica_id",
             "alumno_nombre",
             unique=True,
-            postgresql_where=text("activo = true"),
         ),
     )
 

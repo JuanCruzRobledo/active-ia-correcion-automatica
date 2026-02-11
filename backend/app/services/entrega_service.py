@@ -173,7 +173,6 @@ class EntregaService:
             estado=EstadoEntregaEnum.SUBIDA,
             hash_sha256=hash_sha256,
             subido_por_id=subido_por_id,
-            activo=True,
         )
 
         created_entrega = await self.entrega_repo.create(entrega)
@@ -185,7 +184,6 @@ class EntregaService:
         comision_id: int | None = None,
         rubrica_id: int | None = None,
         estado: str | None = None,
-        include_inactive: bool = False,
         page: int = 1,
         per_page: int = 20,
     ) -> EntregaList:
@@ -196,7 +194,6 @@ class EntregaService:
             comision_id: Filter by comision ID.
             rubrica_id: Filter by rubrica ID.
             estado: Filter by estado.
-            include_inactive: Include soft-deleted entregas.
             page: Page number (1-indexed).
             per_page: Items per page.
 
@@ -207,7 +204,6 @@ class EntregaService:
             comision_id=comision_id,
             rubrica_id=rubrica_id,
             estado=estado,
-            include_inactive=include_inactive,
             page=page,
             per_page=per_page,
         )
@@ -230,7 +226,6 @@ class EntregaService:
                     estado=entrega.estado,
                     tiene_correccion=entrega.correccion is not None,
                     subido_por_nombre=entrega.subido_por.nombre,
-                    activo=entrega.activo,
                     created_at=entrega.created_at,
                 )
             )
@@ -283,7 +278,6 @@ class EntregaService:
             estado=entrega.estado,
             hash_sha256=entrega.hash_sha256,
             subido_por_id=entrega.subido_por_id,
-            activo=entrega.activo,
             created_at=entrega.created_at,
             updated_at=entrega.updated_at,
             comision={
@@ -309,7 +303,7 @@ class EntregaService:
 
     async def eliminar_entrega(self, entrega_id: int) -> None:
         """
-        Soft delete an entrega.
+        Physically delete an entrega (hard delete).
 
         Args:
             entrega_id: Entrega's database ID.
@@ -317,15 +311,15 @@ class EntregaService:
         Raises:
             HTTPException 404: Entrega not found.
         """
-        entrega = await self.entrega_repo.get_active_by_id(entrega_id)
+        entrega = await self.entrega_repo.get_by_id(entrega_id)
 
         if not entrega:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Entrega no encontrada o ya eliminada",
+                detail="Entrega no encontrada",
             )
 
-        await self.entrega_repo.soft_delete(entrega)
+        await self.entrega_repo.delete(entrega)
 
     async def obtener_contenido(self, entrega_id: int) -> ContenidoEntrega:
         """
@@ -338,15 +332,15 @@ class EntregaService:
             ContenidoEntrega with full content and metadata.
 
         Raises:
-            HTTPException 404: Entrega not found or deleted.
+            HTTPException 404: Entrega not found.
             HTTPException 400: Content not available.
         """
         # Get entrega
-        entrega = await self.entrega_repo.get_active_by_id(entrega_id)
+        entrega = await self.entrega_repo.get_by_id(entrega_id)
         if not entrega:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Entrega no encontrada o eliminada",
+                detail="Entrega no encontrada",
             )
 
         # Use contenido_consolidado if available, fallback to preview for old entregas

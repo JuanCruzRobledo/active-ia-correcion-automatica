@@ -157,7 +157,14 @@ export const EntregasPage = () => {
   };
 
   const handleDelete = async (id: number) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar esta entrega?')) {
+    const entrega = data?.items.find(e => e.id === id);
+    const isCorregida = entrega?.estado === 'CORREGIDA';
+
+    const message = isCorregida
+      ? '⚠️ Esta entrega ya está corregida. Al eliminarla, se perderá permanentemente la entrega y su corrección. ¿Deseas continuar?'
+      : '¿Estás seguro de que deseas eliminar esta entrega? Esta acción no se puede deshacer.';
+
+    if (window.confirm(message)) {
       await deleteMutation.mutateAsync(id);
     }
   };

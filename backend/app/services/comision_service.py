@@ -168,9 +168,9 @@ class ComisionService:
             )
             num_tutores = len(tutores)
 
-            # Count active entregas
+            # Count entregas
             num_entregas = (
-                len([e for e in comision.entregas if e.activo])
+                len(comision.entregas)
                 if comision.entregas
                 else 0
             )

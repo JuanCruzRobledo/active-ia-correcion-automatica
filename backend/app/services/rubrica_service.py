@@ -203,7 +203,7 @@ class RubricaService:
 
             # Count entregas
             num_entregas = (
-                len([e for e in rubrica.entregas if e.activo])
+                len(rubrica.entregas)
                 if rubrica.entregas
                 else 0
             )

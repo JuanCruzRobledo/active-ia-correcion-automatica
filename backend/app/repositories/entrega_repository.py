@@ -79,7 +79,6 @@ class EntregaRepository:
         comision_id: int | None = None,
         rubrica_id: int | None = None,
         estado: str | None = None,
-        include_inactive: bool = False,
         page: int = 1,
         per_page: int = 20,
     ) -> tuple[list[Entrega], int]:
@@ -90,7 +89,6 @@ class EntregaRepository:
             comision_id: Filter by comision ID.
             rubrica_id: Filter by rubrica ID.
             estado: Filter by estado.
-            include_inactive: Include soft-deleted entregas.
             page: Page number (1-indexed).
             per_page: Items per page.
 
@@ -106,9 +104,6 @@ class EntregaRepository:
         )
 
         # Apply filters
-        if not include_inactive:
-            query = query.where(Entrega.activo == True)  # noqa: E712
-
         if comision_id is not None:
             query = query.where(Entrega.comision_id == comision_id)
 
@@ -139,7 +134,7 @@ class EntregaRepository:
         alumno_nombre: str,
     ) -> Entrega | None:
         """
-        Get active entrega by rubrica and alumno nombre.
+        Get entrega by rubrica and alumno nombre.
 
         Args:
             rubrica_id: ID of the rubrica.
@@ -152,25 +147,6 @@ class EntregaRepository:
             select(Entrega).where(
                 Entrega.rubrica_id == rubrica_id,
                 Entrega.alumno_nombre == alumno_nombre,
-                Entrega.activo == True,  # noqa: E712
-            )
-        )
-        return result.scalar_one_or_none()
-
-    async def get_active_by_id(self, entrega_id: int) -> Entrega | None:
-        """
-        Get active entrega by ID (not soft-deleted).
-
-        Args:
-            entrega_id: Entrega's database ID.
-
-        Returns:
-            Entrega object if found and active, None otherwise.
-        """
-        result = await self.db.execute(
-            select(Entrega).where(
-                Entrega.id == entrega_id,
-                Entrega.activo == True,  # noqa: E712
             )
         )
         return result.scalar_one_or_none()
@@ -181,7 +157,7 @@ class EntregaRepository:
         alumno_nombre: str,
     ) -> bool:
         """
-        Check if an active entrega exists for rubrica and alumno.
+        Check if an entrega exists for rubrica and alumno.
 
         Args:
             rubrica_id: Rubrica ID.
@@ -196,7 +172,6 @@ class EntregaRepository:
             .where(
                 Entrega.rubrica_id == rubrica_id,
                 Entrega.alumno_nombre == alumno_nombre,
-                Entrega.activo == True,  # noqa: E712
             )
         )
         count = result.scalar() or 0
@@ -232,20 +207,14 @@ class EntregaRepository:
         await self.db.refresh(entrega)
         return entrega
 
-    async def soft_delete(self, entrega: Entrega) -> Entrega:
+    async def delete(self, entrega: Entrega) -> None:
         """
-        Soft delete an entrega (set activo=False).
+        Physically delete an entrega (hard delete).
 
         Args:
             entrega: Entrega object to delete.
-
-        Returns:
-            Updated Entrega object.
         """
-        entrega.activo = False
-        entrega.updated_at = datetime.utcnow()
+        await self.db.delete(entrega)
         await self.db.commit()
-        await self.db.refresh(entrega)
-        return entrega
 
 

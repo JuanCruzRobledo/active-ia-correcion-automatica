@@ -111,7 +111,6 @@ class EntregaResponse(BaseModel):
     estado: EstadoEntregaEnum
     hash_sha256: str | None
     subido_por_id: int
-    activo: bool
     created_at: datetime
     updated_at: datetime
 
@@ -156,7 +155,6 @@ class EntregaListItem(BaseModel):
     estado: EstadoEntregaEnum
     tiene_correccion: bool
     subido_por_nombre: str
-    activo: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
