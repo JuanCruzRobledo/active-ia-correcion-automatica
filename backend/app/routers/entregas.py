@@ -35,7 +35,6 @@ async def listar_entregas(
     comision_id: int | None = Query(None, description="Filtrar por comisión"),
     rubrica_id: int | None = Query(None, description="Filtrar por rúbrica"),
     estado: EstadoEntregaEnum | None = Query(None, description="Filtrar por estado"),
-    include_inactive: bool = Query(False, description="Incluir entregas eliminadas"),
     page: int = Query(1, ge=1, description="Número de página"),
     per_page: int = Query(20, ge=1, le=100, description="Items por página"),
     current_user: Usuario = Depends(get_current_user),
@@ -48,7 +47,6 @@ async def listar_entregas(
     - `comision_id`: Filter by comision ID
     - `rubrica_id`: Filter by rubrica ID
     - `estado`: Filter by estado (SUBIDA, PENDIENTE, CORREGIDA, ERROR)
-    - `include_inactive`: Include soft-deleted entregas
 
     **Pagination:**
     - `page`: Page number (1-indexed)
@@ -63,7 +61,6 @@ async def listar_entregas(
         comision_id=comision_id,
         rubrica_id=rubrica_id,
         estado=estado.value if estado else None,
-        include_inactive=include_inactive,
         page=page,
         per_page=per_page,
     )
@@ -175,9 +172,9 @@ async def eliminar_entrega(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """
-    Soft delete an entrega.
+    Delete an entrega permanently.
 
-    The entrega is marked as inactive (activo=False) but not physically deleted.
+    The entrega is physically deleted from the database.
 
     **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
     """
