@@ -87,15 +87,27 @@ export const updateCorreccion = async (
 };
 
 /**
- * Re-corrige una entrega (descarta corrección anterior y genera nueva).
+ * Re-corrige una entrega (reemplaza corrección anterior con nueva generada por IA).
+ *
+ * La corrección anterior se mantiene intacta hasta que la nueva esté validada y lista.
+ * Si N8N falla o la respuesta de IA es inválida, la corrección anterior NO se pierde.
+ *
+ * Flujo del backend:
+ * 1. Cambia estado a PENDIENTE
+ * 2. Llama a N8N/Gemini para generar nueva corrección
+ * 3. Si falla → marca ERROR, mantiene corrección anterior
+ * 4. Si éxito → valida respuesta
+ * 5. Si validación falla → marca ERROR, mantiene corrección anterior
+ * 6. Solo si todo OK → borra corrección anterior y crea nueva
  *
  * @param entregaId - ID de la entrega a re-corregir
  * @returns Promise con la nueva corrección generada
  */
 export const recorregirEntrega = async (entregaId: number): Promise<Correccion> => {
-  // Re-corregir usa el mismo endpoint que corregir
-  // El backend se encarga de descartar la corrección anterior
-  return corregirEntrega(entregaId);
+  const response = await apiClient.post<Correccion>(
+    `/correcciones/entregas/${entregaId}/recorregir`
+  );
+  return response.data;
 };
 
 // --- Descarga de documentos ---
@@ -132,8 +144,17 @@ export const descargarPDFCorreccion = async (entregaId: number): Promise<void> =
 export const descargarTodosPDFs = async (comisionId: number, rubricaId: number): Promise<void> => {
   const response = await apiClient.get(
     `/documentos/comisiones/${comisionId}/rubricas/${rubricaId}/pdfs`,
-    { responseType: 'blob' }
+    {
+      responseType: 'blob',
+      timeout: 180000, // 3 minutos para archivos grandes
+    }
   );
+
+  // Validar que el blob no esté vacío
+  if (!(response.data instanceof Blob) || response.data.size === 0) {
+    throw new Error('No se encontraron entregas corregidas o el archivo está vacío');
+  }
+
   downloadBlob(response.data as Blob, `devoluciones_comision_${comisionId}_rubrica_${rubricaId}.zip`);
 };
 

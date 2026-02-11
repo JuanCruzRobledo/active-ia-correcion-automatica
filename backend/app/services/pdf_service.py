@@ -108,14 +108,14 @@ class PDFService:
         from fastapi import HTTPException, status
 
         # Get all corrections for this comision and rubrica
-        correcciones = await self.correccion_repo.get_all(
+        correcciones_list, total = await self.correccion_repo.get_all(
             comision_id=comision_id,
             rubrica_id=rubrica_id,
             page=1,
             per_page=1000,  # Get all
         )
 
-        if not correcciones["items"]:
+        if not correcciones_list:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No hay correcciones para esta comisión y rúbrica",
@@ -124,7 +124,7 @@ class PDFService:
         # Create ZIP in memory
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for correccion in correcciones["items"]:
+            for correccion in correcciones_list:
                 # Generate PDF for this correction
                 pdf_bytes = await self.generar_pdf_devolucion(correccion.id)
 
@@ -143,7 +143,7 @@ class PDFService:
 
         # Build suggested filename
         # Get materia and rubrica info from first correction
-        first_correccion = correcciones["items"][0]
+        first_correccion = correcciones_list[0]
         materia_codigo = first_correccion.entrega.comision.materia.codigo
         rubrica_nombre = first_correccion.entrega.rubrica.titulo
         fecha = datetime.now().strftime("%Y%m%d")
