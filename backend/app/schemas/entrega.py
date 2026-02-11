@@ -153,6 +153,10 @@ class EntregaListItem(BaseModel):
     archivo_tamanio: int
     archivo_tipo: str
     estado: EstadoEntregaEnum
+    nota: float | None = Field(
+        default=None,
+        description="Nota de la corrección (si existe)",
+    )
     tiene_correccion: bool
     subido_por_nombre: str
     created_at: datetime
@@ -217,20 +221,20 @@ class EntregaError(BaseModel):
 class CargaMasivaResponse(BaseModel):
     """Schema for bulk upload response."""
 
-    total_archivos: int = Field(
-        description="Total de archivos encontrados en el ZIP",
+    total_procesadas: int = Field(
+        description="Total de entregas procesadas (exitosas + errores)",
+    )
+    total_exitosas: int = Field(
+        description="Cantidad de entregas exitosas",
+    )
+    total_errores: int = Field(
+        description="Cantidad de errores",
     )
     exitosas: list[EntregaCreada] = Field(
         description="Entregas creadas exitosamente",
     )
     errores: list[EntregaError] = Field(
         description="Errores al procesar entregas",
-    )
-    num_exitosas: int = Field(
-        description="Cantidad de entregas exitosas",
-    )
-    num_errores: int = Field(
-        description="Cantidad de errores",
     )
 
 

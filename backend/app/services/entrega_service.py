@@ -224,6 +224,7 @@ class EntregaService:
                     archivo_tamanio=entrega.archivo_tamanio,
                     archivo_tipo=entrega.archivo_tipo,
                     estado=entrega.estado,
+                    nota=entrega.correccion.nota if entrega.correccion else None,
                     tiene_correccion=entrega.correccion is not None,
                     subido_por_nombre=entrega.subido_por.nombre,
                     created_at=entrega.created_at,
@@ -359,6 +360,245 @@ class EntregaService:
             archivos_incluidos=entrega.archivos_incluidos or [],
             total_lineas=len(contenido.splitlines()),
             total_caracteres=len(contenido),
+        )
+
+    async def crear_entrega_masiva(
+        self,
+        comision_id: int,
+        rubrica_id: int,
+        archivo_zip: UploadFile,
+        subido_por_id: int,
+        sobrescribir: bool = False,
+        modo_consolidacion: str = "solo_codigo",
+    ) -> CargaMasivaResponse:
+        """
+        Create multiple entregas from a ZIP file containing student folders.
+
+        Expected structure:
+        - entregas.zip
+          - alumno1/
+            - proyecto.zip (or loose files)
+          - alumno2/
+            - proyecto.zip (or loose files)
+
+        Args:
+            comision_id: ID of the comision.
+            rubrica_id: ID of the rubrica.
+            archivo_zip: ZIP file with student folders.
+            subido_por_id: ID of user uploading.
+            sobrescribir: If True, overwrites existing entregas.
+            modo_consolidacion: Consolidation mode for ZIP files.
+
+        Returns:
+            CargaMasivaResponse with summary of processed entregas.
+
+        Raises:
+            HTTPException 404: Comision or Rubrica not found.
+            HTTPException 400: Invalid file type or structure.
+        """
+        import io
+        import zipfile
+        import tempfile
+
+        # Validate comision exists
+        comision = await self.comision_repo.get_active_by_id(comision_id)
+        if not comision:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Comisión no encontrada o inactiva",
+            )
+
+        # Validate rubrica exists
+        rubrica = await self.rubrica_repo.get_active_by_id(rubrica_id)
+        if not rubrica:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Rúbrica no encontrada o inactiva",
+            )
+
+        # Validate file type
+        if not archivo_zip.filename or not archivo_zip.filename.lower().endswith(".zip"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Solo se permiten archivos ZIP",
+            )
+
+        # Read ZIP content
+        contenido_bytes = await archivo_zip.read()
+
+        exitosas: list[EntregaCreada] = []
+        errores: list[EntregaError] = []
+
+        try:
+            with zipfile.ZipFile(io.BytesIO(contenido_bytes), "r") as zip_file:
+                # Get all directories in root (each directory = one student)
+                root_dirs = set()
+                for name in zip_file.namelist():
+                    parts = name.split("/")
+                    if len(parts) > 1 and parts[0]:  # Has at least one folder
+                        root_dirs.add(parts[0])
+
+                if not root_dirs:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="El ZIP no contiene carpetas de alumnos. Estructura esperada: carpeta_alumno/archivos",
+                    )
+
+                # Process each student folder
+                for alumno_folder in sorted(root_dirs):
+                    # Extract student name: take only before first "_", normalize spaces, apply title case
+                    # Example: "Jose Andres    Sandoval_925405_assignsubmission_file" -> "Jose Andres Sandoval"
+                    alumno_nombre = " ".join(alumno_folder.split("_")[0].split()).title()
+
+                    try:
+                        # Get all files in this student's folder
+                        alumno_files = [
+                            f for f in zip_file.namelist()
+                            if f.startswith(f"{alumno_folder}/") and not f.endswith("/")
+                        ]
+
+                        if not alumno_files:
+                            errores.append(
+                                EntregaError(
+                                    alumno_nombre=alumno_nombre,
+                                    archivo_nombre=alumno_folder,
+                                    error="La carpeta está vacía",
+                                )
+                            )
+                            continue
+
+                        # Check if there's a ZIP file inside
+                        zip_files = [f for f in alumno_files if f.lower().endswith(".zip")]
+
+                        if zip_files:
+                            # Use the first ZIP found
+                            inner_zip_path = zip_files[0]
+                            inner_zip_content = zip_file.read(inner_zip_path)
+                            archivo_nombre = os.path.basename(inner_zip_path)
+                            archivo_tipo = "zip"
+                            contenido_bytes_alumno = inner_zip_content
+                        else:
+                            # Create a ZIP from loose files
+                            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
+                                with zipfile.ZipFile(tmp_zip, "w") as new_zip:
+                                    for file_path in alumno_files:
+                                        # Remove student folder prefix
+                                        arcname = "/".join(file_path.split("/")[1:])
+                                        if arcname:  # Skip empty paths
+                                            new_zip.writestr(arcname, zip_file.read(file_path))
+
+                                tmp_zip.seek(0)
+                                contenido_bytes_alumno = tmp_zip.read()
+                                archivo_nombre = f"{alumno_folder}_consolidado.zip"
+                                archivo_tipo = "zip"
+
+                        # Calculate hash
+                        hash_sha256 = hashlib.sha256(contenido_bytes_alumno).hexdigest()
+                        archivo_tamanio = len(contenido_bytes_alumno)
+
+                        # Consolidate content
+                        contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
+                            contenido_bytes_alumno, archivo_tipo, modo_consolidacion
+                        )
+
+                        # Generate preview
+                        contenido_preview = self.consolidacion_service.generar_preview(
+                            contenido_consolidado, max_chars=500
+                        )
+
+                        # Check if entrega already exists
+                        entrega_existente = await self.entrega_repo.get_by_rubrica_alumno(
+                            rubrica_id=rubrica_id,
+                            alumno_nombre=alumno_nombre,
+                        )
+
+                        sobrescrito = False
+
+                        if entrega_existente:
+                            if not sobrescribir:
+                                errores.append(
+                                    EntregaError(
+                                        alumno_nombre=alumno_nombre,
+                                        archivo_nombre=archivo_nombre,
+                                        error=f"Ya existe una entrega para este alumno. Usa 'sobrescribir' para reemplazarla.",
+                                    )
+                                )
+                                continue
+
+                            # Save to history before overwriting
+                            await self.historial_service.guardar_version_anterior(
+                                entrega_existente, subido_por_id
+                            )
+
+                            # Update existing entrega
+                            entrega_existente.archivo_nombre = archivo_nombre
+                            entrega_existente.archivo_tamanio = archivo_tamanio
+                            entrega_existente.archivo_tipo = archivo_tipo
+                            entrega_existente.contenido_preview = contenido_preview
+                            entrega_existente.contenido_consolidado = contenido_consolidado
+                            entrega_existente.archivos_incluidos = archivos_incluidos
+                            entrega_existente.hash_sha256 = hash_sha256
+                            entrega_existente.estado = EstadoEntregaEnum.SUBIDA
+                            entrega_existente.subido_por_id = subido_por_id
+                            entrega_existente.archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo_nombre}"
+
+                            updated_entrega = await self.entrega_repo.update(entrega_existente)
+                            sobrescrito = True
+                            entrega_id = updated_entrega.id
+
+                        else:
+                            # Create new entrega
+                            archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo_nombre}"
+
+                            entrega = Entrega(
+                                comision_id=comision_id,
+                                rubrica_id=rubrica_id,
+                                alumno_nombre=alumno_nombre,
+                                archivo_nombre=archivo_nombre,
+                                archivo_ruta=archivo_ruta,
+                                archivo_tamanio=archivo_tamanio,
+                                archivo_tipo=archivo_tipo,
+                                contenido_preview=contenido_preview,
+                                contenido_consolidado=contenido_consolidado,
+                                archivos_incluidos=archivos_incluidos,
+                                estado=EstadoEntregaEnum.SUBIDA,
+                                hash_sha256=hash_sha256,
+                                subido_por_id=subido_por_id,
+                            )
+
+                            created_entrega = await self.entrega_repo.create(entrega)
+                            entrega_id = created_entrega.id
+
+                        exitosas.append(
+                            EntregaCreada(
+                                alumno_nombre=alumno_nombre,
+                                archivo_nombre=archivo_nombre,
+                                entrega_id=entrega_id,
+                                sobrescrito=sobrescrito,
+                            )
+                        )
+
+                    except Exception as e:
+                        errores.append(
+                            EntregaError(
+                                alumno_nombre=alumno_nombre,
+                                archivo_nombre=alumno_folder,
+                                error=str(e),
+                            )
+                        )
+
+        except zipfile.BadZipFile:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El archivo no es un ZIP válido",
+            )
+
+        return CargaMasivaResponse(
+            total_procesadas=len(exitosas) + len(errores),
+            total_exitosas=len(exitosas),
+            total_errores=len(errores),
+            exitosas=exitosas,
+            errores=errores,
         )
 
     async def _consolidar_archivo(

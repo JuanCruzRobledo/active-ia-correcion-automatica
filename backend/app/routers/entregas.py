@@ -16,6 +16,7 @@ from app.core.permissions import require_any_authenticated
 from app.models.enums import EstadoEntregaEnum
 from app.models.usuario import Usuario
 from app.schemas.entrega import (
+    CargaMasivaResponse,
     ContenidoEntrega,
     EntregaCreate,
     EntregaDetailResponse,
@@ -109,6 +110,66 @@ async def crear_entrega(
     return await service.crear_entrega_individual(
         data=data,
         archivo=archivo,
+        subido_por_id=current_user.id,
+        sobrescribir=sobrescribir,
+        modo_consolidacion=modo_consolidacion.lower(),
+    )
+
+
+@router.post("/masiva", response_model=CargaMasivaResponse, status_code=status.HTTP_201_CREATED)
+async def crear_entregas_masivas(
+    comision_id: int = Form(..., description="ID de la comisión"),
+    rubrica_id: int = Form(..., description="ID de la rúbrica"),
+    sobrescribir: bool = Form(False, description="Sobrescribir entregas existentes"),
+    modo_consolidacion: str = Form("solo_codigo", description="Modo de consolidación"),
+    archivo_zip: UploadFile = File(..., description="ZIP con carpetas de alumnos"),
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CargaMasivaResponse:
+    """
+    Create multiple entregas from a ZIP file (bulk upload).
+
+    **Expected ZIP structure:**
+    ```
+    entregas.zip
+    ├── perez_juan/
+    │   └── proyecto.zip (or loose files)
+    ├── gonzalez_maria/
+    │   └── proyecto.zip (or loose files)
+    └── rodriguez_carlos/
+        └── proyecto.zip (or loose files)
+    ```
+
+    The folder name is used as the student's name (underscores replaced with spaces).
+
+    **Required fields:**
+    - `comision_id`: ID of the comision
+    - `rubrica_id`: ID of the rubrica
+    - `archivo_zip`: ZIP file with student folders
+
+    **Optional:**
+    - `sobrescribir`: If True, overwrites existing entregas (saves to history)
+    - `modo_consolidacion`: Consolidation mode (solo_codigo, web_completo, etc.)
+
+    **Response:**
+    - Summary with total processed, successful, and errors
+    - List of successful entregas with IDs
+    - List of errors with details
+
+    **Validation:**
+    - Comision and Rubrica must exist and be active
+    - File must be a valid ZIP
+    - ZIP must contain at least one student folder
+
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
+    """
+    require_any_authenticated(current_user)
+
+    service = EntregaService(db)
+    return await service.crear_entrega_masiva(
+        comision_id=comision_id,
+        rubrica_id=rubrica_id,
+        archivo_zip=archivo_zip,
         subido_por_id=current_user.id,
         sobrescribir=sobrescribir,
         modo_consolidacion=modo_consolidacion.lower(),

@@ -19,7 +19,7 @@ import { useCorreccionByEntrega, useRecorregirEntrega } from '@/features/correcc
 import {
   descargarPDFCorreccion,
   descargarTodosPDFs,
-  exportarExcel,
+  // exportarExcel, // Temporalmente deshabilitado
 } from '@/features/correcciones/services/correcciones-service';
 import { CargaEntregaModal, EntregaViewModal } from '../components';
 import CorreccionViewEditModal from '@/features/correcciones/components/CorreccionViewEditModal';
@@ -245,17 +245,32 @@ export const EntregasPage = () => {
 
   const handleDescargarTodosPDFs = async () => {
     if (!selectedComisionId || !selectedRubricaId) return;
+
+    // Validar que haya entregas corregidas antes de intentar descargar
+    if (corregidasCount === 0) {
+      toast.error('No hay entregas corregidas para descargar');
+      return;
+    }
+
     setIsBulkAction(true);
     try {
       await descargarTodosPDFs(selectedComisionId, selectedRubricaId);
-      toast.success('PDFs descargados exitosamente');
-    } catch (e) {
-      toast.error(`Error: ${e instanceof Error ? e.message : 'Error desconocido'}`);
+      toast.success(`ZIP con ${corregidasCount} PDFs descargado exitosamente`);
+    } catch (e: any) {
+      // Manejo específico de errores
+      if (e.code === 'ECONNABORTED') {
+        toast.error('La descarga tomó demasiado tiempo. Intenta nuevamente o contacta al administrador.');
+      } else if (e.response?.status === 404) {
+        toast.error('No se encontraron entregas corregidas');
+      } else {
+        toast.error(`Error al descargar PDFs: ${e instanceof Error ? e.message : 'Error desconocido'}`);
+      }
     } finally {
       setIsBulkAction(false);
     }
   };
 
+  /* Temporalmente deshabilitado - Exportar Excel
   const handleExportarExcel = async () => {
     if (!selectedComisionId || !selectedRubricaId) return;
     setIsBulkAction(true);
@@ -268,6 +283,7 @@ export const EntregasPage = () => {
       setIsBulkAction(false);
     }
   };
+  */
 
   const getEstadoBadge = (estado: EstadoEntrega) => {
     const badges: Record<
@@ -347,10 +363,12 @@ export const EntregasPage = () => {
                 size="sm"
                 onClick={handleDescargarTodosPDFs}
                 disabled={isBulkAction}
+                isLoading={isBulkAction}
               >
                 <Download className="w-4 h-4" />
-                Todos los PDFs
+                {isBulkAction ? 'Generando ZIP...' : `Todos los PDFs (${corregidasCount})`}
               </Button>
+              {/* Temporalmente deshabilitado - Exportar Excel
               <Button
                 variant="secondary"
                 size="sm"
@@ -360,6 +378,7 @@ export const EntregasPage = () => {
                 <Download className="w-4 h-4" />
                 Exportar Excel
               </Button>
+              */}
             </>
           )}
           <Button
