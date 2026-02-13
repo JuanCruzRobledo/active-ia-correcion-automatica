@@ -71,6 +71,15 @@ coverage/
 n8n/data/
 !n8n/data/.gitkeep
 
+# Nginx (producción)
+nginx/logs/
+nginx/ssl/
+!nginx/logs/.gitkeep
+!nginx/ssl/.gitkeep
+
+# Backups de PostgreSQL
+backups/postgres/
+
 # Bases de datos locales
 *.db
 *.sqlite
