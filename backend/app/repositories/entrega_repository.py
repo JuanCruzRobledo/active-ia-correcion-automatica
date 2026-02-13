@@ -144,7 +144,11 @@ class EntregaRepository:
             Entrega object if found, None otherwise.
         """
         result = await self.db.execute(
-            select(Entrega).where(
+            select(Entrega)
+            .options(
+                selectinload(Entrega.correccion),
+            )
+            .where(
                 Entrega.rubrica_id == rubrica_id,
                 Entrega.alumno_nombre == alumno_nombre,
             )

@@ -67,13 +67,13 @@ async def descargar_pdf_correccion(
 
     if correccion:
         alumno_nombre = correccion.entrega.alumno_nombre
-        fecha = correccion.created_at.strftime("%Y%m%d")
-        # Sanitize filename
+        # Sanitize filename - only remove truly problematic characters, keep spaces
         import re
 
-        alumno_safe = re.sub(r'[<>:"/\\|?*]', "_", alumno_nombre)
-        alumno_safe = re.sub(r"\s+", "_", alumno_safe)
-        filename = f"{alumno_safe}_devolucion_{fecha}.pdf"
+        alumno_safe = re.sub(r'[<>:"/\\|?*]', "", alumno_nombre)
+        # Normalize multiple spaces to single space
+        alumno_safe = re.sub(r"\s+", " ", alumno_safe).strip()
+        filename = f"{alumno_safe} - Devolucion.pdf"
     else:
         filename = f"devolucion_{correccion_id}.pdf"
 

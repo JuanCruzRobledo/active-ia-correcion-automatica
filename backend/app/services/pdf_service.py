@@ -128,13 +128,15 @@ class PDFService:
                 # Generate PDF for this correction
                 pdf_bytes = await self.generar_pdf_devolucion(correccion.id)
 
-                # Sanitize alumno name for filename
-                alumno_safe = self._sanitize_filename(
-                    correccion.entrega.alumno_nombre
-                )
+                # Sanitize alumno name for filename (keep spaces, only remove problematic chars)
+                alumno_nombre = correccion.entrega.alumno_nombre
+                import re
+                alumno_safe = re.sub(r'[<>:"/\\|?*]', "", alumno_nombre)
+                # Normalize multiple spaces to single space
+                alumno_safe = re.sub(r"\s+", " ", alumno_safe).strip()
 
                 # Add PDF to ZIP
-                pdf_filename = f"{alumno_safe}_devolucion.pdf"
+                pdf_filename = f"{alumno_safe} - Devolucion.pdf"
                 zip_file.writestr(pdf_filename, pdf_bytes)
 
         # Get ZIP bytes
@@ -142,14 +144,17 @@ class PDFService:
         zip_buffer.close()
 
         # Build suggested filename
-        # Get materia and rubrica info from first correction
+        # Get rubrica info from first correction
         first_correccion = correcciones_list[0]
-        materia_codigo = first_correccion.entrega.comision.materia.codigo
         rubrica_nombre = first_correccion.entrega.rubrica.titulo
-        fecha = datetime.now().strftime("%Y%m%d")
 
-        zip_filename = f"devoluciones_{materia_codigo}_{rubrica_nombre}_{fecha}.zip"
-        zip_filename = self._sanitize_filename(zip_filename)
+        # Sanitize rubrica name (keep spaces, only remove problematic chars)
+        import re
+        rubrica_safe = re.sub(r'[<>:"/\\|?*]', "", rubrica_nombre)
+        # Normalize multiple spaces to single space
+        rubrica_safe = re.sub(r"\s+", " ", rubrica_safe).strip()
+
+        zip_filename = f"{rubrica_safe} - Devoluciones.zip"
 
         return zip_bytes, zip_filename
 
