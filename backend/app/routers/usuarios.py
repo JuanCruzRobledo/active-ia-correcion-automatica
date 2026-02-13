@@ -81,7 +81,7 @@ async def crear_usuario(
     require_admin(current_user)
 
     service = UsuarioService(db)
-    return await service.crear_usuario(data)
+    return await service.crear_usuario(data, current_user_id=current_user.id)
 
 
 @router.get("/{user_id}", response_model=UsuarioResponse)

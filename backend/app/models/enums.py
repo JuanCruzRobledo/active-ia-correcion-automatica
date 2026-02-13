@@ -50,3 +50,12 @@ class EstadoCriterioEnum(str, Enum):
     OK = "OK"  # Criterio cumplido satisfactoriamente
     WARNING = "WARNING"  # Criterio con observaciones menores
     ERROR = "ERROR"  # Criterio con problemas significativos
+
+
+class TipoActividadEnum(str, Enum):
+    """Tipos de actividad que se registran en el sistema para auditoría."""
+
+    USUARIO_CREADO = "USUARIO_CREADO"
+    MATERIA_CREADA = "MATERIA_CREADA"
+    COMISION_CREADA = "COMISION_CREADA"
+    RUBRICA_CREADA = "RUBRICA_CREADA"

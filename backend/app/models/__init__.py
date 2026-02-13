@@ -18,6 +18,7 @@ from app.models.enums import (
     EstadoEntregaEnum,
     FuenteRubricaEnum,
     RolEnum,
+    TipoActividadEnum,
     TipoRubricaEnum,
 )
 from app.models.usuario import Usuario
@@ -26,6 +27,7 @@ from app.models.comision import Comision, ComisionTutor
 from app.models.rubrica import Rubrica
 from app.models.entrega import Entrega, EntregaHistorial
 from app.models.correccion import Correccion
+from app.models.actividad import Actividad
 
 __all__ = [
     # Base
@@ -41,6 +43,7 @@ __all__ = [
     "EstadoEntregaEnum",
     "FuenteRubricaEnum",
     "EstadoCriterioEnum",
+    "TipoActividadEnum",
     # Models
     "Usuario",
     "Materia",
@@ -51,4 +54,5 @@ __all__ = [
     "Entrega",
     "EntregaHistorial",
     "Correccion",
+    "Actividad",
 ]

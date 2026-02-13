@@ -10,7 +10,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 4
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import RolEnum
+from app.models.enums import RolEnum, TipoActividadEnum
 from app.models.materia import Materia
 from app.repositories.materia_repository import (
     CoordinadorMateriaRepository,
@@ -28,6 +28,7 @@ from app.schemas.materia import (
     MateriaUpdate,
 )
 from app.schemas.usuario import UsuarioListItem
+from app.services.actividad_service import ActividadService
 
 
 class MateriaService:
@@ -45,12 +46,15 @@ class MateriaService:
         self.coord_materia_repo = CoordinadorMateriaRepository(db)
         self.usuario_repo = UsuarioRepository(db)
 
-    async def crear_materia(self, data: MateriaCreate) -> MateriaDetailResponse:
+    async def crear_materia(
+        self, data: MateriaCreate, current_user_id: int | None = None
+    ) -> MateriaDetailResponse:
         """
         Create a new materia.
 
         Args:
             data: Materia creation data (codigo, nombre, descripcion, coordinador_ids).
+            current_user_id: ID of the user creating this materia (for audit log).
 
         Returns:
             MateriaDetailResponse with materia data and coordinators.
@@ -111,6 +115,16 @@ class MateriaService:
                 coordinador_id=usuario.id,
                 materia_id=created_materia.id,
             )
+
+        # Registrar actividad
+        actividad_service = ActividadService(self.db)
+        await actividad_service.registrar_actividad(
+            tipo=TipoActividadEnum.MATERIA_CREADA,
+            descripcion=f"Materia '{created_materia.nombre}' creada",
+            entidad_id=created_materia.id,
+            entidad_nombre=created_materia.nombre,
+            usuario_id=current_user_id,
+        )
 
         # Return detailed response with coordinators
         return await self.obtener_materia(created_materia.id)

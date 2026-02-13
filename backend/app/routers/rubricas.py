@@ -107,7 +107,7 @@ async def crear_rubrica(
     require_admin(current_user)
 
     service = RubricaService(db)
-    return await service.crear_rubrica(data)
+    return await service.crear_rubrica(data, current_user_id=current_user.id)
 
 
 @router.get("/{rubrica_id}", response_model=RubricaDetailResponse)
