@@ -22,7 +22,7 @@ services:
     networks:
       - active-ia-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-active_ia_user}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-active_ia_user} -d ${POSTGRES_DB:-active_ia_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
