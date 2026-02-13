@@ -7,3 +7,5 @@ export {
   useDashboardCoordinadorStats,
   useDashboardTutorStats,
 } from './useDashboardStats';
+
+export { useActividadesRecientes } from './useActividades';

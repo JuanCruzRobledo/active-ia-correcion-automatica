@@ -15,6 +15,7 @@ from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 from app.models.enums import RolEnum
 
 if TYPE_CHECKING:
+    from app.models.actividad import Actividad
     from app.models.comision import ComisionTutor
     from app.models.correccion import Correccion
     from app.models.entrega import Entrega
@@ -85,6 +86,11 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
     correcciones_realizadas: Mapped[list["Correccion"]] = relationship(
         "Correccion",
         back_populates="corregido_por",
+        lazy="selectin",
+    )
+    actividades_realizadas: Mapped[list["Actividad"]] = relationship(
+        "Actividad",
+        back_populates="usuario",
         lazy="selectin",
     )
 

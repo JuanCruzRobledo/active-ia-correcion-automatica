@@ -325,3 +325,7 @@ export function isCoordinador(user: User | UserInfo | null): boolean {
 export function isTutor(user: User | UserInfo | null): boolean {
   return hasRole(user, ROL.TUTOR);
 }
+
+// ===== ACTIVIDAD (AUDIT) TYPES =====
+export type { Actividad, ActividadListResponse, TipoActividad } from './actividad';
+export { TIPO_ACTIVIDAD } from './actividad';

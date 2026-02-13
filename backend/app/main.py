@@ -146,6 +146,11 @@ def register_routers(app: FastAPI) -> None:
 
     app.include_router(perfil_router, prefix="/api/v1")
 
+    # Fase 6 - Actividades router (audit log)
+    from app.routers.actividades import router as actividades_router
+
+    app.include_router(actividades_router, prefix="/api/v1")
+
 
 # Crear instancia de la aplicacion
 app = create_application()

@@ -11,7 +11,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.comision import Comision
-from app.models.enums import RolEnum
+from app.models.enums import RolEnum, TipoActividadEnum
 from app.repositories.comision_repository import (
     ComisionRepository,
     ComisionTutorRepository,
@@ -31,6 +31,7 @@ from app.schemas.comision import (
     TutoresResponse,
 )
 from app.schemas.usuario import UsuarioListItem
+from app.services.actividad_service import ActividadService
 
 
 class ComisionService:
@@ -49,12 +50,15 @@ class ComisionService:
         self.materia_repo = MateriaRepository(db)
         self.usuario_repo = UsuarioRepository(db)
 
-    async def crear_comision(self, data: ComisionCreate) -> ComisionDetailResponse:
+    async def crear_comision(
+        self, data: ComisionCreate, current_user_id: int | None = None
+    ) -> ComisionDetailResponse:
         """
         Create a new comision.
 
         Args:
             data: Comision creation data (materia_id, nombre, anio, tutor_ids).
+            current_user_id: ID of the user creating this comision (for audit log).
 
         Returns:
             ComisionDetailResponse with comision data and tutors.
@@ -119,6 +123,16 @@ class ComisionService:
                 tutor_id=usuario.id,
                 comision_id=created_comision.id,
             )
+
+        # Registrar actividad
+        actividad_service = ActividadService(self.db)
+        await actividad_service.registrar_actividad(
+            tipo=TipoActividadEnum.COMISION_CREADA,
+            descripcion=f"Comisión '{created_comision.nombre}' creada",
+            entidad_id=created_comision.id,
+            entidad_nombre=created_comision.nombre,
+            usuario_id=current_user_id,
+        )
 
         # Return detailed response with tutors
         return await self.obtener_comision(created_comision.id)

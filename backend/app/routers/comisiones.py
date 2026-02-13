@@ -101,7 +101,7 @@ async def crear_comision(
     require_admin(current_user)
 
     service = ComisionService(db)
-    return await service.crear_comision(data)
+    return await service.crear_comision(data, current_user_id=current_user.id)
 
 
 @router.get("/{comision_id}", response_model=ComisionDetailResponse)

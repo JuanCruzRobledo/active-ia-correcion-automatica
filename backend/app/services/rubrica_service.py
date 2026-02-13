@@ -10,6 +10,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 6
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.enums import TipoActividadEnum
 from app.models.rubrica import Rubrica
 from app.repositories.materia_repository import MateriaRepository
 from app.repositories.rubrica_repository import RubricaRepository
@@ -23,6 +24,7 @@ from app.schemas.rubrica import (
     RubricaResponse,
     RubricaUpdate,
 )
+from app.services.actividad_service import ActividadService
 
 
 class RubricaService:
@@ -96,12 +98,15 @@ class RubricaService:
                         detail=f"El subcriterio {subcriterio.get('id')} debe tener al menos una evidencia",
                     )
 
-    async def crear_rubrica(self, data: RubricaCreate) -> RubricaResponse:
+    async def crear_rubrica(
+        self, data: RubricaCreate, current_user_id: int | None = None
+    ) -> RubricaResponse:
         """
         Create a new rubrica V2.
 
         Args:
             data: Rubrica creation data.
+            current_user_id: ID of the user creating this rubrica (for audit log).
 
         Returns:
             RubricaResponse with rubrica data.
@@ -155,6 +160,16 @@ class RubricaService:
         )
 
         created_rubrica = await self.rubrica_repo.create(rubrica)
+
+        # Registrar actividad
+        actividad_service = ActividadService(self.db)
+        await actividad_service.registrar_actividad(
+            tipo=TipoActividadEnum.RUBRICA_CREADA,
+            descripcion=f"Rúbrica '{created_rubrica.titulo}' (tipo: {created_rubrica.tipo.value}) creada",
+            entidad_id=created_rubrica.id,
+            entidad_nombre=created_rubrica.titulo,
+            usuario_id=current_user_id,
+        )
 
         return RubricaResponse.model_validate(created_rubrica)
 

@@ -4,7 +4,12 @@
       "Bash(npm run build:*)",
       "Bash(docker-compose:*)",
       "Bash(curl:*)",
-      "Bash(python -m json.tool:*)"
+      "Bash(python -m json.tool:*)",
+      "Bash(alembic revision:*)",
+      "Bash(python -m alembic revision:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker exec:*)",
+      "Bash(timeout:*)"
     ]
   }
 }

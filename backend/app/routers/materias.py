@@ -76,7 +76,7 @@ async def crear_materia(
     require_admin(current_user)
 
     service = MateriaService(db)
-    return await service.crear_materia(data)
+    return await service.crear_materia(data, current_user_id=current_user.id)
 
 
 @router.get("/{materia_id}", response_model=MateriaDetailResponse)

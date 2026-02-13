@@ -14,12 +14,15 @@ import { BookOpen, GraduationCap, Users, FileText, Plus } from 'lucide-react';
 import { StatCard } from './StatCard';
 import { QuickActions } from './QuickActions';
 import { RecentActivity } from './RecentActivity';
-import { useDashboardAdminStats } from '../hooks';
+import { useDashboardAdminStats, useActividadesRecientes } from '../hooks';
 import { Spinner } from '@/shared/components/ui';
 
 export function DashboardAdmin() {
   const navigate = useNavigate();
   const { data: stats, isLoading, error } = useDashboardAdminStats();
+  const { data: actividadesData, isLoading: actividadesLoading } = useActividadesRecientes({
+    limit: 10,
+  });
 
   // Loading state
   if (isLoading) {
@@ -74,23 +77,13 @@ export function DashboardAdmin() {
     },
   ];
 
-  const recentActivities = [
-    {
-      id: 1,
-      text: 'Usuario X creado',
-      timestamp: '2026-01-28T10:30:00Z',
-    },
-    {
-      id: 2,
-      text: 'Materia Y actualizada',
-      timestamp: '2026-01-28T09:15:00Z',
-    },
-    {
-      id: 3,
-      text: 'Rúbrica Z creada',
-      timestamp: '2026-01-28T08:45:00Z',
-    },
-  ];
+  // Map actividades to the format expected by RecentActivity component
+  const recentActivities =
+    actividadesData?.items.map((act) => ({
+      id: act.id,
+      text: act.descripcion,
+      timestamp: act.created_at,
+    })) ?? [];
 
   return (
     <div className="space-y-8">
@@ -137,7 +130,7 @@ export function DashboardAdmin() {
       {/* Quick Actions & Recent Activity */}
       <div className="grid gap-6 lg:grid-cols-2">
         <QuickActions actions={quickActions} />
-        <RecentActivity activities={recentActivities} />
+        <RecentActivity activities={recentActivities} isLoading={actividadesLoading} />
       </div>
     </div>
   );

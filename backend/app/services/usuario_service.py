@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import generate_temp_password, hash_password
 from app.models import Usuario
-from app.models.enums import RolEnum
+from app.models.enums import RolEnum, TipoActividadEnum
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.usuario import (
     ResetPasswordResponse,
@@ -23,6 +23,7 @@ from app.schemas.usuario import (
     UsuarioResponse,
     UsuarioUpdate,
 )
+from app.services.actividad_service import ActividadService
 
 
 class UsuarioService:
@@ -38,12 +39,15 @@ class UsuarioService:
         self.db = db
         self.repo = UsuarioRepository(db)
 
-    async def crear_usuario(self, data: UsuarioCreate) -> UsuarioCreateResponse:
+    async def crear_usuario(
+        self, data: UsuarioCreate, current_user_id: int | None = None
+    ) -> UsuarioCreateResponse:
         """
         Create a new user with a temporary password.
 
         Args:
             data: User creation data (username, nombre, rol).
+            current_user_id: ID of the user creating this user (for audit log).
 
         Returns:
             UsuarioCreateResponse with user data and temporary password.
@@ -72,6 +76,17 @@ class UsuarioService:
         )
 
         created_user = await self.repo.create(user)
+
+        # Registrar actividad solo si NO es estudiante (aún no existe rol ESTUDIANTE)
+        # Cuando se agregue, aquí se debe verificar: if created_user.rol != RolEnum.ESTUDIANTE
+        actividad_service = ActividadService(self.db)
+        await actividad_service.registrar_actividad(
+            tipo=TipoActividadEnum.USUARIO_CREADO,
+            descripcion=f"Usuario '{created_user.nombre}' ({created_user.rol.value}) creado",
+            entidad_id=created_user.id,
+            entidad_nombre=created_user.nombre,
+            usuario_id=current_user_id,
+        )
 
         return UsuarioCreateResponse(
             usuario=UsuarioResponse.model_validate(created_user),
