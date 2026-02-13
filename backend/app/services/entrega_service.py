@@ -133,6 +133,13 @@ class EntregaService:
                     detail=f"Ya existe una entrega para el alumno '{data.alumno_nombre}' en esta rúbrica",
                 )
 
+            # Prevent overwriting if entrega has a correction
+            if entrega_existente.correccion:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"No se puede sobrescribir la entrega del alumno '{data.alumno_nombre}' porque ya tiene una corrección. Elimina la corrección para poder sobrescribir.",
+                )
+
             # Save to history before overwriting
             await self.historial_service.guardar_version_anterior(
                 entrega_existente, subido_por_id
@@ -521,6 +528,17 @@ class EntregaService:
                                         alumno_nombre=alumno_nombre,
                                         archivo_nombre=archivo_nombre,
                                         error=f"Ya existe una entrega para este alumno. Usa 'sobrescribir' para reemplazarla.",
+                                    )
+                                )
+                                continue
+
+                            # Prevent overwriting if entrega has a correction
+                            if entrega_existente.correccion:
+                                errores.append(
+                                    EntregaError(
+                                        alumno_nombre=alumno_nombre,
+                                        archivo_nombre=archivo_nombre,
+                                        error=f"No se puede sobrescribir porque el alumno ya tiene una corrección. Elimina la corrección para poder sobrescribir.",
                                     )
                                 )
                                 continue

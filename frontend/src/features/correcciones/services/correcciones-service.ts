@@ -135,7 +135,20 @@ export const descargarPDFCorreccion = async (entregaId: number): Promise<void> =
   const response = await apiClient.get(`/documentos/correcciones/${correccion.id}/pdf`, {
     responseType: 'blob',
   });
-  downloadBlob(response.data as Blob, `devolucion_entrega_${entregaId}.pdf`);
+
+  // Extract filename from Content-Disposition header
+  const contentDisposition = response.headers['content-disposition'];
+  let filename = `devolucion_entrega_${entregaId}.pdf`; // fallback
+
+  if (contentDisposition) {
+    // Match: filename="file.pdf" or filename=file.pdf
+    const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+    if (filenameMatch && filenameMatch[1]) {
+      filename = filenameMatch[1];
+    }
+  }
+
+  downloadBlob(response.data as Blob, filename);
 };
 
 /**
@@ -155,7 +168,19 @@ export const descargarTodosPDFs = async (comisionId: number, rubricaId: number):
     throw new Error('No se encontraron entregas corregidas o el archivo está vacío');
   }
 
-  downloadBlob(response.data as Blob, `devoluciones_comision_${comisionId}_rubrica_${rubricaId}.zip`);
+  // Extract filename from Content-Disposition header
+  const contentDisposition = response.headers['content-disposition'];
+  let filename = `devoluciones_comision_${comisionId}_rubrica_${rubricaId}.zip`; // fallback
+
+  if (contentDisposition) {
+    // Match: filename="file.zip" or filename=file.zip
+    const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+    if (filenameMatch && filenameMatch[1]) {
+      filename = filenameMatch[1];
+    }
+  }
+
+  downloadBlob(response.data as Blob, filename);
 };
 
 /**

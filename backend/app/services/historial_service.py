@@ -56,10 +56,10 @@ class HistorialService:
         correccion_json = None
 
         if entrega.correccion:
-            nota_anterior = entrega.correccion.nota_final
+            nota_anterior = entrega.correccion.nota
             correccion_json = {
-                "nota_final": float(entrega.correccion.nota_final),
-                "criterios_evaluados": entrega.correccion.criterios_evaluados,
+                "nota_final": float(entrega.correccion.nota),
+                "criterios_json": entrega.correccion.criterios_json,
             }
 
         # Create historial entry
