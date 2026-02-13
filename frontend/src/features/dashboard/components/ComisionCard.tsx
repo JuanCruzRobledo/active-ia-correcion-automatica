@@ -26,7 +26,7 @@ export function ComisionCard({ comision }: ComisionCardProps) {
   const navigate = useNavigate();
 
   const handleNavigate = () => {
-    navigate(`/entregas?comision=${comision.id}`);
+    navigate(`/entregas?comision_id=${comision.id}`);
   };
 
   return (

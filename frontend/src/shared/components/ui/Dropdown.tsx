@@ -31,7 +31,8 @@ export const Dropdown = ({
   className,
 }: DropdownProps) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0, right: 0 });
+  const [position, setPosition] = useState({ top: 0, bottom: 0, left: 0, right: 0 });
+  const [openUpward, setOpenUpward] = useState(false);
   const triggerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -39,13 +40,24 @@ export const Dropdown = ({
   useEffect(() => {
     if (isOpen && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
+
+      // Estimate menu height (approximate: 40px per item + padding)
+      const estimatedMenuHeight = items.length * 40 + 16;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+
+      // Decide whether to open upward or downward
+      const shouldOpenUpward = spaceBelow < estimatedMenuHeight && spaceAbove > spaceBelow;
+      setOpenUpward(shouldOpenUpward);
+
       setPosition({
         top: rect.bottom + window.scrollY + 8,
+        bottom: window.innerHeight - rect.top - window.scrollY + 8,
         left: rect.left + window.scrollX,
         right: window.innerWidth - rect.right - window.scrollX,
       });
     }
-  }, [isOpen]);
+  }, [isOpen, items.length]);
 
   // Handle click outside
   useEffect(() => {
@@ -94,7 +106,9 @@ export const Dropdown = ({
         'animate-in fade-in-0 zoom-in-95 duration-100'
       )}
       style={{
-        top: `${position.top}px`,
+        ...(openUpward
+          ? { bottom: `${position.bottom}px` }
+          : { top: `${position.top}px` }),
         [align === 'right' ? 'right' : 'left']:
           align === 'right' ? `${position.right}px` : `${position.left}px`,
       }}
