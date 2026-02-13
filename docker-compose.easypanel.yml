@@ -33,6 +33,8 @@ services:
   n8n:
     image: juancruzrobledo/n8n-active-ia:latest
     restart: always
+    expose:
+      - "5678"
     environment:
       N8N_BASIC_AUTH_ACTIVE: true
       N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
@@ -68,6 +70,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: always
+    expose:
+      - "80"
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-active_ia_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-active_ia_db}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY requerido}
@@ -116,6 +120,8 @@ services:
       args:
         VITE_API_URL: ${VITE_API_URL:-/api/v1}
     restart: always
+    expose:
+      - "80"
     networks:
       - active-ia-network
     depends_on:
