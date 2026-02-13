@@ -1,5 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppLayout } from '@/shared/components/layout/AppLayout';
+import { ProtectedRoute } from '@/shared/components/layout/ProtectedRoute';
+import { PublicRoute } from '@/shared/components/layout/PublicRoute';
 import { LoginPage, ChangePasswordPage } from '@/features/auth/pages';
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 import { UsuariosPage } from '@/features/usuarios/pages/UsuariosPage';
@@ -12,15 +14,27 @@ import { PerfilPage } from '@/features/perfil/pages/PerfilPage';
 export const router = createBrowserRouter([
   {
     path: '/login',
-    element: <LoginPage />,
+    element: (
+      <PublicRoute>
+        <LoginPage />
+      </PublicRoute>
+    ),
   },
   {
     path: '/change-password',
-    element: <ChangePasswordPage />,
+    element: (
+      <PublicRoute>
+        <ChangePasswordPage />
+      </PublicRoute>
+    ),
   },
   {
     path: '/',
-    element: <AppLayout />,
+    element: (
+      <ProtectedRoute>
+        <AppLayout />
+      </ProtectedRoute>
+    ),
     children: [
       {
         index: true,
