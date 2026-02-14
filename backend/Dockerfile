@@ -43,4 +43,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
 
 # Comando de inicio
 # --proxy-headers: Confía en X-Forwarded-Proto para preservar HTTPS en redirects
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 80 --proxy-headers"]
+# --forwarded-allow-ips='*': Confía en cualquier proxy (seguro dentro de Docker network)
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 80 --proxy-headers --forwarded-allow-ips='*'"]
