@@ -47,6 +47,7 @@ def create_application() -> FastAPI:
         redoc_url="/api/redoc" if settings.DEBUG else None,
         openapi_url="/api/openapi.json" if settings.DEBUG else None,
         lifespan=lifespan,
+        redirect_slashes=False,  # Evita redirects 307 que causan mixed content HTTP/HTTPS
     )
 
     # Configurar CORS
