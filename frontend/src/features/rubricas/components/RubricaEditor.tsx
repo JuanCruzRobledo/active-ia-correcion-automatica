@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Code, Upload, Database, ListChecks, AlertTriangle, XCircle } from 'lucide-react';
+import { Code, Upload, Database, ListChecks, AlertTriangle, XCircle, FileText } from 'lucide-react';
 
 import { Modal } from '@/shared/components/ui/Modal';
 import { Button } from '@/shared/components/ui/Button';
@@ -11,7 +11,7 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/
 import { KeyValueInput } from '@/shared/components/ui/KeyValueInput';
 import { cn } from '@/shared/utils/cn';
 
-import { useCreateRubrica, useUpdateRubrica, useGenerarRubricaDesdePDF } from '../hooks/useRubricas';
+import { useCreateRubrica, useUpdateRubrica, useGenerarRubricaDesdePDF, usePreviewRubricaPDF, usePreviewRubricaPDFResumido } from '../hooks/useRubricas';
 import { useMaterias } from '@/features/materias/hooks';
 import type { Rubrica } from '../types';
 import { criterioSchema } from '../schemas/rubrica-schema';
@@ -80,6 +80,8 @@ export function RubricaEditor({
   const createMutation = useCreateRubrica();
   const updateMutation = useUpdateRubrica();
   const generarPDFMutation = useGenerarRubricaDesdePDF();
+  const previewPDFMutation = usePreviewRubricaPDF();
+  const previewPDFResumidoMutation = usePreviewRubricaPDFResumido();
   const { data: materiasData } = useMaterias({ page: 1, per_page: 100 });
 
   const [creationMode, setCreationMode] = useState<CreationMode>(rubrica ? 'manual' : 'pdf');
@@ -96,6 +98,7 @@ export function RubricaEditor({
     reset,
     watch,
     setValue,
+    getValues,
   } = useForm<RubricaFormData>({
     resolver: zodResolver(rubricaFormSchema),
     defaultValues: rubrica
@@ -279,6 +282,69 @@ export function RubricaEditor({
       // NO cerrar el modal - permitir que el usuario revise y edite
     } catch (error) {
       console.error('Error generando rúbrica:', error);
+    }
+  };
+
+  // ── Preview PDF handler ──
+  const handlePreviewPDF = async () => {
+    try {
+      // Get current form data (use getValues to get fresh values)
+      const formData = getValues();
+
+      // Get materia name from materiasData
+      const materia = materiasData?.items?.find(m => m.id === formData.materia_id);
+      const materiaNombre = materia ? `${materia.codigo} - ${materia.nombre}` : 'N/A';
+
+      console.log('📄 Generando preview PDF con datos:', {
+        titulo: formData.titulo,
+        criterios: formData.criterios,
+      });
+
+      // Call preview mutation
+      await previewPDFMutation.mutateAsync({
+        materia_nombre: materiaNombre,
+        tipo: formData.tipo,
+        numero: formData.numero,
+        anio: formData.anio,
+        titulo: formData.titulo || 'Sin título',
+        descripcion: formData.descripcion || 'Sin descripción',
+        puntaje_maximo: 100,
+        criterios: formData.criterios || [],
+        penalizaciones: formData.penalizaciones || [],
+        condiciones_desaprobacion: formData.condiciones_desaprobacion || [],
+      });
+    } catch (error) {
+      console.error('Error generando preview PDF:', error);
+      alert('Error al generar la vista previa del PDF. Por favor, verifica que todos los campos requeridos estén completos.');
+    }
+  };
+
+  // ── Preview PDF RESUMIDO handler ──
+  const handlePreviewPDFResumido = async () => {
+    try {
+      // Get current form data (use getValues to get fresh values)
+      const formData = getValues();
+
+      // Get materia name from materiasData
+      const materia = materiasData?.items?.find(m => m.id === formData.materia_id);
+      const materiaNombre = materia ? `${materia.codigo} - ${materia.nombre}` : 'N/A';
+
+      // Call preview mutation for summary
+      await previewPDFResumidoMutation.mutateAsync({
+        materia_nombre: materiaNombre,
+        tipo: formData.tipo,
+        numero: formData.numero,
+        anio: formData.anio,
+        titulo: formData.titulo || 'Sin título',
+        descripcion: formData.descripcion || 'Sin descripción',
+        puntaje_maximo: 100,
+        criterios: formData.criterios || [],
+        penalizaciones: formData.penalizaciones || [],
+        condiciones_desaprobacion: formData.condiciones_desaprobacion || [],
+      });
+    } catch (error) {
+      console.error('Error generando preview de guía para estudiantes:', error);
+      alert('Error al generar la vista previa de la guía para estudiantes.');
     }
   };
 
@@ -493,51 +559,104 @@ export function RubricaEditor({
             setJsonText={setJsonText}
             jsonError={jsonError}
             setJsonError={setJsonError}
+            currentJSON={
+              isEditing || watch('titulo')
+                ? JSON.stringify({
+                    titulo: watch('titulo'),
+                    descripcion: watch('descripcion'),
+                    metadata: watch('metadata'),
+                    criterios: watch('criterios'),
+                    penalizaciones: watch('penalizaciones'),
+                    condiciones_desaprobacion: watch('condiciones_desaprobacion'),
+                  }, null, 2)
+                : undefined
+            }
           />
         )}
 
         {/* ── Footer ── */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-border">
-          <Button type="button" variant="outline" onClick={handleClose}>
-            Cancelar
-          </Button>
+        <div className="flex justify-between items-center gap-3 pt-4 border-t border-border">
+          {/* Left side: Preview PDF buttons (only in manual mode) */}
+          <div className="flex gap-2">
+            {creationMode === 'manual' && (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handlePreviewPDF}
+                  disabled={previewPDFMutation.isPending || !watch('titulo') || !watch('descripcion')}
+                >
+                  {previewPDFMutation.isPending ? (
+                    <Spinner size="sm" />
+                  ) : (
+                    <>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Ver PDF Completo
+                    </>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handlePreviewPDFResumido}
+                  disabled={previewPDFResumidoMutation.isPending || !watch('titulo') || !watch('descripcion')}
+                >
+                  {previewPDFResumidoMutation.isPending ? (
+                    <Spinner size="sm" />
+                  ) : (
+                    <>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Ver Guía para Estudiantes
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
+          </div>
 
-          {creationMode === 'pdf' ? (
-            <Button
-              type="button"
-              onClick={handleGenerarPDF}
-              disabled={!pdfFile || isGeneratingPDF}
-              className="min-w-[140px]"
-            >
-              {isGeneratingPDF ? (
-                <Spinner size="sm" />
-              ) : (
-                <>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Generar Rúbrica
-                </>
-              )}
+          {/* Right side: Action buttons */}
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" onClick={handleClose}>
+              Cancelar
             </Button>
-          ) : creationMode === 'json' ? (
-            <Button type="button" onClick={handleLoadJSON} disabled={!jsonText.trim()}>
-              <Code className="h-4 w-4 mr-2" />
-              Cargar criterios
-            </Button>
-          ) : (
-            <Button
-              type="submit"
-              disabled={isSubmitting || sumaPesos !== 100}
-              className="min-w-[120px]"
-            >
-              {isSubmitting ? (
-                <Spinner size="sm" />
-              ) : isEditing ? (
-                'Guardar Cambios'
-              ) : (
-                'Crear Rúbrica'
-              )}
-            </Button>
-          )}
+
+            {creationMode === 'pdf' ? (
+              <Button
+                type="button"
+                onClick={handleGenerarPDF}
+                disabled={!pdfFile || isGeneratingPDF}
+                className="min-w-[140px]"
+              >
+                {isGeneratingPDF ? (
+                  <Spinner size="sm" />
+                ) : (
+                  <>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Generar Rúbrica
+                  </>
+                )}
+              </Button>
+            ) : creationMode === 'json' ? (
+              <Button type="button" onClick={handleLoadJSON} disabled={!jsonText.trim()}>
+                <Code className="h-4 w-4 mr-2" />
+                Cargar criterios
+              </Button>
+            ) : (
+              <Button
+                type="submit"
+                disabled={isSubmitting || sumaPesos !== 100}
+                className="min-w-[120px]"
+              >
+                {isSubmitting ? (
+                  <Spinner size="sm" />
+                ) : isEditing ? (
+                  'Guardar Cambios'
+                ) : (
+                  'Crear Rúbrica'
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       </form>
     </Modal>

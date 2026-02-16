@@ -7,4 +7,8 @@ export {
   useRestoreRubrica,
   useDuplicarRubrica,
   useGenerarRubricaDesdePDF,
+  useDownloadRubricaPDF,
+  useDownloadRubricaPDFResumido,
+  usePreviewRubricaPDF,
+  usePreviewRubricaPDFResumido,
 } from './useRubricas';

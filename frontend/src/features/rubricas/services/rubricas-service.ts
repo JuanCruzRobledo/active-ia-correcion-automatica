@@ -117,4 +117,100 @@ export const rubricasService = {
     );
     return response.data;
   },
+
+  /**
+   * Download rubrica as PDF
+   * Opens PDF in new tab or triggers download
+   */
+  downloadPDF: async (id: number): Promise<void> => {
+    const response = await apiClient.get(`/rubricas/${id}/pdf`, {
+      responseType: 'blob',
+    });
+
+    // Create blob URL and trigger download
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Rubrica_${id}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Download rubrica as SUMMARY PDF (1-2 pages)
+   * Triggers download of condensed version
+   */
+  downloadPDFResumido: async (id: number): Promise<void> => {
+    const response = await apiClient.get(`/rubricas/${id}/pdf/resumido`, {
+      responseType: 'blob',
+    });
+
+    // Create blob URL and trigger download
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Rubrica_${id}_Resumida.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  /**
+   * Preview rubrica as PDF from form data
+   * Opens PDF in new tab
+   */
+  previewPDF: async (data: {
+    materia_nombre: string;
+    tipo: string;
+    numero: number;
+    anio: number;
+    titulo: string;
+    descripcion: string;
+    puntaje_maximo: number;
+    criterios: any[];
+    penalizaciones: any[];
+    condiciones_desaprobacion: any[];
+  }): Promise<void> => {
+    const response = await apiClient.post('/rubricas/preview-pdf', data, {
+      responseType: 'blob',
+    });
+
+    // Create blob URL and open in new tab
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    // Note: We don't revoke the URL immediately because it needs to load in the new tab
+    // The browser will clean it up when the tab is closed
+  },
+
+  /**
+   * Preview rubrica as SUMMARY PDF from form data
+   * Opens condensed PDF in new tab
+   */
+  previewPDFResumido: async (data: {
+    materia_nombre: string;
+    tipo: string;
+    numero: number;
+    anio: number;
+    titulo: string;
+    descripcion: string;
+    puntaje_maximo: number;
+    criterios: any[];
+    penalizaciones: any[];
+    condiciones_desaprobacion: any[];
+  }): Promise<void> => {
+    const response = await apiClient.post('/rubricas/preview-pdf/resumido', data, {
+      responseType: 'blob',
+    });
+
+    // Create blob URL and open in new tab
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  },
 };

@@ -38,7 +38,7 @@ interface CargaEntregaModalProps {
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
 const ACCEPTED_FILE_TYPES = {
-  individual: ['.zip', '.txt'],
+  individual: '*', // Acepta cualquier extensión
   masivo: ['.zip'],
 };
 
@@ -79,12 +79,7 @@ const individualSchema = z.object({
     .max(100, 'Máximo 100 caracteres'),
   archivo: z
     .instanceof(File)
-    .refine((file) => file.size <= MAX_FILE_SIZE, 'El archivo excede los 100 MB')
-    .refine(
-      (file) =>
-        ACCEPTED_FILE_TYPES.individual.some((ext) => file.name.toLowerCase().endsWith(ext)),
-      'Solo se aceptan archivos .zip o .txt'
-    ),
+    .refine((file) => file.size <= MAX_FILE_SIZE, 'El archivo excede los 100 MB'),
   modo_consolidacion: z.enum(['SOLO_CODIGO', 'WEB_COMPLETO', 'PROYECTO_COMPLETO', 'PERSONALIZADO']),
   sobrescribir: z.boolean().default(false),
 });
@@ -258,6 +253,8 @@ function CargaEntregaForm({
 
   const modoConsolidacion = watch('modo_consolidacion');
   const isAlreadyConsolidated = mode === 'individual' && selectedFile?.name.toLowerCase().endsWith('.txt');
+  const isZipFile = selectedFile?.name.toLowerCase().endsWith('.zip');
+  const shouldShowModoProcessing = mode === 'masivo' || (mode === 'individual' && isZipFile);
 
   const handleFileChange = (file: File | null) => {
     setSelectedFile(file);
@@ -366,7 +363,7 @@ function CargaEntregaForm({
           <input
             id="file-input"
             type="file"
-            accept={ACCEPTED_FILE_TYPES[mode].join(',')}
+            accept={mode === 'individual' ? ACCEPTED_FILE_TYPES[mode] : ACCEPTED_FILE_TYPES[mode].join(',')}
             onChange={handleFileInputChange}
             className="hidden"
           />
@@ -403,7 +400,7 @@ function CargaEntregaForm({
               </p>
               <p className="text-xs text-gray-500">
                 {mode === 'individual'
-                  ? 'Formatos: .zip, .txt (máx 100MB)'
+                  ? 'Cualquier formato: .zip, .txt, .py, .java, etc. (máx 100MB)'
                   : 'Formato: .zip (máx 100MB)'}
               </p>
             </div>
@@ -422,16 +419,16 @@ function CargaEntregaForm({
         <div className="flex items-start gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
           <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-medium text-green-800">Archivo ya consolidado</p>
+            <p className="text-sm font-medium text-green-800">Archivo ya procesado</p>
             <p className="text-xs text-green-600 mt-0.5">
-              Este archivo TXT ya contiene el código consolidado. No se requiere seleccionar modo de consolidación.
+              Este archivo TXT ya contiene el código procesado. No se requiere seleccionar modo de procesamiento.
             </p>
           </div>
         </div>
-      ) : (
+      ) : shouldShowModoProcessing ? (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Modo de Consolidación *
+            Modo de Procesamiento *
           </label>
           <div className="space-y-2">
             {MODO_OPTIONS.map((option) => (
@@ -446,7 +443,7 @@ function CargaEntregaForm({
             ))}
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Overwrite checkbox */}
       <div>
@@ -470,9 +467,12 @@ function CargaEntregaForm({
         <Alert variant="default">
           <p className="text-sm">
             <strong>Estructura esperada del ZIP:</strong> Una carpeta por alumno, donde el
-            nombre de la carpeta es el nombre del alumno. Cada carpeta puede contener un ZIP
-            con el proyecto o archivos sueltos.
+            nombre de la carpeta es el nombre del alumno. Cada carpeta puede contener:
           </p>
+          <ul className="text-sm mt-2 ml-4 list-disc space-y-1">
+            <li>Un archivo ZIP con el proyecto (se descomprimirá y consolidará)</li>
+            <li>Archivos sueltos (se consolidarán directamente según el modo seleccionado)</li>
+          </ul>
         </Alert>
       )}
 

@@ -97,10 +97,15 @@ class EntregaService:
 
         # Validate file type
         archivo_tipo = self._get_file_type(archivo.filename)
-        if archivo_tipo not in ["zip", "txt"]:
+        if archivo_tipo == "binary":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Solo se permiten archivos ZIP o TXT",
+                detail="No se permiten archivos binarios (PDF, imágenes, ejecutables, etc.). Por favor, exporta el contenido a formato de texto.",
+            )
+        elif archivo_tipo == "unknown":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tipo de archivo desconocido",
             )
 
         # Read file content
@@ -112,7 +117,7 @@ class EntregaService:
 
         # Consolidate content
         contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
-            contenido_bytes, archivo_tipo, modo_consolidacion
+            contenido_bytes, archivo_tipo, modo_consolidacion, archivo.filename
         )
 
         # Generate preview
@@ -484,8 +489,29 @@ class EntregaService:
                             archivo_nombre = os.path.basename(inner_zip_path)
                             archivo_tipo = "zip"
                             contenido_bytes_alumno = inner_zip_content
+                        elif len(alumno_files) == 1:
+                            # Single file (not ZIP) - treat as individual file
+                            single_file_path = alumno_files[0]
+                            archivo_nombre = os.path.basename(single_file_path)
+                            contenido_bytes_alumno = zip_file.read(single_file_path)
+
+                            # Detect file type
+                            archivo_tipo_temp = self._get_file_type(archivo_nombre)
+                            if archivo_tipo_temp == "binary":
+                                errores.append(
+                                    EntregaError(
+                                        alumno_nombre=alumno_nombre,
+                                        archivo_nombre=archivo_nombre,
+                                        error="No se permiten archivos binarios (PDF, imágenes, etc.)",
+                                    )
+                                )
+                                continue
+                            elif archivo_tipo_temp == "txt":
+                                archivo_tipo = "txt"
+                            else:
+                                archivo_tipo = "individual"
                         else:
-                            # Create a ZIP from loose files
+                            # Multiple loose files - create a ZIP from them
                             with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
                                 with zipfile.ZipFile(tmp_zip, "w") as new_zip:
                                     for file_path in alumno_files:
@@ -505,7 +531,7 @@ class EntregaService:
 
                         # Consolidate content
                         contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
-                            contenido_bytes_alumno, archivo_tipo, modo_consolidacion
+                            contenido_bytes_alumno, archivo_tipo, modo_consolidacion, archivo_nombre
                         )
 
                         # Generate preview
@@ -624,14 +650,16 @@ class EntregaService:
         contenido_bytes: bytes,
         archivo_tipo: str,
         modo: str = "solo_codigo",
+        filename: str = "archivo",
     ) -> tuple[str, list[str]]:
         """
         Consolidate file content.
 
         Args:
             contenido_bytes: File content as bytes.
-            archivo_tipo: File type ('zip' or 'txt').
-            modo: Consolidation mode for ZIP files.
+            archivo_tipo: File type ('zip', 'txt', or 'individual').
+            modo: Consolidation mode.
+            filename: Original filename (for individual files).
 
         Returns:
             Tuple of (consolidated_content, list_of_files).
@@ -644,8 +672,12 @@ class EntregaService:
             return self.consolidacion_service.consolidar_zip(
                 file_obj, modo=modo
             )
-        else:  # txt
+        elif archivo_tipo == "txt":
             return self.consolidacion_service.consolidar_txt(file_obj)
+        else:  # individual code file
+            return self.consolidacion_service.consolidar_archivo_individual(
+                file_obj, filename, modo=modo
+            )
 
 
 
@@ -657,16 +689,20 @@ class EntregaService:
             filename: Name of the file.
 
         Returns:
-            'zip' or 'txt' or 'unknown'.
+            'zip', 'txt', 'individual' (for code files), or 'binary' (for unsupported files).
         """
         if not filename:
             return "unknown"
 
-        extension = filename.rsplit(".", 1)[-1].lower()
+        extension = "." + filename.rsplit(".", 1)[-1].lower()
 
-        if extension == "zip":
+        if extension == ".zip":
             return "zip"
-        elif extension == "txt":
+        elif extension == ".txt":
             return "txt"
+        # Check if it's a binary file that cannot be consolidated
+        elif extension in self.consolidacion_service.BINARY_EXTENSIONS:
+            return "binary"
+        # Any other extension is treated as 'individual' code file
         else:
-            return "unknown"
+            return "individual"

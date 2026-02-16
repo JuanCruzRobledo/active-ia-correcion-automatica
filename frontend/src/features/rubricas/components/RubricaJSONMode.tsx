@@ -7,9 +7,10 @@ interface Props {
   setJsonText: (text: string) => void;
   jsonError: string | null;
   setJsonError: (error: string | null) => void;
+  currentJSON?: string; // JSON actual para copiar (en modo edición)
 }
 
-export function RubricaJSONMode({ jsonText, setJsonText, jsonError, setJsonError }: Props) {
+export function RubricaJSONMode({ jsonText, setJsonText, jsonError, setJsonError, currentJSON }: Props) {
   const [copied, setCopied] = useState(false);
 
   const handleJSONFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -25,7 +26,9 @@ export function RubricaJSONMode({ jsonText, setJsonText, jsonError, setJsonError
 
   const handleCopyExample = async () => {
     try {
-      await navigator.clipboard.writeText(JSON_EXAMPLE);
+      // Si hay currentJSON, copiar eso; sino copiar el ejemplo
+      const textToCopy = currentJSON || JSON_EXAMPLE;
+      await navigator.clipboard.writeText(textToCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -51,7 +54,7 @@ export function RubricaJSONMode({ jsonText, setJsonText, jsonError, setJsonError
             ) : (
               <>
                 <Copy className="h-3 w-3" />
-                <span>Copiar ejemplo</span>
+                <span>{currentJSON ? 'Copiar JSON actual' : 'Copiar ejemplo'}</span>
               </>
             )}
           </button>

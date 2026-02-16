@@ -9,6 +9,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 6
 """
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
@@ -20,11 +21,13 @@ from app.schemas.rubrica import (
     RubricaDetailResponse,
     RubricaDuplicar,
     RubricaList,
+    RubricaPDFPreview,
     RubricaResponse,
     RubricaUpdate,
 )
 from app.services.rubrica_service import RubricaService
 from app.services.rubrica_ia_service import RubricaIAService
+from app.services.pdf_service import PDFService
 
 router = APIRouter(
     prefix="/rubricas",
@@ -227,6 +230,176 @@ async def duplicar_rubrica(
 
     service = RubricaService(db)
     return await service.duplicar_rubrica(rubrica_id, data)
+
+
+@router.get("/{rubrica_id}/pdf/resumido")
+async def descargar_rubrica_pdf_resumido(
+    rubrica_id: int,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """
+    Download a rubrica as Student Guide PDF.
+
+    Generates a student-friendly version showing:
+    - General info (subject, type, year, maximum score)
+    - Detailed criteria with ID, name, weight, description and subcriteria
+    - Penalties and fail conditions
+
+    This version is optimized for students to understand evaluation criteria.
+
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
+
+    **Returns:** PDF file as application/pdf
+    """
+    require_any_authenticated(current_user)
+
+    pdf_service = PDFService(db)
+    pdf_bytes = await pdf_service.generar_pdf_rubrica_resumido(rubrica_id)
+
+    # Get rubrica for filename
+    rubrica_service = RubricaService(db)
+    rubrica = await rubrica_service.obtener_rubrica(rubrica_id)
+
+    # Build filename (sanitize to ASCII-safe characters)
+    import re
+    import unicodedata
+
+    codigo_safe = unicodedata.normalize('NFKD', rubrica.materia.codigo).encode('ascii', 'ignore').decode('ascii')
+    codigo_safe = re.sub(r'[^\w-]', '', codigo_safe)
+    filename = f"{codigo_safe}_{rubrica.tipo.value}{rubrica.numero}_{rubrica.anio}_Guia_Estudiantes.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+
+
+@router.get("/{rubrica_id}/pdf")
+async def descargar_rubrica_pdf(
+    rubrica_id: int,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """
+    Download a rubrica as PDF.
+
+    Generates a professional PDF document with the complete rubrica structure
+    including criteria, subcriteria, evidences, penalties, and fail conditions.
+
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
+
+    **Returns:** PDF file as application/pdf
+    """
+    require_any_authenticated(current_user)
+
+    pdf_service = PDFService(db)
+    pdf_bytes = await pdf_service.generar_pdf_rubrica(rubrica_id)
+
+    # Get rubrica for filename
+    rubrica_service = RubricaService(db)
+    rubrica = await rubrica_service.obtener_rubrica(rubrica_id)
+
+    # Build filename (sanitize to ASCII-safe characters)
+    import re
+    import unicodedata
+
+    # Sanitize codigo in case it has unicode
+    codigo_safe = unicodedata.normalize('NFKD', rubrica.materia.codigo).encode('ascii', 'ignore').decode('ascii')
+    codigo_safe = re.sub(r'[^\w-]', '', codigo_safe)
+    filename = f"{codigo_safe}_{rubrica.tipo.value}{rubrica.numero}_{rubrica.anio}_Rubrica.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
+
+
+@router.post("/preview-pdf/resumido")
+async def preview_rubrica_pdf_resumido(
+    data: RubricaPDFPreview,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """
+    Generate a Student Guide preview PDF for a rubrica from form data.
+
+    This endpoint generates a student-friendly PDF without saving to database.
+    Useful for previewing the guide before creating the rubrica.
+
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
+
+    **Returns:** PDF file as application/pdf
+    """
+    require_any_authenticated(current_user)
+
+    pdf_service = PDFService(db)
+    pdf_bytes = pdf_service.generar_pdf_rubrica_resumido_preview(data.model_dump())
+
+    # Build filename for preview (sanitize to ASCII-safe characters)
+    import re
+    import unicodedata
+
+    titulo_ascii = unicodedata.normalize('NFKD', data.titulo).encode('ascii', 'ignore').decode('ascii')
+    titulo_safe = re.sub(r'[^\w\s-]', '', titulo_ascii)
+    titulo_safe = titulo_safe.replace(' ', '_')[:50]
+    filename = f"{titulo_safe}_Guia_Estudiantes_Preview.pdf" if titulo_safe else "Guia_Estudiantes_Preview.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"'
+        }
+    )
+
+
+@router.post("/preview-pdf")
+async def preview_rubrica_pdf(
+    data: RubricaPDFPreview,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """
+    Generate a preview PDF for a rubrica from form data.
+
+    This endpoint generates a PDF without saving the rubrica to the database.
+    Useful for previewing how the rubrica will look before creating/editing it.
+
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
+
+    **Returns:** PDF file as application/pdf
+    """
+    require_any_authenticated(current_user)
+
+    pdf_service = PDFService(db)
+    pdf_bytes = pdf_service.generar_pdf_rubrica_preview(data.model_dump())
+
+    # Build filename for preview (sanitize to ASCII-safe characters)
+    import re
+    import unicodedata
+
+    # Normalize unicode characters to ASCII equivalents
+    titulo_ascii = unicodedata.normalize('NFKD', data.titulo).encode('ascii', 'ignore').decode('ascii')
+    # Remove any remaining problematic characters
+    titulo_safe = re.sub(r'[^\w\s-]', '', titulo_ascii)
+    # Replace spaces with underscores and limit length
+    titulo_safe = titulo_safe.replace(' ', '_')[:50]
+    filename = f"{titulo_safe}_Preview.pdf" if titulo_safe else "Rubrica_Preview.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"'
+        }
+    )
 
 
 @router.post("/desde-pdf", status_code=status.HTTP_200_OK)

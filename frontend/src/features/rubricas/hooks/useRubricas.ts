@@ -159,3 +159,61 @@ export const useGenerarRubricaDesdePDF = () => {
     },
   });
 };
+
+/**
+ * Hook to download rubrica as PDF
+ */
+export const useDownloadRubricaPDF = () => {
+  return useMutation({
+    mutationFn: (id: number) => rubricasService.downloadPDF(id),
+  });
+};
+
+/**
+ * Hook to download rubrica as SUMMARY PDF
+ */
+export const useDownloadRubricaPDFResumido = () => {
+  return useMutation({
+    mutationFn: (id: number) => rubricasService.downloadPDFResumido(id),
+  });
+};
+
+/**
+ * Hook to preview rubrica as PDF from form data
+ */
+export const usePreviewRubricaPDF = () => {
+  return useMutation({
+    mutationFn: (data: {
+      materia_nombre: string;
+      tipo: string;
+      numero: number;
+      anio: number;
+      titulo: string;
+      descripcion: string;
+      puntaje_maximo: number;
+      criterios: any[];
+      penalizaciones: any[];
+      condiciones_desaprobacion: any[];
+    }) => rubricasService.previewPDF(data),
+  });
+};
+
+/**
+ * Hook to preview rubrica as SUMMARY PDF from form data
+ */
+export const usePreviewRubricaPDFResumido = () => {
+  return useMutation({
+    mutationFn: (data: {
+      materia_nombre: string;
+      tipo: string;
+      numero: number;
+      anio: number;
+      titulo: string;
+      descripcion: string;
+      puntaje_maximo: number;
+      criterios: any[];
+      penalizaciones: any[];
+      condiciones_desaprobacion: any[];
+    }) => rubricasService.previewPDFResumido(data),
+  });
+};

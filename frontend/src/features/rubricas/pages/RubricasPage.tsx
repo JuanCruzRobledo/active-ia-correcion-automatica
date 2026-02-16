@@ -8,13 +8,15 @@
  */
 
 import { useState } from 'react';
-import { FileText, MoreVertical, Pencil, Copy, Trash2, RotateCcw } from 'lucide-react';
+import { FileText, MoreVertical, Pencil, Copy, Trash2, RotateCcw, Download, FileDown } from 'lucide-react';
 import {
   useRubricas,
   useRubrica,
   useDeleteRubrica,
   useRestoreRubrica,
   useDuplicarRubrica,
+  useDownloadRubricaPDF,
+  useDownloadRubricaPDFResumido,
 } from '../hooks';
 import type { RubricaListItem, RubricasFilters, TipoRubrica } from '../types';
 import {
@@ -79,6 +81,8 @@ export const RubricasPage = () => {
   const deleteMutation = useDeleteRubrica();
   const restoreMutation = useRestoreRubrica();
   const duplicarMutation = useDuplicarRubrica();
+  const downloadPDFMutation = useDownloadRubricaPDF();
+  const downloadPDFResumidoMutation = useDownloadRubricaPDFResumido();
 
   const { user } = useAuth();
   const sinMateriasAsignadas =
@@ -129,6 +133,24 @@ export const RubricasPage = () => {
       });
     } catch (error) {
       console.error('Error duplicando rúbrica:', error);
+    }
+  };
+
+  const handleDownloadPDF = async (id: number) => {
+    try {
+      await downloadPDFMutation.mutateAsync(id);
+    } catch (error) {
+      console.error('Error descargando PDF:', error);
+      alert('Error al descargar el PDF. Por favor, intenta nuevamente.');
+    }
+  };
+
+  const handleDownloadPDFResumido = async (id: number) => {
+    try {
+      await downloadPDFResumidoMutation.mutateAsync(id);
+    } catch (error) {
+      console.error('Error descargando guía para estudiantes:', error);
+      alert('Error al descargar la guía para estudiantes. Por favor, intenta nuevamente.');
     }
   };
 
@@ -265,6 +287,16 @@ export const RubricasPage = () => {
               label: 'Duplicar a otro año',
               onClick: () => handleDuplicate(rubrica.id),
               icon: <Copy className="w-4 h-4" />,
+            },
+            {
+              label: 'Descargar PDF Completo',
+              onClick: () => handleDownloadPDF(rubrica.id),
+              icon: <Download className="w-4 h-4" />,
+            },
+            {
+              label: 'Descargar Guía para Estudiantes',
+              onClick: () => handleDownloadPDFResumido(rubrica.id),
+              icon: <FileDown className="w-4 h-4" />,
             },
             rubrica.activa
               ? {

@@ -9,7 +9,8 @@
       "Bash(python -m alembic revision:*)",
       "Bash(docker ps:*)",
       "Bash(docker exec:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(docker restart:*)"
     ]
   }
 }

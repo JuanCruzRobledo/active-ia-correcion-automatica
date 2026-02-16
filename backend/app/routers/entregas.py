@@ -73,7 +73,7 @@ async def crear_entrega(
     rubrica_id: int = Form(..., description="ID de la rúbrica"),
     alumno_nombre: str = Form(..., description="Nombre del alumno"),
     sobrescribir: bool = Form(False, description="Sobrescribir entrega existente"),
-    modo_consolidacion: str = Form("solo_codigo", description="Modo de consolidación"),
+    modo_consolidacion: str = Form("solo_codigo", description="Modo de procesamiento"),
     archivo: UploadFile = File(..., description="Archivo ZIP o TXT"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -121,7 +121,7 @@ async def crear_entregas_masivas(
     comision_id: int = Form(..., description="ID de la comisión"),
     rubrica_id: int = Form(..., description="ID de la rúbrica"),
     sobrescribir: bool = Form(False, description="Sobrescribir entregas existentes"),
-    modo_consolidacion: str = Form("solo_codigo", description="Modo de consolidación"),
+    modo_consolidacion: str = Form("solo_codigo", description="Modo de procesamiento"),
     archivo_zip: UploadFile = File(..., description="ZIP con carpetas de alumnos"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -149,7 +149,7 @@ async def crear_entregas_masivas(
 
     **Optional:**
     - `sobrescribir`: If True, overwrites existing entregas (saves to history)
-    - `modo_consolidacion`: Consolidation mode (solo_codigo, web_completo, etc.)
+    - `modo_consolidacion`: Processing mode (solo_codigo, web_completo, etc.)
 
     **Response:**
     - Summary with total processed, successful, and errors

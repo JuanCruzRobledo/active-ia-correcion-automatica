@@ -541,3 +541,48 @@ class RubricaDuplicar(BaseModel):
         max_length=200,
         description="Nuevo título opcional (si no se provee, se usa el original)",
     )
+
+
+class RubricaPDFPreview(BaseModel):
+    """Schema for generating a PDF preview of a rubrica."""
+
+    materia_nombre: str = Field(
+        default="N/A",
+        description="Nombre de la materia (para preview)",
+    )
+    tipo: str = Field(
+        default="TP",
+        description="Tipo de rúbrica",
+    )
+    numero: int = Field(
+        default=1,
+        description="Número de la rúbrica",
+    )
+    anio: int = Field(
+        default=2026,
+        description="Año académico",
+    )
+    titulo: str = Field(
+        default="Sin título",
+        description="Título de la rúbrica",
+    )
+    descripcion: str = Field(
+        default="Sin descripción",
+        description="Descripción de la rúbrica",
+    )
+    puntaje_maximo: int = Field(
+        default=100,
+        description="Puntaje máximo",
+    )
+    criterios: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Array de criterios",
+    )
+    penalizaciones: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Array de penalizaciones",
+    )
+    condiciones_desaprobacion: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Array de condiciones de desaprobación",
+    )

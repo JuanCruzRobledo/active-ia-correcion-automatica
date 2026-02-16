@@ -103,7 +103,7 @@ LANG_MAP = {
     ".gradle": "gradle",
 }
 
-# Modos de consolidación: nombre mostrable + extensiones permitidas
+# Modos de procesamiento: nombre mostrable + extensiones permitidas
 MODOS_CONSOLIDACION = {
     "solo_codigo": {
         "nombre": "Solo código",
@@ -205,6 +205,9 @@ class ConsolidacionService:
     header, directory tree, fenced code blocks per file, and project stats.
     """
 
+    # Expose constants as class attributes
+    BINARY_EXTENSIONS = BINARY_EXTENSIONS
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -301,6 +304,70 @@ class ConsolidacionService:
                 detail=f"Error procesando el archivo TXT: {str(e)}",
             )
 
+    def consolidar_archivo_individual(
+        self,
+        archivo: BinaryIO,
+        filename: str,
+        modo: str = "solo_codigo",
+        extensiones_custom: list[str] | None = None,
+    ) -> tuple[str, list[str]]:
+        """
+        Consolidate a single code file into a formatted TXT document.
+
+        This method is used when the student submits a single file (not ZIP, not TXT)
+        such as .py, .java, .js, etc.
+
+        Args:
+            archivo: Binary file object.
+            filename: Original filename.
+            modo: Consolidation mode (to validate if extension is allowed).
+            extensiones_custom: Custom extensions list when modo is 'personalizado'.
+
+        Returns:
+            Tuple of (consolidated_content, list with single filename).
+
+        Raises:
+            HTTPException 400: File extension not allowed in selected mode.
+        """
+        try:
+            # Get file extension
+            ext = self._get_extension(filename)
+
+            # Validate extension is allowed in the selected mode
+            extensiones = self._resolve_extensiones(modo, extensiones_custom)
+            if ext not in extensiones:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"La extensión {ext} no está permitida en el modo '{modo}'. "
+                    f"Extensiones permitidas: {', '.join(sorted(extensiones))}",
+                )
+
+            # Read file content
+            raw = archivo.read()
+            contenido = self._read_safely(raw)
+
+            if not contenido.strip():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El archivo está vacío",
+                )
+
+            # Build a simple consolidated document (single file)
+            modo_nombre = self._get_modo_nombre(modo)
+            contenido_final = self._build_single_file_document(
+                filename, contenido, modo_nombre
+            )
+
+            return contenido_final, [filename]
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error procesando el archivo: {str(e)}",
+            )
+
     def generar_preview(self, contenido: str, max_chars: int = 500) -> str:
         """Generate a truncated preview of the consolidated content."""
         if len(contenido) <= max_chars:
@@ -311,6 +378,67 @@ class ConsolidacionService:
     # Document builder
     # ------------------------------------------------------------------
 
+    def _build_single_file_document(
+        self, filename: str, contenido: str, modo_nombre: str
+    ) -> str:
+        """Build a consolidated document for a single file."""
+        sections: list[str] = []
+
+        # --- Header ---
+        sections.append("# Documento de Evaluación - Entrega del Alumno\n\n")
+
+        # --- Important notice for AI ---
+        sections.append("> 📋 **IMPORTANTE PARA LA CORRECCIÓN:**  \n")
+        sections.append("> Este documento fue generado automáticamente a partir de la entrega del alumno.  \n")
+        sections.append("> El estudiante **NO envió este archivo TXT**, sino archivos de código fuente que fueron procesados aquí.  \n")
+        sections.append("> A continuación se presenta el contenido completo de todos los archivos entregados para su evaluación.\n\n")
+
+        sections.append(
+            f"**Fecha de generación:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        )
+
+        # --- Metadata ---
+        sections.append("## 📋 Metadata del Proyecto\n\n")
+        sections.append(f"- **Total de archivos:** 1\n")
+
+        # --- Directory tree ---
+        sections.append("\n## 📁 Estructura de Directorios\n\n")
+        sections.append("```\n")
+        sections.append(f"📄 {filename}\n")
+        sections.append("```\n")
+
+        # --- File content ---
+        sections.append("\n## 📄 Contenido de Archivos\n\n")
+        sections.append("---\n\n")
+
+        ext = self._get_extension(filename)
+        lang = LANG_MAP.get(ext, "text")
+        lines = contenido.count("\n") + 1
+
+        sections.append(f"### 📄 `{filename}`\n\n")
+        sections.append(f"**Líneas:** {lines} | **Tipo:** {ext}\n\n")
+        sections.append(f"```{lang}\n")
+        sections.append(contenido)
+        if not contenido.endswith("\n"):
+            sections.append("\n")
+        sections.append("```\n\n")
+        sections.append("---\n\n")
+
+        # --- Stats ---
+        sections.append("## 📊 Estadísticas del Proyecto\n\n")
+        sections.append(f"- **Total de archivos procesados:** 1\n")
+        sections.append(f"- **Total de líneas de código:** {lines:,}\n")
+
+        codigo_extensions = MODOS_CONSOLIDACION["solo_codigo"]["extensiones"]
+        if ext in codigo_extensions:
+            sections.append(f"- **Archivos de código:** 1\n")
+            sections.append(f"- **Otros archivos:** 0\n")
+        else:
+            sections.append(f"- **Archivos de código:** 0\n")
+            sections.append(f"- **Otros archivos:** 1\n")
+
+        return "".join(sections)
+
     def _build_document(
         self, contenidos: list[tuple[str, str]], modo_nombre: str
     ) -> str:
@@ -318,11 +446,18 @@ class ConsolidacionService:
         sections: list[str] = []
 
         # --- Header ---
-        sections.append("# Proyecto Consolidado\n\n")
+        sections.append("# Documento de Evaluación - Entrega del Alumno\n\n")
+
+        # --- Important notice for AI ---
+        sections.append("> 📋 **IMPORTANTE PARA LA CORRECCIÓN:**  \n")
+        sections.append("> Este documento fue generado automáticamente a partir de la entrega del alumno.  \n")
+        sections.append("> El estudiante **NO envió este archivo TXT**, sino archivos de código fuente que fueron procesados aquí.  \n")
+        sections.append("> A continuación se presenta el contenido completo de todos los archivos entregados para su evaluación.\n\n")
+
         sections.append(
-            f"**Generado:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"**Fecha de generación:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         )
-        sections.append(f"**Modo de consolidación:** {modo_nombre}\n\n")
+        sections.append(f"**Modo de procesamiento:** {modo_nombre}\n\n")
 
         # --- Metadata ---
         sections.append("## 📋 Metadata del Proyecto\n\n")
@@ -397,7 +532,7 @@ class ConsolidacionService:
         if not modo_config:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Modo de consolidación inválido: {modo}",
+                detail=f"Modo de procesamiento inválido: {modo}",
             )
         return modo_config["extensiones"]
 

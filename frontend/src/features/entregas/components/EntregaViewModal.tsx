@@ -236,7 +236,7 @@ export default function EntregaViewModal({
                     <div className="w-3 h-3 rounded-full bg-success" />
                   </div>
                   <span className="text-xs font-mono text-muted-foreground ml-2">
-                    {isLimitedContent ? 'Código (preview)' : 'Código consolidado'}
+                    {isLimitedContent ? 'Código (preview)' : 'Código procesado'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
