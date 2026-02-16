@@ -514,14 +514,14 @@ export const CargaEntregaModal = ({
   // Result screen after bulk upload
   if (uploadResult) {
     return (
-      <Modal isOpen={isOpen} onClose={handleClose} title="Resultado de la carga" size="lg">
+      <Modal isOpen={isOpen} onClose={handleClose} title="Resultado de la carga">
         <UploadResultView uploadResult={uploadResult} onClose={handleClose} />
       </Modal>
     );
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Subir Entregas" size="lg">
+    <Modal isOpen={isOpen} onClose={handleClose} title="Subir Entregas">
       {/* Modo de Carga — card picker (same pattern as RubricaEditor CREATION_MODES) */}
       <div className="mb-6">
         <h3 className="text-sm font-semibold text-gray-900 mb-3">Modo de Carga</h3>

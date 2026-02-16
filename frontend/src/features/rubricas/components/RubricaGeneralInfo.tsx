@@ -69,7 +69,7 @@ export function RubricaGeneralInfo({
           max={999}
           {...register('numero', { valueAsNumber: true })}
           error={errors.numero?.message as string}
-          disabled={isEditing || creationMode === 'pdf'}
+          disabled={isEditing}
         />
 
         <Input

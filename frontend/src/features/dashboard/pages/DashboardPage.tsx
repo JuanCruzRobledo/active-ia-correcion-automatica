@@ -10,15 +10,21 @@
  * Ref: skills/react-typescript/SKILL.md
  */
 
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks';
+import { useProfile } from '@/features/perfil/hooks/usePerfil';
 import { ROL } from '@/shared/types';
 import { Spinner } from '@/shared/components/ui/Spinner';
+import { Alert } from '@/shared/components/ui/Alert';
+import { Button } from '@/shared/components/ui/Button';
 import { DashboardAdmin } from '../components/DashboardAdmin';
 import { DashboardCoordinador } from '../components/DashboardCoordinador';
 import { DashboardTutor } from '../components/DashboardTutor';
 
 export function DashboardPage() {
   const { user, isLoading } = useAuth();
+  const { data: profile } = useProfile();
+  const navigate = useNavigate();
 
   if (isLoading) {
     return (
@@ -36,19 +42,47 @@ export function DashboardPage() {
     );
   }
 
+  // Show API Key warning if not configured
+  const showApiKeyWarning = profile && !profile.gemini_api_key_valid;
+
   // Render different dashboard based on role
-  switch (user.rol) {
-    case ROL.ADMIN:
-      return <DashboardAdmin />;
-    case ROL.COORDINADOR:
-      return <DashboardCoordinador />;
-    case ROL.TUTOR:
-      return <DashboardTutor />;
-    default:
-      return (
-        <div className="flex h-[50vh] items-center justify-center">
-          <p className="text-muted-foreground">Rol desconocido</p>
-        </div>
-      );
-  }
+  const renderDashboard = () => {
+    switch (user.rol) {
+      case ROL.ADMIN:
+        return <DashboardAdmin />;
+      case ROL.COORDINADOR:
+        return <DashboardCoordinador />;
+      case ROL.TUTOR:
+        return <DashboardTutor />;
+      default:
+        return (
+          <div className="flex h-[50vh] items-center justify-center">
+            <p className="text-muted-foreground">Rol desconocido</p>
+          </div>
+        );
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* API Key Warning */}
+      {showApiKeyWarning && (
+        <Alert variant="warning" title="⚠️ Configuración requerida">
+          <p className="mb-3">
+            Para utilizar las funciones de corrección automática, necesitas configurar tu API Key de Google Gemini.
+          </p>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => navigate('/perfil')}
+          >
+            Ir a Configuración
+          </Button>
+        </Alert>
+      )}
+
+      {/* Dashboard Content */}
+      {renderDashboard()}
+    </div>
+  );
 }

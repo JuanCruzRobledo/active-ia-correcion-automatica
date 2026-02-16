@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { FileText, MoreVertical } from 'lucide-react';
+import { FileText, MoreVertical, Pencil, Copy, Trash2, RotateCcw } from 'lucide-react';
 import {
   useRubricas,
   useRubrica,
@@ -259,23 +259,25 @@ export const RubricasPage = () => {
             {
               label: 'Editar',
               onClick: () => handleOpenEdit(rubrica.id),
-            },
-            {
-              label: 'Ver detalle',
-              onClick: () => console.log('Ver detalle', rubrica.id),
+              icon: <Pencil className="w-4 h-4" />,
             },
             {
               label: 'Duplicar a otro año',
               onClick: () => handleDuplicate(rubrica.id),
+              icon: <Copy className="w-4 h-4" />,
             },
-            {
-              label: rubrica.activa ? 'Eliminar' : 'Restaurar',
-              onClick: () =>
-                rubrica.activa
-                  ? handleDelete(rubrica.id)
-                  : handleRestore(rubrica.id),
-              variant: rubrica.activa ? 'danger' : 'default',
-            },
+            rubrica.activa
+              ? {
+                  label: 'Eliminar',
+                  onClick: () => handleDelete(rubrica.id),
+                  icon: <Trash2 className="w-4 h-4" />,
+                  variant: 'danger' as const,
+                }
+              : {
+                  label: 'Restaurar',
+                  onClick: () => handleRestore(rubrica.id),
+                  icon: <RotateCcw className="w-4 h-4" />,
+                },
           ]}
         />
       ),

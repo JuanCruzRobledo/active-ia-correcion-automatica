@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { FolderOpen } from 'lucide-react';
+import { FolderOpen, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import {
   useComisiones,
   useComision,
@@ -205,7 +205,7 @@ export const ComisionesPage = () => {
             {
               label: 'Editar',
               onClick: () => handleOpenEdit(comision.id),
-              icon: '✏️',
+              icon: <Pencil className="w-4 h-4" />,
             },
             comision.activa
               ? {
@@ -219,13 +219,13 @@ export const ComisionesPage = () => {
                       deleteMutation.mutate(comision.id);
                     }
                   },
-                  icon: '🗑️',
+                  icon: <Trash2 className="w-4 h-4" />,
                   variant: 'danger' as const,
                 }
               : {
                   label: 'Restaurar',
                   onClick: () => restoreMutation.mutate(comision.id),
-                  icon: '↩️',
+                  icon: <RotateCcw className="w-4 h-4" />,
                 },
           ]}
         />

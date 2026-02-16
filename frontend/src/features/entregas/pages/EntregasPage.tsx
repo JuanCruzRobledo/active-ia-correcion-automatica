@@ -201,11 +201,18 @@ export const EntregasPage = () => {
     const ids = itemsToCorrect.map(i => i.id);
 
     if (confirm(`¿Confirma corregir ${ids.length} entregas seleccionadas?`)) {
+      toast.loading(`Iniciando corrección de ${ids.length} ${ids.length === 1 ? 'entrega' : 'entregas'}...`, {
+        duration: 3000,
+      });
+
       try {
         await corregirMasivaMutation.mutateAsync(ids);
         setSelectedIds([]);
+        toast.success(
+          `Corrección completada: ${ids.length} ${ids.length === 1 ? 'entrega procesada' : 'entregas procesadas'} exitosamente`
+        );
       } catch (error) {
-        alert(`Error al iniciar corrección masiva: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+        toast.error(`Error al corregir entregas: ${error instanceof Error ? error.message : 'Error desconocido'}`);
       }
     }
   };
@@ -359,7 +366,7 @@ export const EntregasPage = () => {
           {selectedComisionId && selectedRubricaId && corregidasCount > 0 && (
             <>
               <Button
-                variant="secondary"
+                variant="success"
                 size="sm"
                 onClick={handleDescargarTodosPDFs}
                 disabled={isBulkAction}
@@ -685,7 +692,19 @@ export const EntregasPage = () => {
                                     {
                                       label: 'Corregir',
                                       icon: <FileCheck2 className="w-4 h-4" />,
-                                      onClick: () => corregirMutation.mutate(entrega.id),
+                                      onClick: () => {
+                                        toast.loading('Corrección iniciada en segundo plano...', {
+                                          duration: 3000,
+                                        });
+                                        corregirMutation.mutate(entrega.id, {
+                                          onSuccess: () => {
+                                            toast.success(`Corrección completada para ${entrega.alumno_nombre}`);
+                                          },
+                                          onError: (error) => {
+                                            toast.error(`Error al corregir: ${error.message}`);
+                                          },
+                                        });
+                                      },
                                       disabled: corregirMutation.isPending,
                                     },
                                   ]

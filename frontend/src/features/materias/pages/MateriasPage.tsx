@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Pencil, Trash2, RotateCcw } from 'lucide-react';
 import {
   useMaterias,
   useDeleteMateria,
@@ -150,19 +151,19 @@ export const MateriasPage = () => {
             {
               label: 'Editar',
               onClick: () => handleEdit(materia.id),
-              icon: '✏️',
+              icon: <Pencil className="w-4 h-4" />,
             },
             materia.activa
               ? {
                   label: 'Eliminar',
                   onClick: () => handleDelete(materia.id),
-                  icon: '🗑️',
+                  icon: <Trash2 className="w-4 h-4" />,
                   variant: 'danger' as const,
                 }
               : {
                   label: 'Restaurar',
                   onClick: () => handleRestore(materia.id),
-                  icon: '↩️',
+                  icon: <RotateCcw className="w-4 h-4" />,
                 },
           ]}
         />

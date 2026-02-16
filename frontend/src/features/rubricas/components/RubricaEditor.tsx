@@ -206,6 +206,26 @@ export function RubricaEditor({
     setSumaPesos(suma);
   }, [criterios]);
 
+  // Precargar JSON cuando se cambia a modo JSON
+  useEffect(() => {
+    if (creationMode === 'json' && isEditing && rubrica) {
+      // Si estamos editando y cambiamos a modo JSON, precargar con los datos actuales
+      const currentData = {
+        titulo: watch('titulo'),
+        descripcion: watch('descripcion'),
+        metadata: watch('metadata'),
+        criterios: watch('criterios'),
+        penalizaciones: watch('penalizaciones'),
+        condiciones_desaprobacion: watch('condiciones_desaprobacion'),
+      };
+
+      // Solo precargar si el JSON está vacío
+      if (!jsonText.trim()) {
+        setJsonText(JSON.stringify(currentData, null, 2));
+      }
+    }
+  }, [creationMode, isEditing, rubrica, watch, jsonText]);
+
   // ── JSON handlers ──
   const handleLoadJSON = () => {
     setJsonError(null);
@@ -325,7 +345,6 @@ export function RubricaEditor({
       isOpen={isOpen}
       onClose={handleClose}
       title={isEditing ? 'Editar Rúbrica' : 'Crear Rúbrica'}
-      size="xl"
     >
       <form
         onSubmit={(e) => {

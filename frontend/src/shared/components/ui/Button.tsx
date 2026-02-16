@@ -7,12 +7,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
    * Visual style variant of the button
    * - primary: Main actions (black bg in light mode)
    * - secondary: Secondary actions (gray bg)
+   * - success: Success/positive actions (green bg)
    * - destructive: Delete/danger actions (red bg)
    * - outline: Alternative actions (transparent with border)
    * - ghost: Subtle actions (transparent, no border)
    * - link: Link-styled button (transparent, accent color)
    */
-  variant?: 'primary' | 'secondary' | 'destructive' | 'outline' | 'ghost' | 'link';
+  variant?: 'primary' | 'secondary' | 'success' | 'destructive' | 'outline' | 'ghost' | 'link';
 
   /**
    * Size of the button
@@ -35,6 +36,8 @@ const buttonVariants = {
       'bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:ring-primary',
     secondary:
       'bg-secondary text-secondary-foreground hover:bg-secondary/80 focus-visible:ring-secondary',
+    success:
+      'bg-green-600 text-white hover:bg-green-700 focus-visible:ring-green-600',
     destructive:
       'bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive',
     outline:

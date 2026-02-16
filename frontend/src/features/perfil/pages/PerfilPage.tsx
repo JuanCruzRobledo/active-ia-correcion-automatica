@@ -309,7 +309,6 @@ export const PerfilPage = () => {
             ? 'Cambiar API Key de Gemini'
             : 'Configurar API Key de Gemini'
         }
-        size="lg"
       >
         <div className="space-y-4">
           <div>
@@ -385,7 +384,6 @@ export const PerfilPage = () => {
           setPasswordError('');
         }}
         title="Cambiar contraseña"
-        size="lg"
       >
         <div className="space-y-4">
           <div>

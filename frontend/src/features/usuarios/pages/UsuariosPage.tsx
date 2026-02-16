@@ -8,6 +8,7 @@
  */
 
 import { useState } from 'react';
+import { Pencil, Key, Trash2, RotateCcw } from 'lucide-react';
 import { useUsuarios, useDeleteUsuario, useRestoreUsuario } from '../hooks';
 import { UsuarioForm, ResetPasswordModal } from '../components';
 import type { Usuario, UsuarioListItem } from '../types';
@@ -166,24 +167,24 @@ export const UsuariosPage = () => {
             {
               label: 'Editar',
               onClick: () => handleEdit(usuario),
-              icon: '✏️',
+              icon: <Pencil className="w-4 h-4" />,
             },
             {
               label: 'Resetear contraseña',
               onClick: () => handleResetPassword(usuario.id, usuario.nombre),
-              icon: '🔑',
+              icon: <Key className="w-4 h-4" />,
             },
             usuario.activo
               ? {
                 label: 'Eliminar',
                 onClick: () => deleteMutation.mutate(usuario.id),
-                icon: '🗑️',
+                icon: <Trash2 className="w-4 h-4" />,
                 variant: 'danger' as const,
               }
               : {
                 label: 'Restaurar',
                 onClick: () => restoreMutation.mutate(usuario.id),
-                icon: '↩️',
+                icon: <RotateCcw className="w-4 h-4" />,
               },
           ]}
         />

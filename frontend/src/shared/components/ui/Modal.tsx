@@ -33,15 +33,15 @@ export interface ModalProps {
    * Size variant
    * - sm: max-w-sm
    * - md: max-w-md
-   * - lg: max-w-lg (default)
+   * - lg: max-w-lg
    * - xl: max-w-xl
-   * - 2xl: max-w-2xl
+   * - 2xl: max-w-2xl (default)
    * - full: max-w-full
    */
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
 
   /**
-   * Prevent closing on backdrop click
+   * Prevent closing on backdrop click (default: true)
    */
   disableBackdropClose?: boolean;
 
@@ -97,8 +97,8 @@ export function Modal({
   title,
   children,
   footer,
-  size = 'lg',
-  disableBackdropClose = false,
+  size = '2xl',
+  disableBackdropClose = true,
   disableEscapeClose = false,
   className,
 }: ModalProps) {
@@ -158,27 +158,23 @@ export function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        {(title || !disableBackdropClose) && (
-          <div className="flex items-center justify-between p-6 border-b border-border">
-            {title && (
-              <h2
-                id="modal-title"
-                className="text-xl font-semibold text-foreground"
-              >
-                {title}
-              </h2>
-            )}
-            {!disableBackdropClose && (
-              <button
-                onClick={onClose}
-                className="ml-auto rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                aria-label="Cerrar modal"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            )}
-          </div>
-        )}
+        <div className="flex items-center justify-between p-6 border-b border-border">
+          {title && (
+            <h2
+              id="modal-title"
+              className="text-xl font-semibold text-foreground"
+            >
+              {title}
+            </h2>
+          )}
+          <button
+            onClick={onClose}
+            className="ml-auto rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            aria-label="Cerrar modal"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
