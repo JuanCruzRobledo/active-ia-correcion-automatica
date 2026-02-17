@@ -230,7 +230,9 @@ export function RubricaEditor({
   }, [creationMode, isEditing, rubrica, watch, jsonText]);
 
   // ── JSON handlers ──
-  const handleLoadJSON = () => {
+  const handleLoadJSON = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
     setJsonError(null);
     try {
       const parsed = JSON.parse(jsonText);
@@ -583,30 +585,34 @@ export function RubricaEditor({
                 <Button
                   type="button"
                   variant="outline"
+                  size="sm"
                   onClick={handlePreviewPDF}
                   disabled={previewPDFMutation.isPending || !watch('titulo') || !watch('descripcion')}
+                  title="Vista previa PDF completo"
                 >
                   {previewPDFMutation.isPending ? (
                     <Spinner size="sm" />
                   ) : (
                     <>
-                      <FileText className="h-4 w-4 mr-2" />
-                      Ver PDF Completo
+                      <FileText className="h-3.5 w-3.5 mr-1.5" />
+                      PDF Completo
                     </>
                   )}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
+                  size="sm"
                   onClick={handlePreviewPDFResumido}
                   disabled={previewPDFResumidoMutation.isPending || !watch('titulo') || !watch('descripcion')}
+                  title="Vista previa de la guía para estudiantes"
                 >
                   {previewPDFResumidoMutation.isPending ? (
                     <Spinner size="sm" />
                   ) : (
                     <>
-                      <FileText className="h-4 w-4 mr-2" />
-                      Ver Guía para Estudiantes
+                      <FileText className="h-3.5 w-3.5 mr-1.5" />
+                      Guía Estudiante
                     </>
                   )}
                 </Button>
