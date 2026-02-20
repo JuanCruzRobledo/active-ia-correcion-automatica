@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Check, ChevronDown, Info, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { cn } from '../../utils/cn';
 
 export interface MultiSelectOption {
@@ -9,80 +10,35 @@ export interface MultiSelectOption {
 }
 
 export interface MultiSelectProps {
-  /**
-   * Label text displayed above the select
-   */
+  /** Label text displayed above the select */
   label?: string;
-
-  /**
-   * Error message to display below select
-   * When provided, select gets error styling
-   */
+  /** Error message to display below select */
   error?: string;
-
-  /**
-   * Helper text displayed below select when no error
-   */
+  /** Helper text displayed below select when no error */
   helperText?: string;
-
-  /**
-   * Tooltip content shown next to label
-   */
+  /** Tooltip content shown next to label */
   tooltip?: string;
-
-  /**
-   * Options for the multi-select
-   */
+  /** Options for the multi-select */
   options: MultiSelectOption[];
-
-  /**
-   * Currently selected values (array of option values)
-   */
+  /** Currently selected values (array of option values) */
   value: number[];
-
-  /**
-   * Callback when selection changes
-   */
+  /** Callback when selection changes */
   onChange: (value: number[]) => void;
-
-  /**
-   * Placeholder text when no selection
-   */
+  /** Placeholder text when no selection */
   placeholder?: string;
-
-  /**
-   * Additional wrapper class name
-   */
+  /** Additional wrapper class name */
   wrapperClassName?: string;
-
-  /**
-   * Disable the select
-   */
+  /** Disable the select */
   disabled?: boolean;
-
-  /**
-   * Loading state
-   */
+  /** Loading state */
   loading?: boolean;
 }
 
 /**
  * MultiSelect component with checkboxes for multiple selection.
  *
- * @example
- * ```tsx
- * <MultiSelect
- *   label="Coordinadores"
- *   placeholder="Selecciona coordinadores"
- *   tooltip="Usuarios con rol COORDINADOR asignados a esta materia"
- *   options={coordinadores.map(c => ({
- *     value: c.id,
- *     label: c.nombre
- *   }))}
- *   value={selectedCoordinadorIds}
- *   onChange={setSelectedCoordinadorIds}
- * />
- * ```
+ * The dropdown is rendered via a React Portal so it always appears above
+ * modal overlays regardless of parent overflow or stacking context.
  */
 export const MultiSelect = ({
   label,
@@ -98,13 +54,18 @@ export const MultiSelect = ({
   loading = false,
 }: MultiSelectProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const hasError = Boolean(error);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
         setIsOpen(false);
       }
     };
@@ -115,9 +76,33 @@ export const MultiSelect = ({
     }
   }, [isOpen]);
 
+  // Compute fixed position from trigger's bounding rect so the dropdown
+  // escapes any parent overflow / modal stacking context.
+  useEffect(() => {
+    if (!isOpen || !triggerRef.current) return;
+
+    const updatePosition = () => {
+      const rect = triggerRef.current!.getBoundingClientRect();
+      setDropdownStyle({
+        position: 'fixed',
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width,
+        zIndex: 9999,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [isOpen]);
+
   const toggleOption = (optionValue: number) => {
     if (disabled) return;
-
     if (value.includes(optionValue)) {
       onChange(value.filter((v) => v !== optionValue));
     } else {
@@ -130,24 +115,63 @@ export const MultiSelect = ({
   };
 
   const selectedOptions = options.filter((opt) => value.includes(opt.value));
-  const displayText = selectedOptions.length > 0
-    ? `${selectedOptions.length} seleccionado${selectedOptions.length > 1 ? 's' : ''}`
-    : placeholder;
+  const displayText =
+    selectedOptions.length > 0
+      ? `${selectedOptions.length} seleccionado${selectedOptions.length > 1 ? 's' : ''}`
+      : placeholder;
+
+  // Dropdown is rendered into document.body via Portal to avoid clipping
+  const dropdown = isOpen && !loading && (
+    <div
+      style={dropdownStyle}
+      className="rounded-md border border-border bg-popover shadow-md"
+    >
+      <div className="max-h-60 overflow-y-auto p-1">
+        {options.length === 0 ? (
+          <div className="px-2 py-6 text-center text-sm text-muted-foreground">
+            No hay opciones disponibles
+          </div>
+        ) : (
+          options.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => toggleOption(option.value)}
+              disabled={option.disabled}
+              className={cn(
+                'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left',
+                'hover:bg-accent hover:text-accent-foreground transition-colors',
+                'disabled:opacity-50 disabled:cursor-not-allowed'
+              )}
+            >
+              <div
+                className={cn(
+                  'h-4 w-4 rounded border flex items-center justify-center shrink-0',
+                  value.includes(option.value)
+                    ? 'bg-primary border-primary'
+                    : 'border-input'
+                )}
+              >
+                {value.includes(option.value) && (
+                  <Check className="h-3 w-3 text-primary-foreground" />
+                )}
+              </div>
+              <span>{option.label}</span>
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className={cn('space-y-1.5', wrapperClassName)} ref={containerRef}>
       {/* Label with optional tooltip */}
       {label && (
         <div className="flex items-center gap-1.5">
-          <label className="text-sm font-medium text-foreground">
-            {label}
-          </label>
+          <label className="text-sm font-medium text-foreground">{label}</label>
           {tooltip && (
-            <div
-              className="group relative"
-              role="tooltip"
-              aria-label={tooltip}
-            >
+            <div className="group relative" role="tooltip" aria-label={tooltip}>
               <Info className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors cursor-help" />
               <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50">
                 <div className="bg-popover text-popover-foreground text-xs rounded-md px-3 py-1.5 shadow-md border border-border max-w-xs whitespace-normal">
@@ -185,12 +209,12 @@ export const MultiSelect = ({
       <div className="relative">
         <button
           type="button"
+          ref={triggerRef}
           onClick={() => !disabled && !loading && setIsOpen(!isOpen)}
           disabled={disabled || loading}
           className={cn(
             'flex w-full items-center justify-between rounded-md border bg-background px-3 py-2 text-sm',
-            'transition-colors',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+            'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
             'disabled:cursor-not-allowed disabled:opacity-50',
             hasError
               ? 'border-destructive focus-visible:ring-destructive'
@@ -200,9 +224,7 @@ export const MultiSelect = ({
           aria-expanded={isOpen}
           aria-haspopup="listbox"
         >
-          <span className={cn(
-            selectedOptions.length === 0 && 'text-muted-foreground'
-          )}>
+          <span className={cn(selectedOptions.length === 0 && 'text-muted-foreground')}>
             {loading ? 'Cargando...' : displayText}
           </span>
           <ChevronDown
@@ -213,47 +235,8 @@ export const MultiSelect = ({
           />
         </button>
 
-        {/* Dropdown menu */}
-        {isOpen && !loading && (
-          <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
-            <div className="max-h-60 overflow-y-auto p-1">
-              {options.length === 0 ? (
-                <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                  No hay opciones disponibles
-                </div>
-              ) : (
-                options.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => toggleOption(option.value)}
-                    disabled={option.disabled}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm',
-                      'hover:bg-accent hover:text-accent-foreground transition-colors',
-                      'disabled:opacity-50 disabled:cursor-not-allowed',
-                      'text-left'
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        'h-4 w-4 rounded border flex items-center justify-center',
-                        value.includes(option.value)
-                          ? 'bg-primary border-primary'
-                          : 'border-input'
-                      )}
-                    >
-                      {value.includes(option.value) && (
-                        <Check className="h-3 w-3 text-primary-foreground" />
-                      )}
-                    </div>
-                    <span>{option.label}</span>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        )}
+        {/* Portal: renders dropdown outside any overflow/stacking context */}
+        {typeof document !== 'undefined' && createPortal(dropdown, document.body)}
       </div>
 
       {/* Error or helper text */}
@@ -262,11 +245,8 @@ export const MultiSelect = ({
           {error}
         </p>
       )}
-
       {!error && helperText && (
-        <p className="text-sm text-muted-foreground">
-          {helperText}
-        </p>
+        <p className="text-sm text-muted-foreground">{helperText}</p>
       )}
     </div>
   );

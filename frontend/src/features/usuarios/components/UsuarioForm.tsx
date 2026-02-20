@@ -41,6 +41,15 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
   const isEditMode = !!usuario;
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyPassword = () => {
+    if (!tempPassword) return;
+    navigator.clipboard.writeText(tempPassword).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
 
   const createMutation = useCreateUsuario();
   const updateMutation = useUpdateUsuario();
@@ -141,12 +150,10 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
                 className="font-mono"
               />
               <Button
-                variant="secondary"
-                onClick={() => {
-                  navigator.clipboard.writeText(tempPassword);
-                }}
+                variant={copied ? 'success' : 'secondary'}
+                onClick={handleCopyPassword}
               >
-                📋 Copiar
+                {copied ? '✅ ¡Copiado!' : '📋 Copiar'}
               </Button>
             </div>
           </div>

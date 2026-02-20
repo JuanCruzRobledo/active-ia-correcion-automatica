@@ -182,7 +182,7 @@ export default function EntregaViewModal({
         {contenido && (
           <>
             {/* Included Files Section - Collapsible */}
-            {contenido.archivos_incluidos.length > 0 && (
+            {!isPdf && contenido.archivos_incluidos.length > 0 && (
               <div className="border border-border rounded-lg overflow-hidden">
                 <button
                   onClick={() => setIsFilesExpanded(!isFilesExpanded)}
@@ -224,7 +224,7 @@ export default function EntregaViewModal({
             )}
 
             {/* Warning for limited content */}
-            {isLimitedContent && (
+            {!isPdf && isLimitedContent && (
               <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 flex items-start gap-2">
                 <AlertCircle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
                 <div>
