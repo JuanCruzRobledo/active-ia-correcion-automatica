@@ -1,0 +1,26 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Fondo circular con degradado -->
+  <circle cx="64" cy="64" r="64" fill="url(#gradient)"/>
+
+  <!-- Definiciones de degradado -->
+  <defs>
+    <linearGradient id="gradient" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF6B6B"/>
+      <stop offset="50%" stop-color="#4ECDC4"/>
+      <stop offset="100%" stop-color="#45B7D1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Letra A estilizada -->
+  <path d="M 45 85 L 55 55 L 64 35 L 73 55 L 83 85" stroke="white" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <line x1="51" y1="70" x2="77" y2="70" stroke="white" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- Símbolos de IA (circuitos/nodos) -->
+  <circle cx="35" cy="45" r="4" fill="white" opacity="0.8"/>
+  <circle cx="93" cy="45" r="4" fill="white" opacity="0.8"/>
+  <circle cx="64" cy="25" r="4" fill="white" opacity="0.8"/>
+
+  <!-- Líneas conectoras -->
+  <line x1="35" y1="45" x2="60" y2="35" stroke="white" stroke-width="2" opacity="0.6"/>
+  <line x1="93" y1="45" x2="68" y2="35" stroke="white" stroke-width="2" opacity="0.6"/>
+</svg>

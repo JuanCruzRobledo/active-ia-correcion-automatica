@@ -54,9 +54,11 @@ export const Sidebar = () => {
     <aside className="hidden lg:flex lg:w-64 lg:flex-col bg-sidebar border-r border-sidebar-border">
       {/* Logo */}
       <div className="flex items-center gap-2 border-b border-sidebar-border p-6">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent">
-          <CheckSquare className="h-6 w-6 text-accent-foreground" />
-        </div>
+        <img 
+          src="/active-ia-logo.svg" 
+          alt="Active-IA Logo" 
+          className="h-10 w-10"
+        />
         <span className="text-lg font-semibold text-sidebar-foreground">
           Active-IA
         </span>

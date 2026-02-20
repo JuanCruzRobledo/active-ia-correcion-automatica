@@ -23,7 +23,14 @@ export const LoginPage = () => {
     <div className="min-h-screen flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-md space-y-8">
         {/* Header */}
-        <div className="text-center">
+        <div className="text-center space-y-4">
+          <div className="flex justify-center">
+            <img 
+              src="/active-ia-logo.svg" 
+              alt="Active-IA Logo" 
+              className="h-20 w-20"
+            />
+          </div>
           <h1 className="text-3xl font-bold text-foreground">Active-IA</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Sistema de Corrección Automática

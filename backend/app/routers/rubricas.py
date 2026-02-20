@@ -13,7 +13,7 @@ from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_admin, require_any_authenticated
+from app.core.permissions import require_admin, require_any_authenticated, require_coordinador_or_admin
 from app.models.enums import RolEnum, TipoRubricaEnum
 from app.models.usuario import Usuario
 from app.schemas.rubrica import (
@@ -107,10 +107,14 @@ async def crear_rubrica(
 
     **Authorization:** Admin only
     """
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
 
     service = RubricaService(db)
-    return await service.crear_rubrica(data, current_user_id=current_user.id)
+    return await service.crear_rubrica(
+    data,
+    current_user=current_user,
+    current_user_id=current_user.id,
+)
 
 
 @router.get("/{rubrica_id}", response_model=RubricaDetailResponse)
@@ -129,10 +133,13 @@ async def obtener_rubrica(
 
     **Authorization:** Admin only
     """
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
 
     service = RubricaService(db)
-    return await service.obtener_rubrica(rubrica_id)
+    return await service.obtener_rubrica(
+    rubrica_id,
+    current_user=current_user,
+)
 
 
 @router.put("/{rubrica_id}", response_model=RubricaResponse)
@@ -156,10 +163,14 @@ async def actualizar_rubrica(
 
     **Authorization:** Admin only
     """
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
 
     service = RubricaService(db)
-    return await service.actualizar_rubrica(rubrica_id, data)
+    return await service.actualizar_rubrica(
+    rubrica_id,
+    data,
+    current_user=current_user,
+)
 
 
 @router.delete("/{rubrica_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -176,10 +187,13 @@ async def eliminar_rubrica(
 
     **Authorization:** Admin only
     """
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
 
     service = RubricaService(db)
-    await service.eliminar_rubrica(rubrica_id)
+    await service.eliminar_rubrica(
+    rubrica_id,
+    current_user=current_user,
+)
 
 
 @router.post("/{rubrica_id}/restore", response_model=RubricaResponse)
@@ -195,10 +209,13 @@ async def restaurar_rubrica(
 
     **Authorization:** Admin only
     """
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
 
     service = RubricaService(db)
-    return await service.restaurar_rubrica(rubrica_id)
+    return await service.restaurar_rubrica(
+    rubrica_id,
+    current_user=current_user,
+)
 
 
 @router.post("/{rubrica_id}/duplicar", response_model=RubricaResponse, status_code=status.HTTP_201_CREATED)
@@ -226,10 +243,14 @@ async def duplicar_rubrica(
 
     **Authorization:** Admin only
     """
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
 
     service = RubricaService(db)
-    return await service.duplicar_rubrica(rubrica_id, data)
+    return await service.duplicar_rubrica(
+    rubrica_id,
+    data,
+    current_user=current_user,
+)
 
 
 @router.get("/{rubrica_id}/pdf/resumido")
@@ -447,7 +468,7 @@ async def generar_rubrica_desde_pdf(
 
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-RUB-02
     """
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
 
     # Validate API Key is configured
     if not current_user.gemini_api_key_encrypted:

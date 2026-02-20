@@ -24,8 +24,15 @@ export const MobileHeader = () => {
           )}
         </button>
 
-        {/* Title */}
-        <span className="text-lg font-semibold">Active-IA</span>
+        {/* Logo & Title */}
+        <div className="flex items-center gap-2">
+          <img 
+            src="/active-ia-logo.svg" 
+            alt="Active-IA Logo" 
+            className="h-8 w-8"
+          />
+          <span className="text-lg font-semibold">Active-IA</span>
+        </div>
 
         {/* Avatar */}
         <NavLink

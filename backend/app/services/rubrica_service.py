@@ -10,9 +10,10 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 6
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import TipoActividadEnum
+from app.models.enums import RolEnum, TipoActividadEnum
 from app.models.rubrica import Rubrica
-from app.repositories.materia_repository import MateriaRepository
+from app.models.usuario import Usuario
+from app.repositories.materia_repository import CoordinadorMateriaRepository, MateriaRepository
 from app.repositories.rubrica_repository import RubricaRepository
 from app.schemas.rubrica import (
     MateriaInfo,
@@ -40,6 +41,42 @@ class RubricaService:
         self.db = db
         self.rubrica_repo = RubricaRepository(db)
         self.materia_repo = MateriaRepository(db)
+        self.coordinador_materia_repo = CoordinadorMateriaRepository(db)
+
+    async def _validar_acceso_materia(self, user: Usuario, materia_id: int) -> None:
+        """
+        Valida que un coordinador tenga acceso a una materia.
+        Los admins siempre tienen acceso.
+
+        Args:
+            user: Usuario actual.
+            materia_id: ID de la materia a validar.
+
+        Raises:
+            HTTPException 403: Si el coordinador no está asignado a la materia.
+        """
+        # Admins tienen acceso a todo
+        if user.rol == RolEnum.ADMIN:
+            return
+
+        # Coordinadores solo a sus materias asignadas
+        if user.rol == RolEnum.COORDINADOR:
+            tiene_acceso = await self.coordinador_materia_repo.exists(
+                coordinador_id=user.id,
+                materia_id=materia_id,
+            )
+            if not tiene_acceso:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="No tienes permisos para acceder a esta materia",
+                )
+            return
+
+        # Otros roles no tienen acceso
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tienes permisos para gestionar rúbricas",
+        )
 
     def _validar_criterios_v2(self, criterios_list: list) -> None:
         """
@@ -99,23 +136,28 @@ class RubricaService:
                     )
 
     async def crear_rubrica(
-        self, data: RubricaCreate, current_user_id: int | None = None
+        self, data: RubricaCreate, current_user: Usuario, current_user_id: int | None = None
     ) -> RubricaResponse:
         """
         Create a new rubrica V2.
 
         Args:
             data: Rubrica creation data.
+            current_user: Current user (for permission validation).
             current_user_id: ID of the user creating this rubrica (for audit log).
 
         Returns:
             RubricaResponse with rubrica data.
 
         Raises:
+            HTTPException 403: User doesn't have access to this materia.
             HTTPException 404: Materia not found.
             HTTPException 409: Rubrica with same materia+tipo+numero+anio exists.
             HTTPException 400: Invalid estructura V2.
         """
+        # Validate user has access to materia
+        await self._validar_acceso_materia(current_user, data.materia_id)
+
         # Validate materia exists
         materia = await self.materia_repo.get_active_by_id(data.materia_id)
         if not materia:
@@ -248,17 +290,19 @@ class RubricaService:
             per_page=per_page,
         )
 
-    async def obtener_rubrica(self, rubrica_id: int) -> RubricaDetailResponse:
+    async def obtener_rubrica(self, rubrica_id: int, current_user: Usuario | None = None) -> RubricaDetailResponse:
         """
         Get a rubrica by ID with materia info.
 
         Args:
             rubrica_id: Rubrica's database ID.
+            current_user: Current user (for permission validation, optional).
 
         Returns:
             RubricaDetailResponse with full rubrica data.
 
         Raises:
+            HTTPException 403: User doesn't have access to this materia.
             HTTPException 404: Rubrica not found.
         """
         rubrica = await self.rubrica_repo.get_by_id_with_relations(rubrica_id)
@@ -268,6 +312,10 @@ class RubricaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Rúbrica no encontrada",
             )
+
+        # Validate user has access to materia (if user is provided)
+        if current_user:
+            await self._validar_acceso_materia(current_user, rubrica.materia_id)
 
         # Build materia info
         materia_info = MateriaInfo(
@@ -305,6 +353,7 @@ class RubricaService:
         self,
         rubrica_id: int,
         data: RubricaUpdate,
+        current_user: Usuario,
     ) -> RubricaResponse:
         """
         Update an existing rubrica V2.
@@ -312,11 +361,13 @@ class RubricaService:
         Args:
             rubrica_id: Rubrica's database ID.
             data: Rubrica update data.
+            current_user: Current user (for permission validation).
 
         Returns:
             RubricaResponse with updated rubrica data.
 
         Raises:
+            HTTPException 403: User doesn't have access to this materia.
             HTTPException 404: Rubrica not found.
             HTTPException 400: Invalid estructura V2.
         """
@@ -327,6 +378,9 @@ class RubricaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Rúbrica no encontrada",
             )
+
+        # Validate user has access to materia
+        await self._validar_acceso_materia(current_user, rubrica.materia_id)
 
         # Update fields
         if data.titulo is not None:
@@ -353,14 +407,16 @@ class RubricaService:
 
         return RubricaResponse.model_validate(updated_rubrica)
 
-    async def eliminar_rubrica(self, rubrica_id: int) -> None:
+    async def eliminar_rubrica(self, rubrica_id: int, current_user: Usuario) -> None:
         """
         Soft delete a rubrica.
 
         Args:
             rubrica_id: Rubrica's database ID.
+            current_user: Current user (for permission validation).
 
         Raises:
+            HTTPException 403: User doesn't have access to this materia.
             HTTPException 404: Rubrica not found.
         """
         rubrica = await self.rubrica_repo.get_active_by_id(rubrica_id)
@@ -371,19 +427,24 @@ class RubricaService:
                 detail="Rúbrica no encontrada o ya eliminada",
             )
 
+        # Validate user has access to materia
+        await self._validar_acceso_materia(current_user, rubrica.materia_id)
+
         await self.rubrica_repo.soft_delete(rubrica)
 
-    async def restaurar_rubrica(self, rubrica_id: int) -> RubricaResponse:
+    async def restaurar_rubrica(self, rubrica_id: int, current_user: Usuario) -> RubricaResponse:
         """
         Restore a soft-deleted rubrica.
 
         Args:
             rubrica_id: Rubrica's database ID.
+            current_user: Current user (for permission validation).
 
         Returns:
             RubricaResponse with restored rubrica data.
 
         Raises:
+            HTTPException 403: User doesn't have access to this materia.
             HTTPException 404: Rubrica not found.
             HTTPException 400: Rubrica is not deleted.
         """
@@ -394,6 +455,9 @@ class RubricaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Rúbrica no encontrada",
             )
+
+        # Validate user has access to materia
+        await self._validar_acceso_materia(current_user, rubrica.materia_id)
 
         if rubrica.activa:
             raise HTTPException(
@@ -409,6 +473,7 @@ class RubricaService:
         self,
         rubrica_id: int,
         data: RubricaDuplicar,
+        current_user: Usuario,
     ) -> RubricaResponse:
         """
         Duplicate a rubrica to a new year.
@@ -416,11 +481,13 @@ class RubricaService:
         Args:
             rubrica_id: Rubrica's database ID to duplicate.
             data: RubricaDuplicar with new year and optional new name.
+            current_user: Current user (for permission validation).
 
         Returns:
             RubricaResponse with new rubrica data.
 
         Raises:
+            HTTPException 403: User doesn't have access to this materia.
             HTTPException 404: Rubrica not found.
             HTTPException 409: Rubrica with same materia+tipo+numero+new_year exists.
         """
@@ -432,6 +499,9 @@ class RubricaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Rúbrica original no encontrada",
             )
+
+        # Validate user has access to materia
+        await self._validar_acceso_materia(current_user, rubrica_original.materia_id)
 
         # Check if rubrica with new year already exists
         if await self.rubrica_repo.exists(
