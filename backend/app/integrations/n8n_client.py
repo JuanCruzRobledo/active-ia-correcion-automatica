@@ -111,7 +111,11 @@ class N8NClient:
 
                 # Try to parse JSON response
                 try:
-                    return response.json()
+                    result = response.json()
+                    # N8N returns an array with a single object, extract it
+                    if isinstance(result, list) and len(result) > 0:
+                        return result[0]
+                    return result
                 except Exception:
                     raise N8NError(
                         f"Error parseando respuesta JSON de N8N (corrección PDF). "

@@ -178,14 +178,14 @@ class CorreccionService:
 
         criterios_evaluados = [
             CriterioEvaluado(
-                id=c.id,
+                id=c.id if c.id is not None else str(i),
                 nombre=c.nombre,
                 puntaje_obtenido=Dec(str(c.puntaje_obtenido)),
                 puntaje_maximo=Dec(str(c.puntaje_maximo)),
                 estado=c.estado,
                 feedback=c.feedback
             )
-            for c in gemini_response.criterios
+            for i, c in enumerate(gemini_response.criterios)
         ]
 
         # Create new correction

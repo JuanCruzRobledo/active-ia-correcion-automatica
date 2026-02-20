@@ -101,7 +101,7 @@ class Criterio(BaseModel):
     )
     instrucciones_puntuacion: str | None = Field(
         None,
-        max_length=500,
+        max_length=2000,
         description="Instrucciones opcionales para asignar puntaje dentro del criterio",
         examples=["Dividir proporcionalmente entre subcriterios"],
     )

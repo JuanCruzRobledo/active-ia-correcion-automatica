@@ -1,0 +1,230 @@
+{
+  "name": "Corrección de Entregas PDF con IA (Gemini Vision)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "corregir-pdf",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-200, 300],
+      "id": "webhook-corregir-pdf",
+      "name": "Webhook: Recibir Request PDF",
+      "webhookId": "corregir-pdf-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "pdf-base64",
+              "name": "pdf_base64",
+              "value": "={{ $json.body.pdf_base64 }}",
+              "type": "string"
+            },
+            {
+              "id": "rubrica",
+              "name": "rubrica",
+              "value": "={{ $json.body.rubrica }}",
+              "type": "object"
+            },
+            {
+              "id": "api-key",
+              "name": "api_key",
+              "value": "={{ $json.body.api_key }}",
+              "type": "string"
+            },
+            {
+              "id": "contexto",
+              "name": "contexto",
+              "value": "={{ $json.body.contexto }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [20, 300],
+      "id": "extraer-datos-pdf",
+      "name": "Extraer Datos Request"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Decodificar base64 a binary y preparar para subir a Gemini Files API\n\nconst base64Data = $input.first().json.pdf_base64;\nconst apiKey = $input.first().json.api_key;\nconst rubrica = $input.first().json.rubrica;\nconst contexto = $input.first().json.contexto;\n\nif (!base64Data || !apiKey) {\n  throw new Error('Faltan datos requeridos: pdf_base64 y api_key');\n}\n\nif (!rubrica || !rubrica.criterios) {\n  throw new Error('Faltan datos requeridos: rubrica con criterios');\n}\n\n// Decodificar base64 a buffer binario\nconst buffer = Buffer.from(base64Data, 'base64');\n\nreturn [{\n  json: {\n    api_key: apiKey,\n    rubrica: rubrica,\n    contexto: contexto\n  },\n  binary: {\n    pdf: {\n      data: buffer.toString('base64'),\n      mimeType: 'application/pdf',\n      fileName: `entrega_${contexto?.alumno?.replace(/\\s+/g, '_') || 'alumno'}.pdf`\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "id": "decodificar-pdf",
+      "name": "Decodificar PDF"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/upload/v1beta/files?key={{ $json.api_key }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{ \"Content-Type\": \"application/pdf\" }",
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "pdf",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 300],
+      "id": "upload-pdf-gemini",
+      "name": "Gemini: Upload PDF",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construir body para Gemini generateContent con el PDF subido y prompt de corrección\n\nconst uploadResponse = $input.first().json;\nconst apiKey = $('Decodificar PDF').first().json.api_key;\nconst rubrica = $('Decodificar PDF').first().json.rubrica;\nconst contexto = $('Decodificar PDF').first().json.contexto;\n\n// Verificar si hubo error en upload\nif (uploadResponse.error) {\n  throw new Error(`Error al subir PDF a Gemini: ${JSON.stringify(uploadResponse.error)}`);\n}\n\nconst fileUri = uploadResponse.file?.uri;\nif (!fileUri) {\n  throw new Error('No se obtuvo URI del archivo subido a Gemini');\n}\n\n// Construir lista de criterios para el prompt\nlet criteriosTexto = '';\nfor (const criterio of rubrica.criterios) {\n  const puntajeMax = criterio.puntaje_maximo || criterio.peso || 0;\n  criteriosTexto += `- ${criterio.nombre} (${puntajeMax} pts): ${criterio.descripcion || ''}\\n`;\n  if (criterio.subcriterios && criterio.subcriterios.length > 0) {\n    for (const sub of criterio.subcriterios) {\n      criteriosTexto += `  * ${sub.descripcion}\\n`;\n    }\n  }\n}\n\n// Construir lista de penalizaciones si existen\nlet penalizacionesTexto = '';\nif (rubrica.penalizaciones && rubrica.penalizaciones.length > 0) {\n  penalizacionesTexto = '\\n## PENALIZACIONES\\n';\n  for (const p of rubrica.penalizaciones) {\n    penalizacionesTexto += `- ${p.descripcion}: -${p.descuento_porcentaje}%\\n`;\n  }\n}\n\n// Construir condiciones de desaprobación si existen\nlet condicionesTexto = '';\nif (rubrica.condiciones_desaprobacion && rubrica.condiciones_desaprobacion.length > 0) {\n  condicionesTexto = '\\n## CONDICIONES DE DESAPROBACIÓN AUTOMÁTICA\\n';\n  for (const c of rubrica.condiciones_desaprobacion) {\n    condicionesTexto += `- Si: ${c.condicion} → Nota final: ${c.nota_final}\\n`;\n  }\n}\n\n// Prompt especializado para corrección de entregas PDF (ejercicios físicos, matemáticos, etc.)\nconst prompt = `Eres un evaluador académico experto en la materia \"${contexto?.materia || 'sin especificar'}\".\n\nTu tarea es evaluar la resolución de ejercicios del alumno \"${contexto?.alumno || 'sin especificar'}\" a partir del PDF adjunto, según la rúbrica proporcionada.\n\nEl PDF puede contener:\n- Ejercicios resueltos a mano (escritura, fórmulas, cálculos, gráficos)\n- Resoluciones escaneadas o fotografiadas\n- Cualquier tipo de trabajo práctico en formato documento\n\nLee e interpreta TODO el contenido visual del PDF con atención.\n\n## RÚBRICA DE EVALUACIÓN\n\nTítulo: ${rubrica.titulo || 'Sin título'}\nDescripción: ${rubrica.descripcion || ''}\nTipo: ${rubrica.tipo || 'TP'}\nPuntaje máximo: ${rubrica.puntaje_maximo || 100}\n\nCriterios a evaluar:\n${criteriosTexto}${penalizacionesTexto}${condicionesTexto}\n\n## INSTRUCCIONES DE EVALUACIÓN\n\nPara cada criterio de la rúbrica:\n1. Analiza detenidamente el contenido del PDF relacionado con ese criterio\n2. Asigna un puntaje entre 0 y el máximo del criterio\n3. Determina el estado:\n   - \"OK\" si logra ≥80% del puntaje máximo del criterio\n   - \"WARNING\" si logra 40-79% del puntaje máximo\n   - \"ERROR\" si logra <40% del puntaje máximo\n4. Proporciona feedback específico basado en lo que ves en el PDF\n\nAdemás:\n- Lista 2-4 fortalezas de la resolución (array de strings)\n- Lista 2-4 recomendaciones de mejora específicas (array de strings)\n- Escribe un comentario general de 2-3 oraciones sobre la calidad global del trabajo\n\n## FORMATO DE RESPUESTA OBLIGATORIO\n\nResponde ÚNICAMENTE con un JSON válido con esta estructura exacta:\n\n{\n  \"nota\": <número entre 0 y ${rubrica.puntaje_maximo || 100}>,\n  \"criterios\": [\n    {\n      \"nombre\": \"<nombre exacto del criterio de la rúbrica>\",\n      \"puntaje_obtenido\": <número>,\n      \"puntaje_maximo\": <número>,\n      \"estado\": \"<OK|WARNING|ERROR>\",\n      \"feedback\": \"<feedback específico basado en lo observado en el PDF>\"\n    }\n  ],\n  \"fortalezas\": [\"<fortaleza 1>\", \"<fortaleza 2>\"],\n  \"recomendaciones\": [\"<recomendación 1>\", \"<recomendación 2>\"],\n  \"comentario_general\": \"<comentario de 2-3 oraciones>\"\n}\n\nIMPORTANTE:\n- La suma de puntaje_obtenido de todos los criterios debe ser igual a \"nota\"\n- Cada criterio de la rúbrica debe aparecer en la respuesta\n- El estado debe calcularse correctamente según el porcentaje del criterio individual\n- NO incluyas texto antes o después del JSON\n- NO uses markdown code blocks, solo JSON puro`;\n\n// Construir body para Gemini API con el PDF referenciado por URI\nconst body = {\n  generationConfig: {\n    temperature: 0,\n    topK: 1,\n    topP: 1,\n    candidateCount: 1,\n    responseMimeType: \"application/json\",\n    responseSchema: {\n      type: \"object\",\n      properties: {\n        nota: { type: \"number\" },\n        criterios: {\n          type: \"array\",\n          items: {\n            type: \"object\",\n            properties: {\n              nombre: { type: \"string\" },\n              puntaje_obtenido: { type: \"number\" },\n              puntaje_maximo: { type: \"number\" },\n              estado: { type: \"string\", enum: [\"OK\", \"WARNING\", \"ERROR\"] },\n              feedback: { type: \"string\" }\n            },\n            required: [\"nombre\", \"puntaje_obtenido\", \"puntaje_maximo\", \"estado\", \"feedback\"]\n          }\n        },\n        fortalezas: {\n          type: \"array\",\n          items: { type: \"string\" }\n        },\n        recomendaciones: {\n          type: \"array\",\n          items: { type: \"string\" }\n        },\n        comentario_general: { type: \"string\" }\n      },\n      required: [\"nota\", \"criterios\", \"fortalezas\", \"recomendaciones\", \"comentario_general\"]\n    }\n  },\n  contents: [\n    {\n      role: \"user\",\n      parts: [\n        {\n          fileData: {\n            fileUri: fileUri,\n            mimeType: \"application/pdf\"\n          }\n        },\n        {\n          text: prompt\n        }\n      ]\n    }\n  ]\n};\n\nreturn [{ json: { geminiBody: body, api_key: apiKey } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "id": "construir-body-gemini-pdf",
+      "name": "Construir Body Gemini PDF"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={{ $json.api_key }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{ \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.geminiBody }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 300],
+      "id": "gemini-corregir-pdf",
+      "name": "Gemini: Corregir PDF",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 3,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parser de respuesta de Gemini para corrección PDF\n// Mismo patrón que correccion-workflow.json\n\nconst geminiResponse = $input.first().json;\nconst startTime = Date.now();\n\ntry {\n  // Verificar si hay error de Gemini (503, 429, 500, etc.)\n  if (geminiResponse.error) {\n    const errorMsg = geminiResponse.error.message || JSON.stringify(geminiResponse.error);\n    const errorCode = geminiResponse.error.code || 'UNKNOWN';\n\n    return [{\n      json: {\n        success: false,\n        error: {\n          code: 'GEMINI_ERROR',\n          message: `Error de Gemini [${errorCode}]: ${errorMsg}`,\n          retry: errorCode === 503 || errorCode === 500\n        }\n      }\n    }];\n  }\n\n  // Normalizar respuesta (puede venir como array o objeto)\n  let responseArray;\n  if (Array.isArray(geminiResponse)) {\n    responseArray = geminiResponse;\n  } else if (geminiResponse.body && Array.isArray(geminiResponse.body)) {\n    responseArray = geminiResponse.body;\n  } else if (geminiResponse.data && Array.isArray(geminiResponse.data)) {\n    responseArray = geminiResponse.data;\n  } else {\n    responseArray = [geminiResponse];\n  }\n\n  const candidate = responseArray[0]?.candidates?.[0];\n\n  if (!candidate) {\n    return [{\n      json: {\n        success: false,\n        error: {\n          code: 'PARSING_ERROR',\n          message: 'No se encontró candidate en respuesta de Gemini',\n          retry: true\n        }\n      }\n    }];\n  }\n\n  const textContent = candidate.content?.parts?.[0]?.text;\n\n  if (!textContent) {\n    return [{\n      json: {\n        success: false,\n        error: {\n          code: 'PARSING_ERROR',\n          message: 'No se encontró texto en la respuesta',\n          retry: true\n        }\n      }\n    }];\n  }\n\n  // Parsear el JSON (responseMimeType: application/json garantiza JSON puro)\n  const parsedData = JSON.parse(textContent);\n\n  // Validar estructura mínima\n  if (!parsedData.nota && parsedData.nota !== 0) {\n    return [{\n      json: {\n        success: false,\n        error: {\n          code: 'PARSING_ERROR',\n          message: \"Respuesta no contiene campo 'nota'\",\n          retry: true\n        }\n      }\n    }];\n  }\n\n  if (!Array.isArray(parsedData.criterios)) {\n    return [{\n      json: {\n        success: false,\n        error: {\n          code: 'PARSING_ERROR',\n          message: \"Respuesta no contiene 'criterios' como array\",\n          retry: true\n        }\n      }\n    }];\n  }\n\n  // Construir metadata\n  const elapsedTime = Date.now() - startTime;\n  const metadata = {\n    modelo: 'gemini-2.5-flash',\n    modo: 'vision-pdf',\n    tokens_entrada: candidate.tokenCount?.totalTokens || 0,\n    tokens_salida: candidate.tokenCount?.candidatesTokenCount || 0,\n    tiempo_ms: elapsedTime\n  };\n\n  // Retornar resultado exitoso — mismo contrato que correccion-workflow.json\n  return [{\n    json: {\n      success: true,\n      correccion: {\n        nota: parsedData.nota,\n        criterios: parsedData.criterios,\n        fortalezas: parsedData.fortalezas || [],\n        recomendaciones: parsedData.recomendaciones || [],\n        comentario_general: parsedData.comentario_general || ''\n      },\n      metadata: metadata\n    }\n  }];\n\n} catch (error) {\n  return [{\n    json: {\n      success: false,\n      error: {\n        code: 'PARSING_ERROR',\n        message: `Error al procesar corrección PDF: ${error.message}`,\n        retry: true\n      }\n    }\n  }];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "id": "parsear-respuesta-pdf",
+      "name": "Parsear Respuesta"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1340, 300],
+      "id": "responder-resultado-pdf",
+      "name": "Responder Resultado"
+    }
+  ],
+  "connections": {
+    "Webhook: Recibir Request PDF": {
+      "main": [
+        [
+          {
+            "node": "Extraer Datos Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Datos Request": {
+      "main": [
+        [
+          {
+            "node": "Decodificar PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decodificar PDF": {
+      "main": [
+        [
+          {
+            "node": "Gemini: Upload PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini: Upload PDF": {
+      "main": [
+        [
+          {
+            "node": "Construir Body Gemini PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Construir Body Gemini PDF": {
+      "main": [
+        [
+          {
+            "node": "Gemini: Corregir PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini: Corregir PDF": {
+      "main": [
+        [
+          {
+            "node": "Parsear Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Respuesta": {
+      "main": [
+        [
+          {
+            "node": "Responder Resultado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

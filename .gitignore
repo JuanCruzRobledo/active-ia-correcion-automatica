@@ -26,6 +26,7 @@ build/
 venv/
 env/
 ENV/
+*.pyc
 
 # Node
 node_modules/

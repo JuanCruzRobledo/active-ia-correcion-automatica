@@ -8,7 +8,7 @@ This module defines Pydantic schemas for:
 - Gemini API responses (GeminiResponse, CriterioGeminiSchema)
 """
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Literal, Optional
 from datetime import datetime
 from decimal import Decimal
@@ -26,9 +26,14 @@ class CriterioEvaluado(BaseModel):
 
 
 class CriterioGeminiSchema(BaseModel):
-    """Schema for parsing criterion evaluation from Gemini response."""
+    """Schema for parsing criterion evaluation from Gemini response.
 
-    id: str
+    The `id` field is optional because the PDF correction webhook
+    (/webhook/corregir-pdf) does not include it in its response,
+    while the text correction webhook (/webhook/corregir) does.
+    """
+
+    id: Optional[str] = Field(default=None)
     nombre: str
     puntaje_obtenido: int = Field(ge=0)
     puntaje_maximo: int = Field(ge=1)

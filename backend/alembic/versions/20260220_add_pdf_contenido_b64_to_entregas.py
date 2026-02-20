@@ -1,6 +1,6 @@
 """Add pdf_contenido_b64 column to entregas
 
-Revision ID: 005_add_pdf_contenido_b64_to_entregas
+Revision ID: 005_add_pdf_b64_entregas
 Revises: 004_fix_actividades_timestamps
 Create Date: 2026-02-20
 
@@ -18,7 +18,7 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision: str = '005_add_pdf_contenido_b64_to_entregas'
+revision: str = '005_add_pdf_b64_entregas'
 down_revision: Union[str, None] = '004_fix_actividades_timestamps'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
