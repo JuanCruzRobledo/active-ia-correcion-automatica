@@ -57,15 +57,17 @@ export const MultiSelect = ({
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  // Ref to the portal dropdown so clicks inside it don't trigger "click outside"
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const hasError = Boolean(error);
 
-  // Close dropdown when clicking outside
+  // Close dropdown only when clicking outside BOTH the trigger container AND the portal dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
+      const target = event.target as Node;
+      const insideTrigger = containerRef.current?.contains(target) ?? false;
+      const insideDropdown = dropdownRef.current?.contains(target) ?? false;
+      if (!insideTrigger && !insideDropdown) {
         setIsOpen(false);
       }
     };
@@ -76,18 +78,30 @@ export const MultiSelect = ({
     }
   }, [isOpen]);
 
-  // Compute fixed position from trigger's bounding rect so the dropdown
-  // escapes any parent overflow / modal stacking context.
+  // Compute fixed position from trigger's bounding rect.
+  // Opens downward by default; flips upward if there isn't enough space below.
   useEffect(() => {
     if (!isOpen || !triggerRef.current) return;
 
     const updatePosition = () => {
       const rect = triggerRef.current!.getBoundingClientRect();
+      const DROPDOWN_MAX_HEIGHT = 240; // matches max-h-60 = 15rem ≈ 240px
+      const MARGIN = 4;
+      const spaceBelow = window.innerHeight - rect.bottom - MARGIN;
+      const spaceAbove = rect.top - MARGIN;
+      const openUpward = spaceBelow < DROPDOWN_MAX_HEIGHT && spaceAbove > spaceBelow;
+      const availableHeight = openUpward
+        ? Math.min(DROPDOWN_MAX_HEIGHT, spaceAbove)
+        : Math.min(DROPDOWN_MAX_HEIGHT, spaceBelow);
+
       setDropdownStyle({
         position: 'fixed',
-        top: rect.bottom + 4,
+        ...(openUpward
+          ? { bottom: window.innerHeight - rect.top + MARGIN }
+          : { top: rect.bottom + MARGIN }),
         left: rect.left,
         width: rect.width,
+        maxHeight: availableHeight,
         zIndex: 9999,
       });
     };
@@ -120,13 +134,16 @@ export const MultiSelect = ({
       ? `${selectedOptions.length} seleccionado${selectedOptions.length > 1 ? 's' : ''}`
       : placeholder;
 
-  // Dropdown is rendered into document.body via Portal to avoid clipping
+  // Dropdown rendered into document.body via Portal to escape modal stacking context.
+  // dropdownRef is used so the click-outside handler won't close the menu when
+  // the user clicks an option inside the portal.
   const dropdown = isOpen && !loading && (
     <div
+      ref={dropdownRef}
       style={dropdownStyle}
-      className="rounded-md border border-border bg-popover shadow-md"
+      className="rounded-md border border-border bg-popover shadow-md overflow-y-auto"
     >
-      <div className="max-h-60 overflow-y-auto p-1">
+      <div className="p-1">
         {options.length === 0 ? (
           <div className="px-2 py-6 text-center text-sm text-muted-foreground">
             No hay opciones disponibles
@@ -136,7 +153,9 @@ export const MultiSelect = ({
             <button
               key={option.value}
               type="button"
-              onClick={() => toggleOption(option.value)}
+              onClick={() => {
+                toggleOption(option.value);
+              }}
               disabled={option.disabled}
               className={cn(
                 'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-left',
