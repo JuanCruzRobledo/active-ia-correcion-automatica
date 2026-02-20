@@ -78,7 +78,7 @@ export interface Entrega {
   archivo_nombre: string;
   archivo_ruta: string;
   archivo_tamanio: number;
-  archivo_tipo: 'zip' | 'txt';
+  archivo_tipo: 'zip' | 'txt' | 'pdf' | 'individual';
   contenido_preview: string | null;
   estado: EstadoEntrega;
   hash_sha256: string | null;
@@ -156,7 +156,12 @@ export interface CargaMasivaResponse {
 export interface EntregaContenido {
   entrega_id: number;
   alumno_nombre: string;
-  contenido_consolidado: string;
+  /** True for PDF submissions; false for code (zip/txt/individual) */
+  es_pdf: boolean;
+  /** Consolidated code text — null for PDF submissions */
+  contenido_consolidado: string | null;
+  /** PDF content encoded in Base64 — null for code submissions */
+  pdf_contenido_b64: string | null;
   archivos_incluidos: string[];
   total_lineas: number;
   total_caracteres: number;

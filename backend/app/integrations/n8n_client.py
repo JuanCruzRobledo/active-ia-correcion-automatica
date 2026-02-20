@@ -75,6 +75,60 @@ class N8NClient:
             except httpx.RequestError as e:
                 raise N8NError(f"Error de conexión: {str(e)}")
 
+    async def trigger_correction_pdf(self, payload: dict) -> dict[str, Any]:
+        """
+        Trigger the PDF correction workflow in N8N.
+
+        Used when the student's submission is a PDF file (e.g., handwritten math
+        exercises) instead of source code. Sends the raw PDF in Base64 to a
+        dedicated N8N workflow that uses Gemini's vision capabilities.
+
+        Args:
+            payload: Dictionary containing:
+                - pdf_base64: PDF content encoded in Base64
+                - rubrica: Rubric with evaluation criteria
+                - api_key: User's Gemini API key
+                - contexto: Additional context (materia, alumno)
+
+        Returns:
+            Dictionary with correction results (same structure as trigger_correction):
+                - success: bool
+                - correccion: Correction data (if successful)
+                - error: Error details (if failed)
+
+        Raises:
+            N8NTimeoutError: If the request times out
+            N8NError: For other N8N-related errors
+        """
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/webhook/corregir-pdf",
+                    json=payload,
+                    timeout=self.correction_timeout,
+                )
+                response.raise_for_status()
+
+                # Try to parse JSON response
+                try:
+                    return response.json()
+                except Exception:
+                    raise N8NError(
+                        f"Error parseando respuesta JSON de N8N (corrección PDF). "
+                        f"Status: {response.status_code}, "
+                        f"Content-Type: {response.headers.get('content-type', 'unknown')}, "
+                        f"Body (first 500 chars): {response.text[:500]}"
+                    )
+
+            except httpx.TimeoutException:
+                raise N8NTimeoutError("Timeout esperando respuesta de N8N (corrección PDF)")
+
+            except httpx.HTTPStatusError as e:
+                raise N8NError(f"Error HTTP {e.response.status_code}: {e.response.text}")
+
+            except httpx.RequestError as e:
+                raise N8NError(f"Error de conexión: {str(e)}")
+
     async def trigger_rubric_generation(self, payload: dict) -> dict[str, Any]:
         """
         Trigger the rubric generation workflow from PDF.

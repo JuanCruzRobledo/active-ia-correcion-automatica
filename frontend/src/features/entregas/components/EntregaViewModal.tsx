@@ -60,11 +60,17 @@ export default function EntregaViewModal({
   // Fetch code content from backend
   const { data: contenido, isLoading, isError, error } = useEntregaContenido(entregaId);
 
-  // Determine if we should show preview mode
+  // Determine if we should show preview mode (only applies to code, not PDF)
   const PREVIEW_LENGTH = 1000; // characters
-  const shouldShowPreview = contenido && contenido.contenido_consolidado.length > PREVIEW_LENGTH && !isCodeExpanded;
+  const isPdf = contenido?.es_pdf ?? false;
+  const shouldShowPreview =
+    !isPdf &&
+    contenido &&
+    (contenido.contenido_consolidado?.length ?? 0) > PREVIEW_LENGTH &&
+    !isCodeExpanded;
+
   const displayContent = shouldShowPreview
-    ? contenido.contenido_consolidado.substring(0, PREVIEW_LENGTH) + '\n\n...'
+    ? contenido!.contenido_consolidado!.substring(0, PREVIEW_LENGTH) + '\n\n...'
     : contenido?.contenido_consolidado;
 
   // Check if content is limited (old entregas with only preview)
@@ -108,29 +114,34 @@ export default function EntregaViewModal({
               </div>
             )}
 
-            <div className="bg-muted/50 rounded-lg p-3 border border-border">
-              <div className="flex items-center gap-2 mb-1">
-                <Hash className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Líneas
-                </span>
-              </div>
-              <div className="text-xl font-bold text-foreground">
-                {formatNumber(contenido.total_lineas)}
-              </div>
-            </div>
+            {/* Only show Lines/Chars cards for code submissions, not PDFs */}
+            {!isPdf && (
+              <>
+                <div className="bg-muted/50 rounded-lg p-3 border border-border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Hash className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Líneas
+                    </span>
+                  </div>
+                  <div className="text-xl font-bold text-foreground">
+                    {formatNumber(contenido.total_lineas)}
+                  </div>
+                </div>
 
-            <div className="bg-muted/50 rounded-lg p-3 border border-border">
-              <div className="flex items-center gap-2 mb-1">
-                <Type className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Caracteres
-                </span>
-              </div>
-              <div className="text-xl font-bold text-foreground">
-                {formatNumber(contenido.total_caracteres)}
-              </div>
-            </div>
+                <div className="bg-muted/50 rounded-lg p-3 border border-border">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Type className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Caracteres
+                    </span>
+                  </div>
+                  <div className="text-xl font-bold text-foreground">
+                    {formatNumber(contenido.total_caracteres)}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -225,9 +236,9 @@ export default function EntregaViewModal({
               </div>
             )}
 
-            {/* Code Container - Using Theme Colors */}
+            {/* Content Display: PDF vs Code */}
             <div className="border border-border rounded-lg overflow-hidden">
-              {/* Code Header */}
+              {/* Header */}
               <div className="flex items-center justify-between px-4 py-2 bg-muted border-b border-border">
                 <div className="flex items-center gap-2">
                   <div className="flex gap-1.5">
@@ -236,7 +247,11 @@ export default function EntregaViewModal({
                     <div className="w-3 h-3 rounded-full bg-success" />
                   </div>
                   <span className="text-xs font-mono text-muted-foreground ml-2">
-                    {isLimitedContent ? 'Código (preview)' : 'Código procesado'}
+                    {isPdf
+                      ? 'Visor de PDF'
+                      : isLimitedContent
+                        ? 'Código (preview)'
+                        : 'Código procesado'}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -250,29 +265,51 @@ export default function EntregaViewModal({
                       {isCodeExpanded ? 'Ver menos' : 'Ver todo'}
                     </Button>
                   )}
-                  <Badge variant="outline">
-                    Read-only
-                  </Badge>
+                  <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80">Read-only</span>
                 </div>
               </div>
 
-              {/* Code Content - No internal scroll */}
+              {/* Viewer Area */}
               <div className="bg-muted/30">
-                <pre className="p-4 text-sm leading-relaxed">
-                  <code className="font-mono text-foreground whitespace-pre">
-                    {displayContent}
-                  </code>
-                </pre>
+                {isPdf ? (
+                  contenido.pdf_contenido_b64 ? (
+                    <iframe
+                      src={`data:application/pdf;base64,${contenido.pdf_contenido_b64}`}
+                      className="w-full h-[60vh] border-0"
+                      title="Visor de entrega PDF"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-48 px-4 text-center">
+                      <AlertCircle className="h-8 w-8 text-muted-foreground mb-3" />
+                      <p className="text-sm font-medium text-foreground">
+                        Contenido no disponible
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        El archivo PDF no pudo ser recuperado.
+                      </p>
+                    </div>
+                  )
+                ) : (
+                  <pre className="p-4 text-sm leading-relaxed overflow-x-auto">
+                    <code className="font-mono text-foreground whitespace-pre">
+                      {displayContent}
+                    </code>
+                  </pre>
+                )}
               </div>
 
-              {/* Expand Button at Bottom */}
-              {!isLimitedContent && shouldShowPreview && (
+              {/* Expand Button at Bottom (Only for Code) */}
+              {!isLimitedContent && shouldShowPreview && !isPdf && (
                 <div className="border-t border-border bg-muted/50 px-4 py-2 text-center">
                   <button
                     onClick={() => setIsCodeExpanded(true)}
                     className="text-sm text-accent hover:text-accent/80 font-medium transition-colors"
                   >
-                    Ver {formatNumber(contenido.total_caracteres - PREVIEW_LENGTH)} caracteres más...
+                    Ver{' '}
+                    {formatNumber(
+                      contenido.total_caracteres - PREVIEW_LENGTH
+                    )}{' '}
+                    caracteres más...
                   </button>
                 </div>
               )}

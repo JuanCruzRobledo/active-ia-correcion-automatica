@@ -172,6 +172,37 @@ class TestEntregaService:
 
         assert exc_info.value.status_code == 404
 
+    async def test_crear_entrega_individual_pdf(
+        self,
+        db_session: AsyncSession,
+        comision: Comision,
+        rubrica: Rubrica,
+    ):
+        """Test creating an individual PDF entrega."""
+        service = EntregaService(db_session)
+
+        pdf_bytes = b"%PDF-1.4 mock pdf content"
+
+        data = EntregaCreate(
+            comision_id=comision.id,
+            rubrica_id=rubrica.id,
+            alumno_nombre="Pérez, Juan",
+            archivo_bytes=pdf_bytes,
+            archivo_nombre="documento.pdf",
+            modo_consolidacion="solo_codigo", # Should be ignored
+        )
+
+        entrega = await service.crear_entrega_individual(
+            data=data,
+            subido_por_id=1,
+        )
+
+        assert entrega.id is not None
+        assert entrega.archivo_tipo == "pdf"
+        assert entrega.contenido_consolidado is None
+        assert entrega.pdf_contenido_b64 is not None
+        assert "[Entrega en formato PDF]" in entrega.contenido_preview
+
     async def test_crear_entrega_duplicada_sin_sobrescribir(
         self,
         db_session: AsyncSession,
@@ -245,6 +276,50 @@ class TestEntregaService:
         assert entrega_v2.id == entrega_v1.id
         assert "version 2" in entrega_v2.contenido_consolidado
         assert "version 1" not in entrega_v2.contenido_consolidado
+
+    async def test_crear_entrega_masiva_pdf(
+        self,
+        db_session: AsyncSession,
+        comision: Comision,
+        rubrica: Rubrica,
+    ):
+        """Test creating masiva containing both a PDF and a normal code submission."""
+        service = EntregaService(db_session)
+
+        # Build a ZIP file containing 2 students: one with python code, one with PDF
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("García, Ana/main.py", "print('codigo')")
+            zf.writestr("Pérez, Juan/documento.pdf", b"%PDF-1.4 mock pdf")
+
+        data = CargaMasivaRequest(
+            comision_id=comision.id,
+            rubrica_id=rubrica.id,
+            archivo_bytes=buffer.getvalue(),
+            modo_consolidacion="solo_codigo",
+        )
+
+        resultado = await service.crear_entrega_masiva(
+            data=data,
+            subido_por_id=1,
+        )
+
+        assert resultado.total_procesadas == 2
+        assert resultado.total_exitosas == 2
+        
+        # Verify db entries
+        resultado_db = await service.listar_entregas(comision_id=comision.id)
+        assert resultado_db.total == 2
+        
+        # Check specific types
+        entregas_pdf = [e for e in resultado_db.items if e.alumno_nombre == "Pérez, Juan"]
+        entregas_codigo = [e for e in resultado_db.items if e.alumno_nombre == "García, Ana"]
+
+        assert len(entregas_pdf) == 1
+        assert len(entregas_codigo) == 1
+        
+        assert entregas_pdf[0].archivo_tipo == 'pdf'
+        assert entregas_codigo[0].archivo_tipo == 'zip'
 
     async def test_listar_entregas_por_comision(
         self,

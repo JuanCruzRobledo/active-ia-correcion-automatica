@@ -7,6 +7,7 @@ Business logic for student submission (entrega) management operations.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
 """
 
+import base64
 import hashlib
 import os
 from datetime import datetime
@@ -100,7 +101,7 @@ class EntregaService:
         if archivo_tipo == "binary":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No se permiten archivos binarios (PDF, imágenes, ejecutables, etc.). Por favor, exporta el contenido a formato de texto.",
+                detail="No se permiten archivos binarios (imágenes, ejecutables, etc.). Para entregar un PDF, selecciona el archivo .pdf directamente.",
             )
         elif archivo_tipo == "unknown":
             raise HTTPException(
@@ -115,15 +116,20 @@ class EntregaService:
         # Calculate hash
         hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
 
-        # Consolidate content
-        contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
-            contenido_bytes, archivo_tipo, modo_consolidacion, archivo.filename
-        )
-
-        # Generate preview
-        contenido_preview = self.consolidacion_service.generar_preview(
-            contenido_consolidado, max_chars=500
-        )
+        # Consolidate content — PDFs skip consolidation and are stored as Base64
+        if archivo_tipo == "pdf":
+            contenido_consolidado = None
+            contenido_preview = "[Entrega en formato PDF]"
+            archivos_incluidos = [archivo.filename]
+            pdf_contenido_b64: str | None = base64.b64encode(contenido_bytes).decode("utf-8")
+        else:
+            contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
+                contenido_bytes, archivo_tipo, modo_consolidacion, archivo.filename
+            )
+            contenido_preview = self.consolidacion_service.generar_preview(
+                contenido_consolidado, max_chars=500
+            )
+            pdf_contenido_b64 = None
 
         # Check if entrega already exists
         entrega_existente = await self.entrega_repo.get_by_rubrica_alumno(
@@ -157,6 +163,7 @@ class EntregaService:
             entrega_existente.contenido_preview = contenido_preview
             entrega_existente.contenido_consolidado = contenido_consolidado
             entrega_existente.archivos_incluidos = archivos_incluidos
+            entrega_existente.pdf_contenido_b64 = pdf_contenido_b64
             entrega_existente.hash_sha256 = hash_sha256
             entrega_existente.estado = EstadoEntregaEnum.SUBIDA
             entrega_existente.subido_por_id = subido_por_id
@@ -182,6 +189,7 @@ class EntregaService:
             contenido_preview=contenido_preview,
             contenido_consolidado=contenido_consolidado,
             archivos_incluidos=archivos_incluidos,
+            pdf_contenido_b64=pdf_contenido_b64,
             estado=EstadoEntregaEnum.SUBIDA,
             hash_sha256=hash_sha256,
             subido_por_id=subido_por_id,
@@ -356,7 +364,20 @@ class EntregaService:
                 detail="Entrega no encontrada",
             )
 
-        # Use contenido_consolidado if available, fallback to preview for old entregas
+        # PDF submissions: return base64 content directly (no text consolidation)
+        if entrega.archivo_tipo == "pdf":
+            return ContenidoEntrega(
+                entrega_id=entrega.id,
+                alumno_nombre=entrega.alumno_nombre,
+                es_pdf=True,
+                contenido_consolidado=None,
+                pdf_contenido_b64=entrega.pdf_contenido_b64,
+                archivos_incluidos=entrega.archivos_incluidos or [entrega.archivo_nombre],
+                total_lineas=0,
+                total_caracteres=0,
+            )
+
+        # Code submissions: use contenido_consolidado, fallback to preview for old entregas
         contenido = entrega.contenido_consolidado or entrega.contenido_preview
 
         if not contenido:
@@ -368,7 +389,9 @@ class EntregaService:
         return ContenidoEntrega(
             entrega_id=entrega.id,
             alumno_nombre=entrega.alumno_nombre,
+            es_pdf=False,
             contenido_consolidado=contenido,
+            pdf_contenido_b64=None,
             archivos_incluidos=entrega.archivos_incluidos or [],
             total_lineas=len(contenido.splitlines()),
             total_caracteres=len(contenido),
@@ -497,12 +520,15 @@ class EntregaService:
 
                             # Detect file type
                             archivo_tipo_temp = self._get_file_type(archivo_nombre)
-                            if archivo_tipo_temp == "binary":
+                            if archivo_tipo_temp == "pdf":
+                                # PDF submissions: store as base64, skip consolidation
+                                archivo_tipo = "pdf"
+                            elif archivo_tipo_temp == "binary":
                                 errores.append(
                                     EntregaError(
                                         alumno_nombre=alumno_nombre,
                                         archivo_nombre=archivo_nombre,
-                                        error="No se permiten archivos binarios (PDF, imágenes, etc.)",
+                                        error="No se permiten archivos binarios (imágenes, ejecutables, etc.)",
                                     )
                                 )
                                 continue
@@ -529,15 +555,22 @@ class EntregaService:
                         hash_sha256 = hashlib.sha256(contenido_bytes_alumno).hexdigest()
                         archivo_tamanio = len(contenido_bytes_alumno)
 
-                        # Consolidate content
-                        contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
-                            contenido_bytes_alumno, archivo_tipo, modo_consolidacion, archivo_nombre
-                        )
-
-                        # Generate preview
-                        contenido_preview = self.consolidacion_service.generar_preview(
-                            contenido_consolidado, max_chars=500
-                        )
+                        # Consolidate content — PDFs skip consolidation and store raw Base64
+                        if archivo_tipo == "pdf":
+                            contenido_consolidado = None
+                            contenido_preview = "[Entrega en formato PDF]"
+                            archivos_incluidos = [archivo_nombre]
+                            pdf_contenido_b64_alumno: str | None = base64.b64encode(
+                                contenido_bytes_alumno
+                            ).decode("utf-8")
+                        else:
+                            contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
+                                contenido_bytes_alumno, archivo_tipo, modo_consolidacion, archivo_nombre
+                            )
+                            contenido_preview = self.consolidacion_service.generar_preview(
+                                contenido_consolidado, max_chars=500
+                            )
+                            pdf_contenido_b64_alumno = None
 
                         # Check if entrega already exists
                         entrega_existente = await self.entrega_repo.get_by_rubrica_alumno(
@@ -581,6 +614,7 @@ class EntregaService:
                             entrega_existente.contenido_preview = contenido_preview
                             entrega_existente.contenido_consolidado = contenido_consolidado
                             entrega_existente.archivos_incluidos = archivos_incluidos
+                            entrega_existente.pdf_contenido_b64 = pdf_contenido_b64_alumno
                             entrega_existente.hash_sha256 = hash_sha256
                             entrega_existente.estado = EstadoEntregaEnum.SUBIDA
                             entrega_existente.subido_por_id = subido_por_id
@@ -605,6 +639,7 @@ class EntregaService:
                                 contenido_preview=contenido_preview,
                                 contenido_consolidado=contenido_consolidado,
                                 archivos_incluidos=archivos_incluidos,
+                                pdf_contenido_b64=pdf_contenido_b64_alumno,
                                 estado=EstadoEntregaEnum.SUBIDA,
                                 hash_sha256=hash_sha256,
                                 subido_por_id=subido_por_id,
@@ -689,7 +724,8 @@ class EntregaService:
             filename: Name of the file.
 
         Returns:
-            'zip', 'txt', 'individual' (for code files), or 'binary' (for unsupported files).
+            'zip', 'txt', 'pdf', 'individual' (for code files),
+            'binary' (for unsupported binaries), or 'unknown'.
         """
         if not filename:
             return "unknown"
@@ -700,6 +736,9 @@ class EntregaService:
             return "zip"
         elif extension == ".txt":
             return "txt"
+        elif extension == ".pdf":
+            # PDFs have their own correction workflow (N8N /webhook/corregir-pdf)
+            return "pdf"
         # Check if it's a binary file that cannot be consolidated
         elif extension in self.consolidacion_service.BINARY_EXTENSIONS:
             return "binary"

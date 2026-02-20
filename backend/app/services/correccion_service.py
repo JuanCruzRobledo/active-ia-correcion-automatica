@@ -86,12 +86,19 @@ class CorreccionService:
                 detail="Entrega no encontrada",
             )
 
-        # Validate entrega has content
-        if not entrega.contenido_preview:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La entrega no tiene contenido consolidado",
-            )
+        # Validate entrega has content appropriate for its type
+        if entrega.archivo_tipo == "pdf":
+            if not entrega.pdf_contenido_b64:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La entrega PDF no tiene contenido disponible para corrección",
+                )
+        else:
+            if not entrega.contenido_preview:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La entrega no tiene contenido consolidado",
+                )
 
         # Get rubrica
         rubrica = await self.rubrica_repo.get_active_by_id(entrega.rubrica_id)
@@ -110,16 +117,23 @@ class CorreccionService:
                 detail=f"Error al desencriptar API Key: {str(e)}",
             )
 
-        # Build payload for N8N BEFORE updating (to avoid lazy loading issues)
-        payload = self._build_correction_payload(entrega, rubrica, api_key)
+        # Build payload for N8N and call appropriate webhook before updating state
+        # (to avoid lazy loading issues after the state update)
+        if entrega.archivo_tipo == "pdf":
+            payload = self._build_pdf_correction_payload(entrega, rubrica, api_key)
+        else:
+            payload = self._build_correction_payload(entrega, rubrica, api_key)
 
         # Update entrega state to PENDIENTE
         entrega.estado = EstadoEntregaEnum.PENDIENTE
         await self.entrega_repo.update(entrega)
 
-        # Call N8N with retry logic
+        # Call the appropriate N8N workflow with retry logic
         try:
-            result = await self._call_n8n_with_retry(payload)
+            if entrega.archivo_tipo == "pdf":
+                result = await self._call_n8n_pdf_with_retry(payload)
+            else:
+                result = await self._call_n8n_with_retry(payload)
         except N8NTimeoutError:
             # Mark as ERROR
             entrega.estado = EstadoEntregaEnum.ERROR
@@ -408,10 +422,12 @@ class CorreccionService:
         api_key: str,
     ) -> dict[str, Any]:
         """
-        Build payload for N8N correction webhook.
+        Build payload for N8N text correction webhook (/webhook/corregir).
+
+        Used for code submissions (zip, txt, individual code files).
 
         Args:
-            entrega: Entrega object.
+            entrega: Entrega object with contenido_consolidado or contenido_preview.
             rubrica: Rubrica object.
             api_key: Decrypted Gemini API key.
 
@@ -423,6 +439,46 @@ class CorreccionService:
 
         return {
             "codigo": codigo,
+            "rubrica": {
+                "titulo": rubrica.titulo,
+                "descripcion": rubrica.descripcion or "",
+                "tipo": rubrica.tipo.value,
+                "puntaje_maximo": rubrica.puntaje_maximo,
+                "metadata": rubrica.metadata_json or {},
+                "criterios": rubrica.criterios_json or [],
+                "penalizaciones": rubrica.penalizaciones_json or [],
+                "condiciones_desaprobacion": rubrica.condiciones_desaprobacion_json or [],
+            },
+            "api_key": api_key,
+            "contexto": {
+                "materia": entrega.comision.materia.nombre,
+                "alumno": entrega.alumno_nombre,
+            },
+        }
+
+    def _build_pdf_correction_payload(
+        self,
+        entrega: Any,
+        rubrica: Any,
+        api_key: str,
+    ) -> dict[str, Any]:
+        """
+        Build payload for N8N PDF correction webhook (/webhook/corregir-pdf).
+
+        Used for PDF submissions (e.g., handwritten exercises). Sends the raw
+        PDF in Base64 instead of text, so N8N can pass it directly to Gemini's
+        vision API.
+
+        Args:
+            entrega: Entrega object with pdf_contenido_b64 populated.
+            rubrica: Rubrica object.
+            api_key: Decrypted Gemini API key.
+
+        Returns:
+            Payload dictionary for N8N PDF correction webhook.
+        """
+        return {
+            "pdf_base64": entrega.pdf_contenido_b64,
             "rubrica": {
                 "titulo": rubrica.titulo,
                 "descripcion": rubrica.descripcion or "",
@@ -478,6 +534,45 @@ class CorreccionService:
 
         # Should not reach here
         raise N8NError("Error inesperado en reintentos")
+
+    async def _call_n8n_pdf_with_retry(
+        self,
+        payload: dict[str, Any],
+        max_retries: int = 1,
+    ) -> dict[str, Any]:
+        """
+        Call N8N PDF correction webhook with retry logic.
+
+        Args:
+            payload: Payload with pdf_base64 and rubrica to send.
+            max_retries: Maximum number of retries (default: 1).
+
+        Returns:
+            N8N response with correction data.
+
+        Raises:
+            N8NTimeoutError: If timeout occurs after retries.
+            N8NError: If other error occurs after retries.
+        """
+        for attempt in range(max_retries + 1):
+            try:
+                result = await self.n8n_client.trigger_correction_pdf(payload)
+                return result
+
+            except N8NTimeoutError:
+                if attempt < max_retries:
+                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    continue
+                raise
+
+            except N8NError:
+                if attempt < max_retries:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                raise
+
+        # Should not reach here
+        raise N8NError("Error inesperado en reintentos (PDF)")
 
     def _parse_gemini_response(self, response: dict[str, Any]) -> GeminiResponse:
         """

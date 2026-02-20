@@ -68,6 +68,10 @@ class Entrega(Base, TimestampMixin):
         ARRAY(String),
         nullable=True,
     )  # List of files included in consolidation
+    pdf_contenido_b64: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )  # PDF content encoded in Base64 (only for archivo_tipo='pdf')
     estado: Mapped[EstadoEntregaEnum] = mapped_column(
         SQLEnum(EstadoEntregaEnum, name="estadoentregaenum", create_type=True),
         default=EstadoEntregaEnum.SUBIDA,

@@ -60,7 +60,6 @@ BINARY_EXTENSIONS = {
     ".mp4",
     ".avi",
     ".mov",
-    ".pdf",
     ".doc",
     ".docx",
     ".bin",

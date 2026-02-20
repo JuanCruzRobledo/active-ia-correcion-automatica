@@ -244,21 +244,34 @@ class CargaMasivaResponse(BaseModel):
 
 
 class ContenidoEntrega(BaseModel):
-    """Schema for consolidated content of an Entrega."""
+    """Schema for consolidated content of an Entrega.
+
+    For code submissions (zip, txt, individual): contenido_consolidado is populated.
+    For PDF submissions: pdf_contenido_b64 is populated and contenido_consolidado is None.
+    """
 
     entrega_id: int
     alumno_nombre: str
-    contenido_consolidado: str = Field(
-        description="Código consolidado de todos los archivos",
+    es_pdf: bool = Field(
+        default=False,
+        description="Indica si la entrega es un PDF (sin consolidación de texto)",
+    )
+    contenido_consolidado: str | None = Field(
+        default=None,
+        description="Código consolidado de todos los archivos (None para entregas PDF)",
+    )
+    pdf_contenido_b64: str | None = Field(
+        default=None,
+        description="Contenido del PDF en Base64 (solo para entregas PDF)",
     )
     archivos_incluidos: list[str] = Field(
         description="Lista de nombres de archivos incluidos en la consolidación",
     )
     total_lineas: int = Field(
-        description="Total de líneas de código consolidado",
+        description="Total de líneas de código consolidado (0 para entregas PDF)",
     )
     total_caracteres: int = Field(
-        description="Total de caracteres del contenido consolidado",
+        description="Total de caracteres del contenido consolidado (0 para entregas PDF)",
     )
 
 

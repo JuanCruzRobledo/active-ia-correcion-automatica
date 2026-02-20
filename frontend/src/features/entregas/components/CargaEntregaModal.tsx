@@ -20,7 +20,7 @@ import { Input } from '@/shared/components/ui/Input';
 import { Radio } from '@/shared/components/ui/Radio';
 import { Checkbox } from '@/shared/components/ui/Checkbox';
 import { Alert } from '@/shared/components/ui/Alert';
-import { FileUp, Upload, PackageOpen, CheckCircle, AlertCircle, X } from 'lucide-react';
+import { FileUp, Upload, PackageOpen, CheckCircle, AlertCircle, X, FileText } from 'lucide-react';
 import { cn } from '@/shared/utils/cn';
 import type { ModoConsolidacion, CargaMasivaResponse } from '../types';
 
@@ -51,25 +51,25 @@ const CARGA_MODES: {
   activeText: string;
   activeBg: string;
 }[] = [
-  {
-    id: 'individual',
-    icon: FileUp,
-    label: 'Entrega Individual',
-    description: 'Un archivo por alumno',
-    activeBorder: 'border-accent',
-    activeText: 'text-accent',
-    activeBg: 'bg-accent/10',
-  },
-  {
-    id: 'masivo',
-    icon: PackageOpen,
-    label: 'Subir Lote',
-    description: 'ZIP con múltiples entregas',
-    activeBorder: 'border-success',
-    activeText: 'text-success',
-    activeBg: 'bg-success/10',
-  },
-];
+    {
+      id: 'individual',
+      icon: FileUp,
+      label: 'Entrega Individual',
+      description: 'Un archivo por alumno',
+      activeBorder: 'border-accent',
+      activeText: 'text-accent',
+      activeBg: 'bg-accent/10',
+    },
+    {
+      id: 'masivo',
+      icon: PackageOpen,
+      label: 'Subir Lote',
+      description: 'ZIP con múltiples entregas',
+      activeBorder: 'border-success',
+      activeText: 'text-success',
+      activeBg: 'bg-success/10',
+    },
+  ];
 
 // Schema for individual upload
 const individualSchema = z.object({
@@ -254,7 +254,12 @@ function CargaEntregaForm({
   const modoConsolidacion = watch('modo_consolidacion');
   const isAlreadyConsolidated = mode === 'individual' && selectedFile?.name.toLowerCase().endsWith('.txt');
   const isZipFile = selectedFile?.name.toLowerCase().endsWith('.zip');
-  const shouldShowModoProcessing = mode === 'masivo' || (mode === 'individual' && isZipFile);
+  const isPdfFile = mode === 'individual' && (selectedFile?.name.toLowerCase().endsWith('.pdf') ?? false);
+  // Show processing mode selector only when the file will actually be consolidated
+  const shouldShowModoProcessing =
+    mode === 'masivo' ||
+    (mode === 'individual' && isZipFile) ||
+    (mode === 'individual' && !isPdfFile && !isAlreadyConsolidated && !!selectedFile);
 
   const handleFileChange = (file: File | null) => {
     setSelectedFile(file);
@@ -400,7 +405,7 @@ function CargaEntregaForm({
               </p>
               <p className="text-xs text-gray-500">
                 {mode === 'individual'
-                  ? 'Cualquier formato: .zip, .txt, .py, .java, etc. (máx 100MB)'
+                  ? 'Cualquier formato: .zip, .txt, .py, .java, .pdf, etc. (máx 100MB)'
                   : 'Formato: .zip (máx 100MB)'}
               </p>
             </div>
@@ -414,7 +419,7 @@ function CargaEntregaForm({
         )}
       </div>
 
-      {/* Consolidation mode */}
+      {/* Consolidation mode or PDF notice */}
       {isAlreadyConsolidated ? (
         <div className="flex items-start gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
           <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
@@ -422,6 +427,16 @@ function CargaEntregaForm({
             <p className="text-sm font-medium text-green-800">Archivo ya procesado</p>
             <p className="text-xs text-green-600 mt-0.5">
               Este archivo TXT ya contiene el código procesado. No se requiere seleccionar modo de procesamiento.
+            </p>
+          </div>
+        </div>
+      ) : isPdfFile ? (
+        <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <FileText className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-blue-800">Entrega en formato PDF</p>
+            <p className="text-xs text-blue-600 mt-0.5">
+              Este PDF se enviará directamente al flujo de corrección especializado. No se requiere modo de procesamiento.
             </p>
           </div>
         </div>
