@@ -282,15 +282,24 @@ async def procesar_lote_background(
                 exitosas += 1
                 logger.info(f"[BG] Entrega {entrega_id} corregida exitosamente")
 
-                # Rate limiting: 2 seconds between corrections to avoid
-                # overwhelming N8N / Gemini API
-                await asyncio.sleep(2)
+                # Rate limiting: 7 seconds between corrections to stay within
+                # Gemini API limits (10 RPM = 1 req every 6s, with 1s margin).
+                # With free tier (10 RPM), this processes ~8 entregas/min.
+                # With paid tier (150+ RPM), this is the safe steady-state rate.
+                await asyncio.sleep(7)
 
             except HTTPException as e:
                 fallidas += 1
                 logger.warning(
                     f"[BG] Error corrigiendo entrega {entrega_id}: {e.detail}"
                 )
+                # If rate-limited (429), wait 60s before the next attempt
+                # to allow the API quota window to reset.
+                if e.status_code == 429:
+                    logger.warning(
+                        "[BG] Rate limit (429) detectado. Esperando 60s antes de continuar..."
+                    )
+                    await asyncio.sleep(60)
                 continue
             except Exception as e:
                 fallidas += 1
