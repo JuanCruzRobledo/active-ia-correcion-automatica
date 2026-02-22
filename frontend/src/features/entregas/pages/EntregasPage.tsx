@@ -9,7 +9,7 @@
  * Ref: docs/specs/07-DISENO-UI-UX.md section 4.2
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useEntregas, useDeleteEntrega, useCorregirEntregaMasiva, useCorregirEntrega } from '../hooks';
@@ -66,6 +66,9 @@ export const EntregasPage = () => {
   );
 
   const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
+  // inputSearch: estado local inmediato para el input (sin recargar URL en cada tecla)
+  const [inputSearch, setInputSearch] = useState(searchParams.get('search') || '');
+  const isFirstRender = useRef(true);
   const [estadoFilter, setEstadoFilter] = useState<EstadoEntrega | 'TODOS'>(
     (searchParams.get('estado') as EstadoEntrega) || 'TODOS'
   );
@@ -139,19 +142,27 @@ export const EntregasPage = () => {
   // Correction data for modal
   const { data: correctionData } = useCorreccionByEntrega(modalEntregaId || 0);
 
-  const handleSearchChange = (value: string) => {
-    setSelectedIds([]);
-    setSearchTerm(value);
-    setSearchParams((prev) => {
-      if (value) {
-        prev.set('search', value);
-      } else {
-        prev.delete('search');
-      }
-      prev.set('page', '1');
-      return prev;
-    });
-  };
+  // Debounce: actualiza URL params 400ms después de que el usuario deja de escribir
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      setSelectedIds([]);
+      setSearchTerm(inputSearch);
+      setSearchParams((prev) => {
+        if (inputSearch) {
+          prev.set('search', inputSearch);
+        } else {
+          prev.delete('search');
+        }
+        prev.set('page', '1');
+        return prev;
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [inputSearch]);
 
   const handleEstadoChange = (value: string) => {
     setSelectedIds([]);
@@ -497,8 +508,8 @@ export const EntregasPage = () => {
               <Input
                 type="text"
                 placeholder="Buscar por nombre de alumno..."
-                value={searchTerm}
-                onChange={(e) => handleSearchChange(e.target.value)}
+                value={inputSearch}
+                onChange={(e) => setInputSearch(e.target.value)}
                 startIcon={<Search className="w-4 h-4" />}
               />
             </div>
