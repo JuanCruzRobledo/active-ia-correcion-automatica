@@ -35,7 +35,7 @@ const navItems: NavItem[] = [
     label: 'Rúbricas',
     roles: ['ADMIN', 'COORDINADOR'],
   },
-  { to: '/entregas', icon: CheckSquare, label: 'Entregas', roles: ['TUTOR'] },
+  { to: '/entregas', icon: CheckSquare, label: 'Entregas', roles: ['TUTOR', 'ADMIN', 'COORDINADOR'] },
 ];
 
 export const Sidebar = () => {
@@ -54,9 +54,9 @@ export const Sidebar = () => {
     <aside className="hidden lg:flex lg:w-64 lg:flex-col bg-sidebar border-r border-sidebar-border">
       {/* Logo */}
       <div className="flex items-center gap-2 border-b border-sidebar-border p-6">
-        <img 
-          src="/active-ia-logo.svg" 
-          alt="Active-IA Logo" 
+        <img
+          src="/active-ia-logo.svg"
+          alt="Active-IA Logo"
           className="h-10 w-10"
         />
         <span className="text-lg font-semibold text-sidebar-foreground">
