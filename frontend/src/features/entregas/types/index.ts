@@ -70,6 +70,14 @@ export interface CorregirLoteResponse {
   }[];
 }
 
+/** Response from the async batch correction endpoint (202 Accepted). */
+export interface CorregirLoteAceptadoResponse {
+  mensaje: string;
+  total_encoladas: number;
+  entrega_ids: number[];
+}
+
+
 export interface Entrega {
   id: number;
   comision_id: number;

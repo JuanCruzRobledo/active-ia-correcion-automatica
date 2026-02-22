@@ -181,3 +181,15 @@ class CorregirLoteResponse(BaseModel):
     fallidas: int = Field(..., description="Failed corrections")
     correcciones: list[CorreccionResponse] = Field(default_factory=list, description="Successful corrections")
     errores: list[dict] = Field(default_factory=list, description="Error details for failed corrections")
+
+
+class CorregirLoteAceptadoResponse(BaseModel):
+    """Immediate response schema for async batch correction endpoint.
+
+    The endpoint returns this right away (202 Accepted) while corrections
+    are processed in the background, avoiding HTTP timeouts on large batches.
+    """
+
+    mensaje: str = Field(..., description="Status message for the user")
+    total_encoladas: int = Field(..., description="Number of submissions queued for correction")
+    entrega_ids: list[int] = Field(..., description="IDs of the queued submissions")

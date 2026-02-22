@@ -9,7 +9,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 8
 Ref: skills/correccion-ia/SKILL.md
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
@@ -18,10 +18,11 @@ from app.models.usuario import Usuario
 from app.schemas.correccion import (
     CorreccionResponse,
     CorreccionUpdate,
+    CorregirLoteAceptadoResponse,
     CorregirLoteRequest,
     CorregirLoteResponse,
 )
-from app.services.correccion_service import CorreccionService
+from app.services.correccion_service import CorreccionService, procesar_lote_background
 
 router = APIRouter(
     prefix="/correcciones",
@@ -117,28 +118,26 @@ async def recorregir_entrega(
 
 @router.post(
     "/lote",
-    response_model=CorregirLoteResponse,
+    response_model=CorregirLoteAceptadoResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def corregir_lote(
     data: CorregirLoteRequest,
+    background_tasks: BackgroundTasks,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> CorregirLoteResponse:
+) -> CorregirLoteAceptadoResponse:
     """
-    Correct multiple entregas in batch.
+    Enqueue AI correction for multiple entregas (async batch).
 
-    **Process:**
-    - Processes each entrega sequentially
-    - Continues on individual errors (doesn't stop batch)
-    - Rate limiting: 2 seconds between corrections
+    **Behavior:**
+    - Validates the request and returns **immediately** with 202 Accepted
+    - Corrections are processed in the background (no HTTP timeout)
+    - Each entrega state updates in real-time as it is corrected
+    - Frontend should poll or refresh the entrega list to see progress
 
     **Limits:**
     - Maximum 50 entregas per batch (validated in schema)
-
-    **Response:**
-    - Summary: total, exitosas, fallidas
-    - List of successful corrections
-    - List of errors with entrega_id and error message
 
     **Authorization:** Tutor or Admin with API Key configured
     """
@@ -151,10 +150,20 @@ async def corregir_lote(
         )
 
     service = CorreccionService(db)
-    return await service.corregir_lote(
-        data=data,
+    entrega_ids = await service.encolar_lote(data)
+
+    # Schedule background processing — runs after response is sent
+    background_tasks.add_task(
+        procesar_lote_background,
+        entrega_ids=entrega_ids,
         api_key_encrypted=current_user.gemini_api_key_encrypted,
         corregido_por_id=current_user.id,
+    )
+
+    return CorregirLoteAceptadoResponse(
+        mensaje=f"Corrección iniciada para {len(entrega_ids)} entregas. Los estados se actualizarán automáticamente.",
+        total_encoladas=len(entrega_ids),
+        entrega_ids=entrega_ids,
     )
 
 

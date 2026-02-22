@@ -20,7 +20,7 @@ import type {
   EntregaContenido,
   EntregasFilters,
   Correccion,
-  CorregirLoteResponse,
+  CorregirLoteAceptadoResponse,
 } from '../types';
 
 /**
@@ -211,7 +211,7 @@ export const useCorregirEntrega = () => {
 export const useCorregirEntregaMasiva = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<CorregirLoteResponse, Error, number[]>({
+  return useMutation<CorregirLoteAceptadoResponse, Error, number[]>({
     mutationFn: entregasService.corregirLote,
     onSuccess: () => {
       // Invalidate all lists

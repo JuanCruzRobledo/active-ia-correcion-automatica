@@ -9,10 +9,11 @@
  * Ref: docs/specs/07-DISENO-UI-UX.md section 4.2
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useEntregas, useDeleteEntrega, useCorregirEntregaMasiva, useCorregirEntrega } from '../hooks';
+import { useQueryClient } from '@tanstack/react-query';
 import { useComisiones } from '@/features/comisiones/hooks';
 import { useRubricas } from '@/features/rubricas/hooks';
 import { useCorreccionByEntrega, useRecorregirEntrega } from '@/features/correcciones/hooks/useCorrecciones';
@@ -84,6 +85,7 @@ export const EntregasPage = () => {
   const [downloadingPDFId, setDownloadingPDFId] = useState<number | null>(null);
   const [isBulkAction, setIsBulkAction] = useState(false);
 
+
   const page = parseInt(searchParams.get('page') || '1', 10);
   const perPage = 20;
 
@@ -116,6 +118,23 @@ export const EntregasPage = () => {
   const corregirMutation = useCorregirEntrega();
   const corregirMasivaMutation = useCorregirEntregaMasiva();
   const recorregirMutation = useRecorregirEntrega();
+  const queryClient = useQueryClient();
+
+  // Auto-refresh: poll every 10s while any entrega is in PENDIENTE state
+  // (i.e., background corrections are still running on the server)
+  const hasPendingCorrections = (data?.items ?? []).some(
+    (e) => e.estado === 'PENDIENTE'
+  );
+
+  useEffect(() => {
+    if (!hasPendingCorrections) return;
+
+    const intervalId = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ['entregas', 'list'] });
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [hasPendingCorrections, queryClient]);
 
   // Correction data for modal
   const { data: correctionData } = useCorreccionByEntrega(modalEntregaId || 0);
@@ -201,21 +220,20 @@ export const EntregasPage = () => {
     const ids = itemsToCorrect.map(i => i.id);
 
     if (confirm(`¿Confirma corregir ${ids.length} entregas seleccionadas?`)) {
-      toast.loading(`Iniciando corrección de ${ids.length} ${ids.length === 1 ? 'entrega' : 'entregas'}...`, {
-        duration: 3000,
-      });
-
       try {
-        await corregirMasivaMutation.mutateAsync(ids);
+        const result = await corregirMasivaMutation.mutateAsync(ids);
         setSelectedIds([]);
         toast.success(
-          `Corrección completada: ${ids.length} ${ids.length === 1 ? 'entrega procesada' : 'entregas procesadas'} exitosamente`
+          `✅ ${result.total_encoladas} ${result.total_encoladas === 1 ? 'corrección iniciada' : 'correcciones iniciadas'}. ` +
+          `Los estados se actualizarán automáticamente en segundo plano.`,
+          { duration: 6000 }
         );
       } catch (error) {
-        toast.error(`Error al corregir entregas: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+        toast.error(`Error al iniciar correcciones: ${error instanceof Error ? error.message : 'Error desconocido'}`);
       }
     }
   };
+
 
   const handleRecorregir = async (entregaId: number) => {
     if (

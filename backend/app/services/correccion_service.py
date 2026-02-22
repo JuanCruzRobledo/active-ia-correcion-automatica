@@ -11,11 +11,17 @@ Ref: skills/correccion-ia/SKILL.md
 """
 
 import asyncio
+import logging
 from decimal import Decimal
 from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.base import async_session_maker
+
+logger = logging.getLogger(__name__)
+
 
 from app.core.exceptions import (
     N8NError,
@@ -226,54 +232,76 @@ class CorreccionService:
         # Return response
         return await self._build_correccion_response(created_correccion)
 
-    async def corregir_lote(
+    async def encolar_lote(
         self,
         data: CorregirLoteRequest,
-        api_key_encrypted: str,
-        corregido_por_id: int,
-    ) -> CorregirLoteResponse:
+    ) -> list[int]:
         """
-        Correct multiple entregas in batch.
+        Validate and return IDs for background processing.
 
         Args:
             data: Batch correction request data.
-            api_key_encrypted: Encrypted Gemini API key.
-            corregido_por_id: ID of user performing corrections.
 
         Returns:
-            CorregirLoteResponse with results.
+            List of entrega IDs to be processed asynchronously.
         """
-        exitosas = []
-        fallidas = []
+        return list(data.entrega_ids)
 
-        for entrega_id in data.entrega_ids:
+
+async def procesar_lote_background(
+    entrega_ids: list[int],
+    api_key_encrypted: str,
+    corregido_por_id: int,
+) -> None:
+    """
+    Standalone background task to correct multiple entregas sequentially.
+
+    This function runs AFTER the HTTP response has been sent to the client,
+    so it must create its own database session instead of using the
+    request-scoped session (which is already closed by the time this runs).
+
+    Args:
+        entrega_ids: List of entrega IDs to correct.
+        api_key_encrypted: Encrypted Gemini API key.
+        corregido_por_id: ID of user performing corrections.
+    """
+    logger.info(f"[BG] Iniciando corrección masiva de {len(entrega_ids)} entregas")
+
+    async with async_session_maker() as db:
+        service = CorreccionService(db)
+        exitosas = 0
+        fallidas = 0
+
+        for entrega_id in entrega_ids:
             try:
-                correccion = await self.corregir_individual(
+                await service.corregir_individual(
                     entrega_id=entrega_id,
                     api_key_encrypted=api_key_encrypted,
                     corregido_por_id=corregido_por_id,
                 )
-                exitosas.append(correccion)
+                exitosas += 1
+                logger.info(f"[BG] Entrega {entrega_id} corregida exitosamente")
 
-                # Rate limiting: 2 seconds between corrections
+                # Rate limiting: 2 seconds between corrections to avoid
+                # overwhelming N8N / Gemini API
                 await asyncio.sleep(2)
 
             except HTTPException as e:
-                fallidas.append(
-                    {
-                        "entrega_id": entrega_id,
-                        "error": e.detail,
-                    }
+                fallidas += 1
+                logger.warning(
+                    f"[BG] Error corrigiendo entrega {entrega_id}: {e.detail}"
+                )
+                continue
+            except Exception as e:
+                fallidas += 1
+                logger.error(
+                    f"[BG] Error inesperado corrigiendo entrega {entrega_id}: {e}"
                 )
                 continue
 
-        return CorregirLoteResponse(
-            total=len(data.entrega_ids),
-            exitosas=len(exitosas),
-            fallidas=len(fallidas),
-            correcciones=exitosas,
-            errores=fallidas,
-        )
+    logger.info(
+        f"[BG] Corrección masiva finalizada: {exitosas} exitosas, {fallidas} fallidas"
+    )
 
     async def recorregir(
         self,
