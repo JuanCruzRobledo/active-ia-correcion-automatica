@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Pencil, Trash2, RotateCcw } from 'lucide-react';
 import {
   useMaterias,
@@ -30,12 +30,26 @@ interface MateriaPageFilters {
 }
 
 export const MateriasPage = () => {
+  const [inputSearch, setInputSearch] = useState('');
   const [filters, setFilters] = useState<MateriaPageFilters>({
     activa: 'TODOS',
     search: '',
     page: 1,
     per_page: 20,
   });
+  const isFirstRender = useRef(true);
+
+  // Debounce: actualiza el filtro 400ms después de que el usuario deja de escribir
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      setFilters((prev) => ({ ...prev, search: inputSearch, page: 1 }));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [inputSearch]);
 
   // Modal state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -155,16 +169,16 @@ export const MateriasPage = () => {
             },
             materia.activa
               ? {
-                  label: 'Eliminar',
-                  onClick: () => handleDelete(materia.id),
-                  icon: <Trash2 className="w-4 h-4" />,
-                  variant: 'danger' as const,
-                }
+                label: 'Eliminar',
+                onClick: () => handleDelete(materia.id),
+                icon: <Trash2 className="w-4 h-4" />,
+                variant: 'danger' as const,
+              }
               : {
-                  label: 'Restaurar',
-                  onClick: () => handleRestore(materia.id),
-                  icon: <RotateCcw className="w-4 h-4" />,
-                },
+                label: 'Restaurar',
+                onClick: () => handleRestore(materia.id),
+                icon: <RotateCcw className="w-4 h-4" />,
+              },
           ]}
         />
       ),
@@ -172,9 +186,6 @@ export const MateriasPage = () => {
   ];
 
   // Handle filter changes
-  const handleSearchChange = (value: string) => {
-    setFilters((prev) => ({ ...prev, search: value, page: 1 }));
-  };
 
   const handleEstadoChange = (value: string) => {
     setFilters((prev) => ({
@@ -227,8 +238,8 @@ export const MateriasPage = () => {
           <Input
             label="Buscar"
             placeholder="Buscar por código o nombre..."
-            value={filters.search}
-            onChange={(e) => handleSearchChange(e.target.value)}
+            value={inputSearch}
+            onChange={(e) => setInputSearch(e.target.value)}
           />
           <Select
             label="Estado"
@@ -260,17 +271,18 @@ export const MateriasPage = () => {
             title="No hay materias"
             description="No se encontraron materias con los filtros aplicados"
             action={
-              filters.search || filters.activa !== 'TODOS' ? (
+              filters.search || inputSearch || filters.activa !== 'TODOS' ? (
                 <Button
                   variant="secondary"
-                  onClick={() =>
+                  onClick={() => {
+                    setInputSearch('');
                     setFilters({
                       activa: 'TODOS',
                       search: '',
                       page: 1,
                       per_page: 20,
-                    })
-                  }
+                    });
+                  }}
                 >
                   Limpiar filtros
                 </Button>

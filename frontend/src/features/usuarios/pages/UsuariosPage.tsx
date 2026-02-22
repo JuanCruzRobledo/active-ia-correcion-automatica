@@ -7,7 +7,7 @@
  * Ref: docs/specs/07-DISENO-UI-UX.md
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Pencil, Key, Trash2, RotateCcw } from 'lucide-react';
 import { useUsuarios, useDeleteUsuario, useRestoreUsuario } from '../hooks';
 import { UsuarioForm, ResetPasswordModal } from '../components';
@@ -28,6 +28,7 @@ import {
 import { formatDate } from '@/shared/utils';
 
 export const UsuariosPage = () => {
+  const [inputSearch, setInputSearch] = useState('');
   const [filters, setFilters] = useState<UsuariosFilters>({
     rol: 'TODOS',
     activo: 'TODOS',
@@ -35,6 +36,19 @@ export const UsuariosPage = () => {
     page: 1,
     per_page: 20,
   });
+  const isFirstRender = useRef(true);
+
+  // Debounce: actualiza el filtro 400ms después de que el usuario deja de escribir
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      setFilters((prev) => ({ ...prev, search: inputSearch, page: 1 }));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [inputSearch]);
 
   // Modal state
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -193,9 +207,7 @@ export const UsuariosPage = () => {
   ];
 
   // Handle filter changes
-  const handleSearchChange = (value: string) => {
-    setFilters((prev) => ({ ...prev, search: value, page: 1 }));
-  };
+
 
   const handleRolChange = (value: string) => {
     setFilters((prev) => ({
@@ -256,8 +268,8 @@ export const UsuariosPage = () => {
           <Input
             label="Buscar"
             placeholder="Buscar por nombre o username..."
-            value={filters.search}
-            onChange={(e) => handleSearchChange(e.target.value)}
+            value={inputSearch}
+            onChange={(e) => setInputSearch(e.target.value)}
           />
           <Select
             label="Rol"
@@ -299,18 +311,19 @@ export const UsuariosPage = () => {
             title="No hay usuarios"
             description="No se encontraron usuarios con los filtros aplicados"
             action={
-              filters.search || filters.rol !== 'TODOS' || filters.activo !== 'TODOS' ? (
+              inputSearch || filters.rol !== 'TODOS' || filters.activo !== 'TODOS' ? (
                 <Button
                   variant="secondary"
-                  onClick={() =>
+                  onClick={() => {
+                    setInputSearch('');
                     setFilters({
                       rol: 'TODOS',
                       activo: 'TODOS',
                       search: '',
                       page: 1,
                       per_page: 20,
-                    })
-                  }
+                    });
+                  }}
                 >
                   Limpiar filtros
                 </Button>
