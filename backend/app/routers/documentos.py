@@ -8,7 +8,10 @@ Endpoints require authentication and tutor/admin authorization.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 10
 """
 
-from fastapi import APIRouter, Depends, Response, status
+import re
+import unicodedata
+
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +27,20 @@ router = APIRouter(
 )
 
 
+def _ascii_filename(filename: str) -> str:
+    """
+    Convert a filename to latin-1-safe string for use in HTTP headers.
+
+    1. NFKD normalization decomposes accented chars (e.g. á -> a + combining)
+    2. Strip combining characters (the accent marks)
+    3. Encode to latin-1 ignoring anything that still can't be represented
+       (e.g. en-dash –, em-dash —, smart quotes, etc.)
+    """
+    normalized = unicodedata.normalize("NFKD", filename)
+    stripped = "".join(c for c in normalized if not unicodedata.combining(c))
+    return stripped.encode("latin-1", errors="ignore").decode("latin-1")
+
+
 @router.get(
     "/correcciones/{correccion_id}/pdf",
     response_class=StreamingResponse,
@@ -36,20 +53,7 @@ async def descargar_pdf_correccion(
     """
     Download PDF feedback document for a correction.
 
-    **Process:**
-    1. Validates correction exists
-    2. Generates professional PDF with:
-       - Student and assignment info
-       - Grade with color coding
-       - Detailed criteria evaluation
-       - Strengths and recommendations
-       - Evaluator comments
-
-    **Returns:**
-    - PDF file as download
-    - Filename: `{alumno}_devolucion_{fecha}.pdf`
-
-    **Authorization:** Tutor or Admin
+    **Authorization:** Any authenticated user
 
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-01
     """
@@ -67,17 +71,12 @@ async def descargar_pdf_correccion(
 
     if correccion:
         alumno_nombre = correccion.entrega.alumno_nombre
-        # Sanitize filename - only remove truly problematic characters, keep spaces
-        import re
-
         alumno_safe = re.sub(r'[<>:"/\\|?*]', "", alumno_nombre)
-        # Normalize multiple spaces to single space
         alumno_safe = re.sub(r"\s+", " ", alumno_safe).strip()
-        filename = f"{alumno_safe} - Devolucion.pdf"
+        filename = _ascii_filename(f"{alumno_safe} - Devolucion.pdf")
     else:
         filename = f"devolucion_{correccion_id}.pdf"
 
-    # Return as streaming response
     return StreamingResponse(
         iter([pdf_bytes]),
         media_type="application/pdf",
@@ -100,33 +99,21 @@ async def descargar_pdfs_lote(
     """
     Download ZIP file with PDFs for all corrected entregas.
 
-    **Process:**
-    1. Gets all corrected entregas for comision and rubrica
-    2. Generates PDF for each entrega
-    3. Packages all PDFs in a ZIP file
-
-    **Returns:**
-    - ZIP file as download
-    - Filename: `devoluciones_{materia}_{tp}_{fecha}.zip`
-    - Each PDF named: `{alumno}_devolucion.pdf`
-
-    **Validation:**
-    - At least one corrected entrega must exist
-
-    **Authorization:** Tutor or Admin
+    **Authorization:** Any authenticated user
 
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-02
     """
     require_any_authenticated(current_user)
 
-    # Generate ZIP with PDFs
     pdf_service = PDFService(db)
     zip_bytes, zip_filename = await pdf_service.generar_zip_pdfs(
         comision_id=comision_id,
         rubrica_id=rubrica_id,
     )
 
-    # Return as streaming response
+    # Sanitize filename for HTTP header (latin-1 safe)
+    zip_filename = _ascii_filename(zip_filename)
+
     return StreamingResponse(
         iter([zip_bytes]),
         media_type="application/zip",
@@ -149,41 +136,21 @@ async def exportar_notas_excel(
     """
     Export grades to Excel format.
 
-    **Process:**
-    1. Gets all entregas for comision and rubrica
-    2. Generates Excel file with formatted data
-    3. Includes both corrected and pending entregas
-
-    **Excel columns:**
-    - Alumno: Student name
-    - Nota: Grade (0-100) with color coding
-    - Estado: CORREGIDA, PENDIENTE, ERROR
-    - Fecha: Correction date
-    - Editado: Yes/No (if manually edited)
-
-    **Returns:**
-    - Excel file (.xlsx) as download
-    - Filename: `notas_{materia}_{tp}_{fecha}.xlsx`
-
-    **Features:**
-    - Color-coded grades (green ≥80, yellow ≥60, red <60)
-    - Formatted headers with freeze panes
-    - Summary statistics
-
-    **Authorization:** Tutor or Admin
+    **Authorization:** Any authenticated user
 
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-03
     """
     require_any_authenticated(current_user)
 
-    # Generate Excel
     excel_service = ExcelService(db)
     excel_bytes, excel_filename = await excel_service.exportar_notas_excel(
         comision_id=comision_id,
         rubrica_id=rubrica_id,
     )
 
-    # Return as streaming response
+    # Sanitize filename for HTTP header (latin-1 safe)
+    excel_filename = _ascii_filename(excel_filename)
+
     return StreamingResponse(
         iter([excel_bytes]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
