@@ -10,7 +10,7 @@
  */
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useCreateEntrega, useCreateEntregaMasiva } from '../hooks';
@@ -20,6 +20,7 @@ import { Input } from '@/shared/components/ui/Input';
 import { Radio } from '@/shared/components/ui/Radio';
 import { Checkbox } from '@/shared/components/ui/Checkbox';
 import { Alert } from '@/shared/components/ui/Alert';
+import { ExtensionTagInput } from '@/shared/components/ui/ExtensionTagInput';
 import { FileUp, Upload, PackageOpen, CheckCircle, AlertCircle, X, FileText } from 'lucide-react';
 import { cn } from '@/shared/utils/cn';
 import type { ModoConsolidacion, CargaMasivaResponse } from '../types';
@@ -214,6 +215,10 @@ function UploadResultView({
 // Isolated in its own component so that key={cargaMode} remounts it on mode
 // switch, giving useForm a fresh schema and clearing all local state.
 
+// ========== CARGA FORM ==========
+// Isolated in its own component so that key={cargaMode} remounts it on mode
+// switch, giving useForm a fresh schema and clearing all local state.
+
 function CargaEntregaForm({
   mode,
   comisionId,
@@ -229,6 +234,8 @@ function CargaEntregaForm({
 }) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  // Local state for custom extensions (separate from RHF because it's an array)
+  const [extensionesPersonalizadas, setExtensionesPersonalizadas] = useState<string[]>([]);
 
   const createMutation = useCreateEntrega();
   const createMasivaMutation = useCreateEntregaMasiva();
@@ -241,6 +248,7 @@ function CargaEntregaForm({
     formState: { errors },
     setValue,
     watch,
+    control,
   } = useForm({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -304,6 +312,12 @@ function CargaEntregaForm({
   };
 
   const onSubmit = async (data: IndividualFormData | MasivoFormData) => {
+    // Validate custom extensions when PERSONALIZADO is selected
+    if (data.modo_consolidacion === 'PERSONALIZADO' && extensionesPersonalizadas.length === 0) {
+      alert('Debes agregar al menos una extensión personalizada.');
+      return;
+    }
+
     try {
       if (mode === 'individual') {
         const individualData = data as IndividualFormData;
@@ -313,6 +327,10 @@ function CargaEntregaForm({
           alumno_nombre: individualData.alumno_nombre,
           archivo: individualData.archivo,
           modo_consolidacion: individualData.modo_consolidacion,
+          extensiones_personalizadas:
+            individualData.modo_consolidacion === 'PERSONALIZADO'
+              ? extensionesPersonalizadas
+              : undefined,
           sobrescribir: individualData.sobrescribir,
         });
         onClose();
@@ -323,6 +341,10 @@ function CargaEntregaForm({
           rubrica_id: rubricaId,
           archivo_zip: masivoData.archivo_zip,
           modo_consolidacion: masivoData.modo_consolidacion,
+          extensiones_personalizadas:
+            masivoData.modo_consolidacion === 'PERSONALIZADO'
+              ? extensionesPersonalizadas
+              : undefined,
           sobrescribir: masivoData.sobrescribir,
         });
         onResult(result);
@@ -445,18 +467,43 @@ function CargaEntregaForm({
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Modo de Procesamiento *
           </label>
-          <div className="space-y-2">
-            {MODO_OPTIONS.map((option) => (
-              <Radio
-                key={option.value}
-                label={option.label}
-                description={option.description}
-                value={option.value}
-                checked={modoConsolidacion === option.value}
-                {...register('modo_consolidacion')}
+          <Controller
+            name="modo_consolidacion"
+            control={control}
+            render={({ field }) => (
+              <div className="space-y-2">
+                {MODO_OPTIONS.map((option) => (
+                  <Radio
+                    key={option.value}
+                    id={`modo-${option.value}`}
+                    label={option.label}
+                    description={option.description}
+                    value={option.value}
+                    checked={field.value === option.value}
+                    onChange={() => field.onChange(option.value)}
+                  />
+                ))}
+              </div>
+            )}
+          />
+
+          {/* Custom extensions input — only shown when PERSONALIZADO is selected */}
+          {modoConsolidacion === 'PERSONALIZADO' && (
+            <div className="mt-3 p-3 bg-muted border border-border rounded-lg">
+              <label className="block text-sm font-medium text-foreground mb-1.5">
+                Extensiones permitidas *
+              </label>
+              <ExtensionTagInput
+                value={extensionesPersonalizadas}
+                onChange={setExtensionesPersonalizadas}
+                error={
+                  extensionesPersonalizadas.length === 0
+                    ? 'Agrega al menos una extensión para continuar'
+                    : undefined
+                }
               />
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       ) : null}
 

@@ -48,3 +48,5 @@ export { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './
 export { TagInput } from './TagInput';
 
 export { KeyValueInput } from './KeyValueInput';
+
+export { ExtensionTagInput } from './ExtensionTagInput';

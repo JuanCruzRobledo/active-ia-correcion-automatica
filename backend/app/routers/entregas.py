@@ -8,6 +8,7 @@ Endpoints require authentication and appropriate authorization.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
 """
 
+import json
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -74,6 +75,7 @@ async def crear_entrega(
     alumno_nombre: str = Form(..., description="Nombre del alumno"),
     sobrescribir: bool = Form(False, description="Sobrescribir entrega existente"),
     modo_consolidacion: str = Form("solo_codigo", description="Modo de procesamiento"),
+    extensiones_personalizadas: str | None = Form(None, description="JSON array de extensiones para modo personalizado"),
     archivo: UploadFile = File(..., description="Archivo ZIP o TXT"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -89,6 +91,7 @@ async def crear_entrega(
 
     **Optional:**
     - `sobrescribir`: If True, overwrites existing entrega (saves to history)
+    - `extensiones_personalizadas`: JSON array of extensions for 'personalizado' mode
 
     **Validation:**
     - Comision and Rubrica must exist and be active
@@ -98,6 +101,14 @@ async def crear_entrega(
     **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
     """
     require_any_authenticated(current_user)
+
+    # Parse custom extensions JSON if provided
+    ext_list: list[str] | None = None
+    if extensiones_personalizadas:
+        try:
+            ext_list = json.loads(extensiones_personalizadas)
+        except (json.JSONDecodeError, ValueError):
+            ext_list = None
 
     # Build EntregaCreate schema
     data = EntregaCreate(
@@ -113,6 +124,7 @@ async def crear_entrega(
         subido_por_id=current_user.id,
         sobrescribir=sobrescribir,
         modo_consolidacion=modo_consolidacion.lower(),
+        extensiones_personalizadas=ext_list,
     )
 
 
@@ -122,6 +134,7 @@ async def crear_entregas_masivas(
     rubrica_id: int = Form(..., description="ID de la rúbrica"),
     sobrescribir: bool = Form(False, description="Sobrescribir entregas existentes"),
     modo_consolidacion: str = Form("solo_codigo", description="Modo de procesamiento"),
+    extensiones_personalizadas: str | None = Form(None, description="JSON array de extensiones para modo personalizado"),
     archivo_zip: UploadFile = File(..., description="ZIP con carpetas de alumnos"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -165,6 +178,14 @@ async def crear_entregas_masivas(
     """
     require_any_authenticated(current_user)
 
+    # Parse custom extensions JSON if provided
+    ext_list_masiva: list[str] | None = None
+    if extensiones_personalizadas:
+        try:
+            ext_list_masiva = json.loads(extensiones_personalizadas)
+        except (json.JSONDecodeError, ValueError):
+            ext_list_masiva = None
+
     service = EntregaService(db)
     return await service.crear_entrega_masiva(
         comision_id=comision_id,
@@ -173,6 +194,7 @@ async def crear_entregas_masivas(
         subido_por_id=current_user.id,
         sobrescribir=sobrescribir,
         modo_consolidacion=modo_consolidacion.lower(),
+        extensiones_personalizadas=ext_list_masiva,
     )
 
 

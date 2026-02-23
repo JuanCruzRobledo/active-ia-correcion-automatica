@@ -62,6 +62,7 @@ class EntregaService:
         subido_por_id: int,
         sobrescribir: bool = False,
         modo_consolidacion: str = "solo_codigo",
+        extensiones_personalizadas: list[str] | None = None,
     ) -> EntregaResponse:
         """
         Create a new entrega from individual upload.
@@ -124,7 +125,8 @@ class EntregaService:
             pdf_contenido_b64: str | None = base64.b64encode(contenido_bytes).decode("utf-8")
         else:
             contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
-                contenido_bytes, archivo_tipo, modo_consolidacion, archivo.filename
+                contenido_bytes, archivo_tipo, modo_consolidacion, archivo.filename,
+                extensiones_personalizadas=extensiones_personalizadas,
             )
             contenido_preview = self.consolidacion_service.generar_preview(
                 contenido_consolidado, max_chars=500
@@ -405,6 +407,7 @@ class EntregaService:
         subido_por_id: int,
         sobrescribir: bool = False,
         modo_consolidacion: str = "solo_codigo",
+        extensiones_personalizadas: list[str] | None = None,
     ) -> CargaMasivaResponse:
         """
         Create multiple entregas from a ZIP file containing student folders.
@@ -565,7 +568,8 @@ class EntregaService:
                             ).decode("utf-8")
                         else:
                             contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
-                                contenido_bytes_alumno, archivo_tipo, modo_consolidacion, archivo_nombre
+                                contenido_bytes_alumno, archivo_tipo, modo_consolidacion, archivo_nombre,
+                                extensiones_personalizadas=extensiones_personalizadas,
                             )
                             contenido_preview = self.consolidacion_service.generar_preview(
                                 contenido_consolidado, max_chars=500
@@ -686,6 +690,7 @@ class EntregaService:
         archivo_tipo: str,
         modo: str = "solo_codigo",
         filename: str = "archivo",
+        extensiones_personalizadas: list[str] | None = None,
     ) -> tuple[str, list[str]]:
         """
         Consolidate file content.
@@ -695,6 +700,7 @@ class EntregaService:
             archivo_tipo: File type ('zip', 'txt', or 'individual').
             modo: Consolidation mode.
             filename: Original filename (for individual files).
+            extensiones_personalizadas: Custom extensions list when modo is 'personalizado'.
 
         Returns:
             Tuple of (consolidated_content, list_of_files).
@@ -705,13 +711,13 @@ class EntregaService:
 
         if archivo_tipo == "zip":
             return self.consolidacion_service.consolidar_zip(
-                file_obj, modo=modo
+                file_obj, modo=modo, extensiones_custom=extensiones_personalizadas
             )
         elif archivo_tipo == "txt":
             return self.consolidacion_service.consolidar_txt(file_obj)
         else:  # individual code file
             return self.consolidacion_service.consolidar_archivo_individual(
-                file_obj, filename, modo=modo
+                file_obj, filename, modo=modo, extensiones_custom=extensiones_personalizadas
             )
 
 
