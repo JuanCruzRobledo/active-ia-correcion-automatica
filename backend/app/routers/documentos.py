@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_tutor
+from app.core.permissions import require_any_authenticated
 from app.models.usuario import Usuario
 from app.services.excel_service import ExcelService
 from app.services.pdf_service import PDFService
@@ -53,7 +53,7 @@ async def descargar_pdf_correccion(
 
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-01
     """
-    require_tutor(current_user)
+    require_any_authenticated(current_user)
 
     # Generate PDF
     pdf_service = PDFService(db)
@@ -117,7 +117,7 @@ async def descargar_pdfs_lote(
 
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-02
     """
-    require_tutor(current_user)
+    require_any_authenticated(current_user)
 
     # Generate ZIP with PDFs
     pdf_service = PDFService(db)
@@ -174,7 +174,7 @@ async def exportar_notas_excel(
 
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-03
     """
-    require_tutor(current_user)
+    require_any_authenticated(current_user)
 
     # Generate Excel
     excel_service = ExcelService(db)

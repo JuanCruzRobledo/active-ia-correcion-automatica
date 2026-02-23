@@ -13,7 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_tutor
+from app.core.permissions import require_any_authenticated
 from app.models.usuario import Usuario
 from app.schemas.correccion import (
     CorreccionResponse,
@@ -59,7 +59,7 @@ async def corregir_entrega(
 
     **Authorization:** Tutor or Admin with API Key configured
     """
-    require_tutor(current_user)
+    require_any_authenticated(current_user)
 
     # Validate API Key is configured
     if not current_user.gemini_api_key_encrypted:
@@ -100,7 +100,7 @@ async def recorregir_entrega(
 
     **Authorization:** Tutor or Admin with API Key configured
     """
-    require_tutor(current_user)
+    require_any_authenticated(current_user)
 
     if not current_user.gemini_api_key_encrypted:
         raise HTTPException(
@@ -141,7 +141,7 @@ async def corregir_lote(
 
     **Authorization:** Tutor or Admin with API Key configured
     """
-    require_tutor(current_user)
+    require_any_authenticated(current_user)
 
     if not current_user.gemini_api_key_encrypted:
         raise HTTPException(
@@ -187,7 +187,7 @@ async def obtener_correccion(
 
     **Authorization:** Tutor or Admin
     """
-    require_tutor(current_user)
+    require_any_authenticated(current_user)
 
     service = CorreccionService(db)
     return await service.obtener_correccion(correccion_id)
@@ -215,7 +215,7 @@ async def obtener_correccion_por_entrega(
 
     **Authorization:** Tutor or Admin
     """
-    require_tutor(current_user)
+    require_any_authenticated(current_user)
 
     service = CorreccionService(db)
     return await service.obtener_por_entrega(entrega_id)
@@ -253,7 +253,7 @@ async def editar_correccion(
 
     **Authorization:** Tutor or Admin
     """
-    require_tutor(current_user)
+    require_any_authenticated(current_user)
 
     service = CorreccionService(db)
     return await service.editar_correccion(

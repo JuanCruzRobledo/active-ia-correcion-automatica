@@ -247,71 +247,6 @@ class CorreccionService:
         """
         return list(data.entrega_ids)
 
-
-async def procesar_lote_background(
-    entrega_ids: list[int],
-    api_key_encrypted: str,
-    corregido_por_id: int,
-) -> None:
-    """
-    Standalone background task to correct multiple entregas sequentially.
-
-    This function runs AFTER the HTTP response has been sent to the client,
-    so it must create its own database session instead of using the
-    request-scoped session (which is already closed by the time this runs).
-
-    Args:
-        entrega_ids: List of entrega IDs to correct.
-        api_key_encrypted: Encrypted Gemini API key.
-        corregido_por_id: ID of user performing corrections.
-    """
-    logger.info(f"[BG] Iniciando corrección masiva de {len(entrega_ids)} entregas")
-
-    async with async_session_maker() as db:
-        service = CorreccionService(db)
-        exitosas = 0
-        fallidas = 0
-
-        for entrega_id in entrega_ids:
-            try:
-                await service.corregir_individual(
-                    entrega_id=entrega_id,
-                    api_key_encrypted=api_key_encrypted,
-                    corregido_por_id=corregido_por_id,
-                )
-                exitosas += 1
-                logger.info(f"[BG] Entrega {entrega_id} corregida exitosamente")
-
-                # Rate limiting: 7 seconds between corrections to stay within
-                # Gemini API limits (10 RPM = 1 req every 6s, with 1s margin).
-                # With free tier (10 RPM), this processes ~8 entregas/min.
-                # With paid tier (150+ RPM), this is the safe steady-state rate.
-                await asyncio.sleep(7)
-
-            except HTTPException as e:
-                fallidas += 1
-                logger.warning(
-                    f"[BG] Error corrigiendo entrega {entrega_id}: {e.detail}"
-                )
-                # If rate-limited (429), wait 60s before the next attempt
-                # to allow the API quota window to reset.
-                if e.status_code == 429:
-                    logger.warning(
-                        "[BG] Rate limit (429) detectado. Esperando 60s antes de continuar..."
-                    )
-                    await asyncio.sleep(60)
-                continue
-            except Exception as e:
-                fallidas += 1
-                logger.error(
-                    f"[BG] Error inesperado corrigiendo entrega {entrega_id}: {e}"
-                )
-                continue
-
-    logger.info(
-        f"[BG] Corrección masiva finalizada: {exitosas} exitosas, {fallidas} fallidas"
-    )
-
     async def recorregir(
         self,
         entrega_id: int,
@@ -658,10 +593,74 @@ async def procesar_lote_background(
         Returns:
             CorreccionResponse.
         """
-        # Get entrega with relations if not loaded
-        if not hasattr(correccion, "entrega") or not correccion.entrega:
-            correccion = await self.correccion_repo.get_by_id_with_relations(
-                correccion.id
-            )
+        # Always reload with relations to avoid lazy loading issues in async context
+        correccion = await self.correccion_repo.get_by_id_with_relations(
+            correccion.id
+        )
 
         return CorreccionResponse.model_validate(correccion)
+
+
+async def procesar_lote_background(
+    entrega_ids: list[int],
+    api_key_encrypted: str,
+    corregido_por_id: int,
+) -> None:
+    """
+    Standalone background task to correct multiple entregas sequentially.
+
+    This function runs AFTER the HTTP response has been sent to the client,
+    so it must create its own database session instead of using the
+    request-scoped session (which is already closed by the time this runs).
+
+    Args:
+        entrega_ids: List of entrega IDs to correct.
+        api_key_encrypted: Encrypted Gemini API key.
+        corregido_por_id: ID of user performing corrections.
+    """
+    logger.info(f"[BG] Iniciando corrección masiva de {len(entrega_ids)} entregas")
+
+    async with async_session_maker() as db:
+        service = CorreccionService(db)
+        exitosas = 0
+        fallidas = 0
+
+        for entrega_id in entrega_ids:
+            try:
+                await service.corregir_individual(
+                    entrega_id=entrega_id,
+                    api_key_encrypted=api_key_encrypted,
+                    corregido_por_id=corregido_por_id,
+                )
+                exitosas += 1
+                logger.info(f"[BG] Entrega {entrega_id} corregida exitosamente")
+
+                # Rate limiting: 7 seconds between corrections to stay within
+                # Gemini API limits (10 RPM = 1 req every 6s, with 1s margin).
+                # With free tier (10 RPM), this processes ~8 entregas/min.
+                # With paid tier (150+ RPM), this is the safe steady-state rate.
+                await asyncio.sleep(7)
+
+            except HTTPException as e:
+                fallidas += 1
+                logger.warning(
+                    f"[BG] Error corrigiendo entrega {entrega_id}: {e.detail}"
+                )
+                # If rate-limited (429), wait 60s before the next attempt
+                # to allow the API quota window to reset.
+                if e.status_code == 429:
+                    logger.warning(
+                        "[BG] Rate limit (429) detectado. Esperando 60s antes de continuar..."
+                    )
+                    await asyncio.sleep(60)
+                continue
+            except Exception as e:
+                fallidas += 1
+                logger.error(
+                    f"[BG] Error inesperado corrigiendo entrega {entrega_id}: {e}"
+                )
+                continue
+
+    logger.info(
+        f"[BG] Corrección masiva finalizada: {exitosas} exitosas, {fallidas} fallidas"
+    )
