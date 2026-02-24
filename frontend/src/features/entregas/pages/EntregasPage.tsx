@@ -95,6 +95,8 @@ export const EntregasPage = () => {
   // Batch correction tracking — detect errors during background processing
   const [batchEntregaIds, setBatchEntregaIds] = useState<number[]>([]);
   const batchTotalCount = useRef(0);
+  const batchInitialStates = useRef<Record<number, string>>({});
+  const batchStartedProcessing = useRef(false);
   const batchErrorNotified = useRef(false);
 
 
@@ -151,26 +153,51 @@ export const EntregasPage = () => {
 
   // Detect batch errors: when batch entregas transition to ERROR while
   // others remain unprocessed, show a single notification.
-  // Uses batchTotalCount to detect incomplete batches even when unprocessed
-  // items are not visible on the current page/filter.
+  // Uses batchInitialStates to detect incomplete batches even when items
+  // were already ERROR before the batch started.
+  // Waits until the backend has confirmed started processing (at least one
+  // item changed state) before evaluating errors.
   useEffect(() => {
     if (batchEntregaIds.length === 0 || !data?.items || batchErrorNotified.current) return;
 
     const batchItems = data.items.filter(e => batchEntregaIds.includes(e.id));
     if (batchItems.length === 0) return;
 
-    const errorCount = batchItems.filter(e => e.estado === 'ERROR').length;
-    // Only count PENDIENTE (actively being corrected right now).
-    // SUBIDA items are waiting/unprocessed and should NOT block detection.
-    const activelyProcessing = batchItems.filter(
-      e => e.estado === 'PENDIENTE'
-    ).length;
-    const successCount = batchItems.filter(e => e.estado === 'CORREGIDA').length;
-    const processedCount = successCount + errorCount;
-    const totalExpected = batchTotalCount.current;
-    const unprocessedCount = totalExpected - processedCount;
+    // Check if the backend has started processing: at least one item changed
+    // state from its initial value or is actively being processed (PENDIENTE).
+    const activelyProcessing = batchItems.filter(e => e.estado === 'PENDIENTE').length;
+    const anyStateChanged = batchItems.some(e => {
+      const initial = batchInitialStates.current[e.id];
+      return initial !== undefined && e.estado !== initial;
+    });
 
-    // Errors appeared, not all items processed, and nothing actively running → batch was stopped
+    if (activelyProcessing > 0 || anyStateChanged) {
+      batchStartedProcessing.current = true;
+    }
+
+    // Don't evaluate errors until processing has actually started
+    if (!batchStartedProcessing.current) return;
+
+    const successCount = batchItems.filter(e => e.estado === 'CORREGIDA').length;
+    const errorCount = batchItems.filter(e => e.estado === 'ERROR').length;
+
+    // Count items we can confirm were actually processed by the batch:
+    // - CORREGIDA: clearly processed successfully
+    // - ERROR but initial state was NOT ERROR: processed and failed (new error)
+    // Items that were ERROR before AND are still ERROR = ambiguous (might not have been touched)
+    const confirmedProcessed = batchItems.filter(e => {
+      if (e.estado === 'CORREGIDA') return true;
+      if (e.estado === 'ERROR') {
+        const initial = batchInitialStates.current[e.id];
+        return initial !== undefined && initial !== 'ERROR';
+      }
+      return false;
+    }).length;
+
+    const totalExpected = batchTotalCount.current;
+    const unprocessedCount = totalExpected - confirmedProcessed;
+
+    // Errors exist, not all confirmed processed, nothing actively running → batch was stopped
     if (errorCount > 0 && unprocessedCount > 0 && activelyProcessing === 0) {
       batchErrorNotified.current = true;
       setBatchEntregaIds([]);
@@ -183,8 +210,8 @@ export const EntregasPage = () => {
       );
     }
 
-    // All done (nothing processing and all accounted for) → clear tracking
-    if (activelyProcessing === 0 && processedCount >= totalExpected) {
+    // All confirmed processed → batch complete, clear tracking
+    if (activelyProcessing === 0 && confirmedProcessed >= totalExpected) {
       setBatchEntregaIds([]);
       batchErrorNotified.current = false;
     }
@@ -285,9 +312,13 @@ export const EntregasPage = () => {
       try {
         const result = await corregirMasivaMutation.mutateAsync(ids);
         setSelectedIds([]);
-        // Track batch IDs for error detection during polling
+        // Track batch IDs and initial states for error detection during polling
         setBatchEntregaIds(ids);
         batchTotalCount.current = ids.length;
+        const initialStates: Record<number, string> = {};
+        itemsToCorrect.forEach(item => { initialStates[item.id] = item.estado; });
+        batchInitialStates.current = initialStates;
+        batchStartedProcessing.current = false;
         batchErrorNotified.current = false;
         toast.success(
           `${result.total_encoladas} ${result.total_encoladas === 1 ? 'corrección iniciada' : 'correcciones iniciadas'}. ` +

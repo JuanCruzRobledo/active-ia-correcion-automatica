@@ -74,7 +74,7 @@ class N8NClient:
                 # Check for Gemini errors in the response body
                 # (N8N error branch returns errors as HTTP 200 with error data)
                 # N8N wraps webhook responses in an array: [{...}] → unwrap
-                if isinstance(result, list) and len(result) == 1:
+                if isinstance(result, list) and len(result) > 0:
                     result = result[0]
 
                 self._check_response_body_for_errors(result)
@@ -145,10 +145,6 @@ class N8NClient:
                     )
 
                 # Check for Gemini errors in the response body
-                # N8N wraps webhook responses in an array: [{...}] → unwrap
-                if isinstance(result, list) and len(result) == 1:
-                    result = result[0]
-
                 self._check_response_body_for_errors(result)
 
                 return result
