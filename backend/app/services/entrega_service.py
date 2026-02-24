@@ -469,9 +469,15 @@ class EntregaService:
 
         try:
             with zipfile.ZipFile(io.BytesIO(contenido_bytes), "r") as zip_file:
+                # Normalize all paths: Windows ZIPs may use backslashes.
+                # Build a mapping so we can read entries using the original name.
+                original_names = zip_file.namelist()
+                all_names = [n.replace("\\", "/") for n in original_names]
+                normalized_to_original = dict(zip(all_names, original_names))
+
                 # Get all directories in root (each directory = one student)
                 root_dirs = set()
-                for name in zip_file.namelist():
+                for name in all_names:
                     parts = name.split("/")
                     if len(parts) > 1 and parts[0]:  # Has at least one folder
                         root_dirs.add(parts[0])
@@ -491,7 +497,7 @@ class EntregaService:
                     try:
                         # Get all files in this student's folder
                         alumno_files = [
-                            f for f in zip_file.namelist()
+                            f for f in all_names
                             if f.startswith(f"{alumno_folder}/") and not f.endswith("/")
                         ]
 
@@ -511,15 +517,15 @@ class EntregaService:
                         if zip_files:
                             # Use the first ZIP found
                             inner_zip_path = zip_files[0]
-                            inner_zip_content = zip_file.read(inner_zip_path)
-                            archivo_nombre = os.path.basename(inner_zip_path)
+                            inner_zip_content = zip_file.read(normalized_to_original[inner_zip_path])
+                            archivo_nombre = inner_zip_path.split("/")[-1]
                             archivo_tipo = "zip"
                             contenido_bytes_alumno = inner_zip_content
                         elif len(alumno_files) == 1:
                             # Single file (not ZIP) - treat as individual file
                             single_file_path = alumno_files[0]
-                            archivo_nombre = os.path.basename(single_file_path)
-                            contenido_bytes_alumno = zip_file.read(single_file_path)
+                            archivo_nombre = single_file_path.split("/")[-1]
+                            contenido_bytes_alumno = zip_file.read(normalized_to_original[single_file_path])
 
                             # Detect file type
                             archivo_tipo_temp = self._get_file_type(archivo_nombre)
@@ -547,7 +553,7 @@ class EntregaService:
                                         # Remove student folder prefix
                                         arcname = "/".join(file_path.split("/")[1:])
                                         if arcname:  # Skip empty paths
-                                            new_zip.writestr(arcname, zip_file.read(file_path))
+                                            new_zip.writestr(arcname, zip_file.read(normalized_to_original[file_path]))
 
                                 tmp_zip.seek(0)
                                 contenido_bytes_alumno = tmp_zip.read()

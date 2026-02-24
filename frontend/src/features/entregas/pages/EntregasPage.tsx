@@ -462,7 +462,7 @@ export const EntregasPage = () => {
 
   const entregas = data?.items || [];
   const totalPages = data ? Math.ceil(data.total / perPage) : 0;
-  const pendientesCount = entregas.filter((e) => e.estado === 'PENDIENTE' || e.estado === 'SUBIDA' || e.estado === 'ERROR').length;
+  const subidasCount = entregas.filter((e) => e.estado === 'SUBIDA').length;
   const corregidasCount = entregas.filter((e) => e.estado === 'CORREGIDA').length;
   const allSelected = entregas.length > 0 && selectedIds.length === entregas.length;
 
@@ -504,7 +504,7 @@ export const EntregasPage = () => {
                 isLoading={isBulkAction}
               >
                 <Download className="w-4 h-4" />
-                {isBulkAction ? 'Generando ZIP...' : `Todos los PDFs (${corregidasCount})`}
+                {isBulkAction ? 'Generando ZIP...' : `Todos los PDFs`}
               </Button>
               {/* Temporalmente deshabilitado - Exportar Excel
               <Button
@@ -638,15 +638,15 @@ export const EntregasPage = () => {
                 </Button>
               </div>
             ) : (
-              pendientesCount > 0 && (
+              subidasCount > 0 && (
                 <Button
                   variant="primary"
                   onClick={() => {
-                    handleEstadoChange('PENDIENTE');
+                    handleEstadoChange('SUBIDA');
                   }}
                 >
                   <FileCheck2 className="w-4 h-4" />
-                  Ver Pendientes ({pendientesCount})
+                  Ver Subidas ({subidasCount})
                 </Button>
               )
             )}
