@@ -182,6 +182,13 @@
             "type": "main",
             "index": 0
           }
+        ],
+        [
+          {
+            "node": "Parsear Respuesta",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
@@ -198,6 +205,13 @@
     },
     "Gemini: Corregir PDF": {
       "main": [
+        [
+          {
+            "node": "Parsear Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ],
         [
           {
             "node": "Parsear Respuesta",

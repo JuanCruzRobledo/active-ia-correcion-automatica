@@ -117,9 +117,12 @@ apiClient.interceptors.response.use(
         toast.error(message || 'Error de validación. Verifica los datos ingresados.');
         break;
 
+      case 402:
+        // Payment required (Gemini API key invalid) — handled by specific hooks
+        break;
+
       case 429:
-        // Too many requests
-        toast.error('Demasiadas solicitudes. Intenta nuevamente más tarde.');
+        // Too many requests (Gemini rate limit) — handled by specific hooks
         break;
 
       case 500:

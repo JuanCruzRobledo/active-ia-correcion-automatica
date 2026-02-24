@@ -147,6 +147,19 @@ export function updateStoredUser(user: UserInfo): void {
 }
 
 /**
+ * Mark the stored user's Gemini API key as invalid in localStorage.
+ * Called when the backend returns a 402 (GEMINI_API_KEY_INVALID) error.
+ * This updates localStorage immediately so the UI can show the warning banner.
+ */
+export function invalidateStoredApiKey(): void {
+  const user = getUser();
+  if (user) {
+    user.gemini_api_key_valid = false;
+    updateStoredUser(user);
+  }
+}
+
+/**
  * Clear authentication data.
  * Similar to logout but without redirect (useful for testing or special cases).
  */

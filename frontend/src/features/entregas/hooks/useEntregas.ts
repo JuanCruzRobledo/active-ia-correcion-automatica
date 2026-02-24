@@ -9,7 +9,10 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AxiosError } from 'axios';
+import toast from 'react-hot-toast';
 import { entregasService } from '../services/entregas-service';
+import { invalidateStoredApiKey } from '@/features/auth/services/auth-service';
 import type {
   Entrega,
   EntregaDetail,
@@ -36,6 +39,67 @@ export const entregasKeys = {
   contenidos: () => [...entregasKeys.all, 'contenido'] as const,
   contenido: (id: number) => [...entregasKeys.contenidos(), id] as const,
 };
+
+/**
+ * Check if an error is a Gemini API Key invalid error (HTTP 402).
+ */
+function isGeminiApiKeyError(error: unknown): boolean {
+  if (error instanceof AxiosError && error.response?.status === 402) {
+    const detail = error.response.data?.detail;
+    if (typeof detail === 'object' && detail?.error_code === 'GEMINI_API_KEY_INVALID') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Check if an error is a Gemini rate-limit error (HTTP 429).
+ */
+function isGeminiRateLimitError(error: unknown): boolean {
+  if (error instanceof AxiosError && error.response?.status === 429) {
+    const detail = error.response.data?.detail;
+    if (typeof detail === 'object' && detail?.error_code === 'GEMINI_RATE_LIMIT') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Handle Gemini API Key invalid error: update localStorage and show toast.
+ */
+function handleGeminiApiKeyError(queryClient: ReturnType<typeof useQueryClient>): void {
+  invalidateStoredApiKey();
+  queryClient.invalidateQueries({ queryKey: ['me'] });
+  toast.error(
+    '❌ Tu API Key de Gemini expiró o es inválida. Por favor generá una nueva en Google AI Studio con otra cuenta de Google y actualizala en tu perfil.',
+    { duration: 10000 }
+  );
+}
+
+/**
+ * Handle Gemini rate-limit error: show clear toast.
+ */
+function handleGeminiRateLimitError(): void {
+  toast.error(
+    '⏳ Se alcanzó el límite de uso de la API de Gemini. ' +
+    'Las correcciones en lote fueron detenidas. ' +
+    'Esperá unos minutos antes de volver a intentar.',
+    { duration: 10000 }
+  );
+}
+
+/**
+ * Extract a readable error message from an Axios error response.
+ */
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof AxiosError && error.response?.data?.detail) {
+    const detail = error.response.data.detail;
+    return typeof detail === 'string' ? detail : (detail?.message || fallback);
+  }
+  return fallback;
+}
 
 /**
  * Hook to get a list of entregas with filters.
@@ -200,6 +264,19 @@ export const useCorregirEntrega = () => {
         }
       );
     },
+    onError: (error) => {
+      if (isGeminiApiKeyError(error)) {
+        handleGeminiApiKeyError(queryClient);
+        return;
+      }
+      if (isGeminiRateLimitError(error)) {
+        handleGeminiRateLimitError();
+        return;
+      }
+      const msg = getErrorMessage(error, 'Error al corregir la entrega. Intenta nuevamente.');
+      console.error('Error al corregir entrega:', error);
+      toast.error(msg, { duration: 6000 });
+    },
   });
 };
 
@@ -218,6 +295,19 @@ export const useCorregirEntregaMasiva = () => {
       queryClient.invalidateQueries({
         queryKey: entregasKeys.lists(),
       });
+    },
+    onError: (error) => {
+      if (isGeminiApiKeyError(error)) {
+        handleGeminiApiKeyError(queryClient);
+        return;
+      }
+      if (isGeminiRateLimitError(error)) {
+        handleGeminiRateLimitError();
+        return;
+      }
+      const msg = getErrorMessage(error, 'Error al corregir las entregas. Intenta nuevamente.');
+      console.error('Error al corregir entregas en lote:', error);
+      toast.error(msg, { duration: 6000 });
     },
   });
 };

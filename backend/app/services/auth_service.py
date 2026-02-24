@@ -115,6 +115,7 @@ class AuthService:
                 nombre=user.nombre,
                 rol=user.rol,
                 primer_login=user.primer_login,
+                gemini_api_key_valid=user.gemini_api_key_valid,
             ),
         )
 

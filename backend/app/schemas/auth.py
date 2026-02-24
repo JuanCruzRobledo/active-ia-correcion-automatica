@@ -55,6 +55,10 @@ class UserInfo(BaseModel):
         ...,
         description="True si el usuario debe cambiar su contraseña",
     )
+    gemini_api_key_valid: bool = Field(
+        default=False,
+        description="True si la API Key de Gemini es válida",
+    )
 
 
 class ChangePasswordRequest(BaseModel):

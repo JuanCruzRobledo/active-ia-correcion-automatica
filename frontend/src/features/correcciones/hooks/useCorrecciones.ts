@@ -10,8 +10,71 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { AxiosError } from 'axios';
 import * as correccionesService from '../services/correcciones-service';
+import { invalidateStoredApiKey } from '@/features/auth/services/auth-service';
 import type { Correccion, CorreccionUpdate } from '../types';
+
+/**
+ * Check if an error is a Gemini API Key invalid error (HTTP 402).
+ */
+function isGeminiApiKeyError(error: unknown): boolean {
+  if (error instanceof AxiosError && error.response?.status === 402) {
+    const detail = error.response.data?.detail;
+    if (typeof detail === 'object' && detail?.error_code === 'GEMINI_API_KEY_INVALID') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Check if an error is a Gemini rate-limit error (HTTP 429).
+ */
+function isGeminiRateLimitError(error: unknown): boolean {
+  if (error instanceof AxiosError && error.response?.status === 429) {
+    const detail = error.response.data?.detail;
+    if (typeof detail === 'object' && detail?.error_code === 'GEMINI_RATE_LIMIT') {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Handle Gemini API Key invalid error: update localStorage and show toast.
+ */
+function handleGeminiApiKeyError(queryClient: ReturnType<typeof useQueryClient>): void {
+  invalidateStoredApiKey();
+  queryClient.invalidateQueries({ queryKey: ['me'] });
+  toast.error(
+    '❌ Tu API Key de Gemini expiró o es inválida. Por favor generá una nueva en Google AI Studio con otra cuenta de Google y actualizala en tu perfil.',
+    { duration: 10000 }
+  );
+}
+
+/**
+ * Handle Gemini rate-limit error: show clear toast.
+ */
+function handleGeminiRateLimitError(): void {
+  toast.error(
+    '⏳ Se alcanzó el límite de uso de la API de Gemini. ' +
+    'Las correcciones fueron detenidas. ' +
+    'Esperá unos minutos antes de volver a intentar.',
+    { duration: 10000 }
+  );
+}
+
+/**
+ * Extract a readable error message from an Axios error response.
+ */
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof AxiosError && error.response?.data?.detail) {
+    const detail = error.response.data.detail;
+    return typeof detail === 'string' ? detail : (detail?.message || fallback);
+  }
+  return fallback;
+}
 
 /**
  * Query key factory for correcciones cache management.
@@ -83,8 +146,17 @@ export const useCorregirEntrega = () => {
       toast.success('Entrega corregida exitosamente');
     },
     onError: (error) => {
+      if (isGeminiApiKeyError(error)) {
+        handleGeminiApiKeyError(queryClient);
+        return;
+      }
+      if (isGeminiRateLimitError(error)) {
+        handleGeminiRateLimitError();
+        return;
+      }
+      const msg = getErrorMessage(error, 'Error al corregir la entrega. Intenta nuevamente.');
       console.error('Error al corregir entrega:', error);
-      toast.error('Error al corregir la entrega. Intenta nuevamente.');
+      toast.error(msg, { duration: 6000 });
     },
   });
 };
@@ -122,8 +194,17 @@ export const useCorregirEntregasLote = () => {
       );
     },
     onError: (error) => {
+      if (isGeminiApiKeyError(error)) {
+        handleGeminiApiKeyError(queryClient);
+        return;
+      }
+      if (isGeminiRateLimitError(error)) {
+        handleGeminiRateLimitError();
+        return;
+      }
+      const msg = getErrorMessage(error, 'Error al corregir las entregas. Intenta nuevamente.');
       console.error('Error al corregir entregas en lote:', error);
-      toast.error('Error al corregir las entregas. Intenta nuevamente.');
+      toast.error(msg, { duration: 6000 });
     },
   });
 };
@@ -197,8 +278,17 @@ export const useRecorregirEntrega = () => {
       toast.success('Entrega re-corregida exitosamente');
     },
     onError: (error) => {
+      if (isGeminiApiKeyError(error)) {
+        handleGeminiApiKeyError(queryClient);
+        return;
+      }
+      if (isGeminiRateLimitError(error)) {
+        handleGeminiRateLimitError();
+        return;
+      }
+      const msg = getErrorMessage(error, 'Error al re-corregir la entrega. Intenta nuevamente.');
       console.error('Error al re-corregir entrega:', error);
-      toast.error('Error al re-corregir la entrega. Intenta nuevamente.');
+      toast.error(msg, { duration: 6000 });
     },
   });
 };

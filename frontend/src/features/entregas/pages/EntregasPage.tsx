@@ -10,7 +10,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useEntregas, useDeleteEntrega, useCorregirEntregaMasiva, useCorregirEntrega } from '../hooks';
 import { useQueryClient } from '@tanstack/react-query';
@@ -32,6 +32,8 @@ import { Badge } from '@/shared/components/ui/Badge';
 import { Spinner } from '@/shared/components/ui/Spinner';
 import { EmptyState } from '@/shared/components/ui/EmptyState';
 import { Dropdown } from '@/shared/components/ui/Dropdown';
+import { Alert } from '@/shared/components/ui/Alert';
+import { useProfile } from '@/features/perfil/hooks/usePerfil';
 import {
   FileUp,
   Search,
@@ -56,6 +58,8 @@ const ESTADO_OPTIONS: { value: EstadoEntrega | 'TODOS'; label: string }[] = [
 
 export const EntregasPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { data: profile } = useProfile();
 
   // Selectors state
   const [selectedComisionId, setSelectedComisionId] = useState<number | null>(
@@ -87,6 +91,11 @@ export const EntregasPage = () => {
   // Download loading states
   const [downloadingPDFId, setDownloadingPDFId] = useState<number | null>(null);
   const [isBulkAction, setIsBulkAction] = useState(false);
+
+  // Batch correction tracking — detect errors during background processing
+  const [batchEntregaIds, setBatchEntregaIds] = useState<number[]>([]);
+  const batchTotalCount = useRef(0);
+  const batchErrorNotified = useRef(false);
 
 
   const page = parseInt(searchParams.get('page') || '1', 10);
@@ -123,21 +132,63 @@ export const EntregasPage = () => {
   const recorregirMutation = useRecorregirEntrega();
   const queryClient = useQueryClient();
 
-  // Auto-refresh: poll every 10s while any entrega is in PENDIENTE state
-  // (i.e., background corrections are still running on the server)
+  // Auto-refresh: poll every 10s while background corrections are running
+  // (entregas in PENDIENTE state or active batch being tracked)
   const hasPendingCorrections = (data?.items ?? []).some(
     (e) => e.estado === 'PENDIENTE'
   );
+  const isBatchActive = batchEntregaIds.length > 0;
 
   useEffect(() => {
-    if (!hasPendingCorrections) return;
+    if (!hasPendingCorrections && !isBatchActive) return;
 
     const intervalId = setInterval(() => {
       queryClient.invalidateQueries({ queryKey: ['entregas', 'list'] });
     }, 10000);
 
     return () => clearInterval(intervalId);
-  }, [hasPendingCorrections, queryClient]);
+  }, [hasPendingCorrections, isBatchActive, queryClient]);
+
+  // Detect batch errors: when batch entregas transition to ERROR while
+  // others remain unprocessed, show a single notification.
+  // Uses batchTotalCount to detect incomplete batches even when unprocessed
+  // items are not visible on the current page/filter.
+  useEffect(() => {
+    if (batchEntregaIds.length === 0 || !data?.items || batchErrorNotified.current) return;
+
+    const batchItems = data.items.filter(e => batchEntregaIds.includes(e.id));
+    if (batchItems.length === 0) return;
+
+    const errorCount = batchItems.filter(e => e.estado === 'ERROR').length;
+    // Only count PENDIENTE (actively being corrected right now).
+    // SUBIDA items are waiting/unprocessed and should NOT block detection.
+    const activelyProcessing = batchItems.filter(
+      e => e.estado === 'PENDIENTE'
+    ).length;
+    const successCount = batchItems.filter(e => e.estado === 'CORREGIDA').length;
+    const processedCount = successCount + errorCount;
+    const totalExpected = batchTotalCount.current;
+    const unprocessedCount = totalExpected - processedCount;
+
+    // Errors appeared, not all items processed, and nothing actively running → batch was stopped
+    if (errorCount > 0 && unprocessedCount > 0 && activelyProcessing === 0) {
+      batchErrorNotified.current = true;
+      setBatchEntregaIds([]);
+      toast.error(
+        `⚠️ La corrección en lote se detuvo. ` +
+        `${successCount} completada(s), ${errorCount} con error, ` +
+        `${unprocessedCount} sin procesar. ` +
+        `Revisá si tu API Key de Gemini es válida o esperá unos minutos si se alcanzó el límite de uso.`,
+        { duration: 12000 }
+      );
+    }
+
+    // All done (nothing processing and all accounted for) → clear tracking
+    if (activelyProcessing === 0 && processedCount >= totalExpected) {
+      setBatchEntregaIds([]);
+      batchErrorNotified.current = false;
+    }
+  }, [data?.items, batchEntregaIds]);
 
   // Correction data for modal
   const { data: correctionData } = useCorreccionByEntrega(modalEntregaId || 0);
@@ -234,13 +285,17 @@ export const EntregasPage = () => {
       try {
         const result = await corregirMasivaMutation.mutateAsync(ids);
         setSelectedIds([]);
+        // Track batch IDs for error detection during polling
+        setBatchEntregaIds(ids);
+        batchTotalCount.current = ids.length;
+        batchErrorNotified.current = false;
         toast.success(
-          `✅ ${result.total_encoladas} ${result.total_encoladas === 1 ? 'corrección iniciada' : 'correcciones iniciadas'}. ` +
+          `${result.total_encoladas} ${result.total_encoladas === 1 ? 'corrección iniciada' : 'correcciones iniciadas'}. ` +
           `Los estados se actualizarán automáticamente en segundo plano.`,
           { duration: 6000 }
         );
-      } catch (error) {
-        toast.error(`Error al iniciar correcciones: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      } catch {
+        // Error notification is handled by the hook's onError handler
       }
     }
   };
@@ -260,8 +315,8 @@ export const EntregasPage = () => {
         setModalEntregaId(null);
         setModalAlumno('');
       }
-    } catch (e) {
-      toast.error(`Error: ${e instanceof Error ? e.message : 'Error desconocido'}`);
+    } catch {
+      // Error notification is handled by the hook's onError handler
     }
   };
 
@@ -382,6 +437,22 @@ export const EntregasPage = () => {
 
   return (
     <div className="space-y-6">
+      {/* API Key Invalid Banner */}
+      {profile && !profile.gemini_api_key_valid && (
+        <Alert variant="warning" title="⚠️ API Key de Gemini inválida">
+          <p className="mb-3">
+            Tu API Key de Gemini expiró o es inválida. Las correcciones automáticas no funcionarán hasta que configures una nueva.
+            Por favor generá una nueva en Google AI Studio con otra cuenta de Google y actualizala en tu perfil.
+          </p>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => navigate('/perfil')}
+          >
+            Ir a Configuración
+          </Button>
+        </Alert>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -728,9 +799,6 @@ export const EntregasPage = () => {
                                         corregirMutation.mutate(entrega.id, {
                                           onSuccess: () => {
                                             toast.success(`Corrección completada para ${entrega.alumno_nombre}`);
-                                          },
-                                          onError: (error) => {
-                                            toast.error(`Error al corregir: ${error.message}`);
                                           },
                                         });
                                       },

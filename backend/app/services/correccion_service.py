@@ -24,8 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 from app.core.exceptions import (
+    APIKeyInvalidError,
     N8NError,
     N8NTimeoutError,
+    QuotaExceededError,
     ValidationError,
 )
 from app.core.security import decrypt_api_key
@@ -35,6 +37,7 @@ from app.models.enums import EstadoEntregaEnum
 from app.repositories.correccion_repository import CorreccionRepository
 from app.repositories.entrega_repository import EntregaRepository
 from app.repositories.rubrica_repository import RubricaRepository
+from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.correccion import (
     CorreccionCreate,
     CorreccionListItem,
@@ -60,6 +63,7 @@ class CorreccionService:
         self.correccion_repo = CorreccionRepository(db)
         self.entrega_repo = EntregaRepository(db)
         self.rubrica_repo = RubricaRepository(db)
+        self.usuario_repo = UsuarioRepository(db)
         self.n8n_client = N8NClient()
 
     async def corregir_individual(
@@ -147,6 +151,46 @@ class CorreccionService:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Timeout esperando respuesta del servicio de IA",
+            )
+        except APIKeyInvalidError:
+            # Mark entrega as ERROR
+            entrega.estado = EstadoEntregaEnum.ERROR
+            await self.entrega_repo.update(entrega)
+            # Mark user's API key as invalid in DB
+            usuario = await self.usuario_repo.get_by_id(corregido_por_id)
+            if usuario:
+                usuario.gemini_api_key_valid = False
+                await self.usuario_repo.update(usuario)
+                logger.warning(
+                    f"API Key de Gemini marcada como inválida para usuario {corregido_por_id}"
+                )
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error_code": "GEMINI_API_KEY_INVALID",
+                    "message": (
+                        "Tu API Key de Gemini expiró o es inválida. "
+                        "Por favor generá una nueva en Google AI Studio "
+                        "con otra cuenta de Google y actualizala en tu perfil."
+                    ),
+                },
+            )
+        except QuotaExceededError as e:
+            # Mark entrega as ERROR
+            entrega.estado = EstadoEntregaEnum.ERROR
+            await self.entrega_repo.update(entrega)
+            logger.warning(
+                f"Rate limit de Gemini alcanzado corrigiendo entrega {entrega_id}: {e}"
+            )
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error_code": "GEMINI_RATE_LIMIT",
+                    "message": (
+                        "Se alcanzó el límite de uso de la API de Gemini. "
+                        "Esperá unos minutos antes de volver a corregir."
+                    ),
+                },
             )
         except N8NError as e:
             # Mark as ERROR
@@ -492,6 +536,14 @@ class CorreccionService:
                 result = await self.n8n_client.trigger_correction(payload)
                 return result
 
+            except APIKeyInvalidError:
+                # Never retry on invalid API key — re-raise immediately
+                raise
+
+            except QuotaExceededError:
+                # Never retry on rate limit — re-raise immediately
+                raise
+
             except N8NTimeoutError:
                 if attempt < max_retries:
                     await asyncio.sleep(2 ** attempt)  # Exponential backoff
@@ -530,6 +582,14 @@ class CorreccionService:
             try:
                 result = await self.n8n_client.trigger_correction_pdf(payload)
                 return result
+
+            except APIKeyInvalidError:
+                # Never retry on invalid API key — re-raise immediately
+                raise
+
+            except QuotaExceededError:
+                # Never retry on rate limit — re-raise immediately
+                raise
 
             except N8NTimeoutError:
                 if attempt < max_retries:
@@ -646,13 +706,16 @@ async def procesar_lote_background(
                 logger.warning(
                     f"[BG] Error corrigiendo entrega {entrega_id}: {e.detail}"
                 )
-                # If rate-limited (429), wait 60s before the next attempt
-                # to allow the API quota window to reset.
-                if e.status_code == 429:
-                    logger.warning(
-                        "[BG] Rate limit (429) detectado. Esperando 60s antes de continuar..."
+                # If API Key is invalid (402) or rate-limited (429),
+                # stop the entire batch immediately.
+                if e.status_code in (402, 429):
+                    remaining = len(entrega_ids) - exitosas - fallidas
+                    reason = "API Key inválida" if e.status_code == 402 else "Rate limit alcanzado"
+                    logger.error(
+                        f"[BG] {reason} detectado. Deteniendo lote. "
+                        f"{remaining} entregas no procesadas."
                     )
-                    await asyncio.sleep(60)
+                    break
                 continue
             except Exception as e:
                 fallidas += 1

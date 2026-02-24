@@ -130,6 +130,7 @@ export interface UserInfo {
   nombre: string;
   rol: Rol;
   primer_login: boolean;
+  gemini_api_key_valid: boolean;
 }
 
 /**
