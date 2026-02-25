@@ -45,6 +45,25 @@ class PDFService:
         self.correccion_repo = CorreccionRepository(db)
         self.rubrica_repo = RubricaRepository(db)
 
+    @staticmethod
+    def _escape_xml(text: str) -> str:
+        """
+        Escape special XML/HTML characters in free-form user text so that
+        ReportLab's paragraph parser does not misinterpret them as markup tags.
+
+        Only escapes the three characters that would break XML parsing:
+        - & -> &amp;  (must be first to avoid double-escaping)
+        - < -> &lt;
+        - > -> &gt;
+        """
+        if not text:
+            return text
+        # Order matters: & must be escaped before < and >
+        text = text.replace("&", "&amp;")
+        text = text.replace("<", "&lt;")
+        text = text.replace(">", "&gt;")
+        return text
+
     async def generar_pdf_devolucion(self, correccion_id: int) -> bytes:
         """
         Generate a PDF feedback document for a correction.
@@ -854,7 +873,7 @@ class PDFService:
         # ==================== TITULO Y DESCRIPCION ====================
 
         # Título de la rúbrica
-        title_data = [[Paragraph(f"<b>{rubrica.titulo}</b>", body_style)]]
+        title_data = [[Paragraph(f"<b>{self._escape_xml(rubrica.titulo)}</b>", body_style)]]
         title_table = Table(title_data, colWidths=[6.5 * inch])
         title_table.setStyle(
             TableStyle([
@@ -870,7 +889,7 @@ class PDFService:
         story.append(Spacer(1, 0.15 * inch))
 
         # Descripción
-        desc_para = Paragraph(rubrica.descripcion, body_style)
+        desc_para = Paragraph(self._escape_xml(rubrica.descripcion), body_style)
         desc_data = [[desc_para]]
         desc_table = Table(desc_data, colWidths=[6.5 * inch])
         desc_table.setStyle(
@@ -918,7 +937,7 @@ class PDFService:
             for pen in rubrica.penalizaciones_json:
                 pen_data.append([
                     pen.get("id", ""),
-                    Paragraph(pen.get("descripcion", ""), table_cell_style),
+                    Paragraph(self._escape_xml(pen.get("descripcion", "")), table_cell_style),
                     f"-{pen.get('descuento_porcentaje', 0)}%",
                 ])
 
@@ -964,7 +983,7 @@ class PDFService:
             for cond in rubrica.condiciones_desaprobacion_json:
                 cond_data.append([
                     cond.get("id", ""),
-                    Paragraph(cond.get("condicion", ""), table_cell_style),
+                    Paragraph(self._escape_xml(cond.get("condicion", "")), table_cell_style),
                     f"{cond.get('nota_final', 0)} pts",
                 ])
 
@@ -1128,7 +1147,7 @@ class PDFService:
         # ==================== TITULO Y DESCRIPCION ====================
 
         titulo = data.get("titulo", "Sin título")
-        title_data = [[Paragraph(f"<b>{titulo}</b>", body_style)]]
+        title_data = [[Paragraph(f"<b>{self._escape_xml(titulo)}</b>", body_style)]]
         title_table = Table(title_data, colWidths=[6.5 * inch])
         title_table.setStyle(
             TableStyle([
@@ -1144,7 +1163,7 @@ class PDFService:
         story.append(Spacer(1, 0.15 * inch))
 
         descripcion = data.get("descripcion", "Sin descripción")
-        desc_para = Paragraph(descripcion, body_style)
+        desc_para = Paragraph(self._escape_xml(descripcion), body_style)
         desc_data = [[desc_para]]
         desc_table = Table(desc_data, colWidths=[6.5 * inch])
         desc_table.setStyle(
@@ -1194,7 +1213,7 @@ class PDFService:
             for pen in penalizaciones:
                 pen_data.append([
                     pen.get("id", ""),
-                    Paragraph(pen.get("descripcion", ""), table_cell_style),
+                    Paragraph(self._escape_xml(pen.get("descripcion", "")), table_cell_style),
                     f"-{pen.get('descuento_porcentaje', 0)}%",
                 ])
 
@@ -1238,7 +1257,7 @@ class PDFService:
             for cond in condiciones:
                 cond_data.append([
                     cond.get("id", ""),
-                    Paragraph(cond.get("condicion", ""), table_cell_style),
+                    Paragraph(self._escape_xml(cond.get("condicion", "")), table_cell_style),
                     f"{cond.get('nota_final', 0)} pts",
                 ])
 
@@ -1329,7 +1348,7 @@ class PDFService:
         elements.append(header_table)
 
         # ===== DESCRIPTION TABLE =====
-        desc_para = Paragraph(descripcion, body_style)
+        desc_para = Paragraph(self._escape_xml(descripcion), body_style)
         desc_table = Table([[desc_para]], colWidths=[6.5 * inch])
         desc_table.setStyle(
             TableStyle([
@@ -1349,17 +1368,17 @@ class PDFService:
             sub_data = []
             for sub in subcriterios:
                 sub_id = sub.get("id", "")
-                sub_desc = sub.get("descripcion", "")
+                sub_desc = self._escape_xml(sub.get("descripcion", ""))
                 evidencias = sub.get("evidencias", [])
 
                 # Format evidencias
                 evidencias_text = ""
                 if evidencias:
                     evidencias_limited = evidencias[:15]  # Limit to 15
-                    evidencias_bullets = [f"  • {ev}" for ev in evidencias_limited]
+                    evidencias_bullets = [f"  \u2022 {self._escape_xml(ev)}" for ev in evidencias_limited]
                     evidencias_text = "<br/>".join(evidencias_bullets)
                     if len(evidencias) > 15:
-                        evidencias_text += f"<br/>  • ... (+{len(evidencias) - 15} más)"
+                        evidencias_text += f"<br/>  \u2022 ... (+{len(evidencias) - 15} m\xe1s)"
 
                 sub_text = f"<b>{sub_id}:</b> {sub_desc}"
                 if evidencias_text:
@@ -1425,14 +1444,14 @@ class PDFService:
         header_data = [[f"Criterio {numero}: {nombre}", f"{peso}%"]]
 
         # Build description row
-        desc_para = Paragraph(descripcion, body_style)
+        desc_para = Paragraph(self._escape_xml(descripcion), body_style)
 
         # Build subcriterios table
         if subcriterios and len(subcriterios) > 0:
             sub_rows = []
             for sub in subcriterios:
                 sub_id = sub.get("id", "")
-                sub_desc = sub.get("descripcion", "")
+                sub_desc = self._escape_xml(sub.get("descripcion", ""))
                 evidencias = sub.get("evidencias", [])
 
                 # Format evidencias (limit to avoid huge cells)
@@ -1440,10 +1459,10 @@ class PDFService:
                 if evidencias:
                     # Limit evidencias to first 10 to avoid huge tables
                     evidencias_limited = evidencias[:10]
-                    evidencias_bullets = [f"  • {ev}" for ev in evidencias_limited]
+                    evidencias_bullets = [f"  \u2022 {self._escape_xml(ev)}" for ev in evidencias_limited]
                     evidencias_text = "<br/>".join(evidencias_bullets)
                     if len(evidencias) > 10:
-                        evidencias_text += f"<br/>  • ... (+{len(evidencias) - 10} más)"
+                        evidencias_text += f"<br/>  \u2022 ... (+{len(evidencias) - 10} m\xe1s)"
 
                 sub_text = f"<b>{sub_id}:</b> {sub_desc}"
                 if evidencias_text:
@@ -1695,7 +1714,7 @@ class PDFService:
             subcriterios = criterio.get("subcriterios", [])
 
             # Criterion header with ID, name and weight
-            header_text = f"<b>{criterio_id}</b> - {nombre}"
+            header_text = f"<b>{criterio_id}</b> - {self._escape_xml(nombre)}"
 
             # Build criterion content
             criterion_content = []
@@ -1703,7 +1722,7 @@ class PDFService:
 
             # Add description if present
             if descripcion:
-                criterion_content.append(Paragraph(descripcion, criterio_desc_style))
+                criterion_content.append(Paragraph(self._escape_xml(descripcion), criterio_desc_style))
 
             # Add subcriterios as bullet points
             if subcriterios:
@@ -1711,7 +1730,7 @@ class PDFService:
                 for sub in subcriterios:
                     sub_desc = sub.get("descripcion", "")
                     if sub_desc:
-                        subcriterios_text += f"• {sub_desc}<br/>"
+                        subcriterios_text += f"• {self._escape_xml(sub_desc)}<br/>"
 
                 if subcriterios_text:
                     criterion_content.append(Paragraph(subcriterios_text, criterio_sub_style))
