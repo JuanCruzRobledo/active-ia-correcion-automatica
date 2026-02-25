@@ -47,6 +47,17 @@ const TIPO_LABELS: Record<TipoRubrica, string> = {
   GLOBAL: 'Global',
 };
 
+// Mapeo de tipos a labels completos para usar en nombres de archivo
+const TIPO_LABELS_FILENAME: Record<TipoRubrica, string> = {
+  TP: 'TP',
+  PARCIAL_1: 'Parcial 1',
+  PARCIAL_2: 'Parcial 2',
+  RECUPERATORIO_1: 'Recuperatorio 1',
+  RECUPERATORIO_2: 'Recuperatorio 2',
+  FINAL: 'Final',
+  GLOBAL: 'Global',
+};
+
 // Colores para badges de tipo
 const TIPO_COLORS: Record<TipoRubrica, 'default' | 'info' | 'warning' | 'success'> = {
   TP: 'info',
@@ -136,18 +147,22 @@ export const RubricasPage = () => {
     }
   };
 
-  const handleDownloadPDF = async (id: number) => {
+  const handleDownloadPDF = async (rubrica: RubricaListItem) => {
     try {
-      await downloadPDFMutation.mutateAsync(id);
+      const tipoLabel = TIPO_LABELS_FILENAME[rubrica.tipo];
+      const filename = `${tipoLabel} ${rubrica.numero} - ${rubrica.titulo}.pdf`;
+      await downloadPDFMutation.mutateAsync({ id: rubrica.id, filename });
     } catch (error) {
       console.error('Error descargando PDF:', error);
       alert('Error al descargar el PDF. Por favor, intenta nuevamente.');
     }
   };
 
-  const handleDownloadPDFResumido = async (id: number) => {
+  const handleDownloadPDFResumido = async (rubrica: RubricaListItem) => {
     try {
-      await downloadPDFResumidoMutation.mutateAsync(id);
+      const tipoLabel = TIPO_LABELS_FILENAME[rubrica.tipo];
+      const filename = `${tipoLabel} ${rubrica.numero} - ${rubrica.titulo} (Guia Estudiantes).pdf`;
+      await downloadPDFResumidoMutation.mutateAsync({ id: rubrica.id, filename });
     } catch (error) {
       console.error('Error descargando guía para estudiantes:', error);
       alert('Error al descargar la guía para estudiantes. Por favor, intenta nuevamente.');
@@ -290,26 +305,26 @@ export const RubricasPage = () => {
             },
             {
               label: 'Descargar PDF Completo',
-              onClick: () => handleDownloadPDF(rubrica.id),
+              onClick: () => handleDownloadPDF(rubrica),
               icon: <Download className="w-4 h-4" />,
             },
             {
               label: 'Descargar Guía para Estudiantes',
-              onClick: () => handleDownloadPDFResumido(rubrica.id),
+              onClick: () => handleDownloadPDFResumido(rubrica),
               icon: <FileDown className="w-4 h-4" />,
             },
             rubrica.activa
               ? {
-                  label: 'Eliminar',
-                  onClick: () => handleDelete(rubrica.id),
-                  icon: <Trash2 className="w-4 h-4" />,
-                  variant: 'danger' as const,
-                }
+                label: 'Eliminar',
+                onClick: () => handleDelete(rubrica.id),
+                icon: <Trash2 className="w-4 h-4" />,
+                variant: 'danger' as const,
+              }
               : {
-                  label: 'Restaurar',
-                  onClick: () => handleRestore(rubrica.id),
-                  icon: <RotateCcw className="w-4 h-4" />,
-                },
+                label: 'Restaurar',
+                onClick: () => handleRestore(rubrica.id),
+                icon: <RotateCcw className="w-4 h-4" />,
+              },
           ]}
         />
       ),
@@ -355,68 +370,68 @@ export const RubricasPage = () => {
 
       {/* Filters */}
       {!sinMateriasAsignadas && (
-      <div className="bg-card rounded-lg border border-border p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Input
-            label="Buscar"
-            placeholder="Buscar por nombre..."
-            value={searchNombre}
-            onChange={(e) => setSearchNombre(e.target.value)}
-          />
-          <Select
-            label="Materia"
-            options={materiaOptions}
-            value={filters.materia_id?.toString() || ''}
-            onChange={(e) => {
-              const value = e.target.value;
-              setFilters({
-                ...filters,
-                materia_id: value ? parseInt(value) : undefined,
-                page: 1,
-              });
-            }}
-          />
-          <Select
-            label="Tipo"
-            options={tipoOptions}
-            value={filters.tipo || ''}
-            onChange={(e) => {
-              const value = e.target.value as TipoRubrica | '';
-              setFilters({
-                ...filters,
-                tipo: value || undefined,
-                page: 1,
-              });
-            }}
-          />
-          <Input
-            label="Año"
-            type="number"
-            placeholder={String(currentYear)}
-            value={filters.anio?.toString() || ''}
-            onChange={(e) => {
-              const value = e.target.value;
-              setFilters({
-                ...filters,
-                anio: value ? parseInt(value) : undefined,
-                page: 1,
-              });
-            }}
-          />
-          <Select
-            label="Estado"
-            options={estadoOptions}
-            value={filters.include_inactive ? 'todas' : 'activas'}
-            onChange={(e) => {
-              setFilters({
-                ...filters,
-                include_inactive: e.target.value === 'todas',
-                page: 1,
-              });
-            }}
-          />
+        <div className="bg-card rounded-lg border border-border p-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <Input
+              label="Buscar"
+              placeholder="Buscar por nombre..."
+              value={searchNombre}
+              onChange={(e) => setSearchNombre(e.target.value)}
+            />
+            <Select
+              label="Materia"
+              options={materiaOptions}
+              value={filters.materia_id?.toString() || ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                setFilters({
+                  ...filters,
+                  materia_id: value ? parseInt(value) : undefined,
+                  page: 1,
+                });
+              }}
+            />
+            <Select
+              label="Tipo"
+              options={tipoOptions}
+              value={filters.tipo || ''}
+              onChange={(e) => {
+                const value = e.target.value as TipoRubrica | '';
+                setFilters({
+                  ...filters,
+                  tipo: value || undefined,
+                  page: 1,
+                });
+              }}
+            />
+            <Input
+              label="Año"
+              type="number"
+              placeholder={String(currentYear)}
+              value={filters.anio?.toString() || ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                setFilters({
+                  ...filters,
+                  anio: value ? parseInt(value) : undefined,
+                  page: 1,
+                });
+              }}
+            />
+            <Select
+              label="Estado"
+              options={estadoOptions}
+              value={filters.include_inactive ? 'todas' : 'activas'}
+              onChange={(e) => {
+                setFilters({
+                  ...filters,
+                  include_inactive: e.target.value === 'todas',
+                  page: 1,
+                });
+              }}
+            />
+          </div>
         </div>
-      </div>
       )}
 
       {/* Results summary */}

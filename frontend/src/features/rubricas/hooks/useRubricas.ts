@@ -165,7 +165,8 @@ export const useGenerarRubricaDesdePDF = () => {
  */
 export const useDownloadRubricaPDF = () => {
   return useMutation({
-    mutationFn: (id: number) => rubricasService.downloadPDF(id),
+    mutationFn: ({ id, filename }: { id: number; filename?: string }) =>
+      rubricasService.downloadPDF(id, filename),
   });
 };
 
@@ -174,7 +175,8 @@ export const useDownloadRubricaPDF = () => {
  */
 export const useDownloadRubricaPDFResumido = () => {
   return useMutation({
-    mutationFn: (id: number) => rubricasService.downloadPDFResumido(id),
+    mutationFn: ({ id, filename }: { id: number; filename?: string }) =>
+      rubricasService.downloadPDFResumido(id, filename),
   });
 };
 

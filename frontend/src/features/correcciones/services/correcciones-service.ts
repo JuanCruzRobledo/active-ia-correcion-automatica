@@ -191,5 +191,17 @@ export const exportarExcel = async (comisionId: number, rubricaId: number): Prom
     `/documentos/comisiones/${comisionId}/rubricas/${rubricaId}/excel`,
     { responseType: 'blob' }
   );
-  downloadBlob(response.data as Blob, `notas_comision_${comisionId}_rubrica_${rubricaId}.xlsx`);
+
+  // Extract filename from Content-Disposition header
+  const contentDisposition = response.headers['content-disposition'];
+  let filename = `notas_comision_${comisionId}_rubrica_${rubricaId}.xlsx`; // fallback
+
+  if (contentDisposition) {
+    const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
+    if (filenameMatch && filenameMatch[1]) {
+      filename = filenameMatch[1];
+    }
+  }
+
+  downloadBlob(response.data as Blob, filename);
 };

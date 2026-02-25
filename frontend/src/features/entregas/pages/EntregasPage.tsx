@@ -20,7 +20,7 @@ import { useCorreccionByEntrega, useRecorregirEntrega } from '@/features/correcc
 import {
   descargarPDFCorreccion,
   descargarTodosPDFs,
-  // exportarExcel, // Temporalmente deshabilitado
+  exportarExcel,
 } from '@/features/correcciones/services/correcciones-service';
 import { CargaEntregaModal, EntregaViewModal } from '../components';
 import CorreccionViewEditModal from '@/features/correcciones/components/CorreccionViewEditModal';
@@ -45,6 +45,7 @@ import {
   Download,
   RefreshCw,
   FileText,
+  FileSpreadsheet,
 } from 'lucide-react';
 import type { EstadoEntrega, EntregaListItem } from '../types';
 
@@ -392,20 +393,22 @@ export const EntregasPage = () => {
     }
   };
 
-  /* Temporalmente deshabilitado - Exportar Excel
   const handleExportarExcel = async () => {
     if (!selectedComisionId || !selectedRubricaId) return;
     setIsBulkAction(true);
     try {
       await exportarExcel(selectedComisionId, selectedRubricaId);
       toast.success('Excel exportado exitosamente');
-    } catch (e) {
-      toast.error(`Error: ${e instanceof Error ? e.message : 'Error desconocido'}`);
+    } catch (e: any) {
+      if (e.response?.status === 404) {
+        toast.error('No hay entregas para exportar en esta comisión y rúbrica');
+      } else {
+        toast.error(`Error al exportar Excel: ${e instanceof Error ? e.message : 'Error desconocido'}`);
+      }
     } finally {
       setIsBulkAction(false);
     }
   };
-  */
 
   const getEstadoBadge = (estado: EstadoEntrega) => {
     const badges: Record<
@@ -506,17 +509,16 @@ export const EntregasPage = () => {
                 <Download className="w-4 h-4" />
                 {isBulkAction ? 'Generando ZIP...' : `Todos los PDFs`}
               </Button>
-              {/* Temporalmente deshabilitado - Exportar Excel
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={handleExportarExcel}
                 disabled={isBulkAction}
+                isLoading={isBulkAction}
               >
-                <Download className="w-4 h-4" />
+                <FileSpreadsheet className="w-4 h-4" />
                 Exportar Excel
               </Button>
-              */}
             </>
           )}
           <Button

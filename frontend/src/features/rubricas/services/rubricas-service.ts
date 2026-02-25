@@ -122,7 +122,7 @@ export const rubricasService = {
    * Download rubrica as PDF
    * Opens PDF in new tab or triggers download
    */
-  downloadPDF: async (id: number): Promise<void> => {
+  downloadPDF: async (id: number, filename?: string): Promise<void> => {
     const response = await apiClient.get(`/rubricas/${id}/pdf`, {
       responseType: 'blob',
     });
@@ -132,7 +132,7 @@ export const rubricasService = {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Rubrica_${id}.pdf`;
+    link.download = filename ?? `Rubrica_${id}.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -143,7 +143,7 @@ export const rubricasService = {
    * Download rubrica as SUMMARY PDF (1-2 pages)
    * Triggers download of condensed version
    */
-  downloadPDFResumido: async (id: number): Promise<void> => {
+  downloadPDFResumido: async (id: number, filename?: string): Promise<void> => {
     const response = await apiClient.get(`/rubricas/${id}/pdf/resumido`, {
       responseType: 'blob',
     });
@@ -153,7 +153,7 @@ export const rubricasService = {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Rubrica_${id}_Resumida.pdf`;
+    link.download = filename ?? `Rubrica_${id}_Resumida.pdf`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
