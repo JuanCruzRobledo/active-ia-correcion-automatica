@@ -22,6 +22,7 @@ export const ResetPasswordModal = ({
   usuarioNombre,
 }: ResetPasswordModalProps) => {
   const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const resetMutation = useResetPassword();
 
   const handleReset = async () => {
@@ -33,8 +34,17 @@ export const ResetPasswordModal = ({
     }
   };
 
+  const handleCopyPassword = () => {
+    if (!tempPassword) return;
+    navigator.clipboard.writeText(tempPassword).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
   const handleClose = () => {
     setTempPassword(null);
+    setCopied(false);
     onClose();
   };
 
@@ -56,12 +66,10 @@ export const ResetPasswordModal = ({
             <div className="flex gap-2">
               <Input value={tempPassword} readOnly className="font-mono" />
               <Button
-                variant="secondary"
-                onClick={() => {
-                  navigator.clipboard.writeText(tempPassword);
-                }}
+                variant={copied ? 'success' : 'secondary'}
+                onClick={handleCopyPassword}
               >
-                📋 Copiar
+                {copied ? '✅ ¡Copiado!' : '📋 Copiar'}
               </Button>
             </div>
           </div>
