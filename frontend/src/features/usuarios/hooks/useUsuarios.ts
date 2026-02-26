@@ -140,8 +140,8 @@ export const useResetPassword = () => {
  */
 export const useCoordinadores = () => {
   return useQuery({
-    queryKey: [...usuariosKeys.lists(), { rol: 'COORDINADOR' }],
-    queryFn: () => usuariosService.getAll({ rol: 'COORDINADOR', activo: true }),
+    queryKey: [...usuariosKeys.lists(), { rol: 'COORDINADOR', per_page: 1000 }],
+    queryFn: () => usuariosService.getAll({ rol: 'COORDINADOR', activo: true, per_page: 1000 }),
     staleTime: 5 * 60 * 1000, // 5 minutes
     select: (data) => data.items, // Return only the items array
   });
@@ -153,8 +153,8 @@ export const useCoordinadores = () => {
  */
 export const useTutores = () => {
   return useQuery({
-    queryKey: [...usuariosKeys.lists(), { rol: 'TUTOR' }],
-    queryFn: () => usuariosService.getAll({ rol: 'TUTOR', activo: true }),
+    queryKey: [...usuariosKeys.lists(), { rol: 'TUTOR', per_page: 1000 }],
+    queryFn: () => usuariosService.getAll({ rol: 'TUTOR', activo: true, per_page: 1000 }),
     staleTime: 5 * 60 * 1000, // 5 minutes
     select: (data) => data.items, // Return only the items array
   });
