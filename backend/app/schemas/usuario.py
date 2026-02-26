@@ -122,7 +122,7 @@ class UsuarioList(BaseModel):
     per_page: int = Field(
         default=20,
         ge=1,
-        le=100,
+        le=1000,
         description="Items per page",
     )
 
