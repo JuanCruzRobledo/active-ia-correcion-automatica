@@ -8,10 +8,14 @@ This module defines Pydantic schemas for:
 - Gemini API responses (GeminiResponse, CriterioGeminiSchema)
 """
 
+import logging
+
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Literal, Optional
 from datetime import datetime
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 
 class CriterioEvaluado(BaseModel):
@@ -140,18 +144,32 @@ class CorreccionCreate(BaseModel):
     @field_validator('criterios')
     @classmethod
     def validate_criterios_sum(cls, v, info):
-        """Validate that sum of puntaje_obtenido matches nota."""
+        """Autocorrect nota if sum of puntaje_obtenido differs significantly.
+
+        The AI (Gemini) sometimes returns a global 'nota' that doesn't match
+        the arithmetic sum of the individual criteria scores — for example when
+        it applies external penalties or rounds differently. Instead of
+        rejecting the response with a 500, we silently trust the criteria sum
+        and override the nota, matching the same behavior as GeminiResponse.
+        """
         if 'nota' not in info.data:
             return v
 
-        nota = float(info.data['nota'])
-        suma = sum(float(c.puntaje_obtenido) for c in v)
-
-        if abs(suma - nota) > 1:  # Tolerance of 1 point
-            raise ValueError(
-                f"La suma de puntajes obtenidos ({suma}) debe ser igual a la nota ({nota})"
-            )
+        # No raise — the nota field will be autocorrected by the model_validator
         return v
+
+    @model_validator(mode='after')
+    def autocorrect_nota_from_criterios(self):
+        """If nota and sum of criterios differ by more than 1 point, use the sum."""
+        if self.criterios:
+            suma = sum(float(c.puntaje_obtenido) for c in self.criterios)
+            if abs(float(self.nota) - suma) > 1:
+                logger.warning(
+                    f"CorreccionCreate: nota ({self.nota}) difiere de la suma de criterios "
+                    f"({suma}). Autocorrigiendo nota a {suma}."
+                )
+                self.nota = Decimal(str(suma))
+        return self
 
 
 class CorreccionListItem(BaseModel):
