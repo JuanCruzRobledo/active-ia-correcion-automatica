@@ -33,7 +33,7 @@ async def listar_usuarios(
     rol: RolEnum | None = Query(None, description="Filtrar por rol"),
     search: str | None = Query(None, description="Buscar por username o nombre"),
     page: int = Query(1, ge=1, description="Número de página"),
-    per_page: int = Query(20, ge=1, le=100, description="Items por página"),
+    per_page: int = Query(20, ge=1, le=1000, description="Items por página"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> UsuarioList:
