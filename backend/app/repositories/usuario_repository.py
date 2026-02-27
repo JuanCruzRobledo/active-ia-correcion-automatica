@@ -11,7 +11,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 3
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Usuario
@@ -249,3 +249,65 @@ class UsuarioRepository:
             .order_by(Usuario.nombre.asc())
         )
         return list(result.scalars().all())
+
+    async def hard_delete(self, user: Usuario) -> None:
+        """
+        Hard delete: elimina físicamente el usuario de la DB.
+
+        Orden de operaciones para respetar FK constraints:
+        1. SET NULL en Entrega.subido_por_id  (columna ahora nullable)
+        2. SET NULL en Correccion.corregido_por_id  (columna ahora nullable)
+        3. DELETE CoordinadorMateria del usuario
+        4. DELETE ComisionTutor del usuario
+        5. DELETE Actividades del usuario
+        6. DELETE Usuario
+
+        Las entregas y correcciones se conservan (SET NULL),
+        ya que pertenecen al alumno/materia, no al usuario eliminado.
+
+        Args:
+            user: Usuario object to hard-delete.
+
+        Raises:
+            Exception: Si falla alguna operación de DB.
+        """
+        from app.models.actividad import Actividad
+        from app.models.comision import ComisionTutor
+        from app.models.correccion import Correccion
+        from app.models.entrega import Entrega
+        from app.models.materia import CoordinadorMateria
+
+        user_id = user.id
+
+        # 1. Desvincular entregas subidas por este usuario (SET NULL)
+        await self.db.execute(
+            update(Entrega)
+            .where(Entrega.subido_por_id == user_id)
+            .values(subido_por_id=None)
+        )
+
+        # 2. Desvincular correcciones realizadas por este usuario (SET NULL)
+        await self.db.execute(
+            update(Correccion)
+            .where(Correccion.corregido_por_id == user_id)
+            .values(corregido_por_id=None)
+        )
+
+        # 3. Eliminar asignaciones como coordinador de materias
+        await self.db.execute(
+            delete(CoordinadorMateria).where(CoordinadorMateria.coordinador_id == user_id)
+        )
+
+        # 4. Eliminar asignaciones como tutor de comisiones
+        await self.db.execute(
+            delete(ComisionTutor).where(ComisionTutor.tutor_id == user_id)
+        )
+
+        # 5. Eliminar historial de actividades del usuario
+        await self.db.execute(
+            delete(Actividad).where(Actividad.usuario_id == user_id)
+        )
+
+        # 6. Eliminar el usuario
+        await self.db.delete(user)
+        await self.db.commit()

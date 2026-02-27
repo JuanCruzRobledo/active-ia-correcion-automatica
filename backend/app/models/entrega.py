@@ -82,9 +82,9 @@ class Entrega(Base, TimestampMixin):
         nullable=True,
         index=True,
     )
-    subido_por_id: Mapped[int] = mapped_column(
+    subido_por_id: Mapped[int | None] = mapped_column(
         ForeignKey("usuarios.id"),
-        nullable=False,
+        nullable=True,
     )
 
     __table_args__ = (

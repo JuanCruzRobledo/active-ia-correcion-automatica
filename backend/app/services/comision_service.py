@@ -346,7 +346,15 @@ class ComisionService:
 
     async def eliminar_comision(self, comision_id: int) -> None:
         """
-        Soft delete a comision.
+        Delete a comision — soft or hard depending on ALLOW_HARD_DELETE setting.
+
+        When ALLOW_HARD_DELETE=false (default):
+            Soft delete: sets activa=False. Reversible via restaurar_comision.
+        When ALLOW_HARD_DELETE=true:
+            Hard delete: physically removes comision and ALL related data:
+            - Entregas → Correcciones / EntregaHistorial / archivos físicos
+            - ComisionTutor assignments
+            - DELETE Comision — IRREVERSIBLE.
 
         Args:
             comision_id: Comision's database ID.
@@ -354,15 +362,27 @@ class ComisionService:
         Raises:
             HTTPException 404: Comision not found.
         """
-        comision = await self.comision_repo.get_active_by_id(comision_id)
+        from app.core.config import settings
 
-        if not comision:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Comisión no encontrada o ya eliminada",
-            )
-
-        await self.comision_repo.soft_delete(comision)
+        if settings.ALLOW_HARD_DELETE:
+            # Hard delete: buscar sin filtro activa para poder borrar cualquiera
+            comision = await self.comision_repo.get_by_id(comision_id)
+            if not comision:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Comisión no encontrada",
+                )
+            # Hard delete con cascada completa
+            await self.comision_repo.hard_delete_with_cascade(comision)
+        else:
+            # Soft delete: baja lógica (comportamiento original)
+            comision = await self.comision_repo.get_active_by_id(comision_id)
+            if not comision:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Comisión no encontrada o ya eliminada",
+                )
+            await self.comision_repo.soft_delete(comision)
 
     async def restaurar_comision(self, comision_id: int) -> ComisionResponse:
         """

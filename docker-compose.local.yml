@@ -17,7 +17,7 @@ services:
     container_name: active-ia-postgres
     restart: unless-stopped
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - '${POSTGRES_PORT:-5432}:5432'
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-active_ia_db}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -27,7 +27,7 @@ services:
     networks:
       - active-ia-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -42,11 +42,11 @@ services:
     container_name: active-ia-backend
     restart: unless-stopped
     ports:
-      - "${BACKEND_PORT:-5000}:80"
+      - '${BACKEND_PORT:-5000}:80'
     environment:
       # Base de datos local
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-active_ia_db}
-
+      ALLOW_HARD_DELETE: 'false'
       # Seguridad
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
       ALGORITHM: HS256
@@ -84,7 +84,7 @@ services:
       n8n:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/api/v1/health"]
+      test: ['CMD', 'curl', '-f', 'http://localhost:80/api/v1/health']
       interval: 30s
       timeout: 5s
       retries: 3
@@ -102,14 +102,22 @@ services:
     container_name: active-ia-frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-3000}:80"
+      - '${FRONTEND_PORT:-3000}:80'
     networks:
       - active-ia-network
     depends_on:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/"]
+      test:
+        [
+          'CMD',
+          'wget',
+          '--quiet',
+          '--tries=1',
+          '--spider',
+          'http://localhost:80/',
+        ]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -123,7 +131,7 @@ services:
     container_name: active-ia-n8n
     restart: unless-stopped
     ports:
-      - "${N8N_PORT:-5678}:5678"
+      - '${N8N_PORT:-5678}:5678'
     environment:
       # Autenticación
       N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
@@ -141,7 +149,7 @@ services:
 
       # Persistencia de ejecuciones
       EXECUTIONS_DATA_PRUNE: true
-      EXECUTIONS_DATA_MAX_AGE: 168  # 7 días
+      EXECUTIONS_DATA_MAX_AGE: 168 # 7 días
       EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
     volumes:
       - n8n_data:/home/node/.n8n
@@ -150,7 +158,15 @@ services:
     networks:
       - active-ia-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5678/healthz"]
+      test:
+        [
+          'CMD',
+          'wget',
+          '--quiet',
+          '--tries=1',
+          '--spider',
+          'http://localhost:5678/healthz',
+        ]
       interval: 30s
       timeout: 10s
       retries: 5

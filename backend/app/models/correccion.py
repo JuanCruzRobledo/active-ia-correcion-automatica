@@ -82,9 +82,9 @@ class Correccion(Base, TimestampMixin):
         JSONB,
         nullable=True,
     )
-    corregido_por_id: Mapped[int] = mapped_column(
+    corregido_por_id: Mapped[int | None] = mapped_column(
         ForeignKey("usuarios.id"),
-        nullable=False,
+        nullable=True,
     )
 
     # Relationships

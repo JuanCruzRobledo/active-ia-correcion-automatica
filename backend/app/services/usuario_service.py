@@ -191,15 +191,25 @@ class UsuarioService:
 
     async def eliminar_usuario(self, user_id: int) -> None:
         """
-        Soft delete a user.
+        Delete a user — soft or hard depending on ALLOW_HARD_DELETE setting.
+
+        When ALLOW_HARD_DELETE=false (default):
+            Soft delete: sets activo=False. Reversible via restaurar_usuario.
+        When ALLOW_HARD_DELETE=true:
+            Hard delete: physically removes the user from DB.
+            - SET NULL on Entrega.subido_por_id and Correccion.corregido_por_id
+            - DELETE CoordinadorMateria, ComisionTutor, Actividad rows
+            - DELETE Usuario row — IRREVERSIBLE.
 
         Args:
             user_id: User's database ID.
 
         Raises:
             HTTPException 404: User not found.
-            HTTPException 400: Cannot delete own account.
+            HTTPException 400: (soft delete only) Cannot delete already-deleted user.
         """
+        from app.core.config import settings
+
         user = await self.repo.get_by_id(user_id)
 
         if not user:
@@ -208,13 +218,17 @@ class UsuarioService:
                 detail="Usuario no encontrado",
             )
 
-        if not user.activo:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El usuario ya está eliminado",
-            )
-
-        await self.repo.soft_delete(user)
+        if settings.ALLOW_HARD_DELETE:
+            # Hard delete: eliminación física con SET NULL en referencias
+            await self.repo.hard_delete(user)
+        else:
+            # Soft delete: baja lógica (comportamiento original)
+            if not user.activo:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El usuario ya está eliminado",
+                )
+            await self.repo.soft_delete(user)
 
     async def restaurar_usuario(self, user_id: int) -> UsuarioResponse:
         """

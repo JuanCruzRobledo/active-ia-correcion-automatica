@@ -325,3 +325,54 @@ class RubricaRepository:
         await self.db.commit()
         await self.db.refresh(rubrica)
         return rubrica
+
+    async def hard_delete_with_cascade(self, rubrica: Rubrica) -> None:
+        """
+        Hard delete: elimina físicamente la rúbrica y todas sus entregas.
+
+        Dado que una rúbrica es exclusiva de una materia, todas las entregas
+        que la referencian pertenecen a esa materia. Se eliminan en cascada.
+
+        Orden de operaciones:
+        1. Por cada Entrega con esta rubrica_id:
+           a. Elimina archivos físicos del disco
+           b. DELETE Entrega (cascade ORM elimina Correccion y EntregaHistorial)
+        2. DELETE Rubrica
+
+        Args:
+            rubrica: Rubrica object to hard-delete.
+
+        Raises:
+            Exception: Si falla alguna operación de DB o de disco.
+        """
+        import os
+
+        from sqlalchemy import select
+
+        from app.models.entrega import Entrega
+
+        rubrica_id = rubrica.id
+
+        # 1. Cargar y eliminar todas las entregas de esta rubrica
+        result = await self.db.execute(
+            select(Entrega).where(Entrega.rubrica_id == rubrica_id)
+        )
+        entregas = result.scalars().all()
+
+        for entrega in entregas:
+            # Eliminar archivo físico del disco
+            if entrega.archivo_ruta and os.path.exists(entrega.archivo_ruta):
+                try:
+                    os.remove(entrega.archivo_ruta)
+                except OSError:
+                    pass  # Si el archivo ya no existe, continuar
+
+            # Eliminar la entrega (cascade ORM elimina Correccion y EntregaHistorial)
+            await self.db.delete(entrega)
+
+        # Flush para que se procesen los deletes de entregas antes de eliminar la rubrica
+        await self.db.flush()
+
+        # 2. Eliminar la rubrica
+        await self.db.delete(rubrica)
+        await self.db.commit()

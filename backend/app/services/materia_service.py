@@ -133,6 +133,7 @@ class MateriaService:
         self,
         *,
         include_inactive: bool = False,
+        activa: bool | None = None,
         search: str | None = None,
         page: int = 1,
         per_page: int = 20,
@@ -143,6 +144,7 @@ class MateriaService:
 
         Args:
             include_inactive: Include soft-deleted materias.
+            activa: If provided, filter by active status (only meaningful when include_inactive=True).
             search: Search term for codigo or nombre.
             page: Page number (1-indexed).
             per_page: Items per page.
@@ -153,6 +155,7 @@ class MateriaService:
         """
         materias, total = await self.materia_repo.get_all(
             include_inactive=include_inactive,
+            activa=activa,
             search=search,
             page=page,
             per_page=per_page,
@@ -315,15 +318,26 @@ class MateriaService:
 
     async def eliminar_materia(self, materia_id: int) -> None:
         """
-        Soft delete a materia.
+        Delete a materia — soft or hard depending on ALLOW_HARD_DELETE setting.
+
+        When ALLOW_HARD_DELETE=false (default):
+            Soft delete: sets activa=False. Reversible via restaurar_materia.
+        When ALLOW_HARD_DELETE=true:
+            Hard delete: physically removes materia and ALL related data:
+            - Comisiones → Entregas → Correcciones / EntregaHistorial / archivos físicos
+            - Rúbricas (exclusivas de la materia)
+            - CoordinadorMateria assignments
+            - DELETE Materia — IRREVERSIBLE.
 
         Args:
             materia_id: Materia's database ID.
 
         Raises:
             HTTPException 404: Materia not found.
-            HTTPException 400: Materia already deleted.
+            HTTPException 400: (soft delete only) Materia already deleted.
         """
+        from app.core.config import settings
+
         materia = await self.materia_repo.get_by_id(materia_id)
 
         if not materia:
@@ -332,13 +346,17 @@ class MateriaService:
                 detail="Materia no encontrada",
             )
 
-        if not materia.activa:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="La materia ya está eliminada",
-            )
-
-        await self.materia_repo.soft_delete(materia)
+        if settings.ALLOW_HARD_DELETE:
+            # Hard delete: eliminación física con cascada completa
+            await self.materia_repo.hard_delete_with_cascade(materia)
+        else:
+            # Soft delete: baja lógica (comportamiento original)
+            if not materia.activa:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La materia ya está eliminada",
+                )
+            await self.materia_repo.soft_delete(materia)
 
     async def restaurar_materia(self, materia_id: int) -> MateriaResponse:
         """

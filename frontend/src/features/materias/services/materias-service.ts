@@ -16,7 +16,13 @@ export const materiasService = {
    */
   getAll: async (filters?: MateriasFilters): Promise<MateriaList> => {
     const params = new URLSearchParams();
-    
+
+    // Si activa es undefined ("Todas") o false ("Inactivas"), hay que pedir
+    // include_inactive=true para que el backend devuelva registros con activa=False
+    if (filters?.activa === undefined || filters?.activa === false) {
+      params.append('include_inactive', 'true');
+    }
+
     if (filters?.activa !== undefined) {
       params.append('activa', filters.activa.toString());
     }

@@ -11,7 +11,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 4
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -85,6 +85,7 @@ class MateriaRepository:
         self,
         *,
         include_inactive: bool = False,
+        activa: bool | None = None,
         search: str | None = None,
         page: int = 1,
         per_page: int = 20,
@@ -95,6 +96,8 @@ class MateriaRepository:
 
         Args:
             include_inactive: Include soft-deleted materias.
+            activa: If provided, filter by exact active status (useful with include_inactive=True
+                    to retrieve only inactivas). Ignored when include_inactive=False (always activa=True).
             search: Search term for codigo or nombre.
             page: Page number (1-indexed).
             per_page: Items per page.
@@ -112,9 +115,14 @@ class MateriaRepository:
                 CoordinadorMateria.coordinador_id == coordinador_id
             )
 
-        # Apply filters
+        # Apply active/inactive filter
         if not include_inactive:
+            # Default: solo activas
             query = query.where(Materia.activa == True)  # noqa: E712
+        elif activa is not None:
+            # include_inactive=True + activa especificado → filtrar por ese valor exacto
+            query = query.where(Materia.activa == activa)  # noqa: E712
+        # else: include_inactive=True sin activa → devolver todas (activas e inactivas)
 
         if search:
             search_term = f"%{search}%"
@@ -256,6 +264,119 @@ class MateriaRepository:
             .order_by(Materia.nombre.asc())
         )
         return list(result.scalars().all())
+
+    async def hard_delete_with_cascade(self, materia: Materia) -> None:
+        """
+        Hard delete: elimina físicamente la materia y toda su cascada.
+
+        Dado que las rúbricas son exclusivas de una materia, se eliminan
+        todas las comisiones (con sus entregas) y todas las rúbricas.
+
+        Orden de operaciones:
+        1. Por cada Comision de la materia:
+           a. Por cada Entrega de esa comision:
+              - Elimina archivos físicos
+              - DELETE Entrega (cascade ORM: Correccion + EntregaHistorial)
+           b. DELETE ComisionTutor
+           c. DELETE Comision
+        2. Por cada Rubrica de la materia:
+           - Safety: eliminar entregas remanentes con esta rubrica
+             (en flujo normal ya están eliminadas en paso 1)
+           - DELETE Rubrica
+        3. DELETE CoordinadorMateria
+        4. DELETE Materia
+
+        Args:
+            materia: Materia object to hard-delete.
+
+        Raises:
+            Exception: Si falla alguna operación de DB o de disco.
+        """
+        import os
+
+        from app.models.comision import Comision, ComisionTutor
+        from app.models.entrega import Entrega
+        from app.models.rubrica import Rubrica
+
+        materia_id = materia.id
+
+        # 1. Eliminar todas las comisiones de la materia con su cascada
+        result_c = await self.db.execute(
+            select(Comision).where(Comision.materia_id == materia_id)
+        )
+        comisiones = result_c.scalars().all()
+
+        for comision in comisiones:
+            # 1a. Eliminar entregas de esta comision
+            result_e = await self.db.execute(
+                select(Entrega).where(Entrega.comision_id == comision.id)
+            )
+            entregas = result_e.scalars().all()
+
+            for entrega in entregas:
+                # Eliminar archivo físico del disco
+                if entrega.archivo_ruta and os.path.exists(entrega.archivo_ruta):
+                    try:
+                        os.remove(entrega.archivo_ruta)
+                    except OSError:
+                        pass  # Si el archivo ya no existe, continuar
+
+                # Eliminar entrega (cascade ORM elimina Correccion y EntregaHistorial)
+                await self.db.delete(entrega)
+
+            # Flush las entregas antes de continuar con la comision
+            await self.db.flush()
+
+            # 1b. Eliminar asignaciones de tutores
+            await self.db.execute(
+                delete(ComisionTutor).where(ComisionTutor.comision_id == comision.id)
+            )
+
+            # 1c. Eliminar comision
+            await self.db.delete(comision)
+
+        # Flush todas las comisiones eliminadas
+        await self.db.flush()
+
+        # 2. Eliminar todas las rúbricas de la materia
+        #    (Las entregas ya fueron eliminadas en paso 1 por comision_id;
+        #     este select es safety-check por si quedara alguna huérfana)
+        result_r = await self.db.execute(
+            select(Rubrica).where(Rubrica.materia_id == materia_id)
+        )
+        rubricas = result_r.scalars().all()
+
+        for rubrica in rubricas:
+            # Safety: eliminar entregas remanentes con esta rubrica_id
+            result_e2 = await self.db.execute(
+                select(Entrega).where(Entrega.rubrica_id == rubrica.id)
+            )
+            entregas_remanentes = result_e2.scalars().all()
+
+            for entrega in entregas_remanentes:
+                if entrega.archivo_ruta and os.path.exists(entrega.archivo_ruta):
+                    try:
+                        os.remove(entrega.archivo_ruta)
+                    except OSError:
+                        pass
+                await self.db.delete(entrega)
+
+            await self.db.flush()
+
+            # Eliminar la rubrica
+            await self.db.delete(rubrica)
+
+        # Flush las rubricas
+        await self.db.flush()
+
+        # 3. Eliminar asignaciones de coordinadores
+        await self.db.execute(
+            delete(CoordinadorMateria).where(CoordinadorMateria.materia_id == materia_id)
+        )
+
+        # 4. Eliminar la materia
+        await self.db.delete(materia)
+        await self.db.commit()
 
 
 class CoordinadorMateriaRepository:

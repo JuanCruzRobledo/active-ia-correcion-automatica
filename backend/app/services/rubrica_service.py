@@ -409,7 +409,14 @@ class RubricaService:
 
     async def eliminar_rubrica(self, rubrica_id: int, current_user: Usuario) -> None:
         """
-        Soft delete a rubrica.
+        Delete a rubrica — soft or hard depending on ALLOW_HARD_DELETE setting.
+
+        When ALLOW_HARD_DELETE=false (default):
+            Soft delete: sets activa=False. Reversible via restaurar_rubrica.
+        When ALLOW_HARD_DELETE=true:
+            Hard delete: physically removes rubrica and ALL related data:
+            - Entregas → Correcciones / EntregaHistorial / archivos físicos
+            - DELETE Rubrica — IRREVERSIBLE.
 
         Args:
             rubrica_id: Rubrica's database ID.
@@ -419,18 +426,31 @@ class RubricaService:
             HTTPException 403: User doesn't have access to this materia.
             HTTPException 404: Rubrica not found.
         """
-        rubrica = await self.rubrica_repo.get_active_by_id(rubrica_id)
+        from app.core.config import settings
 
-        if not rubrica:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Rúbrica no encontrada o ya eliminada",
-            )
-
-        # Validate user has access to materia
-        await self._validar_acceso_materia(current_user, rubrica.materia_id)
-
-        await self.rubrica_repo.soft_delete(rubrica)
+        if settings.ALLOW_HARD_DELETE:
+            # Hard delete: buscar sin filtro activa para poder borrar cualquiera
+            rubrica = await self.rubrica_repo.get_by_id(rubrica_id)
+            if not rubrica:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Rúbrica no encontrada",
+                )
+            # Validar acceso a la materia antes de borrar
+            await self._validar_acceso_materia(current_user, rubrica.materia_id)
+            # Hard delete con cascada completa
+            await self.rubrica_repo.hard_delete_with_cascade(rubrica)
+        else:
+            # Soft delete: baja lógica (comportamiento original)
+            rubrica = await self.rubrica_repo.get_active_by_id(rubrica_id)
+            if not rubrica:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Rúbrica no encontrada o ya eliminada",
+                )
+            # Validar acceso a la materia
+            await self._validar_acceso_materia(current_user, rubrica.materia_id)
+            await self.rubrica_repo.soft_delete(rubrica)
 
     async def restaurar_rubrica(self, rubrica_id: int, current_user: Usuario) -> RubricaResponse:
         """

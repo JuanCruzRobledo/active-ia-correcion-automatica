@@ -113,6 +113,14 @@ class Settings(BaseSettings):
     RATE_LIMIT_CORRECCION_WINDOW_SECONDS: int = 60
 
     # =========================================
+    # Eliminación
+    # =========================================
+    # Si es True, los endpoints de DELETE eliminan el registro físicamente
+    # de la base de datos (hard delete) con cascada completa.
+    # Si es False (default), se usa baja lógica (soft delete, activo=False).
+    ALLOW_HARD_DELETE: bool = False
+
+    # =========================================
     # Validators
     # =========================================
     @field_validator("CORS_ORIGINS", mode="before")

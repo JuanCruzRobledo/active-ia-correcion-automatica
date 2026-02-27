@@ -31,6 +31,7 @@ router = APIRouter(prefix="/materias", tags=["materias"])
 @router.get("/", response_model=MateriaList)
 async def listar_materias(
     include_inactive: bool = Query(False, description="Incluir materias eliminadas"),
+    activa: bool | None = Query(None, description="Filtrar por estado: true=activas, false=inactivas"),
     search: str | None = Query(None, description="Buscar por código o nombre"),
     page: int = Query(1, ge=1, description="Número de página"),
     per_page: int = Query(20, ge=1, le=100, description="Items por página"),
@@ -49,6 +50,7 @@ async def listar_materias(
     service = MateriaService(db)
     return await service.listar_materias(
         include_inactive=include_inactive,
+        activa=activa,
         search=search,
         page=page,
         per_page=per_page,

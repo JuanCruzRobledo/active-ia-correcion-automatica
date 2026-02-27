@@ -11,7 +11,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 5
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -282,6 +282,60 @@ class ComisionRepository:
         await self.db.commit()
         await self.db.refresh(comision)
         return comision
+
+    async def hard_delete_with_cascade(self, comision: Comision) -> None:
+        """
+        Hard delete: elimina físicamente la comisión y toda su cascada.
+
+        Orden de operaciones:
+        1. Por cada Entrega de la comision:
+           a. Elimina archivos físicos del disco
+           b. DELETE Entrega (cascade ORM elimina Correccion y EntregaHistorial)
+        2. DELETE ComisionTutor (asignaciones de tutores)
+        3. DELETE Comision
+
+        Args:
+            comision: Comision object to hard-delete.
+
+        Raises:
+            Exception: Si falla alguna operación de DB o de disco.
+        """
+        import os
+
+        from sqlalchemy import select
+
+        from app.models.entrega import Entrega
+
+        comision_id = comision.id
+
+        # 1. Cargar y eliminar todas las entregas de la comision
+        result = await self.db.execute(
+            select(Entrega).where(Entrega.comision_id == comision_id)
+        )
+        entregas = result.scalars().all()
+
+        for entrega in entregas:
+            # Eliminar archivo físico del disco
+            if entrega.archivo_ruta and os.path.exists(entrega.archivo_ruta):
+                try:
+                    os.remove(entrega.archivo_ruta)
+                except OSError:
+                    pass  # Si el archivo ya no existe, continuar
+
+            # Eliminar la entrega (cascade ORM elimina Correccion y EntregaHistorial)
+            await self.db.delete(entrega)
+
+        # Flush para que se procesen los deletes de entregas antes de eliminar la comision
+        await self.db.flush()
+
+        # 2. Eliminar asignaciones de tutores a esta comision
+        await self.db.execute(
+            delete(ComisionTutor).where(ComisionTutor.comision_id == comision_id)
+        )
+
+        # 3. Eliminar la comision
+        await self.db.delete(comision)
+        await self.db.commit()
 
 
 class ComisionTutorRepository:
