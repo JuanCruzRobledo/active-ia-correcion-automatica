@@ -114,11 +114,13 @@ class Entrega(Base, TimestampMixin):
         "Correccion",
         back_populates="entrega",
         uselist=False,
+        cascade="all, delete-orphan",
     )
     historial: Mapped[list["EntregaHistorial"]] = relationship(
         "EntregaHistorial",
         back_populates="entrega_actual",
         lazy="selectin",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:
