@@ -10,12 +10,27 @@ This module defines Pydantic schemas for:
 
 import logging
 
-from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Literal, Optional
+from pydantic import BaseModel, Field, field_validator, model_validator, BeforeValidator
+from typing import Annotated, Literal, Optional
 from datetime import datetime
 from decimal import Decimal
 
 logger = logging.getLogger(__name__)
+
+
+def _round_to_int(v) -> int:
+    """Round float to int before Pydantic validation.
+
+    Gemini sometimes returns decimal scores (e.g. 91.12 instead of 91).
+    This validator ensures we always store clean integer scores.
+    """
+    if isinstance(v, float):
+        return round(v)
+    return v
+
+
+# Annotated type: accepts float from JSON, converts to rounded int
+RoundedInt = Annotated[int, BeforeValidator(_round_to_int)]
 
 
 class CriterioEvaluado(BaseModel):
@@ -39,8 +54,8 @@ class CriterioGeminiSchema(BaseModel):
 
     id: Optional[str] = Field(default=None)
     nombre: str
-    puntaje_obtenido: int = Field(ge=0)
-    puntaje_maximo: int = Field(ge=1)
+    puntaje_obtenido: RoundedInt = Field(ge=0)
+    puntaje_maximo: RoundedInt = Field(ge=1)
     estado: Literal["OK", "WARNING", "ERROR"]
     feedback: str = Field(min_length=1)
 
@@ -48,7 +63,7 @@ class CriterioGeminiSchema(BaseModel):
 class GeminiResponse(BaseModel):
     """Schema for parsing complete Gemini API response."""
 
-    nota: int = Field(ge=0, le=100, description="Total grade")
+    nota: RoundedInt = Field(ge=0, le=100, description="Total grade")
     criterios: list[CriterioGeminiSchema] = Field(..., description="Evaluated criteria")
     fortalezas: list[str] = Field(default_factory=list, description="Strengths identified")
     recomendaciones: list[str] = Field(default_factory=list, description="Recommendations")
