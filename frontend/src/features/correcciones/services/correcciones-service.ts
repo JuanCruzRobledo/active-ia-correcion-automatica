@@ -123,11 +123,22 @@ const downloadBlob = (blob: Blob, filename: string) => {
   URL.revokeObjectURL(url);
 };
 
+export interface RubricaContext {
+  tipo: string;
+  numero: number | string;
+}
+
 /**
  * Descarga el PDF de devolución de una entrega corregida.
  * Obtiene primero la corrección para sacar su ID, luego descarga el PDF.
+ *
+ * @param entregaId - ID de la entrega
+ * @param rubrica - Contexto de la rúbrica para incluir tipo/número en el nombre del archivo
  */
-export const descargarPDFCorreccion = async (entregaId: number): Promise<void> => {
+export const descargarPDFCorreccion = async (
+  entregaId: number,
+  rubrica?: RubricaContext
+): Promise<void> => {
   const correccion = await getCorreccionByEntregaId(entregaId);
   if (!correccion) {
     throw new Error('No se encontró corrección para esta entrega');
@@ -138,13 +149,30 @@ export const descargarPDFCorreccion = async (entregaId: number): Promise<void> =
 
   // Extract filename from Content-Disposition header
   const contentDisposition = response.headers['content-disposition'];
-  let filename = `devolucion_entrega_${entregaId}.pdf`; // fallback
+  let filename: string;
+
+  if (rubrica) {
+    const rubricaSuffix = `${rubrica.tipo}_${rubrica.numero}`.replace(/\s+/g, '_').toLowerCase();
+    filename = `devolucion_${rubricaSuffix}_entrega_${entregaId}.pdf`;
+  } else {
+    filename = `devolucion_entrega_${entregaId}.pdf`;
+  }
 
   if (contentDisposition) {
     // Match: filename="file.pdf" or filename=file.pdf
     const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
     if (filenameMatch && filenameMatch[1]) {
-      filename = filenameMatch[1];
+      // Insertar el sufijo de rúbrica antes de la extensión .pdf del nombre del servidor
+      const serverName = filenameMatch[1];
+      if (rubrica) {
+        const rubricaSuffix = `${rubrica.tipo}_${rubrica.numero}`.replace(/\s+/g, '_').toLowerCase();
+        const dotIndex = serverName.lastIndexOf('.');
+        filename = dotIndex !== -1
+          ? `${serverName.slice(0, dotIndex)}_${rubricaSuffix}${serverName.slice(dotIndex)}`
+          : `${serverName}_${rubricaSuffix}.pdf`;
+      } else {
+        filename = serverName;
+      }
     }
   }
 
@@ -153,8 +181,16 @@ export const descargarPDFCorreccion = async (entregaId: number): Promise<void> =
 
 /**
  * Descarga un ZIP con todos los PDFs de devolución de una comisión/rúbrica.
+ *
+ * @param comisionId - ID de la comisión
+ * @param rubricaId - ID de la rúbrica
+ * @param rubrica - Contexto de la rúbrica para incluir tipo/número en el nombre del ZIP
  */
-export const descargarTodosPDFs = async (comisionId: number, rubricaId: number): Promise<void> => {
+export const descargarTodosPDFs = async (
+  comisionId: number,
+  rubricaId: number,
+  rubrica?: RubricaContext
+): Promise<void> => {
   const response = await apiClient.get(
     `/documentos/comisiones/${comisionId}/rubricas/${rubricaId}/pdfs`,
     {
@@ -170,13 +206,30 @@ export const descargarTodosPDFs = async (comisionId: number, rubricaId: number):
 
   // Extract filename from Content-Disposition header
   const contentDisposition = response.headers['content-disposition'];
-  let filename = `devoluciones_comision_${comisionId}_rubrica_${rubricaId}.zip`; // fallback
+  let filename: string;
+
+  if (rubrica) {
+    const rubricaSuffix = `${rubrica.tipo}_${rubrica.numero}`.replace(/\s+/g, '_').toLowerCase();
+    filename = `devoluciones_${rubricaSuffix}_comision_${comisionId}.zip`;
+  } else {
+    filename = `devoluciones_comision_${comisionId}_rubrica_${rubricaId}.zip`;
+  }
 
   if (contentDisposition) {
     // Match: filename="file.zip" or filename=file.zip
     const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
     if (filenameMatch && filenameMatch[1]) {
-      filename = filenameMatch[1];
+      // Insertar el sufijo de rúbrica antes de la extensión .zip del nombre del servidor
+      const serverName = filenameMatch[1];
+      if (rubrica) {
+        const rubricaSuffix = `${rubrica.tipo}_${rubrica.numero}`.replace(/\s+/g, '_').toLowerCase();
+        const dotIndex = serverName.lastIndexOf('.');
+        filename = dotIndex !== -1
+          ? `${serverName.slice(0, dotIndex)}_${rubricaSuffix}${serverName.slice(dotIndex)}`
+          : `${serverName}_${rubricaSuffix}.zip`;
+      } else {
+        filename = serverName;
+      }
     }
   }
 

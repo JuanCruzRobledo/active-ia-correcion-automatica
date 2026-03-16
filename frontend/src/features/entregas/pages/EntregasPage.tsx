@@ -105,7 +105,8 @@ export const EntregasPage = () => {
   const perPage = 20;
 
   // Fetch comisiones (tutors see only their assigned comisiones)
-  const { data: comisionesData, isLoading: isLoadingComisiones } = useComisiones({});
+  // per_page=100 para traer todas sin paginación (backend máx: 100)
+  const { data: comisionesData, isLoading: isLoadingComisiones } = useComisiones({ per_page: 100 });
 
   // Fetch rubricas for selected comision's materia
   const selectedComision = comisionesData?.items.find(c => c.id === selectedComisionId);
@@ -355,7 +356,10 @@ export const EntregasPage = () => {
   const handleDescargarPDF = async (entregaId: number) => {
     setDownloadingPDFId(entregaId);
     try {
-      await descargarPDFCorreccion(entregaId);
+      const rubricaContext = selectedRubrica
+        ? { tipo: selectedRubrica.tipo, numero: selectedRubrica.numero }
+        : undefined;
+      await descargarPDFCorreccion(entregaId, rubricaContext);
       toast.success('PDF descargado exitosamente');
     } catch (e) {
       toast.error(
@@ -377,7 +381,10 @@ export const EntregasPage = () => {
 
     setIsBulkAction(true);
     try {
-      await descargarTodosPDFs(selectedComisionId, selectedRubricaId);
+      const rubricaContext = selectedRubrica
+        ? { tipo: selectedRubrica.tipo, numero: selectedRubrica.numero }
+        : undefined;
+      await descargarTodosPDFs(selectedComisionId, selectedRubricaId, rubricaContext);
       toast.success(`ZIP con ${corregidasCount} PDFs descargado exitosamente`);
     } catch (e: any) {
       // Manejo específico de errores
