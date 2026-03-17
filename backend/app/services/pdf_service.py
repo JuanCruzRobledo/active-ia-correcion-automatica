@@ -343,7 +343,7 @@ class PDFService:
             story.append(Spacer(1, 0.1 * inch))
 
             for fortaleza in correccion.fortalezas:
-                bullet = Paragraph(f"• {fortaleza}", list_style)
+                bullet = Paragraph(f"• {self._escape_xml(fortaleza)}", list_style)
                 story.append(bullet)
                 story.append(Spacer(1, 0.08 * inch))
 
@@ -355,7 +355,7 @@ class PDFService:
             story.append(Spacer(1, 0.1 * inch))
 
             for i, recomendacion in enumerate(correccion.recomendaciones, 1):
-                rec_para = Paragraph(f"{i}. {recomendacion}", list_style)
+                rec_para = Paragraph(f"{i}. {self._escape_xml(recomendacion)}", list_style)
                 story.append(rec_para)
                 story.append(Spacer(1, 0.08 * inch))
 
@@ -366,7 +366,7 @@ class PDFService:
             story.append(Paragraph("COMENTARIOS DEL EVALUADOR", heading_style))
             story.append(Spacer(1, 0.1 * inch))
 
-            comment_data = [[Paragraph(correccion.comentario_general, body_style)]]
+            comment_data = [[Paragraph(self._escape_xml(correccion.comentario_general), body_style)]]
             comment_table = Table(comment_data, colWidths=[6.5 * inch])
             comment_table.setStyle(
                 TableStyle([
@@ -456,7 +456,7 @@ class PDFService:
             leading=12,
         )
 
-        feedback_para = Paragraph(feedback, feedback_style)
+        feedback_para = Paragraph(self._escape_xml(feedback), feedback_style)
 
         # Complete table data
         data = [
