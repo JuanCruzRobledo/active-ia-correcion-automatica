@@ -34,6 +34,7 @@ EXCLUDED_DIRS = {
     ".mvn",
     "__pycache__",
     ".pytest_cache",
+    "__MACOSX",  # Apple Double Resource Fork metadata — binary, not code
 }
 
 # Extensiones binarias que se excluyen siempre
@@ -581,10 +582,18 @@ class ConsolidacionService:
 
     @staticmethod
     def _read_safely(raw: bytes) -> str:
-        """Decode bytes trying multiple encodings (mirrors consolidator.py logic)."""
+        """Decode bytes trying multiple encodings (mirrors consolidator.py logic).
+
+        After decoding, null bytes (\x00) are removed because PostgreSQL UTF-8
+        columns reject them with CharacterNotInRepertoireError. These appear in
+        Apple Double resource fork files (__MACOSX/._*) and some binary-adjacent
+        content that slips through extension filters.
+        """
         for encoding in ("utf-8", "latin-1", "cp1252", "iso-8859-1"):
             try:
-                return raw.decode(encoding)
+                decoded = raw.decode(encoding)
+                # Strip null bytes — PostgreSQL TEXT/VARCHAR rejects \x00
+                return decoded.replace("\x00", "")
             except (UnicodeDecodeError, UnicodeError):
                 continue
         return "[Error: No se pudo leer el archivo con encodings comunes]"

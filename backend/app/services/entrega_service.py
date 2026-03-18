@@ -668,6 +668,15 @@ class EntregaService:
                         )
 
                     except Exception as e:
+                        # Roll back the session so the next student can still be processed.
+                        # Without this, a DB-level error (e.g. null bytes in content)
+                        # leaves the SQLAlchemy session in an invalid state and every
+                        # subsequent student fails with "This Session's transaction has
+                        # been rolled back due to a previous exception during flush".
+                        try:
+                            await self.db.rollback()
+                        except Exception:
+                            pass
                         errores.append(
                             EntregaError(
                                 alumno_nombre=alumno_nombre,
