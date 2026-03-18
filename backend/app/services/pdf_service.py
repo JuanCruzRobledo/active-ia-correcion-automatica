@@ -161,7 +161,8 @@ class PDFService:
         # Get rubrica tipo/numero from first correction (same for all)
         first_correccion = correcciones_list[0]
         rubrica = first_correccion.entrega.rubrica
-        rubrica_part = f"{rubrica.tipo}-{rubrica.numero}"
+        rubrica_tipo = rubrica.tipo.value if hasattr(rubrica.tipo, "value") else str(rubrica.tipo)
+        rubrica_part = f"{rubrica_tipo}-{rubrica.numero}"
 
         # Create ZIP in memory
         zip_buffer = io.BytesIO()
