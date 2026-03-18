@@ -353,13 +353,13 @@ export const EntregasPage = () => {
     }
   };
 
-  const handleDescargarPDF = async (entregaId: number) => {
+  const handleDescargarPDF = async (entregaId: number, alumnoNombre: string) => {
     setDownloadingPDFId(entregaId);
     try {
       const rubricaContext = selectedRubrica
         ? { tipo: selectedRubrica.tipo, numero: selectedRubrica.numero }
         : undefined;
-      await descargarPDFCorreccion(entregaId, rubricaContext);
+      await descargarPDFCorreccion(entregaId, rubricaContext, alumnoNombre);
       toast.success('PDF descargado exitosamente');
     } catch (e) {
       toast.error(
@@ -384,7 +384,7 @@ export const EntregasPage = () => {
       const rubricaContext = selectedRubrica
         ? { tipo: selectedRubrica.tipo, numero: selectedRubrica.numero }
         : undefined;
-      await descargarTodosPDFs(selectedComisionId, selectedRubricaId, rubricaContext);
+      await descargarTodosPDFs(selectedComisionId, selectedRubricaId, rubricaContext, selectedComision?.nombre);
       toast.success(`ZIP con ${corregidasCount} PDFs descargado exitosamente`);
     } catch (e: any) {
       // Manejo específico de errores
@@ -821,7 +821,7 @@ export const EntregasPage = () => {
                                           ? 'Descargando...'
                                           : 'Descargar PDF',
                                       icon: <FileText className="w-4 h-4" />,
-                                      onClick: () => handleDescargarPDF(entrega.id),
+                                      onClick: () => handleDescargarPDF(entrega.id, entrega.alumno_nombre),
                                       disabled: downloadingPDFId === entrega.id,
                                     },
                                   ]

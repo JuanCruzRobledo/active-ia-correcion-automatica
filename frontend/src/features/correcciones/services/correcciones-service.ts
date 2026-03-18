@@ -129,15 +129,32 @@ export interface RubricaContext {
 }
 
 /**
+ * Sanitiza un string para usarlo en nombres de archivo:
+ * - Remueve acentos/diacríticos
+ * - Reemplaza espacios por guiones
+ * - Elimina caracteres no permitidos en nombres de archivo
+ */
+const sanitizeFilename = (text: string): string =>
+  text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // strip diacritics
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9\-_]/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '');
+
+/**
  * Descarga el PDF de devolución de una entrega corregida.
- * Obtiene primero la corrección para sacar su ID, luego descarga el PDF.
+ * Nombre resultante: NombreAlumno-Devolucion-TIPO_NUMERO.pdf
  *
  * @param entregaId - ID de la entrega
- * @param rubrica - Contexto de la rúbrica para incluir tipo/número en el nombre del archivo
+ * @param rubrica   - Contexto de la rúbrica para incluir tipo/número en el nombre del archivo
+ * @param alumnoNombre - Nombre del alumno para incluir en el nombre del archivo
  */
 export const descargarPDFCorreccion = async (
   entregaId: number,
-  rubrica?: RubricaContext
+  rubrica?: RubricaContext,
+  alumnoNombre?: string
 ): Promise<void> => {
   const correccion = await getCorreccionByEntregaId(entregaId);
   if (!correccion) {
@@ -147,49 +164,32 @@ export const descargarPDFCorreccion = async (
     responseType: 'blob',
   });
 
-  // Extract filename from Content-Disposition header
-  const contentDisposition = response.headers['content-disposition'];
-  let filename: string;
+  const alumnoPart = alumnoNombre ? sanitizeFilename(alumnoNombre) : `entrega-${entregaId}`;
+  const rubricaPart = rubrica
+    ? `${rubrica.tipo}-${rubrica.numero}`.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-_]/g, '')
+    : '';
 
-  if (rubrica) {
-    const rubricaSuffix = `${rubrica.tipo}_${rubrica.numero}`.replace(/\s+/g, '_').toLowerCase();
-    filename = `devolucion_${rubricaSuffix}_entrega_${entregaId}.pdf`;
-  } else {
-    filename = `devolucion_entrega_${entregaId}.pdf`;
-  }
-
-  if (contentDisposition) {
-    // Match: filename="file.pdf" or filename=file.pdf
-    const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
-    if (filenameMatch && filenameMatch[1]) {
-      // Insertar el sufijo de rúbrica antes de la extensión .pdf del nombre del servidor
-      const serverName = filenameMatch[1];
-      if (rubrica) {
-        const rubricaSuffix = `${rubrica.tipo}_${rubrica.numero}`.replace(/\s+/g, '_').toLowerCase();
-        const dotIndex = serverName.lastIndexOf('.');
-        filename = dotIndex !== -1
-          ? `${serverName.slice(0, dotIndex)}_${rubricaSuffix}${serverName.slice(dotIndex)}`
-          : `${serverName}_${rubricaSuffix}.pdf`;
-      } else {
-        filename = serverName;
-      }
-    }
-  }
+  const filename = rubricaPart
+    ? `${alumnoPart}-Devolucion-${rubricaPart}.pdf`
+    : `${alumnoPart}-Devolucion.pdf`;
 
   downloadBlob(response.data as Blob, filename);
 };
 
 /**
  * Descarga un ZIP con todos los PDFs de devolución de una comisión/rúbrica.
+ * Nombre resultante: Devoluciones-TIPO-NUMERO-NombreComision.zip
  *
- * @param comisionId - ID de la comisión
- * @param rubricaId - ID de la rúbrica
- * @param rubrica - Contexto de la rúbrica para incluir tipo/número en el nombre del ZIP
+ * @param comisionId   - ID de la comisión
+ * @param rubricaId    - ID de la rúbrica
+ * @param rubrica      - Contexto de la rúbrica para incluir tipo/número en el nombre del ZIP
+ * @param comisionNombre - Nombre de la comisión para incluir en el nombre del ZIP
  */
 export const descargarTodosPDFs = async (
   comisionId: number,
   rubricaId: number,
-  rubrica?: RubricaContext
+  rubrica?: RubricaContext,
+  comisionNombre?: string
 ): Promise<void> => {
   const response = await apiClient.get(
     `/documentos/comisiones/${comisionId}/rubricas/${rubricaId}/pdfs`,
@@ -204,34 +204,15 @@ export const descargarTodosPDFs = async (
     throw new Error('No se encontraron entregas corregidas o el archivo está vacío');
   }
 
-  // Extract filename from Content-Disposition header
-  const contentDisposition = response.headers['content-disposition'];
-  let filename: string;
+  const rubricaPart = rubrica
+    ? `${rubrica.tipo}-${rubrica.numero}`.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-_]/g, '')
+    : `rubrica-${rubricaId}`;
 
-  if (rubrica) {
-    const rubricaSuffix = `${rubrica.tipo}_${rubrica.numero}`.replace(/\s+/g, '_').toLowerCase();
-    filename = `devoluciones_${rubricaSuffix}_comision_${comisionId}.zip`;
-  } else {
-    filename = `devoluciones_comision_${comisionId}_rubrica_${rubricaId}.zip`;
-  }
+  const comisionPart = comisionNombre
+    ? sanitizeFilename(comisionNombre)
+    : `comision-${comisionId}`;
 
-  if (contentDisposition) {
-    // Match: filename="file.zip" or filename=file.zip
-    const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
-    if (filenameMatch && filenameMatch[1]) {
-      // Insertar el sufijo de rúbrica antes de la extensión .zip del nombre del servidor
-      const serverName = filenameMatch[1];
-      if (rubrica) {
-        const rubricaSuffix = `${rubrica.tipo}_${rubrica.numero}`.replace(/\s+/g, '_').toLowerCase();
-        const dotIndex = serverName.lastIndexOf('.');
-        filename = dotIndex !== -1
-          ? `${serverName.slice(0, dotIndex)}_${rubricaSuffix}${serverName.slice(dotIndex)}`
-          : `${serverName}_${rubricaSuffix}.zip`;
-      } else {
-        filename = serverName;
-      }
-    }
-  }
+  const filename = `Devoluciones-${rubricaPart}-${comisionPart}.zip`;
 
   downloadBlob(response.data as Blob, filename);
 };

@@ -144,6 +144,25 @@ class PDFService:
                 detail="No hay correcciones para esta comisión y rúbrica",
             )
 
+        import re
+        import unicodedata
+
+        def _sanitize_part(text: str) -> str:
+            """Strip accents, replace spaces with hyphens, remove invalid filename chars."""
+            # Decompose unicode and strip diacritics
+            text = unicodedata.normalize("NFD", text)
+            text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+            # Replace spaces with hyphens, remove anything not alphanumeric/hyphen/underscore
+            text = re.sub(r"\s+", "-", text)
+            text = re.sub(r"[^a-zA-Z0-9\-_]", "", text)
+            text = re.sub(r"-{2,}", "-", text).strip("-")
+            return text
+
+        # Get rubrica tipo/numero from first correction (same for all)
+        first_correccion = correcciones_list[0]
+        rubrica = first_correccion.entrega.rubrica
+        rubrica_part = f"{rubrica.tipo}-{rubrica.numero}"
+
         # Create ZIP in memory
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
@@ -151,33 +170,18 @@ class PDFService:
                 # Generate PDF for this correction
                 pdf_bytes = await self.generar_pdf_devolucion(correccion.id)
 
-                # Sanitize alumno name for filename (keep spaces, only remove problematic chars)
-                alumno_nombre = correccion.entrega.alumno_nombre
-                import re
-                alumno_safe = re.sub(r'[<>:"/\\|?*]', "", alumno_nombre)
-                # Normalize multiple spaces to single space
-                alumno_safe = re.sub(r"\s+", " ", alumno_safe).strip()
-
-                # Add PDF to ZIP
-                pdf_filename = f"{alumno_safe} - Devolucion.pdf"
+                # Build PDF filename: AlumnoNombre-Devolucion-TP-1.pdf
+                alumno_safe = _sanitize_part(correccion.entrega.alumno_nombre)
+                pdf_filename = f"{alumno_safe}-Devolucion-{rubrica_part}.pdf"
                 zip_file.writestr(pdf_filename, pdf_bytes)
 
         # Get ZIP bytes
         zip_bytes = zip_buffer.getvalue()
         zip_buffer.close()
 
-        # Build suggested filename
-        # Get rubrica info from first correction
-        first_correccion = correcciones_list[0]
-        rubrica_nombre = first_correccion.entrega.rubrica.titulo
-
-        # Sanitize rubrica name (keep spaces, only remove problematic chars)
-        import re
-        rubrica_safe = re.sub(r'[<>:"/\\|?*]', "", rubrica_nombre)
-        # Normalize multiple spaces to single space
-        rubrica_safe = re.sub(r"\s+", " ", rubrica_safe).strip()
-
-        zip_filename = f"{rubrica_safe} - Devoluciones.zip"
+        # ZIP filename is built by the frontend (has comision name context)
+        # Return a sensible fallback used only if frontend doesn't override it
+        zip_filename = f"Devoluciones-{rubrica_part}.zip"
 
         return zip_bytes, zip_filename
 
