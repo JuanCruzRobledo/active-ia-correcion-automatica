@@ -22,6 +22,7 @@ import type {
   CargaMasivaResponse,
   EntregaContenido,
   EntregasFilters,
+  EntregaAccionMasivaResponse,
   Correccion,
   CorregirLoteAceptadoResponse,
 } from '../types';
@@ -308,6 +309,45 @@ export const useCorregirEntregaMasiva = () => {
       const msg = getErrorMessage(error, 'Error al corregir las entregas. Intenta nuevamente.');
       console.error('Error al corregir entregas en lote:', error);
       toast.error(msg, { duration: 6000 });
+    },
+  });
+};
+
+/**
+ * Hook to archive or unarchive multiple entregas.
+ *
+ * Archived entregas are hidden from the default list view.
+ * They appear only when include_archivadas=true (estado filter = TODOS).
+ */
+export const useArchivarEntregas = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<EntregaAccionMasivaResponse, Error, { ids: number[]; archivado?: boolean }>({
+    mutationFn: ({ ids, archivado = true }) => entregasService.archivar(ids, archivado),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: entregasKeys.lists() });
+    },
+    onError: (error) => {
+      const msg = getErrorMessage(error, 'Error al archivar las entregas.');
+      toast.error(msg, { duration: 5000 });
+    },
+  });
+};
+
+/**
+ * Hook to bulk delete multiple entregas permanently.
+ */
+export const useDeleteEntregasMasivo = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<EntregaAccionMasivaResponse, Error, number[]>({
+    mutationFn: entregasService.deleteMasivo,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: entregasKeys.lists() });
+    },
+    onError: (error) => {
+      const msg = getErrorMessage(error, 'Error al eliminar las entregas.');
+      toast.error(msg, { duration: 5000 });
     },
   });
 };

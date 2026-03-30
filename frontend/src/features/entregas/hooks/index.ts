@@ -9,4 +9,6 @@ export {
   entregasKeys,
   useCorregirEntrega,
   useCorregirEntregaMasiva,
+  useArchivarEntregas,
+  useDeleteEntregasMasivo,
 } from './useEntregas';

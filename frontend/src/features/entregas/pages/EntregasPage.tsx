@@ -12,7 +12,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { useEntregas, useDeleteEntrega, useCorregirEntregaMasiva, useCorregirEntrega } from '../hooks';
+import { useEntregas, useDeleteEntrega, useCorregirEntregaMasiva, useCorregirEntrega, useArchivarEntregas, useDeleteEntregasMasivo } from '../hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { useComisiones } from '@/features/comisiones/hooks';
 import { useRubricas } from '@/features/rubricas/hooks';
@@ -46,10 +46,15 @@ import {
   RefreshCw,
   FileText,
   FileSpreadsheet,
+  Archive,
+  ArchiveRestore,
+  X,
 } from 'lucide-react';
 import type { EstadoEntrega, EntregaListItem } from '../types';
 
-const ESTADO_OPTIONS: { value: EstadoEntrega | 'TODOS'; label: string }[] = [
+type EstadoFiltro = EstadoEntrega | 'TODOS' | 'ARCHIVADAS';
+
+const ESTADO_OPTIONS: { value: EstadoFiltro; label: string }[] = [
   { value: 'TODOS', label: 'Todos los estados' },
   { value: 'SUBIDA', label: 'Subidas' },
   { value: 'PENDIENTE', label: 'Pendientes' },
@@ -74,9 +79,11 @@ export const EntregasPage = () => {
   // inputSearch: estado local inmediato para el input (sin recargar URL en cada tecla)
   const [inputSearch, setInputSearch] = useState(searchParams.get('search') || '');
   const isFirstRender = useRef(true);
-  const [estadoFilter, setEstadoFilter] = useState<EstadoEntrega | 'TODOS'>(
-    (searchParams.get('estado') as EstadoEntrega) || 'TODOS'
+  const [estadoFilter, setEstadoFilter] = useState<EstadoFiltro>(
+    (searchParams.get('estado') as EstadoFiltro) || 'TODOS'
   );
+  const [fechaDesde, setFechaDesde] = useState(searchParams.get('fecha_desde') || '');
+  const [fechaHasta, setFechaHasta] = useState(searchParams.get('fecha_hasta') || '');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
@@ -120,7 +127,10 @@ export const EntregasPage = () => {
       ? {
         comision_id: selectedComisionId,
         rubrica_id: selectedRubricaId,
-        estado: estadoFilter !== 'TODOS' ? estadoFilter : undefined,
+        estado: estadoFilter !== 'TODOS' && estadoFilter !== 'ARCHIVADAS' ? estadoFilter : undefined,
+        solo_archivadas: estadoFilter === 'ARCHIVADAS',
+        fecha_desde: fechaDesde || undefined,
+        fecha_hasta: fechaHasta || undefined,
         search: searchTerm || undefined,
         page,
         per_page: perPage,
@@ -134,6 +144,8 @@ export const EntregasPage = () => {
   const corregirMutation = useCorregirEntrega();
   const corregirMasivaMutation = useCorregirEntregaMasiva();
   const recorregirMutation = useRecorregirEntrega();
+  const archivarMutation = useArchivarEntregas();
+  const deleteMasivoMutation = useDeleteEntregasMasivo();
   const queryClient = useQueryClient();
 
   // Auto-refresh: poll every 10s while background corrections are running
@@ -246,7 +258,7 @@ export const EntregasPage = () => {
 
   const handleEstadoChange = (value: string) => {
     setSelectedIds([]);
-    const estado = value as EstadoEntrega | 'TODOS';
+    const estado = value as EstadoFiltro;
     setEstadoFilter(estado);
     setSearchParams((prev) => {
       if (estado !== 'TODOS') {
@@ -254,6 +266,46 @@ export const EntregasPage = () => {
       } else {
         prev.delete('estado');
       }
+      prev.set('page', '1');
+      return prev;
+    });
+  };
+
+  const handleFechaDesdeChange = (value: string) => {
+    setSelectedIds([]);
+    setFechaDesde(value);
+    setSearchParams((prev) => {
+      if (value) {
+        prev.set('fecha_desde', value);
+      } else {
+        prev.delete('fecha_desde');
+      }
+      prev.set('page', '1');
+      return prev;
+    });
+  };
+
+  const handleFechaHastaChange = (value: string) => {
+    setSelectedIds([]);
+    setFechaHasta(value);
+    setSearchParams((prev) => {
+      if (value) {
+        prev.set('fecha_hasta', value);
+      } else {
+        prev.delete('fecha_hasta');
+      }
+      prev.set('page', '1');
+      return prev;
+    });
+  };
+
+  const handleClearFechas = () => {
+    setFechaDesde('');
+    setFechaHasta('');
+    setSelectedIds([]);
+    setSearchParams((prev) => {
+      prev.delete('fecha_desde');
+      prev.delete('fecha_hasta');
       prev.set('page', '1');
       return prev;
     });
@@ -333,6 +385,35 @@ export const EntregasPage = () => {
     }
   };
 
+  const handleArchivarSeleccionados = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`¿Archivar ${selectedIds.length} entrega(s) seleccionada(s)? No se mostrarán en la vista por defecto (solo con filtro "Todos los estados").`)) return;
+    try {
+      const result = await archivarMutation.mutateAsync({ ids: selectedIds });
+      setSelectedIds([]);
+      toast.success(`${result.procesadas} entrega(s) archivada(s)`);
+    } catch {
+      // Error handled by hook
+    }
+  };
+
+  const handleEliminarSeleccionados = async () => {
+    if (selectedIds.length === 0) return;
+    const hasCorregidas = (data?.items ?? []).some(
+      e => selectedIds.includes(e.id) && e.estado === 'CORREGIDA'
+    );
+    const message = hasCorregidas
+      ? `⚠️ La selección incluye entregas ya corregidas. Al eliminarlas, se perderán permanentemente las entregas y sus correcciones. ¿Confirmar eliminación de ${selectedIds.length} entrega(s)?`
+      : `¿Eliminar permanentemente ${selectedIds.length} entrega(s) seleccionada(s)? Esta acción no se puede deshacer.`;
+    if (!confirm(message)) return;
+    try {
+      const result = await deleteMasivoMutation.mutateAsync(selectedIds);
+      setSelectedIds([]);
+      toast.success(`${result.procesadas} entrega(s) eliminada(s)`);
+    } catch {
+      // Error handled by hook
+    }
+  };
 
   const handleRecorregir = async (entregaId: number) => {
     if (
@@ -631,12 +712,16 @@ export const EntregasPage = () => {
                 value={estadoFilter}
                 onChange={(e) => handleEstadoChange(e.target.value)}
                 options={ESTADO_OPTIONS}
-              />
+              >
+                <optgroup label="──────────">
+                  <option value="ARCHIVADAS">Archivadas</option>
+                </optgroup>
+              </Select>
             </div>
 
-            {/* Batch Action Button */}
+            {/* Batch Action Buttons */}
             {selectedIds.length > 0 ? (
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <Button
                   variant="primary"
                   onClick={handleCorregirSeleccionados}
@@ -644,6 +729,22 @@ export const EntregasPage = () => {
                 >
                   <FileCheck2 className="w-4 h-4" />
                   Corregir ({selectedIds.length})
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={handleArchivarSeleccionados}
+                  isLoading={archivarMutation.isPending}
+                >
+                  <Archive className="w-4 h-4" />
+                  Archivar ({selectedIds.length})
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleEliminarSeleccionados}
+                  isLoading={deleteMasivoMutation.isPending}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Eliminar ({selectedIds.length})
                 </Button>
               </div>
             ) : (
@@ -658,6 +759,32 @@ export const EntregasPage = () => {
                   Ver Subidas ({subidasCount})
                 </Button>
               )
+            )}
+          </div>
+
+          {/* Date Range Filter */}
+          <div className="flex flex-wrap gap-2 items-center pt-1">
+            <span className="text-sm text-gray-500 whitespace-nowrap">Período:</span>
+            <input
+              type="date"
+              value={fechaDesde}
+              max={fechaHasta || undefined}
+              onChange={(e) => handleFechaDesdeChange(e.target.value)}
+              className="border border-gray-200 rounded-md px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-primary-500 focus:border-transparent"
+            />
+            <span className="text-sm text-gray-400">–</span>
+            <input
+              type="date"
+              value={fechaHasta}
+              min={fechaDesde || undefined}
+              onChange={(e) => handleFechaHastaChange(e.target.value)}
+              className="border border-gray-200 rounded-md px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-primary-500 focus:border-transparent"
+            />
+            {(fechaDesde || fechaHasta) && (
+              <Button variant="ghost" size="sm" onClick={handleClearFechas}>
+                <X className="w-3 h-3 mr-1" />
+                Limpiar fechas
+              </Button>
             )}
           </div>
         </div>
@@ -742,7 +869,7 @@ export const EntregasPage = () => {
                       const isPendiente = entrega.estado === 'PENDIENTE' || entrega.estado === 'SUBIDA' || entrega.estado === 'ERROR';
 
                       return (
-                        <tr key={entrega.id} className="hover:bg-gray-50">
+                        <tr key={entrega.id} className={`hover:bg-gray-50 ${entrega.archivado ? 'opacity-60 bg-gray-50' : ''}`}>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <Checkbox
                               checked={selectedIds.includes(entrega.id)}
@@ -750,8 +877,16 @@ export const EntregasPage = () => {
                             />
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">
-                              {entrega.alumno_nombre}
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-900">
+                                {entrega.alumno_nombre}
+                              </span>
+                              {entrega.archivado && (
+                                <Badge variant="outline">
+                                  <Archive className="w-3 h-3 mr-1" />
+                                  Archivada
+                                </Badge>
+                              )}
                             </div>
                           </td>
                           <td className="px-6 py-4">
@@ -846,6 +981,18 @@ export const EntregasPage = () => {
                                     },
                                   ]
                                   : []),
+                                // Archive / Unarchive is always available
+                                {
+                                  label: entrega.archivado ? 'Desarchivar' : 'Archivar',
+                                  icon: entrega.archivado
+                                    ? <ArchiveRestore className="w-4 h-4" />
+                                    : <Archive className="w-4 h-4" />,
+                                  onClick: () => archivarMutation.mutate({
+                                    ids: [entrega.id],
+                                    archivado: !entrega.archivado,
+                                  }),
+                                  disabled: archivarMutation.isPending,
+                                },
                                 // Delete is always available
                                 {
                                   label: 'Eliminar',

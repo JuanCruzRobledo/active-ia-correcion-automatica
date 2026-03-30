@@ -18,6 +18,7 @@ import type {
   CargaMasivaResponse,
   EntregaContenido,
   EntregasFilters,
+  EntregaAccionMasivaResponse,
   Correccion,
   CorregirLoteAceptadoResponse,
 } from '../types';
@@ -41,8 +42,16 @@ export const entregasService = {
       params.append('search', filters.search);
     }
 
-    if (filters.include_inactive !== undefined) {
-      params.append('include_inactive', filters.include_inactive.toString());
+    if (filters.solo_archivadas) {
+      params.append('solo_archivadas', 'true');
+    }
+
+    if (filters.fecha_desde) {
+      params.append('fecha_desde', filters.fecha_desde);
+    }
+
+    if (filters.fecha_hasta) {
+      params.append('fecha_hasta', filters.fecha_hasta);
     }
 
     if (filters.page) {
@@ -167,6 +176,28 @@ export const entregasService = {
   corregirLote: async (ids: number[]): Promise<CorregirLoteAceptadoResponse> => {
     const { data } = await apiClient.post<CorregirLoteAceptadoResponse>('/correcciones/lote', {
       entrega_ids: ids,
+    });
+    return data;
+  },
+
+  /**
+   * Archive or unarchive multiple entregas.
+   * Archived entregas are hidden from the default list (visible only with include_archivadas=true).
+   */
+  archivar: async (ids: number[], archivado = true): Promise<EntregaAccionMasivaResponse> => {
+    const { data } = await apiClient.patch<EntregaAccionMasivaResponse>('/entregas/archivar', {
+      ids,
+      archivado,
+    });
+    return data;
+  },
+
+  /**
+   * Bulk hard delete multiple entregas.
+   */
+  deleteMasivo: async (ids: number[]): Promise<EntregaAccionMasivaResponse> => {
+    const { data } = await apiClient.delete<EntregaAccionMasivaResponse>('/entregas/masivo', {
+      data: { ids },
     });
     return data;
   },

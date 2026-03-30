@@ -9,6 +9,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
 """
 
 import json
+from datetime import date
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +20,10 @@ from app.models.usuario import Usuario
 from app.schemas.entrega import (
     CargaMasivaResponse,
     ContenidoEntrega,
+    EntregaAccionMasivaResponse,
+    EntregaArchivarRequest,
     EntregaCreate,
+    EntregaDeleteMasivoRequest,
     EntregaDetailResponse,
     EntregaList,
     EntregaResponse,
@@ -37,6 +41,10 @@ async def listar_entregas(
     comision_id: int | None = Query(None, description="Filtrar por comisión"),
     rubrica_id: int | None = Query(None, description="Filtrar por rúbrica"),
     estado: EstadoEntregaEnum | None = Query(None, description="Filtrar por estado"),
+    include_archivadas: bool = Query(False, description="Incluir entregas archivadas"),
+    solo_archivadas: bool = Query(False, description="Mostrar solo entregas archivadas"),
+    fecha_desde: date | None = Query(None, description="Filtrar desde esta fecha (YYYY-MM-DD, inclusive)"),
+    fecha_hasta: date | None = Query(None, description="Filtrar hasta esta fecha (YYYY-MM-DD, inclusive)"),
     page: int = Query(1, ge=1, description="Número de página"),
     per_page: int = Query(20, ge=1, le=100, description="Items por página"),
     current_user: Usuario = Depends(get_current_user),
@@ -49,6 +57,10 @@ async def listar_entregas(
     - `comision_id`: Filter by comision ID
     - `rubrica_id`: Filter by rubrica ID
     - `estado`: Filter by estado (SUBIDA, PENDIENTE, CORREGIDA, ERROR)
+    - `include_archivadas`: If true, include archived entregas (default: false)
+    - `solo_archivadas`: If true, show only archived entregas
+    - `fecha_desde`: Show entregas from this date (YYYY-MM-DD)
+    - `fecha_hasta`: Show entregas up to this date (YYYY-MM-DD)
 
     **Pagination:**
     - `page`: Page number (1-indexed)
@@ -63,6 +75,10 @@ async def listar_entregas(
         comision_id=comision_id,
         rubrica_id=rubrica_id,
         estado=estado.value if estado else None,
+        include_archivadas=include_archivadas,
+        solo_archivadas=solo_archivadas,
+        fecha_desde=fecha_desde,
+        fecha_hasta=fecha_hasta,
         page=page,
         per_page=per_page,
     )
@@ -196,6 +212,50 @@ async def crear_entregas_masivas(
         modo_consolidacion=modo_consolidacion.lower(),
         extensiones_personalizadas=ext_list_masiva,
     )
+
+
+@router.patch("/archivar", response_model=EntregaAccionMasivaResponse)
+async def archivar_entregas(
+    body: EntregaArchivarRequest,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> EntregaAccionMasivaResponse:
+    """
+    Archive or unarchive multiple entregas.
+
+    Archived entregas are hidden from the default list view and only appear
+    when `include_archivadas=true` is passed (i.e., when estado filter is TODOS).
+
+    **Body:**
+    - `ids`: List of entrega IDs (1–100)
+    - `archivado`: True to archive, False to unarchive
+
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
+    """
+    require_any_authenticated(current_user)
+
+    service = EntregaService(db)
+    return await service.archivar_entregas(ids=body.ids, archivado=body.archivado)
+
+
+@router.delete("/masivo", response_model=EntregaAccionMasivaResponse)
+async def eliminar_entregas_masivo(
+    body: EntregaDeleteMasivoRequest,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> EntregaAccionMasivaResponse:
+    """
+    Bulk delete multiple entregas permanently.
+
+    **Body:**
+    - `ids`: List of entrega IDs (1–100)
+
+    **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
+    """
+    require_any_authenticated(current_user)
+
+    service = EntregaService(db)
+    return await service.eliminar_entregas_masivo(ids=body.ids)
 
 
 @router.get("/{entrega_id}", response_model=EntregaDetailResponse)

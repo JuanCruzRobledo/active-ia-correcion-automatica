@@ -9,9 +9,9 @@ Ref: .claude/rules/backend.md
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
 """
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -79,6 +79,10 @@ class EntregaRepository:
         comision_id: int | None = None,
         rubrica_id: int | None = None,
         estado: str | None = None,
+        include_archivadas: bool = False,
+        solo_archivadas: bool = False,
+        fecha_desde: date | None = None,
+        fecha_hasta: date | None = None,
         page: int = 1,
         per_page: int = 20,
     ) -> tuple[list[Entrega], int]:
@@ -89,6 +93,10 @@ class EntregaRepository:
             comision_id: Filter by comision ID.
             rubrica_id: Filter by rubrica ID.
             estado: Filter by estado.
+            include_archivadas: If False (default), exclude archived entregas.
+            solo_archivadas: If True, show only archived entregas (overrides include_archivadas).
+            fecha_desde: Filter by created_at >= this date (inclusive).
+            fecha_hasta: Filter by created_at <= this date (inclusive, end of day).
             page: Page number (1-indexed).
             per_page: Items per page.
 
@@ -112,6 +120,20 @@ class EntregaRepository:
 
         if estado is not None:
             query = query.where(Entrega.estado == estado)
+
+        # Archive filter: solo_archivadas takes priority over include_archivadas
+        if solo_archivadas:
+            query = query.where(Entrega.archivado == True)  # noqa: E712
+        elif not include_archivadas:
+            query = query.where(Entrega.archivado == False)  # noqa: E712
+
+        # Date range filter
+        if fecha_desde:
+            start = datetime(fecha_desde.year, fecha_desde.month, fecha_desde.day, 0, 0, 0)
+            query = query.where(Entrega.created_at >= start)
+        if fecha_hasta:
+            end = datetime(fecha_hasta.year, fecha_hasta.month, fecha_hasta.day, 23, 59, 59)
+            query = query.where(Entrega.created_at <= end)
 
         # Count total
         count_query = select(func.count()).select_from(query.subquery())
@@ -220,5 +242,67 @@ class EntregaRepository:
         """
         await self.db.delete(entrega)
         await self.db.commit()
+
+    async def get_by_ids(self, ids: list[int]) -> list[Entrega]:
+        """
+        Get multiple entregas by their IDs.
+
+        Args:
+            ids: List of entrega IDs.
+
+        Returns:
+            List of found Entrega objects.
+        """
+        result = await self.db.execute(
+            select(Entrega).where(Entrega.id.in_(ids))
+        )
+        return list(result.scalars().all())
+
+    async def archive_by_ids(self, ids: list[int], archivado: bool) -> int:
+        """
+        Bulk archive or unarchive entregas.
+
+        Args:
+            ids: List of entrega IDs.
+            archivado: True to archive, False to unarchive.
+
+        Returns:
+            Number of rows affected.
+        """
+        result = await self.db.execute(
+            update(Entrega)
+            .where(Entrega.id.in_(ids))
+            .values(archivado=archivado)
+        )
+        await self.db.commit()
+        return result.rowcount
+
+    async def delete_by_ids(self, ids: list[int]) -> int:
+        """
+        Bulk hard delete entregas by IDs via ORM to respect cascade rules.
+
+        Uses ORM-level deletion so SQLAlchemy cascades (correccion,
+        historial with cascade="all, delete-orphan") are honoured.
+        Raw SQL DELETE would bypass those cascades and trigger FK violations.
+
+        Args:
+            ids: List of entrega IDs to delete.
+
+        Returns:
+            Number of rows deleted.
+        """
+        result = await self.db.execute(
+            select(Entrega)
+            .options(
+                selectinload(Entrega.correccion),
+                selectinload(Entrega.historial),
+            )
+            .where(Entrega.id.in_(ids))
+        )
+        entregas = list(result.scalars().all())
+        for entrega in entregas:
+            await self.db.delete(entrega)
+        await self.db.commit()
+        return len(entregas)
 
 

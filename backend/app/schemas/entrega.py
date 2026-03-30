@@ -109,6 +109,7 @@ class EntregaResponse(BaseModel):
     archivo_tipo: str  # 'zip' o 'txt'
     contenido_preview: str | None
     estado: EstadoEntregaEnum
+    archivado: bool
     hash_sha256: str | None
     subido_por_id: int
     created_at: datetime
@@ -153,6 +154,7 @@ class EntregaListItem(BaseModel):
     archivo_tamanio: int
     archivo_tipo: str
     estado: EstadoEntregaEnum
+    archivado: bool
     nota: float | None = Field(
         default=None,
         description="Nota de la corrección (si existe)",
@@ -302,3 +304,41 @@ class HistorialResponse(BaseModel):
     entrega_actual_id: int
     versiones_anteriores: list[HistorialItem]
     total_versiones: int
+
+
+# ============================================================================
+# Schemas de Acciones Masivas
+# ============================================================================
+
+
+class EntregaArchivarRequest(BaseModel):
+    """Schema for bulk archive/unarchive request."""
+
+    ids: list[int] = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="IDs de las entregas a archivar/desarchivar",
+    )
+    archivado: bool = Field(
+        default=True,
+        description="True para archivar, False para desarchivar",
+    )
+
+
+class EntregaDeleteMasivoRequest(BaseModel):
+    """Schema for bulk delete request."""
+
+    ids: list[int] = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="IDs de las entregas a eliminar",
+    )
+
+
+class EntregaAccionMasivaResponse(BaseModel):
+    """Schema for bulk action response."""
+
+    procesadas: int = Field(description="Cantidad de entregas procesadas")
+    ids: list[int] = Field(description="IDs de las entregas procesadas")

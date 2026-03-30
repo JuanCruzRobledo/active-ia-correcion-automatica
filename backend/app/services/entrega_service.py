@@ -10,7 +10,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
 import base64
 import hashlib
 import os
-from datetime import datetime
+from datetime import date, datetime
 from typing import BinaryIO
 
 from fastapi import HTTPException, UploadFile, status
@@ -24,6 +24,7 @@ from app.repositories.rubrica_repository import RubricaRepository
 from app.schemas.entrega import (
     CargaMasivaResponse,
     ContenidoEntrega,
+    EntregaAccionMasivaResponse,
     EntregaCreada,
     EntregaCreate,
     EntregaDetailResponse,
@@ -206,6 +207,10 @@ class EntregaService:
         comision_id: int | None = None,
         rubrica_id: int | None = None,
         estado: str | None = None,
+        include_archivadas: bool = False,
+        solo_archivadas: bool = False,
+        fecha_desde: date | None = None,
+        fecha_hasta: date | None = None,
         page: int = 1,
         per_page: int = 20,
     ) -> EntregaList:
@@ -216,6 +221,10 @@ class EntregaService:
             comision_id: Filter by comision ID.
             rubrica_id: Filter by rubrica ID.
             estado: Filter by estado.
+            include_archivadas: If True, include archived entregas.
+            solo_archivadas: If True, show only archived entregas.
+            fecha_desde: Filter from this date (inclusive).
+            fecha_hasta: Filter to this date (inclusive).
             page: Page number (1-indexed).
             per_page: Items per page.
 
@@ -226,6 +235,10 @@ class EntregaService:
             comision_id=comision_id,
             rubrica_id=rubrica_id,
             estado=estado,
+            include_archivadas=include_archivadas,
+            solo_archivadas=solo_archivadas,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
             page=page,
             per_page=per_page,
         )
@@ -246,6 +259,7 @@ class EntregaService:
                     archivo_tamanio=entrega.archivo_tamanio,
                     archivo_tipo=entrega.archivo_tipo,
                     estado=entrega.estado,
+                    archivado=entrega.archivado,
                     nota=entrega.correccion.nota if entrega.correccion else None,
                     tiene_correccion=entrega.correccion is not None,
                     subido_por_nombre=entrega.subido_por.nombre,
@@ -299,6 +313,7 @@ class EntregaService:
             archivo_tipo=entrega.archivo_tipo,
             contenido_preview=entrega.contenido_preview,
             estado=entrega.estado,
+            archivado=entrega.archivado,
             hash_sha256=entrega.hash_sha256,
             subido_por_id=entrega.subido_por_id,
             created_at=entrega.created_at,
@@ -343,6 +358,64 @@ class EntregaService:
             )
 
         await self.entrega_repo.delete(entrega)
+
+    async def archivar_entregas(
+        self,
+        ids: list[int],
+        archivado: bool,
+    ) -> EntregaAccionMasivaResponse:
+        """
+        Archive or unarchive multiple entregas.
+
+        Args:
+            ids: List of entrega IDs.
+            archivado: True to archive, False to unarchive.
+
+        Returns:
+            EntregaAccionMasivaResponse with count of processed entregas.
+
+        Raises:
+            HTTPException 404: One or more IDs not found.
+        """
+        found = await self.entrega_repo.get_by_ids(ids)
+        found_ids = {e.id for e in found}
+        missing = [i for i in ids if i not in found_ids]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Entregas no encontradas: {missing}",
+            )
+
+        count = await self.entrega_repo.archive_by_ids(ids, archivado)
+        return EntregaAccionMasivaResponse(procesadas=count, ids=ids)
+
+    async def eliminar_entregas_masivo(
+        self,
+        ids: list[int],
+    ) -> EntregaAccionMasivaResponse:
+        """
+        Bulk hard delete multiple entregas.
+
+        Args:
+            ids: List of entrega IDs to delete.
+
+        Returns:
+            EntregaAccionMasivaResponse with count of deleted entregas.
+
+        Raises:
+            HTTPException 404: One or more IDs not found.
+        """
+        found = await self.entrega_repo.get_by_ids(ids)
+        found_ids = {e.id for e in found}
+        missing = [i for i in ids if i not in found_ids]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Entregas no encontradas: {missing}",
+            )
+
+        count = await self.entrega_repo.delete_by_ids(ids)
+        return EntregaAccionMasivaResponse(procesadas=count, ids=ids)
 
     async def obtener_contenido(self, entrega_id: int) -> ContenidoEntrega:
         """

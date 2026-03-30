@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Enum as SQLEnum, ForeignKey, Index, Integer, Numeric, String, Text, text, ARRAY
+from sqlalchemy import Boolean, Enum as SQLEnum, ForeignKey, Index, Integer, Numeric, String, Text, text, ARRAY
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -75,6 +75,13 @@ class Entrega(Base, TimestampMixin):
     estado: Mapped[EstadoEntregaEnum] = mapped_column(
         SQLEnum(EstadoEntregaEnum, name="estadoentregaenum", create_type=True),
         default=EstadoEntregaEnum.SUBIDA,
+        index=True,
+    )
+    archivado: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text('false'),
         index=True,
     )
     hash_sha256: Mapped[str | None] = mapped_column(

@@ -89,9 +89,9 @@ export interface Entrega {
   archivo_tipo: 'zip' | 'txt' | 'pdf' | 'individual';
   contenido_preview: string | null;
   estado: EstadoEntrega;
+  archivado: boolean;
   hash_sha256: string | null;
   subido_por_id: number;
-  activo: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -103,6 +103,11 @@ export interface EntregaDetail extends Entrega {
   subido_por_nombre: string;
 }
 
+export interface EntregaAccionMasivaResponse {
+  procesadas: number;
+  ids: number[];
+}
+
 export interface EntregaListItem {
   id: number;
   comision_id: number;
@@ -111,6 +116,7 @@ export interface EntregaListItem {
   archivo_nombre: string;
   archivo_tamanio: number;
   estado: EstadoEntrega;
+  archivado: boolean;
   nota: number | null;
   tiene_correccion: boolean;
   created_at: string;
@@ -180,7 +186,9 @@ export interface EntregasFilters {
   rubrica_id: number;
   estado?: EstadoEntrega;
   search?: string; // Buscar por nombre de alumno
-  include_inactive?: boolean;
+  solo_archivadas?: boolean;
+  fecha_desde?: string; // YYYY-MM-DD
+  fecha_hasta?: string; // YYYY-MM-DD
   page?: number;
   per_page?: number;
 }
