@@ -680,49 +680,79 @@ async def procesar_lote_background(
     """
     logger.info(f"[BG] Iniciando corrección masiva de {len(entrega_ids)} entregas")
 
+    max_retries_429 = 3
+    base_backoff = 30  # seconds — gives Gemini time to reset its RPM window
+
     async with async_session_maker() as db:
         service = CorreccionService(db)
         exitosas = 0
         fallidas = 0
+        stop_batch = False
 
         for entrega_id in entrega_ids:
-            try:
-                await service.corregir_individual(
-                    entrega_id=entrega_id,
-                    api_key_encrypted=api_key_encrypted,
-                    corregido_por_id=corregido_por_id,
-                )
-                exitosas += 1
-                logger.info(f"[BG] Entrega {entrega_id} corregida exitosamente")
+            if stop_batch:
+                break
 
-                # Rate limiting: 7 seconds between corrections to stay within
-                # Gemini API limits (10 RPM = 1 req every 6s, with 1s margin).
-                # With free tier (10 RPM), this processes ~8 entregas/min.
-                # With paid tier (150+ RPM), this is the safe steady-state rate.
-                await asyncio.sleep(7)
+            succeeded = False
+            for attempt in range(1 + max_retries_429):
+                try:
+                    await service.corregir_individual(
+                        entrega_id=entrega_id,
+                        api_key_encrypted=api_key_encrypted,
+                        corregido_por_id=corregido_por_id,
+                    )
+                    exitosas += 1
+                    succeeded = True
+                    logger.info(f"[BG] Entrega {entrega_id} corregida exitosamente")
+                    break
 
-            except HTTPException as e:
-                fallidas += 1
-                logger.warning(
-                    f"[BG] Error corrigiendo entrega {entrega_id}: {e.detail}"
-                )
-                # If API Key is invalid (402) or rate-limited (429),
-                # stop the entire batch immediately.
-                if e.status_code in (402, 429):
-                    remaining = len(entrega_ids) - exitosas - fallidas
-                    reason = "API Key inválida" if e.status_code == 402 else "Rate limit alcanzado"
-                    logger.error(
-                        f"[BG] {reason} detectado. Deteniendo lote. "
-                        f"{remaining} entregas no procesadas."
+                except HTTPException as e:
+                    if e.status_code == 402:
+                        fallidas += 1
+                        stop_batch = True
+                        remaining = len(entrega_ids) - exitosas - fallidas
+                        logger.error(
+                            f"[BG] API Key inválida. Deteniendo lote. "
+                            f"{remaining} entregas no procesadas."
+                        )
+                        break
+
+                    if e.status_code == 429:
+                        if attempt < max_retries_429:
+                            wait = base_backoff * (attempt + 1)
+                            logger.warning(
+                                f"[BG] Rate limit (429) en entrega {entrega_id}. "
+                                f"Reintento {attempt + 1}/{max_retries_429} en {wait}s."
+                            )
+                            await asyncio.sleep(wait)
+                            continue
+
+                        fallidas += 1
+                        stop_batch = True
+                        remaining = len(entrega_ids) - exitosas - fallidas
+                        logger.error(
+                            f"[BG] Rate limit persistente tras {max_retries_429} "
+                            f"reintentos. Deteniendo lote. "
+                            f"{remaining} entregas no procesadas."
+                        )
+                        break
+
+                    fallidas += 1
+                    logger.warning(
+                        f"[BG] Error corrigiendo entrega {entrega_id}: {e.detail}"
                     )
                     break
-                continue
-            except Exception as e:
-                fallidas += 1
-                logger.error(
-                    f"[BG] Error inesperado corrigiendo entrega {entrega_id}: {e}"
-                )
-                continue
+
+                except Exception as e:
+                    fallidas += 1
+                    logger.error(
+                        f"[BG] Error inesperado corrigiendo entrega {entrega_id}: {e}"
+                    )
+                    break
+
+            # Rate limiting between corrections
+            if succeeded and not stop_batch:
+                await asyncio.sleep(7)
 
     logger.info(
         f"[BG] Corrección masiva finalizada: {exitosas} exitosas, {fallidas} fallidas"

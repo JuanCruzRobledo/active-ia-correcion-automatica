@@ -24,12 +24,11 @@ Este esquema define la estructura de una **rúbrica de evaluación** que permite
   // ──────────────────────────────────────────────────────────
   "metadata": {
     "materia": "string", // Ej: "Programación III"
-    "carrera": "string | null", // Ej: "Tecnicatura en Programación"
-    "modalidad": "string | null", // Ej: "A distancia", "Presencial"
+    "carrera": "string", // Ej: "Tecnicatura en Programación"
+    "modalidad": "string", // Ej: "A distancia", "Presencial"
     "lenguaje": "string | string[]", // Ej: "Java" o ["Python", "SQL"]
-    "framework": "string | null", // Ej: "Spring Boot", "React"
-    "version": "string | null", // Ej: "Java 17+", "Node 18+"
-
+    "framework": "string", // Ej: "Spring Boot", "React"
+    "version": "string", // Ej: "Java 17+", "Node 18+"
     "formato_entrega": {
       "tipo": "string", // Ej: "Repositorio GitHub", "Archivo ZIP"
       "extensiones_aceptadas": ["string"],
@@ -37,6 +36,7 @@ Este esquema define la estructura de una **rúbrica de evaluación** que permite
       "publico": "boolean | null",
       "restricciones": ["string"],
     },
+    // Mas o menos campos segun sea NECESARIO
   },
 
   // ──────────────────────────────────────────────────────────

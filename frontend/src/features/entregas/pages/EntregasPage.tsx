@@ -385,13 +385,16 @@ export const EntregasPage = () => {
     }
   };
 
-  const handleArchivarSeleccionados = async () => {
+  const handleArchivarSeleccionados = async (archivado: boolean) => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`¿Archivar ${selectedIds.length} entrega(s) seleccionada(s)? No se mostrarán en la vista por defecto (solo con filtro "Todos los estados").`)) return;
+    const msg = archivado
+      ? `¿Archivar ${selectedIds.length} entrega(s) seleccionada(s)? No se mostrarán en la vista por defecto (solo con filtro "Todos los estados").`
+      : `¿Desarchivar ${selectedIds.length} entrega(s) seleccionada(s)? Volverán a aparecer en la vista por defecto.`;
+    if (!confirm(msg)) return;
     try {
-      const result = await archivarMutation.mutateAsync({ ids: selectedIds });
+      const result = await archivarMutation.mutateAsync({ ids: selectedIds, archivado });
       setSelectedIds([]);
-      toast.success(`${result.procesadas} entrega(s) archivada(s)`);
+      toast.success(`${result.procesadas} entrega(s) ${archivado ? 'archivada(s)' : 'desarchivada(s)'}`);
     } catch {
       // Error handled by hook
     }
@@ -556,6 +559,8 @@ export const EntregasPage = () => {
   const subidasCount = entregas.filter((e) => e.estado === 'SUBIDA').length;
   const corregidasCount = entregas.filter((e) => e.estado === 'CORREGIDA').length;
   const allSelected = entregas.length > 0 && selectedIds.length === entregas.length;
+  const selectedEntregas = entregas.filter((e) => selectedIds.includes(e.id));
+  const allSelectedArchivados = selectedEntregas.length > 0 && selectedEntregas.every((e) => e.archivado);
 
   return (
     <div className="space-y-6">
@@ -732,11 +737,13 @@ export const EntregasPage = () => {
                 </Button>
                 <Button
                   variant="secondary"
-                  onClick={handleArchivarSeleccionados}
+                  onClick={() => handleArchivarSeleccionados(!allSelectedArchivados)}
                   isLoading={archivarMutation.isPending}
                 >
-                  <Archive className="w-4 h-4" />
-                  Archivar ({selectedIds.length})
+                  {allSelectedArchivados
+                    ? <><ArchiveRestore className="w-4 h-4" />Desarchivar ({selectedIds.length})</>
+                    : <><Archive className="w-4 h-4" />Archivar ({selectedIds.length})</>
+                  }
                 </Button>
                 <Button
                   variant="destructive"
