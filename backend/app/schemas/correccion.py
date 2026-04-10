@@ -63,7 +63,10 @@ class CriterioGeminiSchema(BaseModel):
 class GeminiResponse(BaseModel):
     """Schema for parsing complete Gemini API response."""
 
-    nota: RoundedInt = Field(ge=0, le=100, description="Total grade")
+    nota: RoundedInt = Field(ge=0, le=100, description="Final grade (may be 0 if CD applies)")
+    nota_antes_penalizaciones: Optional[RoundedInt] = Field(default=None, description="Merit score before penalties/CD")
+    condicion_desaprobacion_aplicada: Optional[str] = Field(default=None, description="ID of applied failing condition")
+    penalizaciones_aplicadas: list[str] = Field(default_factory=list, description="IDs of applied penalties")
     criterios: list[CriterioGeminiSchema] = Field(..., description="Evaluated criteria")
     fortalezas: list[str] = Field(default_factory=list, description="Strengths identified")
     recomendaciones: list[str] = Field(default_factory=list, description="Recommendations")
@@ -72,10 +75,14 @@ class GeminiResponse(BaseModel):
     @field_validator('nota')
     @classmethod
     def validate_nota_sum(cls, v, info):
-        """Validate that nota matches sum of criteria (with tolerance)."""
+        """Validate nota matches sum of criteria ONLY when no CD or penalties apply."""
+        has_cd = info.data.get('condicion_desaprobacion_aplicada')
+        has_penalties = info.data.get('penalizaciones_aplicadas')
+        if has_cd or has_penalties:
+            return v
         if 'criterios' in info.data:
             suma = sum(c.puntaje_obtenido for c in info.data['criterios'])
-            if abs(v - suma) > 1:  # Tolerance of 1 point
+            if abs(v - suma) > 1:
                 return suma
         return v
 
@@ -86,6 +93,9 @@ class CorreccionResponse(BaseModel):
     id: int
     entrega_id: int
     nota: Decimal = Field(..., description="Final grade (0-100)")
+    nota_antes_penalizaciones: Optional[Decimal] = Field(None, description="Merit score before penalties/CD")
+    condicion_desaprobacion_aplicada: Optional[str] = Field(None, description="ID of applied failing condition")
+    penalizaciones_aplicadas: list[str] = Field(default_factory=list, description="IDs of applied penalties")
     criterios: list[CriterioEvaluado] = Field(default_factory=list, description="Evaluated criteria")
     fortalezas: list[str] = Field(default_factory=list, description="Code strengths")
     recomendaciones: list[str] = Field(default_factory=list, description="Improvement recommendations")
@@ -112,6 +122,9 @@ class CorreccionResponse(BaseModel):
                 'id': obj.id,
                 'entrega_id': obj.entrega_id,
                 'nota': obj.nota,
+                'nota_antes_penalizaciones': obj.nota_antes_penalizaciones,
+                'condicion_desaprobacion_aplicada': obj.condicion_desaprobacion_aplicada,
+                'penalizaciones_aplicadas': obj.penalizaciones_aplicadas if obj.penalizaciones_aplicadas else [],
                 'criterios': criterios_list,
                 'fortalezas': obj.fortalezas if obj.fortalezas else [],
                 'recomendaciones': obj.recomendaciones if obj.recomendaciones else [],
@@ -149,6 +162,9 @@ class CorreccionCreate(BaseModel):
 
     entrega_id: int = Field(..., description="ID of the submission")
     nota: Decimal = Field(..., ge=0, le=100, description="Final grade")
+    nota_antes_penalizaciones: Optional[Decimal] = Field(None, ge=0, le=100, description="Merit score before penalties/CD")
+    condicion_desaprobacion_aplicada: Optional[str] = Field(None, description="ID of applied failing condition")
+    penalizaciones_aplicadas: list[str] = Field(default_factory=list, description="IDs of applied penalties")
     criterios: list[CriterioEvaluado] = Field(..., description="Evaluated criteria")
     fortalezas: list[str] = Field(default_factory=list, description="Code strengths")
     recomendaciones: list[str] = Field(default_factory=list, description="Recommendations")
@@ -156,26 +172,15 @@ class CorreccionCreate(BaseModel):
     corregido_por_id: int = Field(..., description="ID of user who corrected")
     raw_response: Optional[dict] = Field(None, description="Raw Gemini API response")
 
-    @field_validator('criterios')
-    @classmethod
-    def validate_criterios_sum(cls, v, info):
-        """Autocorrect nota if sum of puntaje_obtenido differs significantly.
-
-        The AI (Gemini) sometimes returns a global 'nota' that doesn't match
-        the arithmetic sum of the individual criteria scores — for example when
-        it applies external penalties or rounds differently. Instead of
-        rejecting the response with a 500, we silently trust the criteria sum
-        and override the nota, matching the same behavior as GeminiResponse.
-        """
-        if 'nota' not in info.data:
-            return v
-
-        # No raise — the nota field will be autocorrected by the model_validator
-        return v
-
     @model_validator(mode='after')
     def autocorrect_nota_from_criterios(self):
-        """If nota and sum of criterios differ by more than 1 point, use the sum."""
+        """If nota and sum of criterios differ by more than 1 point, use the sum.
+
+        ONLY applies when no CD or penalties are active — otherwise Gemini's
+        nota is intentionally different from the criteria sum.
+        """
+        if self.condicion_desaprobacion_aplicada or self.penalizaciones_aplicadas:
+            return self
         if self.criterios:
             suma = sum(float(c.puntaje_obtenido) for c in self.criterios)
             if abs(float(self.nota) - suma) > 1:

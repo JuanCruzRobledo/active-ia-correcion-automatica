@@ -75,6 +75,19 @@ class Correccion(Base, TimestampMixin):
         Text,
         nullable=True,
     )
+    nota_antes_penalizaciones: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2),
+        nullable=True,
+    )
+    condicion_desaprobacion_aplicada: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    penalizaciones_aplicadas: Mapped[list[str]] = mapped_column(
+        ARRAY(Text),
+        default=list,
+        server_default="{}",
+    )
     editado_manualmente: Mapped[bool] = mapped_column(
         default=False,
     )

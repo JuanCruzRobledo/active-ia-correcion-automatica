@@ -316,7 +316,63 @@ export default function CorreccionViewEditModal({
               <span className="text-sm text-muted-foreground">/ 100</span>
             </div>
           </div>
+
+          {/* Merit score (nota_antes_penalizaciones) */}
+          {correccion.nota_antes_penalizaciones != null &&
+            correccion.nota_antes_penalizaciones !== Number(correccion.nota) && (
+            <div className="mt-3 pt-3 border-t border-border/50 text-sm text-muted-foreground">
+              Puntaje por mérito: <span className="font-medium text-foreground">{Number(correccion.nota_antes_penalizaciones).toFixed(1)}</span> / 100
+            </div>
+          )}
         </section>
+
+        {/* Condición de desaprobación alert */}
+        {correccion.condicion_desaprobacion_aplicada && (
+          <section className="rounded-lg border-2 border-destructive/50 bg-destructive/10 p-4">
+            <div className="flex items-start gap-3">
+              <XCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-destructive text-sm">
+                  Condición de desaprobación aplicada: {correccion.condicion_desaprobacion_aplicada}
+                </h4>
+                <p className="text-sm text-foreground mt-1">
+                  Se aplicó una condición de desaprobación que fuerza la nota final a{' '}
+                  <span className="font-bold">{Number(correccion.nota).toFixed(1)}</span>.
+                  {correccion.nota_antes_penalizaciones != null && (
+                    <> El puntaje obtenido por mérito era{' '}
+                    <span className="font-medium">{Number(correccion.nota_antes_penalizaciones).toFixed(1)}</span>/100.</>
+                  )}
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Penalizaciones alert */}
+        {correccion.penalizaciones_aplicadas && correccion.penalizaciones_aplicadas.length > 0 && (
+          <section className="rounded-lg border-2 border-warning/50 bg-warning/10 p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-warning text-sm">
+                  Penalizaciones aplicadas
+                </h4>
+                <ul className="text-sm text-foreground mt-1 list-disc list-inside">
+                  {correccion.penalizaciones_aplicadas.map((pen) => (
+                    <li key={pen}>{pen}</li>
+                  ))}
+                </ul>
+                {correccion.nota_antes_penalizaciones != null && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Puntaje antes de penalizaciones:{' '}
+                    <span className="font-medium">{Number(correccion.nota_antes_penalizaciones).toFixed(1)}</span>/100
+                    {' → '}Nota final: <span className="font-medium">{Number(correccion.nota).toFixed(1)}</span>/100
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* 2. CRITERIOS EVALUADOS - Collapsible with visual states */}
         <Accordion defaultValue={['criterios']}>

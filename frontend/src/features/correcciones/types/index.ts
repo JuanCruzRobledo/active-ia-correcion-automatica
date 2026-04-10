@@ -28,6 +28,9 @@ export interface Correccion {
   id: number;
   entrega_id: number;
   nota: number;
+  nota_antes_penalizaciones: number | null;
+  condicion_desaprobacion_aplicada: string | null;
+  penalizaciones_aplicadas: string[];
   criterios: CriterioEvaluado[];
   fortalezas: string[];
   recomendaciones: string[];

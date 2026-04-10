@@ -242,6 +242,13 @@ class CorreccionService:
         correccion_data = CorreccionCreate(
             entrega_id=entrega_id,
             nota=Decimal(str(gemini_response.nota)),
+            nota_antes_penalizaciones=(
+                Decimal(str(gemini_response.nota_antes_penalizaciones))
+                if gemini_response.nota_antes_penalizaciones is not None
+                else None
+            ),
+            condicion_desaprobacion_aplicada=gemini_response.condicion_desaprobacion_aplicada,
+            penalizaciones_aplicadas=gemini_response.penalizaciones_aplicadas,
             criterios=criterios_evaluados,
             fortalezas=gemini_response.fortalezas,
             recomendaciones=gemini_response.recomendaciones,
