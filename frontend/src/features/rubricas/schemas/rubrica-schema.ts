@@ -63,10 +63,10 @@ export const condicionDesaprobacionSchema = z.object({
     .min(1, 'ID de condición es requerido')
     .regex(/^CD[0-9]+$/, 'ID debe tener formato CD1, CD2, etc.'),
   condicion: z.string().min(1, 'Condición es requerida').max(500),
-  nota_final: z
+  nota_maxima: z
     .number()
-    .min(0, 'Nota final no puede ser negativa')
-    .max(100, 'Nota final no puede exceder 100'),
+    .min(0, 'Nota máxima no puede ser negativa')
+    .max(100, 'Nota máxima no puede exceder 100'),
 });
 
 export const criteriosStructureSchema = z

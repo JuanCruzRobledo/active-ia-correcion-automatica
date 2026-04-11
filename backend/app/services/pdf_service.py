@@ -326,6 +326,90 @@ class PDFService:
             ])
         )
         story.append(grade_table)
+
+        # ==================== CD / PENALTY ALERTS ====================
+
+        if correccion.condicion_desaprobacion_aplicada:
+            story.append(Spacer(1, 0.15 * inch))
+            cd_text = (
+                f"<b>Condición de desaprobación aplicada: "
+                f"{self._escape_xml(correccion.condicion_desaprobacion_aplicada)}</b><br/>"
+                f"Se aplicó una condición de desaprobación que limita la nota máxima a "
+                f"{int(correccion.nota)}."
+            )
+            if correccion.nota_antes_penalizaciones is not None:
+                cd_text += (
+                    f" El puntaje obtenido por mérito fue "
+                    f"{int(correccion.nota_antes_penalizaciones)}/100."
+                )
+            alert_style = ParagraphStyle(
+                "CDAlert",
+                parent=styles["Normal"],
+                fontSize=10,
+                textColor=colors.HexColor("#991b1b"),
+                leading=14,
+            )
+            cd_data = [[Paragraph(cd_text, alert_style)]]
+            cd_table = Table(cd_data, colWidths=[6.5 * inch])
+            cd_table.setStyle(
+                TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fef2f2")),
+                    ("BOX", (0, 0), (-1, -1), 2, colors.HexColor("#dc2626")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 10),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ])
+            )
+            story.append(cd_table)
+
+        if correccion.penalizaciones_aplicadas and len(correccion.penalizaciones_aplicadas) > 0:
+            story.append(Spacer(1, 0.15 * inch))
+            pen_ids = ", ".join(correccion.penalizaciones_aplicadas)
+            pen_text = f"<b>Penalizaciones aplicadas:</b> {self._escape_xml(pen_ids)}"
+            if correccion.nota_antes_penalizaciones is not None:
+                pen_text += (
+                    f"<br/>Puntaje antes de penalizaciones: "
+                    f"{int(correccion.nota_antes_penalizaciones)}/100 → "
+                    f"Nota final: {int(correccion.nota)}/100"
+                )
+            pen_alert_style = ParagraphStyle(
+                "PenAlert",
+                parent=styles["Normal"],
+                fontSize=10,
+                textColor=colors.HexColor("#92400e"),
+                leading=14,
+            )
+            pen_data = [[Paragraph(pen_text, pen_alert_style)]]
+            pen_table = Table(pen_data, colWidths=[6.5 * inch])
+            pen_table.setStyle(
+                TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fffbeb")),
+                    ("BOX", (0, 0), (-1, -1), 2, colors.HexColor("#f59e0b")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 10),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ])
+            )
+            story.append(pen_table)
+
+        if (correccion.nota_antes_penalizaciones is not None
+                and not correccion.condicion_desaprobacion_aplicada
+                and not correccion.penalizaciones_aplicadas):
+            merit = int(correccion.nota_antes_penalizaciones)
+            final = int(correccion.nota)
+            if merit != final:
+                story.append(Spacer(1, 0.1 * inch))
+                merit_style = ParagraphStyle(
+                    "MeritNote",
+                    parent=styles["Normal"],
+                    fontSize=9,
+                    textColor=colors.HexColor("#64748b"),
+                    alignment=2,
+                )
+                story.append(Paragraph(f"Puntaje por mérito: {merit}/100", merit_style))
+
         story.append(Spacer(1, 0.35 * inch))
 
         # ==================== CRITERIA EVALUATION ====================
@@ -989,7 +1073,7 @@ class PDFService:
                 cond_data.append([
                     cond.get("id", ""),
                     Paragraph(self._escape_xml(cond.get("condicion", "")), table_cell_style),
-                    f"{cond.get('nota_final', 0)} pts",
+                    f"Máx: {cond.get('nota_maxima', cond.get('nota_final', 0))}",
                 ])
 
             cond_table = Table(cond_data, colWidths=[0.7 * inch, 4.5 * inch, 1.3 * inch])
@@ -1263,7 +1347,7 @@ class PDFService:
                 cond_data.append([
                     cond.get("id", ""),
                     Paragraph(self._escape_xml(cond.get("condicion", "")), table_cell_style),
-                    f"{cond.get('nota_final', 0)} pts",
+                    f"Máx: {cond.get('nota_maxima', cond.get('nota_final', 0))}",
                 ])
 
             cond_table = Table(cond_data, colWidths=[0.7 * inch, 4.5 * inch, 1.3 * inch])
@@ -1840,7 +1924,7 @@ class PDFService:
                 cond_data.append([
                     cond.get("id", ""),
                     Paragraph(cond.get("condicion", ""), table_cell_style),
-                    f"{cond.get('nota_final', 0)} pts",
+                    f"Máx: {cond.get('nota_maxima', cond.get('nota_final', 0))}",
                 ])
 
             cond_table = Table(cond_data, colWidths=[0.7 * inch, 4.5 * inch, 1.3 * inch])
@@ -2185,7 +2269,7 @@ class PDFService:
                 cond_data.append([
                     cond.get("id", ""),
                     Paragraph(cond.get("condicion", ""), table_cell_style),
-                    f"{cond.get('nota_final', 0)} pts",
+                    f"Máx: {cond.get('nota_maxima', cond.get('nota_final', 0))}",
                 ])
 
             cond_table = Table(cond_data, colWidths=[0.7 * inch, 4.5 * inch, 1.3 * inch])

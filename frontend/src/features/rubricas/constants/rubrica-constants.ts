@@ -93,7 +93,7 @@ export const JSON_EXAMPLE = `{
     {
       "id": "Identificador de la condición",
       "condicion": "Regla que provoca desaprobación directa",
-      "nota_final": 0
+      "nota_maxima": 0
     }
   ]
 }`;

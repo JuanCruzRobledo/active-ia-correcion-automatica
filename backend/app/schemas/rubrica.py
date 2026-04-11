@@ -173,11 +173,11 @@ class CondicionDesaprobacion(BaseModel):
         description="Descripción de la condición de desaprobación",
         examples=["Plagio detectado", "No implementa al menos 3 endpoints CRUD"],
     )
-    nota_final: int = Field(
+    nota_maxima: int = Field(
         ...,
         ge=0,
         le=100,
-        description="Nota final a asignar si se cumple la condición",
+        description="Nota máxima permitida si se cumple la condición (techo)",
         examples=[0, 30],
     )
 

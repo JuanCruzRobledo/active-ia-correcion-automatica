@@ -28,8 +28,8 @@ export function CondicionesEditor({
         <div className="text-sm">
           <p className="font-medium mb-1 text-foreground">Condiciones de desaprobación automática</p>
           <p className="text-muted-foreground">
-            Define condiciones que establecen una nota final específica automáticamente, independientemente de otros criterios.
-            <span className="block mt-1 text-xs">Ej: "Plagio detectado" → Nota: 0, "Falta más del 50% de funcionalidad" → Nota: 30</span>
+            Define condiciones que limitan la nota máxima alcanzable. Si se cumple, la nota no puede superar el techo indicado.
+            <span className="block mt-1 text-xs">Ej: "Plagio detectado" → Máx: 0, "No usa TypeScript" → Máx: 30</span>
           </p>
         </div>
       </div>
@@ -56,14 +56,14 @@ export function CondicionesEditor({
                       />
                       <div className="col-span-2">
                         <Input
-                          label="Nota Final"
+                          label="Nota Máxima"
                           type="number"
                           min={0}
                           max={100}
-                          {...register(`condiciones_desaprobacion.${index}.nota_final`, {
+                          {...register(`condiciones_desaprobacion.${index}.nota_maxima`, {
                             valueAsNumber: true,
                           })}
-                          error={fieldErrors?.nota_final?.message as string}
+                          error={fieldErrors?.nota_maxima?.message as string}
                           placeholder="0"
                         />
                       </div>
@@ -123,7 +123,7 @@ export function CondicionesEditor({
           append({
             id: `CD${fields.length + 1}`,
             condicion: '',
-            nota_final: 0,
+            nota_maxima: 0,
           })
         }
         className="w-full"

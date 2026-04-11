@@ -61,7 +61,7 @@ export interface Penalizacion {
 export interface CondicionDesaprobacion {
   id: string; // Format: "CD1", "CD2"
   condicion: string;
-  nota_final: number; // 0-100
+  nota_maxima: number; // 0-100, techo de nota si se cumple la condición
 }
 
 /**

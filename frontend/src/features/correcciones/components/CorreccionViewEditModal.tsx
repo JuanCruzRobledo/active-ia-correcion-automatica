@@ -336,10 +336,10 @@ export default function CorreccionViewEditModal({
                   Condición de desaprobación aplicada: {correccion.condicion_desaprobacion_aplicada}
                 </h4>
                 <p className="text-sm text-foreground mt-1">
-                  Se aplicó una condición de desaprobación que fuerza la nota final a{' '}
+                  Se aplicó una condición de desaprobación que limita la nota máxima a{' '}
                   <span className="font-bold">{Number(correccion.nota).toFixed(1)}</span>.
                   {correccion.nota_antes_penalizaciones != null && (
-                    <> El puntaje obtenido por mérito era{' '}
+                    <> El puntaje obtenido por mérito fue{' '}
                     <span className="font-medium">{Number(correccion.nota_antes_penalizaciones).toFixed(1)}</span>/100.</>
                   )}
                 </p>

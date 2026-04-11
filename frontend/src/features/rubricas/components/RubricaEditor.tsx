@@ -46,7 +46,7 @@ const rubricaFormSchema = z.object({
   condiciones_desaprobacion: z.array(z.object({
     id: z.string().min(1),
     condicion: z.string().min(1),
-    nota_final: z.number().min(0).max(100),
+    nota_maxima: z.number().min(0).max(100),
   })),
 }).refine(
   (data) => {
