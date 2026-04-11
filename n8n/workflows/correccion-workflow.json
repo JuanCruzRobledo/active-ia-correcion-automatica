@@ -11,9 +11,9 @@
       "typeVersion": 2,
       "position": [
         -160,
-        352
+        336
       ],
-      "id": "7c466f91-121e-434e-8900-a121ca9d8f1f",
+      "id": "2f03ae70-14b9-4ba6-bdb7-2f57476987c2",
       "name": "Webhook: Recibir Request",
       "webhookId": "corregir-webhook"
     },
@@ -53,9 +53,9 @@
       "typeVersion": 3.4,
       "position": [
         64,
-        352
+        336
       ],
-      "id": "d8a5a9b3-4878-43df-b08f-32d2ede66126",
+      "id": "24ece96a-6491-4318-94d1-f51fbbc7210b",
       "name": "Extraer Datos Request"
     },
     {
@@ -66,9 +66,9 @@
       "typeVersion": 2,
       "position": [
         288,
-        352
+        336
       ],
-      "id": "6397d4de-abb2-45cc-b54d-3df9a2bc6aae",
+      "id": "51e684c5-1a46-4b61-bc6d-a33887e37bd1",
       "name": "Construir Body Gemini"
     },
     {
@@ -87,9 +87,9 @@
       "typeVersion": 4,
       "position": [
         512,
-        352
+        336
       ],
-      "id": "7bb597b4-8260-4227-8a1d-63644757d1c7",
+      "id": "b1598b2b-ba87-4f00-aeb8-8fa80fcaccfb",
       "name": "Gemini: Corregir",
       "retryOnFail": true,
       "waitBetweenTries": 5000,
@@ -98,15 +98,15 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parser de respuesta de Gemini\n\nconst geminiResponse = $input.first().json;\nconst startTime = Date.now();\n\ntry {\n  // Verificar si hay error de Gemini (503, 429, etc.)\n  if (geminiResponse.error) {\n    const errorMsg = geminiResponse.error.message || JSON.stringify(geminiResponse.error);\n    const errorCode = geminiResponse.error.code || 'UNKNOWN';\n    \n    return [{ \n      json: { \n        success: false,\n        error: {\n          code: \"GEMINI_ERROR\",\n          message: `Error de Gemini [${errorCode}]: ${errorMsg}`,\n          retry: errorCode === 503 || errorCode === 500\n        }\n      } \n    }];\n  }\n\n  // Normalizar respuesta (puede venir como array o objeto)\n  let responseArray;\n  if (Array.isArray(geminiResponse)) {\n    responseArray = geminiResponse;\n  } else if (geminiResponse.body && Array.isArray(geminiResponse.body)) {\n    responseArray = geminiResponse.body;\n  } else if (geminiResponse.data && Array.isArray(geminiResponse.data)) {\n    responseArray = geminiResponse.data;\n  } else {\n    responseArray = [geminiResponse];\n  }\n  \n  const candidate = responseArray[0]?.candidates?.[0];\n  \n  if (!candidate) {\n    return [{ \n      json: { \n        success: false,\n        error: {\n          code: \"PARSING_ERROR\",\n          message: \"No se encontró candidate en respuesta de Gemini\",\n          retry: true\n        }\n      } \n    }];\n  }\n  \n  const textContent = candidate.content?.parts?.[0]?.text;\n  \n  if (!textContent) {\n    return [{ \n      json: { \n        success: false,\n        error: {\n          code: \"PARSING_ERROR\",\n          message: \"No se encontró texto en la respuesta\",\n          retry: true\n        }\n      } \n    }];\n  }\n  \n  // Parsear el JSON que viene como string\n  const parsedData = JSON.parse(textContent);\n  \n  // Validar estructura mínima\n  if (!parsedData.nota && parsedData.nota !== 0) {\n    return [{ \n      json: { \n        success: false,\n        error: {\n          code: \"PARSING_ERROR\",\n          message: \"Respuesta no contiene campo 'nota'\",\n          retry: true\n        }\n      } \n    }];\n  }\n  \n  if (!Array.isArray(parsedData.criterios)) {\n    return [{ \n      json: { \n        success: false,\n        error: {\n          code: \"PARSING_ERROR\",\n          message: \"Respuesta no contiene 'criterios' como array\",\n          retry: true\n        }\n      } \n    }];\n  }\n\n  // Validación de consistencia: verificar que la nota refleje condiciones/penalizaciones\n  const sumaCriterios = parsedData.criterios.reduce((sum, c) => sum + (c.puntaje_obtenido || 0), 0);\n  \n  // Siempre asegurar que nota_antes_penalizaciones refleje la suma real de criterios\n  parsedData.nota_antes_penalizaciones = sumaCriterios;\n  \n  // Si hay condición de desaprobación, la nota es min(sumaCriterios, nota_maxima_cd)\n  // Gemini ya calcula esto, pero validamos que la nota no supere la suma de criterios\n  if (parsedData.condicion_desaprobacion_aplicada) {\n    // La nota ya viene calculada como techo por Gemini\n    if (parsedData.nota > sumaCriterios) {\n      parsedData.nota = sumaCriterios;\n    }\n  }\n  \n  // Si no hay ni condiciones ni penalizaciones, la nota debe ser la suma\n  if (!parsedData.condicion_desaprobacion_aplicada && \n      (!parsedData.penalizaciones_aplicadas || parsedData.penalizaciones_aplicadas.length === 0)) {\n    parsedData.nota = sumaCriterios;\n  }\n  \n  // Construir metadata\n  const elapsedTime = Date.now() - startTime;\n  const metadata = {\n    modelo: \"gemini-2.5-flash\",\n    tokens_entrada: candidate.tokenCount?.totalTokens || 0,\n    tokens_salida: candidate.tokenCount?.candidatesTokenCount || 0,\n    tiempo_ms: elapsedTime\n  };\n  \n  // Retornar resultado exitoso\n  return [{ \n    json: { \n      success: true,\n      correccion: {\n        nota: parsedData.nota,\n        nota_antes_penalizaciones: parsedData.nota_antes_penalizaciones || sumaCriterios,\n        condicion_desaprobacion_aplicada: parsedData.condicion_desaprobacion_aplicada || null,\n        penalizaciones_aplicadas: parsedData.penalizaciones_aplicadas || [],\n        criterios: parsedData.criterios,\n        fortalezas: parsedData.fortalezas || [],\n        recomendaciones: parsedData.recomendaciones || [],\n        comentario_general: parsedData.comentario_general || \"\"\n      },\n      metadata: metadata\n    } \n  }];\n  \n} catch (error) {\n  return [{ \n    json: { \n      success: false,\n      error: {\n        code: \"PARSING_ERROR\",\n        message: `Error al procesar corrección: ${error.message}`,\n        retry: true\n      }\n    } \n  }];\n}"
+        "jsCode": "// Parser de respuesta de Gemini\n\n  const geminiResponse = $input.first().json;\n  const startTime = Date.now();\n\n  try {\n    // Verificar si hay error de Gemini (503, 429, etc.)\n    if (geminiResponse.error) {\n      const errorMsg = geminiResponse.error.message || JSON.stringify(geminiResponse.error);\n      const errorCode = geminiResponse.error.code || 'UNKNOWN';\n\n      return [{\n        json: {\n          success: false,\n          error: {\n            code: \"GEMINI_ERROR\",\n            message: `Error de Gemini [${errorCode}]: ${errorMsg}`,\n            retry: errorCode === 503 || errorCode === 500\n          }\n        }\n      }];\n    }\n\n    // Normalizar respuesta (puede venir como array o objeto)\n    let responseArray;\n    if (Array.isArray(geminiResponse)) {\n      responseArray = geminiResponse;\n    } else if (geminiResponse.body && Array.isArray(geminiResponse.body)) {\n      responseArray = geminiResponse.body;\n    } else if (geminiResponse.data && Array.isArray(geminiResponse.data)) {\n      responseArray = geminiResponse.data;\n    } else {\n      responseArray = [geminiResponse];\n    }\n\n    const candidate = responseArray[0]?.candidates?.[0];\n\n    if (!candidate) {\n      return [{\n        json: {\n          success: false,\n          error: {\n            code: \"PARSING_ERROR\",\n            message: \"No se encontró candidate en respuesta de Gemini\",\n            retry: true\n          }\n        }\n      }];\n    }\n\n    const textContent = candidate.content?.parts?.[0]?.text;\n\n    if (!textContent) {\n      return [{\n        json: {\n          success: false,\n          error: {\n            code: \"PARSING_ERROR\",\n            message: \"No se encontró texto en la respuesta\",\n            retry: true\n          }\n        }\n      }];\n    }\n\n    // Parsear el JSON que viene como string\n    const parsedData = JSON.parse(textContent);\n\n    // Validar estructura mínima\n    if (!parsedData.nota && parsedData.nota !== 0) {\n      return [{\n        json: {\n          success: false,\n          error: {\n            code: \"PARSING_ERROR\",\n            message: \"Respuesta no contiene campo 'nota'\",\n            retry: true\n          }\n        }\n      }];\n    }\n\n    if (!Array.isArray(parsedData.criterios)) {\n      return [{\n        json: {\n          success: false,\n          error: {\n            code: \"PARSING_ERROR\",\n            message: \"Respuesta no contiene 'criterios' como array\",\n            retry: true\n          }\n        }\n      }];\n    }\n\n    // Validación de consistencia\n    const sumaCriterios = parsedData.criterios.reduce((sum, c) => sum + (c.puntaje_obtenido || 0), 0);\n\n    // Siempre asegurar que nota_antes_penalizaciones refleje la suma real de criterios\n    parsedData.nota_antes_penalizaciones = sumaCriterios;\n\n    // Si hay condición de desaprobación, la nota es min(sumaCriterios, techo)\n    if (parsedData.condicion_desaprobacion_aplicada) {\n      if (parsedData.nota > sumaCriterios) {\n        parsedData.nota = sumaCriterios;\n      }\n    }\n\n    // Si no hay ni condiciones ni penalizaciones, la nota debe ser la suma\n    if (!parsedData.condicion_desaprobacion_aplicada &&\n        (!parsedData.penalizaciones_aplicadas || parsedData.penalizaciones_aplicadas.length === 0)) {\n      parsedData.nota = sumaCriterios;\n    }\n\n    // Construir metadata\n    const elapsedTime = Date.now() - startTime;\n    const metadata = {\n      modelo: \"gemini-2.5-flash\",\n      tokens_entrada: candidate.tokenCount?.totalTokens || 0,\n      tokens_salida: candidate.tokenCount?.candidatesTokenCount || 0,\n      tiempo_ms: elapsedTime\n    };\n\n    // Retornar resultado exitoso CON todos los campos de CD/penalizaciones\n    return [{\n      json: {\n        success: true,\n        correccion: {\n          nota: parsedData.nota,\n          nota_antes_penalizaciones: parsedData.nota_antes_penalizaciones,\n          condicion_desaprobacion_aplicada: parsedData.condicion_desaprobacion_aplicada || null,\n          penalizaciones_aplicadas: parsedData.penalizaciones_aplicadas || [],\n          criterios: parsedData.criterios,\n          fortalezas: parsedData.fortalezas || [],\n          recomendaciones: parsedData.recomendaciones || [],\n          comentario_general: parsedData.comentario_general || \"\"\n        },\n        metadata: metadata\n      }\n    }];\n\n  } catch (error) {\n    return [{\n      json: {\n        success: false,\n        error: {\n          code: \"PARSING_ERROR\",\n          message: `Error al procesar corrección: ${error.message}`,\n          retry: true\n        }\n      }\n    }];\n  }"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         720,
-        352
+        336
       ],
-      "id": "0a2f764b-b5ca-4dcf-8024-c0e2964fcc73",
+      "id": "e8118131-d861-4454-b688-1a943086701f",
       "name": "Parsear Respuesta"
     },
     {
@@ -119,9 +119,9 @@
       "typeVersion": 1.4,
       "position": [
         944,
-        352
+        336
       ],
-      "id": "c57de004-31a4-477a-8e9d-ae27be50cd7d",
+      "id": "665209ca-bbda-4590-bd83-574023e64f32",
       "name": "Responder Resultado"
     }
   ],
