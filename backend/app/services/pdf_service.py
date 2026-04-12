@@ -343,7 +343,7 @@ class PDFService:
 
             cd_text = (
                 f"<b>Nota limitada por incumplimiento de requisitos</b><br/>"
-                f"{self._escape_xml(cd_descripcion)}<br/>"
+                f"• {self._escape_xml(cd_descripcion)}<br/><br/>"
                 f"Esto limita la nota máxima alcanzable a <b>{cd_techo}</b> puntos."
             )
             if correccion.nota_antes_penalizaciones is not None:

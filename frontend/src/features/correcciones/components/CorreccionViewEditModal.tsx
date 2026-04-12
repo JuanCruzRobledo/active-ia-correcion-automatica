@@ -335,12 +335,15 @@ export default function CorreccionViewEditModal({
                 <h4 className="font-semibold text-destructive text-sm">
                   Nota limitada por incumplimiento de requisitos
                 </h4>
-                <p className="text-sm text-foreground mt-1">
-                  {correccion.condicion_desaprobacion_descripcion || correccion.condicion_desaprobacion_aplicada}
-                </p>
-                <p className="text-sm text-foreground mt-1">
+                <ul className="text-sm text-foreground mt-2 space-y-1">
+                  <li className="flex items-start gap-2">
+                    <span className="text-destructive mt-1">•</span>
+                    <span>{correccion.condicion_desaprobacion_descripcion || correccion.condicion_desaprobacion_aplicada}</span>
+                  </li>
+                </ul>
+                <p className="text-sm text-muted-foreground mt-2">
                   Esto limita la nota máxima alcanzable a{' '}
-                  <span className="font-bold">{Number(correccion.nota).toFixed(1)}</span>.
+                  <span className="font-medium">{Number(correccion.nota).toFixed(1)}</span>.
                   {correccion.nota_antes_penalizaciones != null && (
                     <> Tu puntaje obtenido por mérito fue{' '}
                     <span className="font-medium">{Number(correccion.nota_antes_penalizaciones).toFixed(1)}</span>/100.</>
