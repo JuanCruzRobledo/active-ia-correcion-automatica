@@ -654,6 +654,9 @@ class CorreccionService:
         """
         Build CorreccionResponse from Correccion model.
 
+        Resolves CD and penalty IDs to human-readable descriptions
+        from the rubrica so the frontend can display them clearly.
+
         Args:
             correccion: Correccion model instance.
 
@@ -665,7 +668,29 @@ class CorreccionService:
             correccion.id
         )
 
-        return CorreccionResponse.model_validate(correccion)
+        response = CorreccionResponse.model_validate(correccion)
+
+        # Resolve CD description from rubrica
+        rubrica = correccion.entrega.rubrica
+        if response.condicion_desaprobacion_aplicada and rubrica:
+            for cd in (rubrica.condiciones_desaprobacion_json or []):
+                if cd.get("id") == response.condicion_desaprobacion_aplicada:
+                    response.condicion_desaprobacion_descripcion = cd.get("condicion")
+                    break
+
+        # Resolve penalty descriptions from rubrica
+        if response.penalizaciones_aplicadas and rubrica:
+            for pen_id in response.penalizaciones_aplicadas:
+                for p in (rubrica.penalizaciones_json or []):
+                    if p.get("id") == pen_id:
+                        response.penalizaciones_descripciones.append({
+                            "id": pen_id,
+                            "descripcion": p.get("descripcion", pen_id),
+                            "descuento_porcentaje": p.get("descuento_porcentaje", 0),
+                        })
+                        break
+
+        return response
 
 
 async def procesar_lote_background(

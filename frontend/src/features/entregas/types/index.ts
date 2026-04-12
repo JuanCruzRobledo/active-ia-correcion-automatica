@@ -53,7 +53,9 @@ export interface Correccion {
   nota: number;
   nota_antes_penalizaciones: number | null;
   condicion_desaprobacion_aplicada: string | null;
+  condicion_desaprobacion_descripcion: string | null;
   penalizaciones_aplicadas: string[];
+  penalizaciones_descripciones: { id: string; descripcion: string; descuento_porcentaje: number }[];
   criterios: CriterioEvaluado[];
   fortalezas: string[];
   recomendaciones: string[];

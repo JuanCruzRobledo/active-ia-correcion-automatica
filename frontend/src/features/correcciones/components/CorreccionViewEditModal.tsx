@@ -333,13 +333,16 @@ export default function CorreccionViewEditModal({
               <XCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
               <div>
                 <h4 className="font-semibold text-destructive text-sm">
-                  Condición de desaprobación aplicada: {correccion.condicion_desaprobacion_aplicada}
+                  Nota limitada por incumplimiento de requisitos
                 </h4>
                 <p className="text-sm text-foreground mt-1">
-                  Se aplicó una condición de desaprobación que limita la nota máxima a{' '}
+                  {correccion.condicion_desaprobacion_descripcion || correccion.condicion_desaprobacion_aplicada}
+                </p>
+                <p className="text-sm text-foreground mt-1">
+                  Esto limita la nota máxima alcanzable a{' '}
                   <span className="font-bold">{Number(correccion.nota).toFixed(1)}</span>.
                   {correccion.nota_antes_penalizaciones != null && (
-                    <> El puntaje obtenido por mérito fue{' '}
+                    <> Tu puntaje obtenido por mérito fue{' '}
                     <span className="font-medium">{Number(correccion.nota_antes_penalizaciones).toFixed(1)}</span>/100.</>
                   )}
                 </p>
@@ -357,9 +360,20 @@ export default function CorreccionViewEditModal({
                 <h4 className="font-semibold text-warning text-sm">
                   Penalizaciones aplicadas
                 </h4>
-                <ul className="text-sm text-foreground mt-1 list-disc list-inside">
-                  {correccion.penalizaciones_aplicadas.map((pen) => (
-                    <li key={pen}>{pen}</li>
+                <ul className="text-sm text-foreground mt-2 space-y-1">
+                  {(correccion.penalizaciones_descripciones && correccion.penalizaciones_descripciones.length > 0
+                    ? correccion.penalizaciones_descripciones
+                    : correccion.penalizaciones_aplicadas.map(id => ({ id, descripcion: id, descuento_porcentaje: 0 }))
+                  ).map((pen) => (
+                    <li key={pen.id} className="flex items-start gap-2">
+                      <span className="text-warning mt-1">•</span>
+                      <span>
+                        {pen.descripcion}
+                        {pen.descuento_porcentaje > 0 && (
+                          <span className="text-muted-foreground"> (descuento del {pen.descuento_porcentaje}%)</span>
+                        )}
+                      </span>
+                    </li>
                   ))}
                 </ul>
                 {correccion.nota_antes_penalizaciones != null && (

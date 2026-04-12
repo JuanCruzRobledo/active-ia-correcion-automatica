@@ -331,16 +331,25 @@ class PDFService:
 
         if correccion.condicion_desaprobacion_aplicada:
             story.append(Spacer(1, 0.15 * inch))
+            # Look up CD description from rubrica
+            cd_id = correccion.condicion_desaprobacion_aplicada
+            cd_descripcion = cd_id
+            cd_techo = int(correccion.nota)
+            for cd in (rubrica.condiciones_desaprobacion_json or []):
+                if cd.get("id") == cd_id:
+                    cd_descripcion = cd.get("condicion", cd_id)
+                    cd_techo = cd.get("nota_maxima", cd.get("nota_final", cd_techo))
+                    break
+
             cd_text = (
-                f"<b>Condición de desaprobación aplicada: "
-                f"{self._escape_xml(correccion.condicion_desaprobacion_aplicada)}</b><br/>"
-                f"Se aplicó una condición de desaprobación que limita la nota máxima a "
-                f"{int(correccion.nota)}."
+                f"<b>Nota limitada por incumplimiento de requisitos</b><br/>"
+                f"{self._escape_xml(cd_descripcion)}<br/>"
+                f"Esto limita la nota máxima alcanzable a <b>{cd_techo}</b> puntos."
             )
             if correccion.nota_antes_penalizaciones is not None:
                 cd_text += (
-                    f" El puntaje obtenido por mérito fue "
-                    f"{int(correccion.nota_antes_penalizaciones)}/100."
+                    f" Tu puntaje obtenido por mérito fue "
+                    f"<b>{int(correccion.nota_antes_penalizaciones)}</b>/100."
                 )
             alert_style = ParagraphStyle(
                 "CDAlert",
@@ -365,13 +374,26 @@ class PDFService:
 
         if correccion.penalizaciones_aplicadas and len(correccion.penalizaciones_aplicadas) > 0:
             story.append(Spacer(1, 0.15 * inch))
-            pen_ids = ", ".join(correccion.penalizaciones_aplicadas)
-            pen_text = f"<b>Penalizaciones aplicadas:</b> {self._escape_xml(pen_ids)}"
+            # Look up penalty descriptions from rubrica
+            pen_descriptions = []
+            for pen_id in correccion.penalizaciones_aplicadas:
+                pen_desc = pen_id
+                pen_pct = 0
+                for p in (rubrica.penalizaciones_json or []):
+                    if p.get("id") == pen_id:
+                        pen_desc = p.get("descripcion", pen_id)
+                        pen_pct = p.get("descuento_porcentaje", 0)
+                        break
+                pen_descriptions.append((pen_desc, pen_pct))
+
+            pen_text = f"<b>Penalizaciones aplicadas:</b><br/>"
+            for desc, pct in pen_descriptions:
+                pen_text += f"• {self._escape_xml(desc)} (descuento del {pct}%)<br/>"
             if correccion.nota_antes_penalizaciones is not None:
                 pen_text += (
                     f"<br/>Puntaje antes de penalizaciones: "
-                    f"{int(correccion.nota_antes_penalizaciones)}/100 → "
-                    f"Nota final: {int(correccion.nota)}/100"
+                    f"<b>{int(correccion.nota_antes_penalizaciones)}</b>/100 → "
+                    f"Nota final: <b>{int(correccion.nota)}</b>/100"
                 )
             pen_alert_style = ParagraphStyle(
                 "PenAlert",
