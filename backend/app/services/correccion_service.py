@@ -374,6 +374,16 @@ class CorreccionService:
             ]
             correccion.criterios_json = {"criterios": criterios_serialized}
 
+        if "nota_antes_penalizaciones" in update_data:
+            val = update_data["nota_antes_penalizaciones"]
+            correccion.nota_antes_penalizaciones = Decimal(str(val)) if val is not None else None
+
+        if "condicion_desaprobacion_aplicada" in update_data:
+            correccion.condicion_desaprobacion_aplicada = update_data["condicion_desaprobacion_aplicada"] or None
+
+        if "penalizaciones_aplicadas" in update_data:
+            correccion.penalizaciones_aplicadas = update_data["penalizaciones_aplicadas"] or []
+
         if "fortalezas" in update_data:
             correccion.fortalezas = update_data["fortalezas"]
 

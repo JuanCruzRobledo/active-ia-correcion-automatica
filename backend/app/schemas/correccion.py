@@ -150,6 +150,9 @@ class CorreccionUpdate(BaseModel):
     """Schema for updating an existing correction."""
 
     nota: Optional[Decimal] = Field(None, ge=0, le=100, description="Final grade")
+    nota_antes_penalizaciones: Optional[Decimal] = Field(None, ge=0, le=100, description="Merit score")
+    condicion_desaprobacion_aplicada: Optional[str] = Field(None, description="CD ID or null to clear")
+    penalizaciones_aplicadas: Optional[list[str]] = Field(None, description="Penalty IDs or empty to clear")
     criterios: Optional[list[CriterioEvaluado]] = Field(None, description="Updated criteria")
     fortalezas: Optional[list[str]] = Field(None, description="Updated strengths")
     recomendaciones: Optional[list[str]] = Field(None, description="Updated recommendations")
