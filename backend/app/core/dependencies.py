@@ -102,7 +102,7 @@ async def get_current_user(
     from app.repositories.usuario_repository import UsuarioRepository
 
     user_repo = UsuarioRepository(db)
-    user = await user_repo.get_by_id(user_id)
+    user = await user_repo.get_by_id_light(user_id)
 
     if user is None:
         raise HTTPException(

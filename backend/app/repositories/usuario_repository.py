@@ -13,6 +13,7 @@ from datetime import datetime
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload
 
 from app.models import Usuario
 from app.models.enums import RolEnum
@@ -46,6 +47,20 @@ class UsuarioRepository:
         """
         result = await self.db.execute(
             select(Usuario).where(Usuario.id == user_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_id_light(self, user_id: int) -> Usuario | None:
+        """
+        Get user by ID without loading relationships.
+
+        Optimized for authentication checks where only user
+        attributes are needed (no entregas, correcciones, etc.).
+        """
+        result = await self.db.execute(
+            select(Usuario)
+            .where(Usuario.id == user_id)
+            .options(noload("*"))
         )
         return result.scalar_one_or_none()
 
