@@ -104,8 +104,6 @@ export const EntregasPage = () => {
   const [batchEntregaIds, setBatchEntregaIds] = useState<number[]>([]);
   const batchTotalCount = useRef(0);
   const batchInitialStates = useRef<Record<number, string>>({});
-  const batchStartedProcessing = useRef(false);
-  const batchErrorNotified = useRef(false);
 
 
   const page = parseInt(searchParams.get('page') || '1', 10);
@@ -165,70 +163,59 @@ export const EntregasPage = () => {
     return () => clearInterval(intervalId);
   }, [hasPendingCorrections, isBatchActive, queryClient]);
 
-  // Detect batch errors: when batch entregas transition to ERROR while
-  // others remain unprocessed, show a single notification.
-  // Uses batchInitialStates to detect incomplete batches even when items
-  // were already ERROR before the batch started.
-  // Waits until the backend has confirmed started processing (at least one
-  // item changed state) before evaluating errors.
+  // Detect batch completion or errors.
+  // After 20s (2 polls), if nothing is PENDIENTE, evaluate results and clear.
   useEffect(() => {
-    if (batchEntregaIds.length === 0 || !data?.items || batchErrorNotified.current) return;
+    if (batchEntregaIds.length === 0 || !data?.items) return;
 
     const batchItems = data.items.filter(e => batchEntregaIds.includes(e.id));
     if (batchItems.length === 0) return;
 
-    // Check if the backend has started processing: at least one item changed
-    // state from its initial value or is actively being processed (PENDIENTE).
-    const activelyProcessing = batchItems.filter(e => e.estado === 'PENDIENTE').length;
-    const anyStateChanged = batchItems.some(e => {
+    // Check how many have changed from their initial state.
+    // The backend processes one-by-one: each entrega stays in its initial
+    // state (SUBIDA) until the backend starts processing it. We can only
+    // evaluate results for entregas that the backend has already touched.
+    const untouched = batchItems.filter(e => {
       const initial = batchInitialStates.current[e.id];
-      return initial !== undefined && e.estado !== initial;
-    });
-
-    if (activelyProcessing > 0 || anyStateChanged) {
-      batchStartedProcessing.current = true;
-    }
-
-    // Don't evaluate errors until processing has actually started
-    if (!batchStartedProcessing.current) return;
-
-    const successCount = batchItems.filter(e => e.estado === 'CORREGIDA').length;
-    const errorCount = batchItems.filter(e => e.estado === 'ERROR').length;
-
-    // Count items we can confirm were actually processed by the batch:
-    // - CORREGIDA: clearly processed successfully
-    // - ERROR but initial state was NOT ERROR: processed and failed (new error)
-    // Items that were ERROR before AND are still ERROR = ambiguous (might not have been touched)
-    const confirmedProcessed = batchItems.filter(e => {
-      if (e.estado === 'CORREGIDA') return true;
-      if (e.estado === 'ERROR') {
-        const initial = batchInitialStates.current[e.id];
-        return initial !== undefined && initial !== 'ERROR';
-      }
-      return false;
+      return initial !== undefined && e.estado === initial;
     }).length;
 
-    const totalExpected = batchTotalCount.current;
-    const unprocessedCount = totalExpected - confirmedProcessed;
+    // If ALL entregas are still untouched, backend hasn't started yet — wait
+    if (untouched === batchItems.length) return;
 
-    // Errors exist, not all confirmed processed, nothing actively running → batch was stopped
-    if (errorCount > 0 && unprocessedCount > 0 && activelyProcessing === 0) {
-      batchErrorNotified.current = true;
+    // Count NEW errors only — entregas that changed TO error state.
+    // Entregas that were already ERROR before the batch (re-correction) don't count.
+    const newErrors = batchItems.filter(e => {
+      const initial = batchInitialStates.current[e.id];
+      return e.estado === 'ERROR' && initial !== 'ERROR';
+    });
+
+    if (newErrors.length > 0) {
+      // Backend stops batch on first error — remaining untouched won't be processed.
+      const successCount = batchItems.filter(e => e.estado === 'CORREGIDA').length;
+      const totalExpected = batchTotalCount.current;
+      const unprocessedCount = totalExpected - successCount - newErrors.length;
       setBatchEntregaIds([]);
       toast.error(
         `⚠️ La corrección en lote se detuvo. ` +
-        `${successCount} completada(s), ${errorCount} con error, ` +
-        `${unprocessedCount} sin procesar. ` +
-        `Revisá si tu API Key de Gemini es válida o esperá unos minutos si se alcanzó el límite de uso.`,
+        `${successCount} completada(s), ${newErrors.length} con error` +
+        (unprocessedCount > 0 ? `, ${unprocessedCount} sin procesar` : '') +
+        `. Revisá si tu API Key de Gemini es válida o esperá unos minutos si se alcanzó el límite de uso.`,
         { duration: 12000 }
       );
+      return;
     }
 
-    // All confirmed processed → batch complete, clear tracking
-    if (activelyProcessing === 0 && confirmedProcessed >= totalExpected) {
-      setBatchEntregaIds([]);
-      batchErrorNotified.current = false;
-    }
+    // No new errors. If some entregas are still untouched or PENDIENTE,
+    // the backend is still working — wait for next poll.
+    const stillProcessing = batchItems.filter(
+      e => e.estado === 'PENDIENTE'
+    ).length;
+
+    if (untouched > 0 || stillProcessing > 0) return;
+
+    // All entregas have been processed and none have new errors → success
+    setBatchEntregaIds([]);
   }, [data?.items, batchEntregaIds]);
 
   // Correction data for modal
@@ -350,6 +337,15 @@ export const EntregasPage = () => {
   const handleCorregirSeleccionados = async () => {
     if (selectedIds.length === 0) return;
 
+    // Block if a batch is already in progress
+    if (isBatchActive) {
+      toast.error(
+        'Ya hay una corrección en lote en progreso. Esperá a que termine antes de iniciar otra.',
+        { duration: 6000 }
+      );
+      return;
+    }
+
     const itemsToCorrect = data?.items.filter(
       item => selectedIds.includes(item.id) &&
         (item.estado === 'PENDIENTE' || item.estado === 'SUBIDA' || item.estado === 'ERROR')
@@ -362,18 +358,28 @@ export const EntregasPage = () => {
 
     const ids = itemsToCorrect.map(i => i.id);
 
-    if (confirm(`¿Confirma corregir ${ids.length} entregas seleccionadas?`)) {
+    // RPM warning for large batches
+    const RPM_WARNING_THRESHOLD = 10;
+    let confirmMessage = `¿Confirma corregir ${ids.length} entregas seleccionadas?`;
+    if (ids.length >= RPM_WARNING_THRESHOLD) {
+      confirmMessage =
+        `⚠️ Vas a corregir ${ids.length} entregas. ` +
+        `Lotes grandes pueden provocar errores de límite de uso (rate limit) en la API de Gemini, ` +
+        `lo que puede interrumpir el proceso antes de completar todas las correcciones.\n\n` +
+        `Se recomienda corregir en lotes de menos de ${RPM_WARNING_THRESHOLD} entregas.\n\n` +
+        `¿Continuar de todas formas?`;
+    }
+
+    if (confirm(confirmMessage)) {
       try {
         const result = await corregirMasivaMutation.mutateAsync(ids);
         setSelectedIds([]);
-        // Track batch IDs and initial states for error detection during polling
+        // Track batch for polling-based error/completion detection
         setBatchEntregaIds(ids);
         batchTotalCount.current = ids.length;
         const initialStates: Record<number, string> = {};
         itemsToCorrect.forEach(item => { initialStates[item.id] = item.estado; });
         batchInitialStates.current = initialStates;
-        batchStartedProcessing.current = false;
-        batchErrorNotified.current = false;
         toast.success(
           `${result.total_encoladas} ${result.total_encoladas === 1 ? 'corrección iniciada' : 'correcciones iniciadas'}. ` +
           `Los estados se actualizarán automáticamente en segundo plano.`,
@@ -725,12 +731,22 @@ export const EntregasPage = () => {
             </div>
 
             {/* Batch Action Buttons */}
+            {/* Batch in progress indicator */}
+            {isBatchActive && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+                <Spinner size="sm" />
+                <span>Corrección en lote en progreso...</span>
+              </div>
+            )}
+
             {selectedIds.length > 0 ? (
               <div className="flex gap-2 flex-wrap">
                 <Button
                   variant="primary"
                   onClick={handleCorregirSeleccionados}
                   isLoading={corregirMasivaMutation.isPending}
+                  disabled={isBatchActive}
+                  title={isBatchActive ? 'Esperá a que termine el lote en progreso' : undefined}
                 >
                   <FileCheck2 className="w-4 h-4" />
                   Corregir ({selectedIds.length})
