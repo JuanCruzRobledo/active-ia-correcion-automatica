@@ -56,6 +56,14 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
     )
     gemini_api_key_valid: Mapped[bool] = mapped_column(default=False)
 
+    # Proveedor de corrección preferido (ej: 'gemini', 'openai', 'anthropic')
+    correction_provider: Mapped[str] = mapped_column(
+        String(50),
+        default="gemini",
+        server_default="gemini",
+        nullable=False,
+    )
+
     # Control de primer login
     primer_login: Mapped[bool] = mapped_column(default=True)
 
