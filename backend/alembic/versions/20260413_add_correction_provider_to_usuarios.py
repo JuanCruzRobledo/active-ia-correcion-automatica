@@ -20,15 +20,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        'usuarios',
-        sa.Column(
-            'correction_provider',
-            sa.String(50),
-            nullable=False,
-            server_default='gemini',
-        ),
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'usuarios' AND column_name = 'correction_provider'"
+        )
     )
+    if not result.fetchone():
+        op.add_column(
+            'usuarios',
+            sa.Column(
+                'correction_provider',
+                sa.String(50),
+                nullable=False,
+                server_default='gemini',
+            ),
+        )
 
 
 def downgrade() -> None:
