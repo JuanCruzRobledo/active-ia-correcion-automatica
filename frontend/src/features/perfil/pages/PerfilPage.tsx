@@ -47,17 +47,6 @@ export const PerfilPage = () => {
   const handleApiKeySubmit = () => {
     setApiKeyError('');
 
-    // Validar formato
-    if (!apiKey.startsWith('AIza')) {
-      setApiKeyError('La API Key debe comenzar con "AIza"');
-      return;
-    }
-
-    if (apiKey.length < 20) {
-      setApiKeyError('La API Key parece incompleta');
-      return;
-    }
-
     updateApiKeyMutation.mutate(apiKey, {
       onSuccess: () => {
         setShowApiKeyModal(false);
@@ -318,7 +307,7 @@ export const PerfilPage = () => {
             <div className="relative">
               <Input
                 type={showApiKey ? 'text' : 'password'}
-                placeholder="AIza..."
+                placeholder="Ingresá tu API Key"
                 value={apiKey}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setApiKey(e.target.value)
@@ -345,8 +334,7 @@ export const PerfilPage = () => {
           <div className="flex items-start gap-2 p-3 rounded-md bg-muted/50">
             <Info className="h-4 w-4 text-info mt-0.5 flex-shrink-0" />
             <p className="text-sm text-muted-foreground">
-              La API Key debe comenzar con "AIza". Se validará automáticamente
-              antes de guardarla.
+              La API Key se validará automáticamente antes de guardarla.
             </p>
           </div>
 
