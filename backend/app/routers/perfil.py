@@ -79,13 +79,6 @@ async def update_api_key(
     """
     api_key = data.gemini_api_key.strip()
 
-    # Validate format
-    if not api_key.startswith("AIza"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="La API Key debe comenzar con 'AIza'",
-        )
-
     # Validate with Gemini API (test call)
     is_valid = await _validate_gemini_api_key(api_key)
 

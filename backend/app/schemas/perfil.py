@@ -44,7 +44,7 @@ class UpdateApiKeyRequest(BaseModel):
     gemini_api_key: str = Field(
         ...,
         min_length=20,
-        description="Gemini API Key (must start with 'AIza')",
+        description="Gemini API Key",
     )
 
 
