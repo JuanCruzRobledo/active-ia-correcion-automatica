@@ -478,10 +478,19 @@ export const EntregasPage = () => {
         `ZIP con ${selectedCorregidasCount} PDF${selectedCorregidasCount === 1 ? '' : 's'} descargado exitosamente`
       );
     } catch (e: any) {
+      // Blob responses carry errors as Blob — parse them to get the real backend message
+      let backendDetail: string | undefined;
+      if (e.response?.data instanceof Blob) {
+        try {
+          const text = await (e.response.data as Blob).text();
+          const parsed = JSON.parse(text);
+          backendDetail = parsed?.detail || parsed?.message;
+        } catch { /* ignore parse errors */ }
+      }
       if (e.response?.status === 404) {
-        toast.error('Ninguna de las entregas seleccionadas está corregida');
+        toast.error(backendDetail || 'Ninguna de las entregas seleccionadas está corregida');
       } else {
-        toast.error(`Error al descargar PDFs: ${e instanceof Error ? e.message : 'Error desconocido'}`);
+        toast.error(`Error al descargar PDFs: ${backendDetail || (e instanceof Error ? e.message : 'Error desconocido')}`);
       }
     } finally {
       setIsDownloadingSelectedPDFs(false);

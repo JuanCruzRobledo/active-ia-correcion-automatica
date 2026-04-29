@@ -75,6 +75,13 @@ apiClient.interceptors.response.use(
   },
   (error: AxiosError<{ message?: string; detail?: string | Array<{ msg?: string }> }>) => {
     const status = error.response?.status;
+
+    // For blob responses (file downloads), the error body arrives as a Blob and
+    // can't be parsed as JSON. Skip global toasts — the calling function handles errors.
+    if (error.response?.data instanceof Blob) {
+      return Promise.reject(error);
+    }
+
     const rawDetail = error.response?.data?.detail;
     const message =
       error.response?.data?.message ||
