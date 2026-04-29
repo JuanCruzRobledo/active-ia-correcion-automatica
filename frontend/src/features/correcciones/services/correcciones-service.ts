@@ -218,6 +218,37 @@ export const descargarTodosPDFs = async (
 };
 
 /**
+ * Descarga un ZIP con los PDFs de devolución de las entregas seleccionadas (solo CORREGIDA).
+ */
+export const descargarPDFsSeleccionados = async (
+  entregaIds: number[],
+  rubrica?: RubricaContext,
+  comisionNombre?: string
+): Promise<void> => {
+  const response = await apiClient.post(
+    '/documentos/pdfs-seleccionados',
+    { entrega_ids: entregaIds },
+    { responseType: 'blob', timeout: 180000 }
+  );
+
+  if (!(response.data instanceof Blob) || response.data.size === 0) {
+    throw new Error('No se encontraron entregas corregidas o el archivo está vacío');
+  }
+
+  const rubricaPart = rubrica
+    ? `${rubrica.tipo}-${rubrica.numero}`.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-_]/g, '')
+    : 'seleccionados';
+
+  const comisionPart = comisionNombre ? sanitizeFilename(comisionNombre) : '';
+
+  const filename = comisionPart
+    ? `Devoluciones-Seleccionados-${rubricaPart}-${comisionPart}.zip`
+    : `Devoluciones-Seleccionados-${rubricaPart}.zip`;
+
+  downloadBlob(response.data as Blob, filename);
+};
+
+/**
  * Exporta las notas de una comisión/rúbrica en formato Excel.
  */
 export const exportarExcel = async (comisionId: number, rubricaId: number): Promise<void> => {

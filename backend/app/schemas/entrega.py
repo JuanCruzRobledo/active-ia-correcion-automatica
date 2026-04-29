@@ -337,6 +337,17 @@ class EntregaDeleteMasivoRequest(BaseModel):
     )
 
 
+class EntregaDescargarPDFsRequest(BaseModel):
+    """Schema for selective PDF download request."""
+
+    entrega_ids: list[int] = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="IDs de entregas a descargar (solo se incluyen las CORREGIDA)",
+    )
+
+
 class EntregaAccionMasivaResponse(BaseModel):
     """Schema for bulk action response."""
 

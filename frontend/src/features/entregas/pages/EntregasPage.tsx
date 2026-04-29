@@ -20,6 +20,7 @@ import { useCorreccionByEntrega, useRecorregirEntrega } from '@/features/correcc
 import {
   descargarPDFCorreccion,
   descargarTodosPDFs,
+  descargarPDFsSeleccionados,
   exportarExcel,
 } from '@/features/correcciones/services/correcciones-service';
 import { CargaEntregaModal, EntregaViewModal } from '../components';
@@ -99,6 +100,7 @@ export const EntregasPage = () => {
   // Download loading states
   const [downloadingPDFId, setDownloadingPDFId] = useState<number | null>(null);
   const [isBulkAction, setIsBulkAction] = useState(false);
+  const [isDownloadingSelectedPDFs, setIsDownloadingSelectedPDFs] = useState(false);
 
   // Batch correction tracking — detect errors during background processing
   const [batchEntregaIds, setBatchEntregaIds] = useState<number[]>([]);
@@ -460,6 +462,32 @@ export const EntregasPage = () => {
     }
   };
 
+  const handleDescargarPDFsSeleccionados = async () => {
+    if (selectedCorregidasCount === 0) return;
+    setIsDownloadingSelectedPDFs(true);
+    try {
+      const rubricaContext = selectedRubrica
+        ? { tipo: selectedRubrica.tipo, numero: selectedRubrica.numero }
+        : undefined;
+      await descargarPDFsSeleccionados(
+        selectedCorregidas.map((e) => e.id),
+        rubricaContext,
+        selectedComision?.nombre
+      );
+      toast.success(
+        `ZIP con ${selectedCorregidasCount} PDF${selectedCorregidasCount === 1 ? '' : 's'} descargado exitosamente`
+      );
+    } catch (e: any) {
+      if (e.response?.status === 404) {
+        toast.error('Ninguna de las entregas seleccionadas está corregida');
+      } else {
+        toast.error(`Error al descargar PDFs: ${e instanceof Error ? e.message : 'Error desconocido'}`);
+      }
+    } finally {
+      setIsDownloadingSelectedPDFs(false);
+    }
+  };
+
   const handleDescargarTodosPDFs = async () => {
     if (!selectedComisionId || !selectedRubricaId) return;
 
@@ -567,6 +595,8 @@ export const EntregasPage = () => {
   const allSelected = entregas.length > 0 && selectedIds.length === entregas.length;
   const selectedEntregas = entregas.filter((e) => selectedIds.includes(e.id));
   const allSelectedArchivados = selectedEntregas.length > 0 && selectedEntregas.every((e) => e.archivado);
+  const selectedCorregidas = selectedEntregas.filter((e) => e.estado === 'CORREGIDA');
+  const selectedCorregidasCount = selectedCorregidas.length;
 
   return (
     <div className="space-y-6">
@@ -751,6 +781,17 @@ export const EntregasPage = () => {
                   <FileCheck2 className="w-4 h-4" />
                   Corregir ({selectedIds.length})
                 </Button>
+                {selectedCorregidasCount > 0 && (
+                  <Button
+                    variant="success"
+                    onClick={handleDescargarPDFsSeleccionados}
+                    isLoading={isDownloadingSelectedPDFs}
+                    disabled={isDownloadingSelectedPDFs}
+                  >
+                    <Download className="w-4 h-4" />
+                    Descargar PDFs ({selectedCorregidasCount})
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   onClick={() => handleArchivarSeleccionados(!allSelectedArchivados)}

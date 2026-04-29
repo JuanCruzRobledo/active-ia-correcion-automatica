@@ -320,3 +320,34 @@ class CorreccionRepository:
             .where(Correccion.id.in_(correccion_ids))
         )
         return list(result.scalars().all())
+
+    async def get_by_entrega_ids_corregidas(
+        self, entrega_ids: list[int]
+    ) -> list[Correccion]:
+        """
+        Get correcciones for the given entrega IDs, filtering to CORREGIDA state only.
+
+        Args:
+            entrega_ids: List of entrega IDs requested by the user.
+
+        Returns:
+            List of Correccion objects with relations loaded (only CORREGIDA entregas).
+        """
+        from app.models.entrega import Entrega
+        from app.models.comision import Comision
+        from app.models.enums import EstadoEntregaEnum
+
+        result = await self.db.execute(
+            select(Correccion)
+            .options(
+                selectinload(Correccion.entrega).selectinload(Entrega.comision).selectinload(Comision.materia),
+                selectinload(Correccion.entrega).selectinload(Entrega.rubrica),
+                selectinload(Correccion.corregido_por),
+            )
+            .join(Entrega)
+            .where(
+                Correccion.entrega_id.in_(entrega_ids),
+                Entrega.estado == EstadoEntregaEnum.CORREGIDA,
+            )
+        )
+        return list(result.scalars().all())

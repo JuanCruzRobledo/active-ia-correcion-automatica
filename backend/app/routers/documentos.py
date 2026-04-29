@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.dependencies import get_current_user, get_db
 from app.core.permissions import require_any_authenticated
 from app.models.usuario import Usuario
+from app.schemas.entrega import EntregaDescargarPDFsRequest
 from app.services.excel_service import ExcelService
 from app.services.pdf_service import PDFService
 
@@ -120,6 +121,39 @@ async def descargar_pdfs_lote(
         headers={
             "Content-Disposition": f'attachment; filename="{zip_filename}"',
         },
+    )
+
+
+@router.post(
+    "/pdfs-seleccionados",
+    response_class=StreamingResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def descargar_pdfs_seleccionados(
+    data: EntregaDescargarPDFsRequest,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """
+    Download ZIP with PDFs for a user-selected subset of corrected entregas.
+
+    Only CORREGIDA entregas are included; others are silently skipped.
+
+    **Authorization:** Any authenticated user
+    """
+    require_any_authenticated(current_user)
+
+    pdf_service = PDFService(db)
+    zip_bytes, zip_filename = await pdf_service.generar_zip_pdfs_seleccionados(
+        entrega_ids=data.entrega_ids,
+    )
+
+    zip_filename = _ascii_filename(zip_filename)
+
+    return StreamingResponse(
+        iter([zip_bytes]),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
     )
 
 

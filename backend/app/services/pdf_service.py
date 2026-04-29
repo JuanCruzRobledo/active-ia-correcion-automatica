@@ -186,6 +186,59 @@ class PDFService:
 
         return zip_bytes, zip_filename
 
+    async def generar_zip_pdfs_seleccionados(
+        self,
+        entrega_ids: list[int],
+    ) -> tuple[bytes, str]:
+        """
+        Generate a ZIP file with PDFs for a user-selected subset of CORREGIDA entregas.
+
+        Args:
+            entrega_ids: IDs of entregas requested. Non-CORREGIDA are silently excluded.
+
+        Returns:
+            Tuple of (ZIP file bytes, suggested filename).
+
+        Raises:
+            HTTPException 404: None of the requested entregas are CORREGIDA.
+        """
+        from fastapi import HTTPException, status
+        import re
+        import unicodedata
+
+        correcciones_list = await self.correccion_repo.get_by_entrega_ids_corregidas(entrega_ids)
+
+        if not correcciones_list:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Ninguna de las entregas seleccionadas tiene estado CORREGIDA",
+            )
+
+        def _sanitize_part(text: str) -> str:
+            text = unicodedata.normalize("NFD", text)
+            text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+            text = re.sub(r"\s+", "-", text)
+            text = re.sub(r"[^a-zA-Z0-9\-_]", "", text)
+            text = re.sub(r"-{2,}", "-", text).strip("-")
+            return text
+
+        first = correcciones_list[0]
+        rubrica = first.entrega.rubrica
+        rubrica_tipo = rubrica.tipo.value if hasattr(rubrica.tipo, "value") else str(rubrica.tipo)
+        rubrica_part = f"{rubrica_tipo}-{rubrica.numero}"
+
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for correccion in correcciones_list:
+                pdf_bytes = await self.generar_pdf_devolucion(correccion.id)
+                alumno_safe = _sanitize_part(correccion.entrega.alumno_nombre)
+                pdf_filename = f"{alumno_safe}-Devolucion-{rubrica_part}.pdf"
+                zip_file.writestr(pdf_filename, pdf_bytes)
+
+        zip_bytes = zip_buffer.getvalue()
+        zip_buffer.close()
+        return zip_bytes, f"Devoluciones-Seleccionados-{rubrica_part}.zip"
+
     def _build_pdf_content(self, correccion: Correccion) -> list:
         """
         Build PDF content elements for a correction.
