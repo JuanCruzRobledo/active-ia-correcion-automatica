@@ -10,7 +10,19 @@
       "Bash(docker ps:*)",
       "Bash(docker exec:*)",
       "Bash(timeout:*)",
-      "Bash(docker restart:*)"
+      "Bash(docker restart:*)",
+      "Bash(openspec new *)",
+      "Bash(openspec status *)",
+      "Bash(openspec instructions *)",
+      "Bash(docker compose *)",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "mcp__plugin_engram_engram__mem_session_summary",
+      "mcp__plugin_engram_engram__mem_search",
+      "mcp__plugin_engram_engram__mem_get_observation",
+      "mcp__plugin_engram_engram__mem_save",
+      "Bash(python -c ' *)"
     ]
   }
 }

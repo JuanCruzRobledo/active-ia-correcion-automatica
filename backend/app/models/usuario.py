@@ -54,6 +54,11 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
         Text,
         nullable=True,
     )
+
+    # Credenciales Moodle (password cifrado con AES-256)
+    moodle_username: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    moodle_password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    moodle_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
     gemini_api_key_valid: Mapped[bool] = mapped_column(default=False)
 
     # Proveedor de corrección preferido (ej: 'gemini', 'openai', 'anthropic')

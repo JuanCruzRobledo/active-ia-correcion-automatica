@@ -8,7 +8,7 @@ Ref: docs/specs/06-MODELO-DATOS.md seccion 3.2, 3.3
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -40,6 +40,7 @@ class Materia(Base, TimestampMixin):
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     activa: Mapped[bool] = mapped_column(default=True, index=True)
+    moodle_course_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Relationships
     coordinadores: Mapped[list["CoordinadorMateria"]] = relationship(

@@ -343,6 +343,7 @@ class RubricaService:
             fuente=rubrica.fuente,
             archivo_original=rubrica.archivo_original,
             activa=rubrica.activa,
+            moodle_assign_id=rubrica.moodle_assign_id,
             created_at=rubrica.created_at,
             updated_at=rubrica.updated_at,
             materia=materia_info,
@@ -402,6 +403,9 @@ class RubricaService:
 
         if data.condiciones_desaprobacion_json is not None:
             rubrica.condiciones_desaprobacion_json = data.condiciones_desaprobacion_json
+
+        if data.moodle_assign_id is not None:
+            rubrica.moodle_assign_id = data.moodle_assign_id
 
         updated_rubrica = await self.rubrica_repo.update(rubrica)
 

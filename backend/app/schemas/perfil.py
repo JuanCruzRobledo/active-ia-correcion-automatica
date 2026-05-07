@@ -29,6 +29,9 @@ class PerfilResponse(BaseModel):
         None,
         description="Last 4 characters of API Key if configured",
     )
+    moodle_username: str | None = Field(None, description="Usuario Moodle configurado")
+    moodle_host: str | None = Field(None, description="Host Moodle configurado")
+    moodle_configured: bool = Field(default=False, description="True si tiene credenciales Moodle")
     activo: bool
     created_at: datetime
     updated_at: datetime

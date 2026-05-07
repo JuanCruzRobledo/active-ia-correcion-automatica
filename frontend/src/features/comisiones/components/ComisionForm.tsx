@@ -31,6 +31,13 @@ const comisionSchema = z.object({
     .min(2020, 'El año debe ser mayor o igual a 2020')
     .max(2100, 'El año debe ser menor o igual a 2100'),
   tutor_ids: z.array(z.number()).optional(),
+  moodle_group_id: z
+    .number()
+    .int()
+    .positive('Debe ser un número positivo')
+    .nullable()
+    .optional(),
+  moodle_group_code: z.string().max(50).nullable().optional(),
 });
 
 type ComisionFormData = z.infer<typeof comisionSchema>;
@@ -70,6 +77,8 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
       nombre: '',
       anio: currentYear,
       tutor_ids: [],
+      moodle_group_id: null,
+      moodle_group_code: null,
     },
   });
 
@@ -80,6 +89,8 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
       setValue('nombre', comision.nombre);
       setValue('anio', comision.anio);
       setValue('tutor_ids', comision.tutores?.map((t) => t.id) || []);
+      setValue('moodle_group_id', comision.moodle_group_id ?? null);
+      setValue('moodle_group_code', comision.moodle_group_code ?? null);
     } else {
       reset({
         materia_id: 0,
@@ -111,6 +122,8 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
           data: {
             nombre: data.nombre,
             tutor_ids: data.tutor_ids,
+            moodle_group_id: data.moodle_group_id ?? undefined,
+            moodle_group_code: data.moodle_group_code ?? undefined,
           },
         });
       } else {
@@ -120,6 +133,8 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
           nombre: data.nombre,
           anio: data.anio,
           tutor_ids: data.tutor_ids,
+          moodle_group_id: data.moodle_group_id ?? undefined,
+          moodle_group_code: data.moodle_group_code ?? undefined,
         });
       }
       onClose();
@@ -196,6 +211,33 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
             />
           )}
         />
+
+        <div className="space-y-4 rounded-md border border-border bg-muted/30 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Configuración Moodle
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="ID de Grupo Moodle"
+              type="number"
+              placeholder="ej: 4165"
+              helperText="moodle_group_id"
+              error={errors.moodle_group_id?.message}
+              {...register('moodle_group_id', {
+                setValueAs: (v) => (v === '' || v === null ? null : Number(v)),
+              })}
+            />
+            <Input
+              label="Código de Grupo Moodle"
+              placeholder="ej: m26"
+              helperText="groupsearchvalue"
+              error={errors.moodle_group_code?.message}
+              {...register('moodle_group_code', {
+                setValueAs: (v) => (v === '' ? null : v),
+              })}
+            />
+          </div>
+        </div>
 
         <div className="flex justify-end gap-2 pt-4">
           <Button

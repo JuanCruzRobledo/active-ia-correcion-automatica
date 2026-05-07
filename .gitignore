@@ -8,6 +8,8 @@
 .env.development
 .env.production
 .env.*.local
+.env.bak
+*.bak
 
 # Archivos de configuración con secretos
 *.key

@@ -1,0 +1,1 @@
+export { PendientesPage } from './PendientesPage';

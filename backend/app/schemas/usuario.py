@@ -80,6 +80,10 @@ class UsuarioResponse(BaseModel):
     gemini_api_key_valid: bool = Field(
         description="True si tiene API Key de Gemini configurada y validada",
     )
+    moodle_configured: bool = Field(
+        default=False,
+        description="True si tiene credenciales Moodle configuradas",
+    )
     activo: bool = Field(
         description="False si el usuario fue eliminado (soft delete)",
     )
@@ -145,3 +149,34 @@ class ResetPasswordResponse(BaseModel):
     password_temporal: str = Field(
         description="Nueva contraseña temporal",
     )
+
+
+class MoodleCredentialsUpdate(BaseModel):
+    """Schema for updating Moodle credentials."""
+
+    moodle_host: str = Field(
+        ...,
+        min_length=1,
+        max_length=255,
+        description="URL base del host Moodle (ej: https://moodle.ejemplo.com)",
+        examples=["https://tup.sied.utn.edu.ar"],
+    )
+    moodle_username: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Nombre de usuario en Moodle",
+    )
+    moodle_password: str = Field(
+        ...,
+        min_length=1,
+        description="Contraseña en Moodle (se cifra con AES-256)",
+    )
+
+
+class MoodleCredentialsResponse(BaseModel):
+    """Response after updating Moodle credentials."""
+
+    moodle_username: str
+    moodle_host: str
+    configured: bool = True

@@ -6,7 +6,7 @@
  */
 
 import { useEffect } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, type SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Button, Input } from '@/shared/components/ui';
@@ -31,6 +31,12 @@ const materiaSchema = z.object({
     .max(500, 'La descripción no puede exceder 500 caracteres')
     .optional(),
   coordinador_ids: z.array(z.number()).optional(),
+  moodle_course_id: z
+    .number()
+    .int()
+    .positive('Debe ser un número positivo')
+    .nullable()
+    .optional(),
 });
 
 type MateriaFormData = z.infer<typeof materiaSchema>;
@@ -62,6 +68,7 @@ export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
       nombre: '',
       descripcion: '',
       coordinador_ids: [],
+      moodle_course_id: null,
     },
   });
 
@@ -72,6 +79,7 @@ export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
       setValue('nombre', materia.nombre);
       setValue('descripcion', materia.descripcion || '');
       setValue('coordinador_ids', materia.coordinadores?.map((c) => c.id) || []);
+      setValue('moodle_course_id', materia.moodle_course_id ?? null);
     } else {
       reset();
     }
@@ -84,7 +92,7 @@ export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
     }
   }, [isOpen, reset]);
 
-  const onSubmit = async (data: MateriaFormData) => {
+  const onSubmit: SubmitHandler<MateriaFormData> = async (data) => {
     try {
       if (isEditMode) {
         // Update existing materia
@@ -94,6 +102,7 @@ export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
             nombre: data.nombre,
             descripcion: data.descripcion || undefined,
             coordinador_ids: data.coordinador_ids,
+            moodle_course_id: data.moodle_course_id ?? undefined,
           },
         });
       } else {
@@ -103,6 +112,7 @@ export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
           nombre: data.nombre,
           descripcion: data.descripcion,
           coordinador_ids: data.coordinador_ids,
+          moodle_course_id: data.moodle_course_id ?? undefined,
         });
       }
       onClose();
@@ -140,6 +150,17 @@ export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
           error={errors.descripcion?.message}
           {...register('descripcion')}
         // Using Input as text field for now, ideally Textarea
+        />
+
+        <Input
+          label="ID de Curso en Moodle (Opcional)"
+          type="number"
+          placeholder="ej: 123"
+          helperText="ID del curso en Moodle para vincular pendientes"
+          error={errors.moodle_course_id?.message}
+          {...register('moodle_course_id', {
+            setValueAs: (v) => (v === '' || v === null ? null : Number(v)),
+          })}
         />
 
         <Controller

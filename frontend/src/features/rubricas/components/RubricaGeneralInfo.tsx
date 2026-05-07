@@ -113,6 +113,24 @@ export function RubricaGeneralInfo({
           Los campos se generarán automáticamente desde el PDF
         </p>
       )}
+
+      {isEditing && (
+        <div className="rounded-md border border-border bg-muted/30 p-4 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Configuración Moodle
+          </p>
+          <Input
+            label="ID de Asignación en Moodle (cmid)"
+            type="number"
+            placeholder="ej: 11237"
+            helperText="ID del assignment de Moodle vinculado a esta rúbrica"
+            error={errors.moodle_assign_id?.message as string}
+            {...register('moodle_assign_id', {
+              setValueAs: (v: string) => (v === '' || v === null ? null : Number(v)),
+            })}
+          />
+        </div>
+      )}
     </div>
   );
 }

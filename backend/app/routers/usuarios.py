@@ -15,6 +15,8 @@ from app.core.permissions import require_admin
 from app.models import Usuario
 from app.models.enums import RolEnum
 from app.schemas.usuario import (
+    MoodleCredentialsResponse,
+    MoodleCredentialsUpdate,
     ResetPasswordResponse,
     UsuarioCreate,
     UsuarioCreateResponse,
@@ -179,3 +181,14 @@ async def resetear_password(
 
     service = UsuarioService(db)
     return await service.resetear_password(user_id)
+
+
+@router.patch("/me/moodle-credentials", response_model=MoodleCredentialsResponse)
+async def update_moodle_credentials(
+    data: MoodleCredentialsUpdate,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MoodleCredentialsResponse:
+    """Actualiza las credenciales Moodle del usuario autenticado."""
+    service = UsuarioService(db)
+    return await service.update_moodle_credentials(current_user.id, data)

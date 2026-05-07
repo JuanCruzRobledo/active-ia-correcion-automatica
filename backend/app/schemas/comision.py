@@ -65,6 +65,15 @@ class ComisionUpdate(BaseModel):
         None,
         description="IDs de tutores a asignar (reemplaza asignaciones existentes)",
     )
+    moodle_group_id: int | None = Field(
+        None,
+        description="ID del grupo en Moodle",
+    )
+    moodle_group_code: str | None = Field(
+        None,
+        max_length=50,
+        description="Código del grupo Moodle (groupsearchvalue)",
+    )
 
 
 class TutorInfo(BaseModel):
@@ -100,6 +109,8 @@ class ComisionResponse(BaseModel):
     activa: bool = Field(
         description="False si la comisión fue eliminada (soft delete)",
     )
+    moodle_group_id: int | None = None
+    moodle_group_code: str | None = None
     created_at: datetime
     updated_at: datetime
 

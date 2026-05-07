@@ -8,14 +8,23 @@
  * Ref: docs/specs/07-DISENO-UI-UX.md Section 4.1 - Dashboard Tutor
  */
 
-import { GraduationCap, Clock, CheckCircle } from 'lucide-react';
+import { GraduationCap, Clock, CheckCircle, AlertTriangle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { StatCard } from './StatCard';
 import { ComisionCard } from './ComisionCard';
 import { useDashboardTutorStats } from '../hooks';
+import { usePendientesMoodle } from '@/features/pendientes';
 import { Spinner } from '@/shared/components/ui';
 
 export function DashboardTutor() {
   const { data: dashboardData, isLoading, error } = useDashboardTutorStats();
+  const { data: pendientesData } = usePendientesMoodle();
+  const navigate = useNavigate();
+
+  const totalEsperaMoodle = pendientesData?.materias?.reduce(
+    (acc, m) => acc + m.totalEspera,
+    0
+  ) ?? 0;
 
   // Loading state
   if (isLoading) {
@@ -49,6 +58,26 @@ export function DashboardTutor() {
 
   return (
     <div className="space-y-8">
+      {/* Banner Moodle pendientes */}
+      {totalEsperaMoodle > 0 && (
+        <div className="flex items-center justify-between rounded-lg border border-warning/30 bg-warning/10 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-warning" />
+            <p className="text-sm font-medium text-foreground">
+              Tenés{' '}
+              <span className="font-bold text-warning">{totalEsperaMoodle}</span>{' '}
+              entrega{totalEsperaMoodle !== 1 ? 's' : ''} esperando corrección en Moodle.
+            </p>
+          </div>
+          <button
+            onClick={() => navigate('/pendientes')}
+            className="rounded-md bg-warning px-4 py-2 text-sm font-medium text-warning-foreground hover:bg-warning/90"
+          >
+            Ver pendientes
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Dashboard - Mis Comisiones</h1>

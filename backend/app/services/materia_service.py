@@ -236,6 +236,7 @@ class MateriaService:
             nombre=materia.nombre,
             descripcion=materia.descripcion,
             activa=materia.activa,
+            moodle_course_id=materia.moodle_course_id,
             created_at=materia.created_at,
             updated_at=materia.updated_at,
             coordinadores=coordinadores_info,
@@ -273,6 +274,8 @@ class MateriaService:
             materia.nombre = data.nombre
         if data.descripcion is not None:
             materia.descripcion = data.descripcion
+        if data.moodle_course_id is not None:
+            materia.moodle_course_id = data.moodle_course_id
 
         await self.materia_repo.update(materia)
 

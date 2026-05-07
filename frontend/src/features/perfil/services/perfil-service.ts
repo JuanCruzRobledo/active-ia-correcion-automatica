@@ -11,6 +11,8 @@ import type {
   UserProfile,
   UpdateApiKeyRequest,
   UpdateApiKeyResponse,
+  MoodleCredentialsRequest,
+  MoodleCredentialsResponse,
 } from '../types';
 
 /**
@@ -36,6 +38,16 @@ export async function updateApiKey(
   const { data } = await apiClient.post<UpdateApiKeyResponse>(
     '/perfil/api-key',
     { gemini_api_key: apiKey } as UpdateApiKeyRequest
+  );
+  return data;
+}
+
+export async function updateMoodleCredentials(
+  credentials: MoodleCredentialsRequest
+): Promise<MoodleCredentialsResponse> {
+  const { data } = await apiClient.patch<MoodleCredentialsResponse>(
+    '/usuarios/me/moodle-credentials',
+    credentials
   );
   return data;
 }

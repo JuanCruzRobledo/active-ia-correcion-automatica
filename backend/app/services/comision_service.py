@@ -259,6 +259,8 @@ class ComisionService:
             nombre=comision.nombre,
             anio=comision.anio,
             activa=comision.activa,
+            moodle_group_id=comision.moodle_group_id,
+            moodle_group_code=comision.moodle_group_code,
             created_at=comision.created_at,
             updated_at=comision.updated_at,
             materia=materia_info,
@@ -307,6 +309,11 @@ class ComisionService:
                         detail="Ya existe una comisión con ese nombre para esta materia y año",
                     )
             comision.nombre = data.nombre
+
+        if data.moodle_group_id is not None:
+            comision.moodle_group_id = data.moodle_group_id
+        if data.moodle_group_code is not None:
+            comision.moodle_group_code = data.moodle_group_code
 
         await self.comision_repo.update(comision)
 

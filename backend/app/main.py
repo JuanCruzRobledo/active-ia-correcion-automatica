@@ -152,6 +152,11 @@ def register_routers(app: FastAPI) -> None:
 
     app.include_router(actividades_router, prefix="/api/v1")
 
+    # Moodle pendientes
+    from app.routers.pendientes import router as pendientes_router
+
+    app.include_router(pendientes_router, prefix="/api/v1")
+
 
 # Crear instancia de la aplicacion
 app = create_application()

@@ -71,6 +71,10 @@ class MateriaUpdate(BaseModel):
         None,
         description="IDs de coordinadores a asignar (reemplaza asignaciones existentes)",
     )
+    moodle_course_id: int | None = Field(
+        None,
+        description="ID del curso en Moodle",
+    )
 
 
 class CoordinadorInfo(BaseModel):
@@ -96,6 +100,7 @@ class MateriaResponse(BaseModel):
     activa: bool = Field(
         description="False si la materia fue eliminada (soft delete)",
     )
+    moodle_course_id: int | None = None
     created_at: datetime
     updated_at: datetime
 

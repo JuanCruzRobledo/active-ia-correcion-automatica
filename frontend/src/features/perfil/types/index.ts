@@ -14,7 +14,10 @@ export interface UserProfile {
   rol: string;
   primer_login: boolean;
   gemini_api_key_valid: boolean;
-  gemini_api_key_last_4: string | null; // Last 4 digits of API Key if configured
+  gemini_api_key_last_4: string | null;
+  moodle_username: string | null;
+  moodle_host: string | null;
+  moodle_configured: boolean;
   activo: boolean;
   created_at: string;
   updated_at: string;
@@ -34,4 +37,16 @@ export interface UpdateApiKeyRequest {
 export interface UpdateApiKeyResponse {
   message: string;
   valid: boolean;
+}
+
+export interface MoodleCredentialsRequest {
+  moodle_host: string;
+  moodle_username: string;
+  moodle_password: string;
+}
+
+export interface MoodleCredentialsResponse {
+  moodle_username: string;
+  moodle_host: string;
+  configured: boolean;
 }

@@ -26,6 +26,8 @@ export interface Comision {
   nombre: string;
   anio: number;
   activa: boolean;
+  moodle_group_id: number | null;
+  moodle_group_code: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -60,11 +62,15 @@ export interface ComisionCreate {
   nombre: string;
   anio: number;
   tutor_ids?: number[];
+  moodle_group_id?: number | null;
+  moodle_group_code?: string | null;
 }
 
 export interface ComisionUpdate {
   nombre?: string;
   tutor_ids?: number[];
+  moodle_group_id?: number | null;
+  moodle_group_code?: string | null;
 }
 
 export interface TutoresAssign {

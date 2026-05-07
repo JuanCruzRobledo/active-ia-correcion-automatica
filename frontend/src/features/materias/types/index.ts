@@ -6,6 +6,7 @@ export interface Materia {
   nombre: string;
   descripcion: string | null;
   activa: boolean;
+  moodle_course_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -43,12 +44,14 @@ export interface MateriaCreate {
   nombre: string;
   descripcion?: string;
   coordinador_ids?: number[];
+  moodle_course_id?: number | null;
 }
 
 export interface MateriaUpdate {
   nombre?: string;
   descripcion?: string;
   coordinador_ids?: number[];
+  moodle_course_id?: number | null;
 }
 
 export interface MateriasFilters {

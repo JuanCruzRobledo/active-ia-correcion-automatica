@@ -10,11 +10,13 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 3
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import generate_temp_password, hash_password
+from app.core.security import encrypt_api_key, generate_temp_password, hash_password
 from app.models import Usuario
 from app.models.enums import RolEnum, TipoActividadEnum
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.usuario import (
+    MoodleCredentialsResponse,
+    MoodleCredentialsUpdate,
     ResetPasswordResponse,
     UsuarioCreate,
     UsuarioCreateResponse,
@@ -294,4 +296,25 @@ class UsuarioService:
 
         return ResetPasswordResponse(
             password_temporal=temp_password,
+        )
+
+    async def update_moodle_credentials(
+        self, user_id: int, data: MoodleCredentialsUpdate
+    ) -> MoodleCredentialsResponse:
+        user = await self.repo.get_by_id(user_id)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Usuario no encontrado",
+            )
+        password_encrypted = encrypt_api_key(data.moodle_password)
+        updated = await self.repo.update_moodle_credentials(
+            user_id=user_id,
+            username=data.moodle_username,
+            password_encrypted=password_encrypted,
+            host=data.moodle_host,
+        )
+        return MoodleCredentialsResponse(
+            moodle_username=updated.moodle_username,
+            moodle_host=updated.moodle_host,
         )

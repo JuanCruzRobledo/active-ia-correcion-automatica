@@ -3,6 +3,7 @@ import {
   Home,
   Users,
   BookOpen,
+  Clock,
   FolderOpen,
   FileText,
   CheckSquare,
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
     roles: ['ADMIN', 'COORDINADOR'],
   },
   { to: '/entregas', icon: CheckSquare, label: 'Entregas', roles: ['TUTOR', 'ADMIN', 'COORDINADOR'] },
+  { to: '/pendientes', icon: Clock, label: 'Pendientes', roles: ['TUTOR', 'ADMIN'] },
 ];
 
 export const Sidebar = () => {

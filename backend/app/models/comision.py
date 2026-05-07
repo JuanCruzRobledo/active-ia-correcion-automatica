@@ -38,6 +38,8 @@ class Comision(Base, TimestampMixin):
     nombre: Mapped[str] = mapped_column(String(50), nullable=False)
     anio: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     activa: Mapped[bool] = mapped_column(default=True, index=True)
+    moodle_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    moodle_group_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     __table_args__ = (
         UniqueConstraint(

@@ -395,6 +395,10 @@ class RubricaUpdate(BaseModel):
         None,
         description="Nuevas condiciones de desaprobación",
     )
+    moodle_assign_id: int | None = Field(
+        None,
+        description="ID de la asignación (cmid) en Moodle",
+    )
 
     @model_validator(mode="after")
     def validar_estructura_si_presente(self) -> "RubricaUpdate":
@@ -440,6 +444,7 @@ class RubricaResponse(BaseModel):
     fuente: FuenteRubricaEnum
     archivo_original: str | None
     activa: bool
+    moodle_assign_id: int | None = None
     created_at: str
     updated_at: str
 

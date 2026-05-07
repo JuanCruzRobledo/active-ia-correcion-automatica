@@ -106,6 +106,7 @@ export interface Rubrica {
   fuente: FuenteRubrica;
   archivo_original: string | null;
   activa: boolean;
+  moodle_assign_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -156,6 +157,7 @@ export interface RubricaCreate {
   condiciones_desaprobacion_json?: CondicionDesaprobacion[];
   fuente?: FuenteRubrica;
   archivo_original?: string;
+  moodle_assign_id?: number | null;
 }
 
 export interface RubricaUpdate {
@@ -165,6 +167,7 @@ export interface RubricaUpdate {
   criterios_json?: Criterio[];
   penalizaciones_json?: Penalizacion[];
   condiciones_desaprobacion_json?: CondicionDesaprobacion[];
+  moodle_assign_id?: number | null;
 }
 
 export interface RubricaDuplicar {

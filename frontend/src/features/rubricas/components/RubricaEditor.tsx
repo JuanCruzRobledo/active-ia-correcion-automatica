@@ -48,6 +48,12 @@ const rubricaFormSchema = z.object({
     condicion: z.string().min(1),
     nota_maxima: z.number().min(0).max(100),
   })),
+  moodle_assign_id: z
+    .number()
+    .int()
+    .positive('Debe ser un número positivo')
+    .nullable()
+    .optional(),
 }).refine(
   (data) => {
     const suma = data.criterios.reduce((acc, c) => acc + c.peso, 0);
@@ -113,6 +119,7 @@ export function RubricaEditor({
         criterios: rubrica.criterios_json,
         penalizaciones: rubrica.penalizaciones_json || [],
         condiciones_desaprobacion: rubrica.condiciones_desaprobacion_json || [],
+        moodle_assign_id: rubrica.moodle_assign_id ?? null,
       }
       : {
         materia_id: materiaId || 0,
@@ -169,6 +176,7 @@ export function RubricaEditor({
         criterios: rubrica.criterios_json,
         penalizaciones: rubrica.penalizaciones_json || [],
         condiciones_desaprobacion: rubrica.condiciones_desaprobacion_json || [],
+        moodle_assign_id: rubrica.moodle_assign_id ?? null,
       });
     } else {
       // CREACIÓN: Empezar en modo PDF con datos vacíos
@@ -365,6 +373,7 @@ export function RubricaEditor({
             criterios_json: data.criterios,
             penalizaciones_json: data.penalizaciones,
             condiciones_desaprobacion_json: data.condiciones_desaprobacion,
+            moodle_assign_id: data.moodle_assign_id ?? undefined,
           },
         });
       } else {
@@ -381,6 +390,7 @@ export function RubricaEditor({
           penalizaciones_json: data.penalizaciones,
           condiciones_desaprobacion_json: data.condiciones_desaprobacion,
           fuente: 'manual',
+          moodle_assign_id: data.moodle_assign_id ?? undefined,
         });
       }
 

@@ -265,6 +265,24 @@ class UsuarioRepository:
         )
         return list(result.scalars().all())
 
+    async def update_moodle_credentials(
+        self,
+        user_id: int,
+        username: str,
+        password_encrypted: str,
+        host: str,
+    ) -> Usuario | None:
+        user = await self.get_by_id(user_id)
+        if not user:
+            return None
+        user.moodle_username = username
+        user.moodle_password_encrypted = password_encrypted
+        user.moodle_host = host
+        user.updated_at = datetime.utcnow()
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
     async def hard_delete(self, user: Usuario) -> None:
         """
         Hard delete: elimina físicamente el usuario de la DB.

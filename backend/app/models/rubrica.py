@@ -105,6 +105,7 @@ class Rubrica(Base, TimestampMixin):
         nullable=True,
     )
     activa: Mapped[bool] = mapped_column(default=True, index=True)
+    moodle_assign_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         UniqueConstraint(

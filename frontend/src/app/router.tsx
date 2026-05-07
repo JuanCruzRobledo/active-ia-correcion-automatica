@@ -9,6 +9,7 @@ import { MateriasPage } from '@/features/materias/pages/MateriasPage';
 import { ComisionesPage } from '@/features/comisiones/pages/ComisionesPage';
 import { RubricasPage } from '@/features/rubricas/pages/RubricasPage';
 import { EntregasPage } from '@/features/entregas/pages/EntregasPage';
+import { PendientesPage } from '@/features/pendientes/pages';
 import { PerfilPage } from '@/features/perfil/pages/PerfilPage';
 
 export const router = createBrowserRouter([
@@ -66,6 +67,10 @@ export const router = createBrowserRouter([
       {
         path: 'entregas',
         element: <EntregasPage />,
+      },
+      {
+        path: 'pendientes',
+        element: <PendientesPage />,
       },
       // Common routes
       {

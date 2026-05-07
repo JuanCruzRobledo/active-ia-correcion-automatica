@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pendientes Moodle – Active-IA</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --background:       oklch(0.985 0 0);
+      --card:             oklch(1 0 0);
+      --muted:            oklch(0.965 0 0);
+      --foreground:       oklch(0.145 0 0);
+      --muted-fg:         oklch(0.45 0 0);
+      --border:           oklch(0.9 0 0);
+      --accent:           oklch(0.55 0.15 230);
+      --accent-fg:        oklch(0.985 0 0);
+      --sidebar:          oklch(0.98 0 0);
+      --sidebar-accent:   oklch(0.95 0 0);
+      --sidebar-border:   oklch(0.9 0 0);
+      --sidebar-fg:       oklch(0.145 0 0);
+      --success:          oklch(0.55 0.18 145);
+      --warning:          oklch(0.7 0.18 85);
+      --destructive:      oklch(0.55 0.22 27);
+      --radius:           0.5rem;
+      --font-sans: 'Geist', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background: var(--background);
+      color: var(--foreground);
+      min-height: 100vh;
+      display: flex;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 256px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--sidebar);
+      border-right: 1px solid var(--sidebar-border);
+      height: 100vh;
+      position: sticky;
+      top: 0;
+    }
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 24px;
+      border-bottom: 1px solid var(--sidebar-border);
+    }
+    .logo-circle {
+      width: 40px; height: 40px;
+      background: var(--accent);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff;
+      font-size: 15px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .sidebar-logo-text {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--sidebar-fg);
+    }
+    .sidebar-nav {
+      flex: 1;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--sidebar-fg);
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.15s;
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+    .nav-item:hover { background: var(--sidebar-accent); }
+    .nav-item.active {
+      background: var(--accent);
+      color: #fff;
+    }
+    .nav-item svg { flex-shrink: 0; }
+    .sidebar-footer {
+      border-top: 1px solid var(--sidebar-border);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .sidebar-user {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .sidebar-user:hover { background: var(--sidebar-accent); }
+    .user-avatar {
+      width: 32px; height: 32px;
+      background: var(--muted);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted-fg);
+    }
+    .user-name { font-size: 13px; font-weight: 500; }
+    .user-role { font-size: 11px; color: var(--muted-fg); }
+    .sidebar-logout {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      color: var(--sidebar-fg);
+      cursor: pointer;
+      background: none;
+      border: none;
+      width: 100%;
+      text-align: left;
+    }
+    .sidebar-logout:hover { background: var(--sidebar-accent); }
+
+    /* ── Main content ── */
+    .main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 40px 40px 60px;
+      min-height: 100vh;
+    }
+
+    /* ── Page header ── */
+    .page-header { margin-bottom: 32px; }
+    .page-title { font-size: 24px; font-weight: 700; color: var(--foreground); }
+    .page-subtitle { font-size: 14px; color: var(--muted-fg); margin-top: 4px; }
+
+    /* ── Stat cards (top) ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-bottom: 40px;
+    }
+    .stat-card {
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 24px;
+      background: var(--card);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .stat-card.warning { background: oklch(0.7 0.18 85 / 0.08); border-color: oklch(0.7 0.18 85 / 0.25); }
+    .stat-card.success { background: oklch(0.55 0.18 145 / 0.08); border-color: oklch(0.55 0.18 145 / 0.2); }
+    .stat-card.neutral { background: oklch(0.965 0 0); border-color: var(--border); }
+    .stat-label { font-size: 13px; font-weight: 500; color: var(--muted-fg); margin-bottom: 4px; }
+    .stat-value { font-size: 30px; font-weight: 700; color: var(--foreground); line-height: 1; }
+    .stat-sub { font-size: 12px; color: var(--muted-fg); margin-top: 4px; }
+    .stat-icon {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: oklch(0.965 0 0);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* ── Section header ── */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--foreground);
+    }
+    .section-badge {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: oklch(0.55 0.22 27 / 0.1);
+      color: oklch(0.55 0.22 27);
+    }
+
+    /* ── Filter bar ── */
+    .filter-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+    .filter-chip {
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted-fg);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .filter-chip:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-chip.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* ── Unidad block ── */
+    .unidades-list { display: flex; flex-direction: column; gap: 16px; }
+
+    .unidad-block {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--card);
+      overflow: hidden;
+    }
+
+    .unidad-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 24px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .unidad-header:hover { background: var(--muted); }
+
+    .unidad-left { display: flex; align-items: center; gap: 14px; }
+    .unidad-number {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .unidad-title-text { font-size: 15px; font-weight: 600; color: var(--foreground); }
+    .unidad-subtitle { font-size: 12px; color: var(--muted-fg); margin-top: 1px; }
+
+    .unidad-summary {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .summary-pill {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 12px; font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+    .pill-red   { background: oklch(0.55 0.22 27 / 0.1);  color: oklch(0.55 0.22 27); }
+    .pill-green { background: oklch(0.55 0.18 145 / 0.1); color: oklch(0.45 0.18 145); }
+    .pill-gray  { background: oklch(0.965 0 0); color: var(--muted-fg); border: 1px solid var(--border); }
+
+    .chevron {
+      transition: transform 0.2s;
+      color: var(--muted-fg);
+      flex-shrink: 0;
+      margin-left: 8px;
+    }
+    .chevron.open { transform: rotate(180deg); }
+
+    /* ── Comision rows ── */
+    .comision-list {
+      border-top: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .comision-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 16px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.12s;
+    }
+    .comision-row:last-child { border-bottom: none; }
+    .comision-row:hover { background: oklch(0.975 0 0); }
+
+    .comision-info { display: flex; align-items: flex-start; gap: 16px; }
+    .comision-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--foreground);
+      white-space: nowrap;
+      min-width: 100px;
+    }
+    .comision-stats {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .stat-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-red   { background: oklch(0.55 0.22 27); }
+    .dot-green { background: oklch(0.55 0.18 145); }
+    .dot-gray  { background: oklch(0.7 0 0); }
+
+    .stat-num-red   { color: oklch(0.55 0.22 27);  font-weight: 700; }
+    .stat-num-green { color: oklch(0.45 0.18 145); font-weight: 700; }
+    .stat-num-gray  { color: var(--muted-fg);       font-weight: 600; }
+
+    .stat-desc { color: var(--muted-fg); }
+
+    .moodle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: var(--radius);
+      background: none;
+      border: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .moodle-btn:hover {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* ── Empty unit ── */
+    .comision-empty {
+      padding: 20px 24px;
+      color: var(--muted-fg);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    /* ── Legend ── */
+    .legend {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      padding: 14px 0 0;
+      flex-wrap: wrap;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-fg); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--muted); }
+    ::-webkit-scrollbar-thumb { background: oklch(0.45 0 0 / 0.2); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ─── Icons (inline SVG helpers) ───────────────────────────────────────────────
+const Icon = ({ d, size = 20, color = "currentColor", strokeWidth = 1.75 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+       stroke={color} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <path d={d} />
+  </svg>
+);
+
+const Icons = {
+  home:       "M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z M9 22V12h6v10",
+  check:      "M9 11l3 3L22 4 M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
+  clock:      "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z M12 6v6l4 2",
+  pending:    "M12 2a10 10 0 1 0 0 20A10 10 0 0 0 12 2z M12 8v4l3 3",
+  external:   "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6 M15 3h6v6 M10 14L21 3",
+  chevronD:   "M6 9l6 6 6-6",
+  user:       "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2 M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  logout:     "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4 M16 17l5-5-5-5 M21 12H9",
+  filter:     "M22 3H2l8 9.46V19l4 2V12.46L22 3z",
+  refresh:    "M23 4v6h-6 M1 20v-6h6 M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15",
+  alert:      "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z M12 9v4 M12 17h.01",
+};
+
+// ─── Demo data ────────────────────────────────────────────────────────────────
+const DEMO_DATA = [
+  {
+    id: 1,
+    titulo: "Unidad 1",
+    subtitulo: "Secuenciales",
+    cmid: 11169,
+    comisiones: [
+      {
+        id: "c1u1",
+        nombre: "Comisión 1",
+        codigo: "m26",
+        groupId: 4149,
+        espera: 16,
+        corregidos: 20,
+        sinEntrega: 12,
+      },
+      {
+        id: "c2u1",
+        nombre: "Comisión 2",
+        codigo: "m26",
+        groupId: 4165,
+        espera: 5,
+        corregidos: 12,
+        sinEntrega: 20,
+      },
+    ],
+  },
+  {
+    id: 2,
+    titulo: "Unidad 2",
+    subtitulo: "Condicionales",
+    cmid: 11205,
+    comisiones: [
+      {
+        id: "c1u2",
+        nombre: "Comisión 1",
+        codigo: "m26",
+        groupId: 4149,
+        espera: 8,
+        corregidos: 25,
+        sinEntrega: 3,
+      },
+      {
+        id: "c2u2",
+        nombre: "Comisión 2",
+        codigo: "m26",
+        groupId: 4165,
+        espera: 0,
+        corregidos: 30,
+        sinEntrega: 6,
+      },
+    ],
+  },
+  {
+    id: 3,
+    titulo: "Unidad 3",
+    subtitulo: "Ciclos y Repetición",
+    cmid: 11248,
+    comisiones: [
+      {
+        id: "c1u3",
+        nombre: "Comisión 1",
+        codigo: "m26",
+        groupId: 4149,
+        espera: 11,
+        corregidos: 14,
+        sinEntrega: 11,
+      },
+      {
+        id: "c2u3",
+        nombre: "Comisión 2",
+        codigo: "m26",
+        groupId: 4165,
+        espera: 3,
+        corregidos: 22,
+        sinEntrega: 11,
+      },
+    ],
+  },
+  {
+    id: 4,
+    titulo: "Unidad 4",
+    subtitulo: "Vectores y Matrices",
+    cmid: 11301,
+    comisiones: [
+      {
+        id: "c1u4",
+        nombre: "Comisión 1",
+        codigo: "m26",
+        groupId: 4149,
+        espera: 0,
+        corregidos: 36,
+        sinEntrega: 0,
+      },
+      {
+        id: "c2u4",
+        nombre: "Comisión 2",
+        codigo: "m26",
+        groupId: 4165,
+        espera: 0,
+        corregidos: 36,
+        sinEntrega: 0,
+      },
+    ],
+  },
+];
+
+function buildMoodleUrl(cmid, groupsearchvalue, groupId) {
+  return `https://tup.sied.utn.edu.ar/mod/assign/view.php?id=${cmid}&action=grading&status=requiregrading&groupsearchvalue=${groupsearchvalue}&group=${groupId}`;
+}
+
+// ─── UnidadBlock ─────────────────────────────────────────────────────────────
+function UnidadBlock({ unidad, defaultOpen, showUrgentOnly }) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  const totalEspera = unidad.comisiones.reduce((s, c) => s + c.espera, 0);
+  const totalCorregidos = unidad.comisiones.reduce((s, c) => s + c.corregidos, 0);
+  const totalSinEntrega = unidad.comisiones.reduce((s, c) => s + c.sinEntrega, 0);
+
+  const filteredComisiones = showUrgentOnly
+    ? unidad.comisiones.filter(c => c.espera > 0)
+    : unidad.comisiones;
+
+  if (showUrgentOnly && filteredComisiones.length === 0) return null;
+
+  return (
+    <div className="unidad-block">
+      <div className="unidad-header" onClick={() => setOpen(o => !o)}>
+        <div className="unidad-left">
+          <div className="unidad-number">{unidad.id}</div>
+          <div>
+            <div className="unidad-title-text">{unidad.titulo}: {unidad.subtitulo}</div>
+            <div className="unidad-subtitle">{unidad.comisiones.length} comisiones</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div className="unidad-summary">
+            {totalEspera > 0 && (
+              <span className="summary-pill pill-red">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                {totalEspera} en espera
+              </span>
+            )}
+            <span className="summary-pill pill-green">{totalCorregidos} corregidos</span>
+            <span className="summary-pill pill-gray">{totalSinEntrega} sin entrega</span>
+          </div>
+          <svg className={`chevron ${open ? "open" : ""}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </div>
+      </div>
+
+      {open && (
+        <div className="comision-list">
+          {filteredComisiones.length === 0 ? (
+            <div className="comision-empty">No hay comisiones con entregas en espera.</div>
+          ) : (
+            filteredComisiones.map((comision) => (
+              <ComisionRow
+                key={comision.id}
+                comision={comision}
+                cmid={unidad.cmid}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ComisionRow ──────────────────────────────────────────────────────────────
+function ComisionRow({ comision, cmid }) {
+  const moodleUrl = buildMoodleUrl(cmid, comision.codigo, comision.groupId);
+
+  return (
+    <div className="comision-row">
+      <div className="comision-info">
+        <div className="comision-label">{comision.nombre}</div>
+        <div className="comision-stats">
+          <div className="stat-item">
+            <span className="stat-dot dot-red"></span>
+            <span className="stat-num-red">{comision.espera}</span>
+            <span className="stat-desc">en espera de calificación</span>
+          </div>
+          <span style={{ color: "oklch(0.82 0 0)", fontSize: 12 }}>·</span>
+          <div className="stat-item">
+            <span className="stat-dot dot-green"></span>
+            <span className="stat-num-green">{comision.corregidos}</span>
+            <span className="stat-desc">corregidos</span>
+          </div>
+          <span style={{ color: "oklch(0.82 0 0)", fontSize: 12 }}>·</span>
+          <div className="stat-item">
+            <span className="stat-dot dot-gray"></span>
+            <span className="stat-num-gray">{comision.sinEntrega}</span>
+            <span className="stat-desc">sin entrega</span>
+          </div>
+        </div>
+      </div>
+      {comision.espera > 0 && (
+        <a
+          href={moodleUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="moodle-btn"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Ver en Moodle
+        </a>
+      )}
+    </div>
+  );
+}
+
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+function Sidebar({ activePage, onNavigate }) {
+  const navItems = [
+    { id: "dashboard", label: "Dashboard",   iconPath: Icons.home },
+    { id: "entregas",  label: "Entregas",    iconPath: Icons.check },
+    { id: "pendientes",label: "Pendientes",  iconPath: Icons.pending },
+  ];
+
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-logo">
+        <div className="logo-circle">A</div>
+        <span className="sidebar-logo-text">Active-IA</span>
+      </div>
+      <nav className="sidebar-nav">
+        {navItems.map(item => (
+          <button
+            key={item.id}
+            className={`nav-item ${activePage === item.id ? "active" : ""}`}
+            onClick={() => onNavigate(item.id)}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d={item.iconPath} />
+            </svg>
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="sidebar-footer">
+        <div className="sidebar-user">
+          <div className="user-avatar">MT</div>
+          <div>
+            <div className="user-name">Matías Santiago Torres</div>
+            <div className="user-role">Tutor</div>
+          </div>
+        </div>
+        <button className="sidebar-logout">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d={Icons.logout} />
+          </svg>
+          <span>Cerrar sesión</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+// ─── Dashboard page (simplified) ──────────────────────────────────────────────
+function DashboardPage({ onNavigate }) {
+  return (
+    <div>
+      <div className="page-header">
+        <h1 className="page-title">Dashboard – Mis Comisiones</h1>
+        <p className="page-subtitle">Entregas pendientes y estado de correcciones</p>
+      </div>
+      <div className="stats-grid">
+        <div className="stat-card neutral">
+          <div><div className="stat-label">Comisiones</div><div className="stat-value">5</div><div className="stat-sub">asignadas</div></div>
+          <div className="stat-icon" style={{ color: "var(--muted-fg)" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+          </div>
+        </div>
+        <div className="stat-card warning">
+          <div><div className="stat-label">Pendientes</div><div className="stat-value">9</div><div className="stat-sub">de corregir</div></div>
+          <div className="stat-icon" style={{ color: "var(--warning)" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+        </div>
+        <div className="stat-card success">
+          <div><div className="stat-label">Corregidas</div><div className="stat-value">432</div><div className="stat-sub">entregas</div></div>
+          <div className="stat-icon" style={{ color: "var(--success)" }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+        </div>
+      </div>
+      <div style={{ marginBottom: 20 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, marginBottom: 16 }}>Mis Comisiones</h2>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+          {[
+            { nombre: "Programacion 1", comision: "COMI-2 - 2026", alumnos: 98, pendientes: 5 },
+            { nombre: "Programación 3", comision: "COMI-7 - 2026", alumnos: 108, pendientes: 0 },
+            { nombre: "Curso de Prueba PROG1", comision: "PRUEBA - Matias - 2026", alumnos: 20, pendientes: 0 },
+            { nombre: "Programacion 1", comision: "COMI-3 - 2026", alumnos: 131, pendientes: 0 },
+          ].map((c, i) => (
+            <div key={i} style={{ borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "var(--card)", padding: 24 }}>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 17, fontWeight: 600 }}>{c.nombre}</div>
+                <div style={{ fontSize: 13, color: "var(--muted-fg)", marginTop: 2 }}>{c.comision}</div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "var(--muted-fg)" }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  {c.alumnos} alumnos
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={c.pendientes > 0 ? "oklch(0.7 0.18 85)" : "var(--muted-fg)"} strokeWidth="1.75" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                  <span style={{ fontWeight: 600, color: c.pendientes > 0 ? "oklch(0.7 0.18 85)" : "var(--muted-fg)" }}>{c.pendientes} pendientes</span>
+                </div>
+              </div>
+              <button
+                onClick={() => onNavigate("entregas")}
+                style={{ width: "100%", padding: "9px 16px", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "none", fontSize: 14, fontWeight: 500, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+              >
+                Ver entregas
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* NEW: Pendientes quick access */}
+      <div style={{ marginTop: 32, borderRadius: "var(--radius)", border: "1px solid oklch(0.55 0.22 27 / 0.25)", background: "oklch(0.55 0.22 27 / 0.05)", padding: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: "oklch(0.55 0.22 27 / 0.12)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="oklch(0.55 0.22 27)" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "oklch(0.45 0.18 27)" }}>43 entregas esperando calificación en Moodle</div>
+            <div style={{ fontSize: 12, color: "var(--muted-fg)", marginTop: 2 }}>Distribuidas en 3 unidades · sincronizado hace 5 min</div>
+          </div>
+        </div>
+        <button
+          onClick={() => onNavigate("pendientes")}
+          style={{ padding: "9px 18px", borderRadius: "var(--radius)", background: "oklch(0.55 0.22 27)", border: "none", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}
+        >
+          Ver pendientes
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Pendientes page ─────────────────────────────────────────────────────────
+function PendientesPage({ tweaks }) {
+  const [openAll, setOpenAll]           = useState(true);
+  const [filterUrgent, setFilterUrgent] = useState(false);
+  const [expandedIds, setExpandedIds]   = useState([1, 2, 3, 4]);
+
+  const data = DEMO_DATA;
+
+  const totalEspera     = data.flatMap(u => u.comisiones).reduce((s, c) => s + c.espera, 0);
+  const totalCorregidos = data.flatMap(u => u.comisiones).reduce((s, c) => s + c.corregidos, 0);
+  const totalSinEntrega = data.flatMap(u => u.comisiones).reduce((s, c) => s + c.sinEntrega, 0);
+
+  const urgentUnidades = data.filter(u => u.comisiones.some(c => c.espera > 0));
+
+  const displayData = filterUrgent ? urgentUnidades : data;
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="page-header">
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <div>
+            <h1 className="page-title">Pendientes Moodle</h1>
+            <p className="page-subtitle">
+              Entregas a espera de calificación por unidad y comisión — sincronizado desde Moodle
+            </p>
+          </div>
+          <button style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
+            borderRadius: "var(--radius)", border: "1px solid var(--border)",
+            background: "var(--card)", fontSize: 13, fontWeight: 500, cursor: "pointer",
+            color: "var(--muted-fg)"
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d={Icons.refresh}/></svg>
+            Actualizar
+          </button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="stats-grid" style={{ marginBottom: 32 }}>
+        <div className="stat-card" style={{ background: "oklch(0.55 0.22 27 / 0.07)", borderColor: "oklch(0.55 0.22 27 / 0.22)" }}>
+          <div>
+            <div className="stat-label">En espera</div>
+            <div className="stat-value" style={{ color: "oklch(0.45 0.2 27)" }}>{totalEspera}</div>
+            <div className="stat-sub">requieren calificación</div>
+          </div>
+          <div className="stat-icon" style={{ background: "oklch(0.55 0.22 27 / 0.1)", color: "oklch(0.55 0.22 27)" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </div>
+        </div>
+        <div className="stat-card success">
+          <div>
+            <div className="stat-label">Corregidos</div>
+            <div className="stat-value" style={{ color: "oklch(0.42 0.18 145)" }}>{totalCorregidos}</div>
+            <div className="stat-sub">entregas calificadas</div>
+          </div>
+          <div className="stat-icon" style={{ background: "oklch(0.55 0.18 145 / 0.12)", color: "var(--success)" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+        </div>
+        <div className="stat-card neutral">
+          <div>
+            <div className="stat-label">Sin entrega</div>
+            <div className="stat-value" style={{ color: "var(--muted-fg)" }}>{totalSinEntrega}</div>
+            <div className="stat-sub">alumnos no entregaron</div>
+          </div>
+          <div className="stat-icon" style={{ color: "var(--muted-fg)" }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+          </div>
+        </div>
+      </div>
+
+      {/* Filter bar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+        <div className="filter-bar" style={{ margin: 0 }}>
+          <button
+            className={`filter-chip ${!filterUrgent ? "active" : ""}`}
+            onClick={() => setFilterUrgent(false)}
+          >
+            Todas las unidades
+          </button>
+          <button
+            className={`filter-chip ${filterUrgent ? "active" : ""}`}
+            onClick={() => setFilterUrgent(true)}
+          >
+            Solo con pendientes ({urgentUnidades.length})
+          </button>
+        </div>
+        <div className="legend">
+          <div className="legend-item"><span className="stat-dot dot-red"></span>En espera de calificación</div>
+          <div className="legend-item"><span className="stat-dot dot-green"></span>Corregidos</div>
+          <div className="legend-item"><span className="stat-dot dot-gray"></span>Sin entrega</div>
+        </div>
+      </div>
+
+      {/* Unidades list */}
+      <div className="unidades-list">
+        {displayData.map((unidad, idx) => (
+          <UnidadBlock
+            key={unidad.id}
+            unidad={unidad}
+            defaultOpen={idx === 0}
+            showUrgentOnly={filterUrgent}
+          />
+        ))}
+        {displayData.length === 0 && (
+          <div style={{ textAlign: "center", padding: "48px 0", color: "var(--muted-fg)", fontSize: 14 }}>
+            No hay unidades con entregas pendientes. ¡Todo al día!
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 24, fontSize: 12, color: "var(--muted-fg)", display: "flex", alignItems: "center", gap: 6 }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Los datos se sincronizan desde Moodle vía webservice. Última actualización: hace 5 minutos.
+      </div>
+    </div>
+  );
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [page, setPage] = useState("pendientes");
+
+  const { TweaksPanel, TweakSection, TweakToggle, TweakRadio, useTweaks } = window;
+  const [tweaks, setTweak] = useTweaks(/*EDITMODE-BEGIN*/{
+    "mostrarSoloConPendientes": false,
+    "expandirTodas": true,
+    "mostrarBotonesMoodle": true,
+    "compacto": true
+  }/*EDITMODE-END*/);
+
+  return (
+    <div style={{ display: "flex", minHeight: "100vh" }}>
+      <Sidebar activePage={page} onNavigate={setPage} />
+      <main className="main">
+        {page === "dashboard" && <DashboardPage onNavigate={setPage} />}
+        {page === "entregas"  && (
+          <div style={{ textAlign: "center", paddingTop: 80, color: "var(--muted-fg)" }}>
+            <p style={{ fontSize: 15 }}>Página de Entregas (existente)</p>
+            <button
+              onClick={() => setPage("dashboard")}
+              style={{ marginTop: 16, padding: "8px 16px", borderRadius: "var(--radius)", border: "1px solid var(--border)", background: "none", cursor: "pointer" }}
+            >
+              ← Volver al Dashboard
+            </button>
+          </div>
+        )}
+        {page === "pendientes" && <PendientesPage tweaks={tweaks} />}
+      </main>
+
+      <TweaksPanel>
+        <TweakSection title="Vista">
+          <TweakToggle
+            label="Solo con pendientes"
+            tweakKey="mostrarSoloConPendientes"
+            value={tweaks.mostrarSoloConPendientes}
+            onChange={v => setTweak("mostrarSoloConPendientes", v)}
+          />
+          <TweakToggle
+            label="Expandir todas las unidades"
+            tweakKey="expandirTodas"
+            value={tweaks.expandirTodas}
+            onChange={v => setTweak("expandirTodas", v)}
+          />
+          <TweakToggle
+            label="Botones directos a Moodle"
+            tweakKey="mostrarBotonesMoodle"
+            value={tweaks.mostrarBotonesMoodle}
+            onChange={v => setTweak("mostrarBotonesMoodle", v)}
+          />
+          <TweakToggle
+            label="Vista compacta"
+            tweakKey="compacto"
+            value={tweaks.compacto}
+            onChange={v => setTweak("compacto", v)}
+          />
+        </TweakSection>
+      </TweaksPanel>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

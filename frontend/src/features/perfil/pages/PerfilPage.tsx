@@ -1,16 +1,61 @@
-import { useState } from 'react';
-import { Eye, EyeOff, Key, Info, Shield, User as UserIcon } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Eye, EyeOff, Key, Info, Shield, User as UserIcon, Globe } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { useProfile, useUpdateApiKey, useChangePassword } from '../hooks/usePerfil';
+import { updateMoodleCredentials } from '../services/perfil-service';
 import { Button } from '../../../shared/components/ui/Button';
 import { Input } from '../../../shared/components/ui/Input';
 import { Modal } from '../../../shared/components/ui/Modal';
 import { Badge } from '../../../shared/components/ui/Badge';
 import { Spinner } from '../../../shared/components/ui/Spinner';
 
+const moodleSchema = z.object({
+  moodle_host: z.string().url('Ingresá una URL válida').min(1),
+  moodle_username: z.string().min(1, 'El usuario es requerido'),
+  moodle_password: z.string().min(1, 'La contraseña es requerida'),
+});
+type MoodleForm = z.infer<typeof moodleSchema>;
+
 export const PerfilPage = () => {
   const { data: profile, isLoading } = useProfile();
   const updateApiKeyMutation = useUpdateApiKey();
   const changePasswordMutation = useChangePassword();
+  const queryClient = useQueryClient();
+
+  const moodleForm = useForm<MoodleForm>({
+    resolver: zodResolver(moodleSchema),
+    defaultValues: { moodle_host: '', moodle_username: '', moodle_password: '' },
+  });
+
+  useEffect(() => {
+    if (profile) {
+      moodleForm.reset({
+        moodle_host: profile.moodle_host ?? '',
+        moodle_username: profile.moodle_username ?? '',
+        moodle_password: '',
+      });
+    }
+  }, [profile]);
+
+  const moodleMutation = useMutation({
+    mutationFn: updateMoodleCredentials,
+    onSuccess: (data) => {
+      toast.success('Credenciales Moodle guardadas');
+      moodleForm.reset({
+        moodle_host: data.moodle_host,
+        moodle_username: data.moodle_username,
+        moodle_password: '',
+      });
+      queryClient.invalidateQueries({ queryKey: ['pendientes-moodle'] });
+    },
+    onError: () => {
+      toast.error('Error al guardar credenciales Moodle');
+    },
+  });
 
   // API Key modal state
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
@@ -258,6 +303,90 @@ export const PerfilPage = () => {
               {profile.gemini_api_key_valid ? 'Cambiar' : 'Configurar'}
             </Button>
           </div>
+        </div>
+      </div>
+
+      {/* Configuración Moodle */}
+      <div className="rounded-lg border border-border bg-card p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Globe className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-xl font-semibold text-foreground">Configuración Moodle</h2>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 rounded-md bg-muted/50">
+            <Info className="h-5 w-5 text-info mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-muted-foreground">
+              Ingresá tus credenciales de Moodle para visualizar las entregas pendientes de
+              corrección directamente desde Active-IA. La contraseña se cifra con AES-256.
+            </p>
+          </div>
+
+          <form
+            onSubmit={moodleForm.handleSubmit((data) => moodleMutation.mutate(data))}
+            className="space-y-4"
+          >
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">
+                Host Moodle
+              </label>
+              <Input
+                type="url"
+                placeholder="https://moodle.ejemplo.com"
+                {...moodleForm.register('moodle_host')}
+                className={moodleForm.formState.errors.moodle_host ? 'border-destructive' : ''}
+              />
+              {moodleForm.formState.errors.moodle_host && (
+                <p className="text-sm text-destructive mt-1">
+                  {moodleForm.formState.errors.moodle_host.message}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">
+                Usuario Moodle
+              </label>
+              <Input
+                type="text"
+                placeholder="usuario@moodle"
+                {...moodleForm.register('moodle_username')}
+                className={moodleForm.formState.errors.moodle_username ? 'border-destructive' : ''}
+              />
+              {moodleForm.formState.errors.moodle_username && (
+                <p className="text-sm text-destructive mt-1">
+                  {moodleForm.formState.errors.moodle_username.message}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1.5">
+                Contraseña Moodle
+              </label>
+              <Input
+                type="password"
+                placeholder="••••••••"
+                {...moodleForm.register('moodle_password')}
+                className={moodleForm.formState.errors.moodle_password ? 'border-destructive' : ''}
+              />
+              {moodleForm.formState.errors.moodle_password && (
+                <p className="text-sm text-destructive mt-1">
+                  {moodleForm.formState.errors.moodle_password.message}
+                </p>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                disabled={moodleMutation.isPending}
+                isLoading={moodleMutation.isPending}
+              >
+                {moodleMutation.isPending ? 'Guardando...' : 'Guardar credenciales'}
+              </Button>
+            </div>
+          </form>
         </div>
       </div>
 
