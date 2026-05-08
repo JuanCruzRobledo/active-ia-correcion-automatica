@@ -14,11 +14,14 @@ Notas importantes sobre la API de Moodle:
 """
 
 import asyncio
+import logging
 from datetime import datetime, timedelta
 
 import httpx
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from app.core.security import decrypt_api_key
 from app.repositories.usuario_repository import UsuarioRepository
@@ -257,9 +260,22 @@ class MoodleService:
             .options(selectinload(Comision.materia))
         )
         comisiones = list(result.scalars().all())
+        logger.info(
+            "get_pendientes user_id=%s: %d comisiones activas con moodle_group_id",
+            user_id, len(comisiones),
+        )
+        for c in comisiones:
+            logger.debug(
+                "  comision id=%s nombre=%r moodle_group_id=%s materia_id=%s",
+                c.id, c.nombre, c.moodle_group_id, c.materia_id,
+            )
 
         materia_ids = list({c.materia_id for c in comisiones})
         if not materia_ids:
+            logger.warning(
+                "get_pendientes user_id=%s: ninguna comisión activa tiene moodle_group_id configurado",
+                user_id,
+            )
             return MateriasPendientesResponse(materias=[])
 
         # Obtener rúbricas con moodle_assign_id (cmid) agrupadas por materia
@@ -272,6 +288,20 @@ class MoodleService:
             )
         )
         rubricas = list(rubrica_result.scalars().all())
+        logger.info(
+            "get_pendientes user_id=%s: %d rúbricas activas con moodle_assign_id para materia_ids=%s",
+            user_id, len(rubricas), materia_ids,
+        )
+        for r in rubricas:
+            logger.debug(
+                "  rúbrica id=%s titulo=%r moodle_assign_id=%s materia_id=%s",
+                r.id, r.titulo, r.moodle_assign_id, r.materia_id,
+            )
+        if not rubricas:
+            logger.warning(
+                "get_pendientes user_id=%s: ninguna rúbrica activa tiene moodle_assign_id configurado",
+                user_id,
+            )
 
         # Obtener materias para resolver course_id (necesario para cmid → assign_id y group members)
         materia_result = await self.db.execute(
@@ -284,8 +314,16 @@ class MoodleService:
             if materia.moodle_course_id:
                 try:
                     await self._get_course_assignment_map(token, moodle_host, materia.moodle_course_id)
-                except (MoodleConnectionError, MoodleAuthError):
-                    pass  # se manejará por par individual
+                except (MoodleConnectionError, MoodleAuthError) as e:
+                    logger.warning(
+                        "No se pudo obtener assignment map para course_id=%s (materia_id=%s): %s",
+                        materia.moodle_course_id, materia.id, e,
+                    )
+            else:
+                logger.warning(
+                    "Materia id=%s no tiene moodle_course_id configurado — se omitirán sus rúbricas",
+                    materia.id,
+                )
 
         # Pre-resolver miembros de grupos únicos
         unique_group_comision_pairs = {
@@ -295,9 +333,20 @@ class MoodleService:
         }
         for group_id, course_id in unique_group_comision_pairs:
             try:
-                await self._get_group_member_ids(token, moodle_host, course_id, group_id)
-            except (MoodleConnectionError, MoodleAuthError):
-                pass
+                members = await self._get_group_member_ids(token, moodle_host, course_id, group_id)
+                if not members:
+                    logger.warning(
+                        "El grupo moodle_group_id=%s en course_id=%s no tiene miembros — "
+                        "todas sus submissions serán filtradas",
+                        group_id, course_id,
+                    )
+                else:
+                    logger.debug("Grupo group_id=%s tiene %d miembros", group_id, len(members))
+            except (MoodleConnectionError, MoodleAuthError) as e:
+                logger.warning(
+                    "No se pudieron obtener miembros del grupo group_id=%s course_id=%s: %s",
+                    group_id, course_id, e,
+                )
 
         # Paralelizar consultas con semaphore
         semaphore = asyncio.Semaphore(10)
@@ -306,22 +355,44 @@ class MoodleService:
             async with semaphore:
                 materia = materias_by_id.get(rubrica.materia_id)
                 if not materia or not materia.moodle_course_id:
+                    logger.warning(
+                        "Rúbrica id=%s (materia_id=%s) no tiene materia con moodle_course_id — omitida",
+                        rubrica.id, rubrica.materia_id,
+                    )
                     return rubrica, comision, {"espera": 0, "corregidos": 0, "sinEntrega": 0}
 
                 # Resolver cmid → instance id
                 cmid_map = self._cmid_map.get(materia.moodle_course_id, {})
                 assignment_instance_id = cmid_map.get(rubrica.moodle_assign_id)
                 if not assignment_instance_id:
+                    logger.warning(
+                        "cmid=%s no encontrado en el mapa del course_id=%s "
+                        "(rúbrica id=%s, materia id=%s) — "
+                        "verificá que el moodle_assign_id sea el cmid correcto y que el token tenga permisos",
+                        rubrica.moodle_assign_id, materia.moodle_course_id,
+                        rubrica.id, materia.id,
+                    )
                     return rubrica, comision, {"espera": 0, "corregidos": 0, "sinEntrega": 0}
 
                 # Obtener miembros del grupo
                 group_members = self._group_members.get(comision.moodle_group_id, set())
+                if not group_members:
+                    logger.warning(
+                        "Sin miembros para comision id=%s (moodle_group_id=%s) — "
+                        "todas las submissions serán filtradas, resultado será 0/0/0",
+                        comision.id, comision.moodle_group_id,
+                    )
 
                 counts = await self.get_submissions_count(
                     token=token,
                     moodle_host=moodle_host,
                     assignment_instance_id=assignment_instance_id,
                     group_member_ids=group_members,
+                )
+                logger.debug(
+                    "comision id=%s rubrica id=%s → espera=%d corregidos=%d sinEntrega=%d",
+                    comision.id, rubrica.id,
+                    counts["espera"], counts["corregidos"], counts["sinEntrega"],
                 )
                 return rubrica, comision, counts
 
@@ -340,6 +411,7 @@ class MoodleService:
         materias_map: dict[int, dict] = {}
         for item in results:
             if isinstance(item, Exception):
+                logger.error("Excepción en fetch_with_semaphore: %s", item, exc_info=item)
                 continue
             rubrica, comision, counts = item
             mid = rubrica.materia_id
