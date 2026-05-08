@@ -22,7 +22,9 @@
       "mcp__plugin_engram_engram__mem_search",
       "mcp__plugin_engram_engram__mem_get_observation",
       "mcp__plugin_engram_engram__mem_save",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(Get-ChildItem -Path \"g:\\\\fix\\\\active-ia-correcion-automatica\\\\frontend\\\\src\\\\features\\\\pendientes\" -Recurse -File)",
+      "Bash(Select-Object FullName)"
     ]
   }
 }

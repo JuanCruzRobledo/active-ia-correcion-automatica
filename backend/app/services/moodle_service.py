@@ -170,7 +170,22 @@ class MoodleService:
         if isinstance(data, dict) and "exception" in data:
             raise MoodleConnectionError(f"Error Moodle al obtener grupo: {data.get('message', '')}")
 
-        member_ids = {u["id"] for u in data if isinstance(u, dict) and "id" in u}
+        # Filtrar solo alumnos — excluye docentes, tutores y no-editores.
+        # La API devuelve roles como lista en u["roles"][N]["shortname"].
+        # El rol de alumno en Moodle estándar es "student" (roleid 5).
+        STUDENT_ROLES = {"student"}
+        member_ids: set[int] = set()
+        for u in data:
+            if not isinstance(u, dict) or "id" not in u:
+                continue
+            roles = u.get("roles", [])
+            if any(r.get("shortname") in STUDENT_ROLES for r in roles):
+                member_ids.add(u["id"])
+
+        logger.debug(
+            "Grupo group_id=%s course_id=%s: %d alumnos (de %d usuarios totales)",
+            group_id, course_id, len(member_ids), len(data) if isinstance(data, list) else "?",
+        )
         self._group_members[group_id] = member_ids
         return member_ids
 
