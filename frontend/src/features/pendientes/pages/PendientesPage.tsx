@@ -14,7 +14,7 @@ export function PendientesPage() {
   const { data, isLoading, isRefreshing, error } = usePendientesMoodle();
 
   const handleRefresh = () => {
-    queryClient.refetchQueries({ queryKey: ['pendientes-moodle'] });
+    queryClient.invalidateQueries({ queryKey: ['pendientes-moodle'] });
   };
 
   if (isLoading) {
@@ -39,7 +39,7 @@ export function PendientesPage() {
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+              className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Actualizando…' : 'Actualizar'}
@@ -63,7 +63,7 @@ export function PendientesPage() {
           {is424 ? (
             <button
               onClick={() => navigate('/perfil')}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className="cursor-pointer rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
             >
               Ir a mi perfil
             </button>
@@ -71,7 +71,7 @@ export function PendientesPage() {
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="flex items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
+              className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Actualizando…' : 'Reintentar'}
@@ -98,7 +98,7 @@ export function PendientesPage() {
         <button
           onClick={handleRefresh}
           disabled={isRefreshing}
-          className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+          className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
         >
           <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           {isRefreshing ? 'Actualizando…' : 'Actualizar'}
@@ -132,7 +132,7 @@ export function PendientesPage() {
       <div className="flex items-center gap-2">
         <button
           onClick={() => setShowUrgentOnly(false)}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+          className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
             !showUrgentOnly
               ? 'bg-primary text-primary-foreground'
               : 'bg-muted text-muted-foreground hover:bg-muted/80'
@@ -142,7 +142,7 @@ export function PendientesPage() {
         </button>
         <button
           onClick={() => setShowUrgentOnly(true)}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+          className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
             showUrgentOnly
               ? 'bg-destructive text-destructive-foreground'
               : 'bg-muted text-muted-foreground hover:bg-muted/80'
