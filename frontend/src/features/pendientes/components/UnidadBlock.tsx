@@ -49,7 +49,7 @@ export function UnidadBlock({ unidad, showUrgentOnly }: UnidadBlockProps) {
       {open && (
         <div className="space-y-2 border-t border-border px-4 py-3">
           {comisiones.map((c) => (
-            <ComisionRow key={c.id} comision={c} />
+            <ComisionRow key={c.id} comision={c} rubricaId={unidad.id} />
           ))}
         </div>
       )}

@@ -1,11 +1,13 @@
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, FileText } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { ComisionPendiente } from '../types';
 
 interface ComisionRowProps {
   comision: ComisionPendiente;
+  rubricaId: number;
 }
 
-export function ComisionRow({ comision }: ComisionRowProps) {
+export function ComisionRow({ comision, rubricaId }: ComisionRowProps) {
   return (
     <div className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3">
       <div className="flex items-center gap-3">
@@ -41,6 +43,14 @@ export function ComisionRow({ comision }: ComisionRowProps) {
             Ver en Moodle
           </a>
         )}
+
+        <Link
+          to={`/entregas?comision_id=${comision.id}&rubrica_id=${rubricaId}`}
+          className="flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          <FileText className="h-3 w-3" />
+          Ver entregas
+        </Link>
       </div>
     </div>
   );
