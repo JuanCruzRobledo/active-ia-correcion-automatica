@@ -206,7 +206,6 @@ class MoodleService:
 
         espera = 0
         corregidos = 0
-        sin_entrega = 0
 
         assignments = data.get("assignments", [])
         for assignment in assignments:
@@ -221,8 +220,11 @@ class MoodleService:
                         espera += 1
                     else:
                         corregidos += 1
-                else:
-                    sin_entrega += 1
+                # status != "submitted" (draft, new, etc.) no cuenta como entregado
+
+        # Los alumnos sin registro en submissions tampoco entregaron,
+        # así que sinEntrega = total del grupo - los que sí entregaron
+        sin_entrega = max(0, len(group_member_ids) - espera - corregidos)
 
         return {"espera": espera, "corregidos": corregidos, "sinEntrega": sin_entrega}
 
