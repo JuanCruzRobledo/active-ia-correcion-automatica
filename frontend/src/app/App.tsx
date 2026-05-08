@@ -2,11 +2,19 @@ import { RouterProvider } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { QueryProvider } from './providers';
 import { router } from './router';
+import { useVersionCheck } from '@/shared/hooks/useVersionCheck';
+
+const AppContent = () => {
+  useVersionCheck();
+  return (
+    <RouterProvider router={router} />
+  );
+};
 
 export const App = () => {
   return (
     <QueryProvider>
-      <RouterProvider router={router} />
+      <AppContent />
       <Toaster
         position="top-right"
         toastOptions={{
