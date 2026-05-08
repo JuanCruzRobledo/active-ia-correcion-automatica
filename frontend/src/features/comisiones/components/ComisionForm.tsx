@@ -60,6 +60,8 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
   const { user } = useAuth();
   const isTutor = user?.rol === 'TUTOR';
   const moodleOnly = isTutor;
+  // Skip lookup queries until we know the user's role to avoid 403 toasts
+  const canQueryAdminLookups = !!user && !moodleOnly;
 
   const createMutation = useCreateComision();
   const updateMutation = useUpdateComision();
@@ -68,11 +70,11 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
   // Fetch materias for selector (only active ones) — skip for tutors who can't list materias
   const { data: materiasData, isLoading: isLoadingMaterias } = useMaterias(
     { activa: true, per_page: 100 },
-    { enabled: !moodleOnly }
+    { enabled: canQueryAdminLookups }
   );
 
   const { data: tutores = [], isLoading: loadingTutores } = useTutores({
-    enabled: !moodleOnly,
+    enabled: canQueryAdminLookups,
   });
 
   const {
@@ -187,49 +189,42 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
       }
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <Select
-          label="Materia"
-          options={materiaOptions}
-          error={errors.materia_id?.message}
-          disabled={moodleOnly || isEditMode || isLoadingMaterias}
-          helperText={isEditMode ? 'La materia no puede modificarse' : undefined}
-          {...register('materia_id', {
-            setValueAs: (v) => (v === '' ? 0 : parseInt(v, 10)),
-          })}
-        />
+        <div className={moodleOnly ? 'hidden' : 'space-y-4'} aria-hidden={moodleOnly}>
+          <Select
+            label="Materia"
+            options={materiaOptions}
+            error={errors.materia_id?.message}
+            disabled={isEditMode || isLoadingMaterias}
+            helperText={isEditMode ? 'La materia no puede modificarse' : undefined}
+            {...register('materia_id', {
+              setValueAs: (v) => (v === '' ? 0 : parseInt(v, 10)),
+            })}
+          />
 
-        <Input
-          label="Nombre"
-          placeholder="Comisión A"
-          error={errors.nombre?.message}
-          disabled={moodleOnly}
-          helperText={
-            moodleOnly
-              ? undefined
-              : 'Nombre identificador de la comisión (ej: Comisión A, Comisión Noche)'
-          }
-          {...register('nombre')}
-        />
+          <Input
+            label="Nombre"
+            placeholder="Comisión A"
+            error={errors.nombre?.message}
+            helperText="Nombre identificador de la comisión (ej: Comisión A, Comisión Noche)"
+            {...register('nombre')}
+          />
 
-        <Input
-          label="Año Académico"
-          type="number"
-          placeholder={currentYear.toString()}
-          error={errors.anio?.message}
-          disabled={moodleOnly || isEditMode}
-          helperText={
-            moodleOnly
-              ? undefined
-              : isEditMode
+          <Input
+            label="Año Académico"
+            type="number"
+            placeholder={currentYear.toString()}
+            error={errors.anio?.message}
+            disabled={isEditMode}
+            helperText={
+              isEditMode
                 ? 'El año no puede modificarse'
                 : `Año académico de la comisión (actual: ${currentYear})`
-          }
-          {...register('anio', {
-            setValueAs: (v) => (v === '' ? currentYear : parseInt(v, 10)),
-          })}
-        />
+            }
+            {...register('anio', {
+              setValueAs: (v) => (v === '' ? currentYear : parseInt(v, 10)),
+            })}
+          />
 
-        {!moodleOnly && (
           <Controller
             name="tutor_ids"
             control={control}
@@ -249,7 +244,7 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
               />
             )}
           />
-        )}
+        </div>
 
         <div className="space-y-4 rounded-md border border-border bg-muted/30 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

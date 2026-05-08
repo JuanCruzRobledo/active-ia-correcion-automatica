@@ -51,9 +51,11 @@ export const ComisionesPage = () => {
   const { data, isLoading, error } = useComisiones(filters);
   const { user } = useAuth();
   const isTutor = user?.rol === 'TUTOR';
+  // Wait for user to load before deciding if we can call admin-only endpoints
+  const canListMaterias = !!user && !isTutor;
   const { data: materiasData, isLoading: materiasLoading } = useMaterias(
     { page: 1, per_page: 100 },
-    { enabled: !isTutor }
+    { enabled: canListMaterias }
   );
   const { data: editingComision } = useComision(editingId || 0);
   const deleteMutation = useDeleteComision();
