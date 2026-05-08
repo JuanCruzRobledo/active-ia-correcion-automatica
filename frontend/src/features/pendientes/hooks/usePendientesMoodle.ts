@@ -9,5 +9,9 @@ export function usePendientesMoodle() {
     staleTime: 5 * 60 * 1000,
   });
 
-  return { ...query, isRefreshing: query.isFetching && !query.isLoading };
+  return {
+    ...query,
+    isRefreshing: query.isFetching && !query.isLoading,
+    refresh: () => query.refetch(),
+  };
 }
