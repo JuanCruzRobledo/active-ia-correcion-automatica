@@ -20,11 +20,15 @@ export const materiasKeys = {
 /**
  * Hook to fetch paginated list of materias with filters
  */
-export const useMaterias = (filters?: MateriasFilters) => {
+export const useMaterias = (
+  filters?: MateriasFilters,
+  options?: { enabled?: boolean }
+) => {
   return useQuery({
     queryKey: materiasKeys.list(filters),
     queryFn: () => materiasService.getAll(filters),
     staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: options?.enabled ?? true,
   });
 };
 

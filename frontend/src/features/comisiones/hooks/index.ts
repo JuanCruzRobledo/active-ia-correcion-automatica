@@ -8,6 +8,7 @@ export {
   useComision,
   useCreateComision,
   useUpdateComision,
+  useUpdateComisionMoodle,
   useDeleteComision,
   useRestoreComision,
   useAssignTutores,

@@ -28,7 +28,7 @@ const navItems: NavItem[] = [
     to: '/comisiones',
     icon: FolderOpen,
     label: 'Comisiones',
-    roles: ['ADMIN', 'COORDINADOR'],
+    roles: ['ADMIN', 'COORDINADOR', 'TUTOR'],
   },
   {
     to: '/rubricas',

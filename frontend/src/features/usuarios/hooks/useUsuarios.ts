@@ -151,11 +151,12 @@ export const useCoordinadores = () => {
  * Hook to fetch tutores (users with TUTOR role)
  * Useful for comision assignment forms
  */
-export const useTutores = () => {
+export const useTutores = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: [...usuariosKeys.lists(), { rol: 'TUTOR', per_page: 1000 }],
     queryFn: () => usuariosService.getAll({ rol: 'TUTOR', activo: true, per_page: 1000 }),
     staleTime: 5 * 60 * 1000, // 5 minutes
     select: (data) => data.items, // Return only the items array
+    enabled: options?.enabled ?? true,
   });
 };

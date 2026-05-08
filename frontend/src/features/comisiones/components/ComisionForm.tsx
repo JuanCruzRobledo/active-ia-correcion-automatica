@@ -11,9 +11,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Modal, Button, Input, Select, type SelectOption } from '@/shared/components/ui';
 import { MultiSelect } from '@/shared/components/ui/MultiSelect';
-import { useCreateComision, useUpdateComision } from '../hooks';
+import {
+  useCreateComision,
+  useUpdateComision,
+  useUpdateComisionMoodle,
+} from '../hooks';
 import { useMaterias } from '@/features/materias/hooks';
 import { useTutores } from '@/features/usuarios/hooks';
+import { useAuth } from '@/features/auth/hooks';
 import type { ComisionDetail } from '../types';
 
 // Validation schema
@@ -52,16 +57,23 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
   const isEditMode = !!comision;
   const currentYear = new Date().getFullYear();
 
+  const { user } = useAuth();
+  const isTutor = user?.rol === 'TUTOR';
+  const moodleOnly = isTutor;
+
   const createMutation = useCreateComision();
   const updateMutation = useUpdateComision();
+  const updateMoodleMutation = useUpdateComisionMoodle();
 
-  // Fetch materias for selector (only active ones)
-  const { data: materiasData, isLoading: isLoadingMaterias } = useMaterias({
-    activa: true,
-    per_page: 100, // Get all active materias
+  // Fetch materias for selector (only active ones) — skip for tutors who can't list materias
+  const { data: materiasData, isLoading: isLoadingMaterias } = useMaterias(
+    { activa: true, per_page: 100 },
+    { enabled: !moodleOnly }
+  );
+
+  const { data: tutores = [], isLoading: loadingTutores } = useTutores({
+    enabled: !moodleOnly,
   });
-
-  const { data: tutores = [], isLoading: loadingTutores } = useTutores();
 
   const {
     register,
@@ -115,7 +127,15 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
 
   const onSubmit = async (data: ComisionFormData) => {
     try {
-      if (isEditMode) {
+      if (moodleOnly && comision) {
+        await updateMoodleMutation.mutateAsync({
+          id: comision.id,
+          data: {
+            moodle_group_id: data.moodle_group_id ?? null,
+            moodle_group_code: data.moodle_group_code ?? null,
+          },
+        });
+      } else if (isEditMode) {
         // Update existing comision
         await updateMutation.mutateAsync({
           id: comision.id,
@@ -158,14 +178,20 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={isEditMode ? 'Editar Comisión' : 'Crear Comisión'}
+      title={
+        moodleOnly
+          ? 'Configuración de Moodle'
+          : isEditMode
+            ? 'Editar Comisión'
+            : 'Crear Comisión'
+      }
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <Select
           label="Materia"
           options={materiaOptions}
           error={errors.materia_id?.message}
-          disabled={isEditMode || isLoadingMaterias} // Cannot change materia when editing
+          disabled={moodleOnly || isEditMode || isLoadingMaterias}
           helperText={isEditMode ? 'La materia no puede modificarse' : undefined}
           {...register('materia_id', {
             setValueAs: (v) => (v === '' ? 0 : parseInt(v, 10)),
@@ -176,7 +202,12 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
           label="Nombre"
           placeholder="Comisión A"
           error={errors.nombre?.message}
-          helperText="Nombre identificador de la comisión (ej: Comisión A, Comisión Noche)"
+          disabled={moodleOnly}
+          helperText={
+            moodleOnly
+              ? undefined
+              : 'Nombre identificador de la comisión (ej: Comisión A, Comisión Noche)'
+          }
           {...register('nombre')}
         />
 
@@ -185,32 +216,40 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
           type="number"
           placeholder={currentYear.toString()}
           error={errors.anio?.message}
-          disabled={isEditMode} // Cannot change year when editing
-          helperText={isEditMode ? 'El año no puede modificarse' : `Año académico de la comisión (actual: ${currentYear})`}
+          disabled={moodleOnly || isEditMode}
+          helperText={
+            moodleOnly
+              ? undefined
+              : isEditMode
+                ? 'El año no puede modificarse'
+                : `Año académico de la comisión (actual: ${currentYear})`
+          }
           {...register('anio', {
             setValueAs: (v) => (v === '' ? currentYear : parseInt(v, 10)),
           })}
         />
 
-        <Controller
-          name="tutor_ids"
-          control={control}
-          render={({ field }) => (
-            <MultiSelect
-              label="Tutores (Opcional)"
-              placeholder="Selecciona tutores"
-              tooltip="Usuarios con rol TUTOR que pueden corregir entregas de esta comisión"
-              options={tutores.map((t) => ({
-                value: t.id,
-                label: t.nombre,
-              }))}
-              value={field.value || []}
-              onChange={field.onChange}
-              loading={loadingTutores}
-              error={errors.tutor_ids?.message}
-            />
-          )}
-        />
+        {!moodleOnly && (
+          <Controller
+            name="tutor_ids"
+            control={control}
+            render={({ field }) => (
+              <MultiSelect
+                label="Tutores (Opcional)"
+                placeholder="Selecciona tutores"
+                tooltip="Usuarios con rol TUTOR que pueden corregir entregas de esta comisión"
+                options={tutores.map((t) => ({
+                  value: t.id,
+                  label: t.nombre,
+                }))}
+                value={field.value || []}
+                onChange={field.onChange}
+                loading={loadingTutores}
+                error={errors.tutor_ids?.message}
+              />
+            )}
+          />
+        )}
 
         <div className="space-y-4 rounded-md border border-border bg-muted/30 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -250,10 +289,14 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
           </Button>
           <Button
             type="submit"
-            disabled={isSubmitting || isLoadingMaterias}
+            disabled={isSubmitting || (!moodleOnly && isLoadingMaterias)}
             isLoading={isSubmitting}
           >
-            {isEditMode ? 'Guardar cambios' : 'Crear comisión'}
+            {moodleOnly
+              ? 'Guardar Moodle'
+              : isEditMode
+                ? 'Guardar cambios'
+                : 'Crear comisión'}
           </Button>
         </div>
       </form>

@@ -28,6 +28,7 @@ import {
   Dropdown,
   type TableColumn,
   type SelectOption,
+  type DropdownItem,
 } from '@/shared/components/ui';
 import { formatDate } from '@/shared/utils';
 import { useMaterias } from '@/features/materias/hooks';
@@ -48,12 +49,15 @@ export const ComisionesPage = () => {
 
   // Queries
   const { data, isLoading, error } = useComisiones(filters);
-  const { data: materiasData, isLoading: materiasLoading } = useMaterias({ page: 1, per_page: 100 });
+  const { user } = useAuth();
+  const isTutor = user?.rol === 'TUTOR';
+  const { data: materiasData, isLoading: materiasLoading } = useMaterias(
+    { page: 1, per_page: 100 },
+    { enabled: !isTutor }
+  );
   const { data: editingComision } = useComision(editingId || 0);
   const deleteMutation = useDeleteComision();
   const restoreMutation = useRestoreComision();
-
-  const { user } = useAuth();
   const sinMateriasAsignadas =
     user?.rol === 'COORDINADOR' &&
     !materiasLoading &&
@@ -75,10 +79,26 @@ export const ComisionesPage = () => {
     setEditingId(null);
   };
 
-  // Filter options
+  // Filter options — for tutors, derive materias from their assigned comisiones
+  // (they don't have permission to list /materias)
+  const materiaOptionsSource = isTutor
+    ? Array.from(
+        new Map(
+          (data?.items ?? []).map((c) => [
+            c.materia_id,
+            {
+              id: c.materia_id,
+              codigo: c.materia_codigo,
+              nombre: c.materia_nombre,
+            },
+          ])
+        ).values()
+      )
+    : (materiasData?.items ?? []);
+
   const materiaOptions: SelectOption[] = [
     { value: '', label: 'Todas las materias' },
-    ...(materiasData?.items || []).map((materia) => ({
+    ...materiaOptionsSource.map((materia) => ({
       value: String(materia.id),
       label: `${materia.codigo} - ${materia.nombre}`,
     })),
@@ -194,19 +214,16 @@ export const ComisionesPage = () => {
       header: 'Acciones',
       className: 'text-right',
       sticky: true,
-      render: (comision) => (
-        <Dropdown
-          trigger={
-            <button className="text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100">
-              •••
-            </button>
-          }
-          items={[
-            {
-              label: 'Editar',
-              onClick: () => handleOpenEdit(comision.id),
-              icon: <Pencil className="w-4 h-4" />,
-            },
+      render: (comision) => {
+        const items: DropdownItem[] = [
+          {
+            label: isTutor ? 'Editar Moodle' : 'Editar',
+            onClick: () => handleOpenEdit(comision.id),
+            icon: <Pencil className="w-4 h-4" />,
+          },
+        ];
+        if (!isTutor) {
+          items.push(
             comision.activa
               ? {
                   label: 'Eliminar',
@@ -226,10 +243,20 @@ export const ComisionesPage = () => {
                   label: 'Restaurar',
                   onClick: () => restoreMutation.mutate(comision.id),
                   icon: <RotateCcw className="w-4 h-4" />,
-                },
-          ]}
-        />
-      ),
+                }
+          );
+        }
+        return (
+          <Dropdown
+            trigger={
+              <button className="text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100">
+                •••
+              </button>
+            }
+            items={items}
+          />
+        );
+      },
     },
   ];
 
@@ -268,10 +295,12 @@ export const ComisionesPage = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Comisiones</h1>
           <p className="text-sm text-gray-500 mt-1">
-            Gestiona las comisiones de cada materia
+            {isTutor
+              ? 'Editá la configuración de Moodle de tus comisiones asignadas'
+              : 'Gestiona las comisiones de cada materia'}
           </p>
         </div>
-        {!sinMateriasAsignadas && (
+        {!sinMateriasAsignadas && !isTutor && (
           <Button onClick={handleOpenCreate}>
             + Crear Comisión
           </Button>
@@ -303,12 +332,14 @@ export const ComisionesPage = () => {
             min="2020"
             max="2100"
           />
-          <Select
-            label="Estado"
-            options={estadoOptions}
-            value={String(filters.include_inactive)}
-            onChange={(e) => handleEstadoChange(e.target.value)}
-          />
+          {!isTutor && (
+            <Select
+              label="Estado"
+              options={estadoOptions}
+              value={String(filters.include_inactive)}
+              onChange={(e) => handleEstadoChange(e.target.value)}
+            />
+          )}
         </div>
       </div>
       )}
@@ -356,7 +387,7 @@ export const ComisionesPage = () => {
                 >
                   Limpiar filtros
                 </Button>
-              ) : (
+              ) : isTutor ? undefined : (
                 <Button onClick={handleOpenCreate}>
                   + Crear primera comisión
                 </Button>

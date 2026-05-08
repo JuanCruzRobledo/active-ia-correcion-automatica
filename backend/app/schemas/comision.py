@@ -76,6 +76,24 @@ class ComisionUpdate(BaseModel):
     )
 
 
+class ComisionMoodleUpdate(BaseModel):
+    """Schema for updating only Moodle config fields of a comision.
+
+    Used by tutors who can edit Moodle parameters of their assigned comisiones
+    without being able to modify other comision data.
+    """
+
+    moodle_group_id: int | None = Field(
+        None,
+        description="ID del grupo en Moodle",
+    )
+    moodle_group_code: str | None = Field(
+        None,
+        max_length=50,
+        description="Código del grupo Moodle (groupsearchvalue)",
+    )
+
+
 class TutorInfo(BaseModel):
     """Reduced info about a tutor assigned to a comision."""
 

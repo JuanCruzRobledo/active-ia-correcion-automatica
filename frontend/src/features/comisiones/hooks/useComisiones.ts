@@ -11,6 +11,7 @@ import { comisionesService } from '../services/comisiones-service';
 import type {
   ComisionCreate,
   ComisionUpdate,
+  ComisionMoodleUpdate,
   TutoresAssign,
   ComisionesFilters,
 } from '../types';
@@ -85,6 +86,25 @@ export const useUpdateComision = () => {
     });
   },
 
+  });
+};
+
+/**
+ * Hook to update only Moodle config of a comision.
+ * Used by tutors to update Moodle params of their assigned comisiones.
+ */
+export const useUpdateComisionMoodle = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, data }: { id: number; data: ComisionMoodleUpdate }) =>
+      comisionesService.updateMoodle(id, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: comisionesKeys.lists() });
+      queryClient.invalidateQueries({
+        queryKey: comisionesKeys.detail(variables.id),
+      });
+    },
   });
 };
 

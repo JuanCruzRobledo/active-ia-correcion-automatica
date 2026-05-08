@@ -13,6 +13,7 @@ import type {
   ComisionList,
   ComisionCreate,
   ComisionUpdate,
+  ComisionMoodleUpdate,
   TutoresAssign,
   TutoresResponse,
   ComisionesFilters,
@@ -74,6 +75,21 @@ export const comisionesService = {
   update: async (id: number, comision: ComisionUpdate): Promise<Comision> => {
     const { data } = await apiClient.put<Comision>(`/comisiones/${id}`, comision);
     return data;
+  },
+
+  /**
+   * Update only the Moodle config of a comision.
+   * Available to admin and tutors assigned to that comision.
+   */
+  updateMoodle: async (
+    id: number,
+    data: ComisionMoodleUpdate
+  ): Promise<ComisionDetail> => {
+    const { data: response } = await apiClient.patch<ComisionDetail>(
+      `/comisiones/${id}/moodle`,
+      data
+    );
+    return response;
   },
 
   /**

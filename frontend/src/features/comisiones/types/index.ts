@@ -73,6 +73,11 @@ export interface ComisionUpdate {
   moodle_group_code?: string | null;
 }
 
+export interface ComisionMoodleUpdate {
+  moodle_group_id?: number | null;
+  moodle_group_code?: string | null;
+}
+
 export interface TutoresAssign {
   tutor_ids: number[];
 }

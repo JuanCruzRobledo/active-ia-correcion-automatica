@@ -23,6 +23,7 @@ from app.schemas.comision import (
     ComisionDetailResponse,
     ComisionList,
     ComisionListItem,
+    ComisionMoodleUpdate,
     ComisionResponse,
     ComisionUpdate,
     MateriaInfo,
@@ -350,6 +351,48 @@ class ComisionService:
 
         # Return detailed response with tutors
         return await self.obtener_comision(comision_id)
+
+    async def actualizar_moodle_config(
+        self,
+        comision_id: int,
+        data: ComisionMoodleUpdate,
+    ) -> ComisionDetailResponse:
+        """
+        Update only Moodle config fields (moodle_group_id, moodle_group_code).
+
+        Args:
+            comision_id: Comision's database ID.
+            data: Moodle config fields to update.
+
+        Returns:
+            ComisionDetailResponse with updated comision data.
+
+        Raises:
+            HTTPException 404: Comision not found.
+        """
+        comision = await self.comision_repo.get_by_id(comision_id)
+
+        if not comision:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Comisión no encontrada",
+            )
+
+        if data.moodle_group_id is not None:
+            comision.moodle_group_id = data.moodle_group_id
+        if data.moodle_group_code is not None:
+            comision.moodle_group_code = data.moodle_group_code
+
+        await self.comision_repo.update(comision)
+
+        return await self.obtener_comision(comision_id)
+
+    async def tutor_esta_asignado(self, tutor_id: int, comision_id: int) -> bool:
+        """Check if a tutor is assigned to a comision."""
+        return await self.comision_tutor_repo.exists(
+            tutor_id=tutor_id,
+            comision_id=comision_id,
+        )
 
     async def eliminar_comision(self, comision_id: int) -> None:
         """

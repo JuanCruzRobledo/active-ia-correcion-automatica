@@ -8,7 +8,7 @@ All endpoints require authentication and admin/coordinator authorization.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 5
 """
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
@@ -19,6 +19,7 @@ from app.schemas.comision import (
     ComisionCreate,
     ComisionDetailResponse,
     ComisionList,
+    ComisionMoodleUpdate,
     ComisionResponse,
     ComisionUpdate,
     TutoresAssign,
@@ -118,12 +119,51 @@ async def obtener_comision(
     - Materia info (codigo, nombre)
     - List of assigned tutores with assignment dates
 
-    **Authorization:** Admin only
+    **Authorization:** Admin, coordinador, or tutor assigned to this comision.
     """
-    require_admin(current_user)
-
     service = ComisionService(db)
+
+    if current_user.rol == RolEnum.TUTOR:
+        if not await service.tutor_esta_asignado(current_user.id, comision_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No estás asignado a esta comisión",
+            )
+
     return await service.obtener_comision(comision_id)
+
+
+@router.patch("/{comision_id}/moodle", response_model=ComisionDetailResponse)
+async def actualizar_moodle_comision(
+    comision_id: int,
+    data: ComisionMoodleUpdate,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ComisionDetailResponse:
+    """
+    Update only the Moodle configuration of a comision.
+
+    **Updatable fields:** `moodle_group_id`, `moodle_group_code`.
+
+    **Authorization:** Admin, or tutor assigned to this comision.
+    Tutors can keep Moodle config in sync without admin intervention so the
+    pendientes panel works for their own assigned comisiones.
+    """
+    service = ComisionService(db)
+
+    if current_user.rol == RolEnum.TUTOR:
+        if not await service.tutor_esta_asignado(current_user.id, comision_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="No estás asignado a esta comisión",
+            )
+    elif current_user.rol != RolEnum.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés permisos para modificar esta comisión",
+        )
+
+    return await service.actualizar_moodle_config(comision_id, data)
 
 
 @router.put("/{comision_id}", response_model=ComisionDetailResponse)
