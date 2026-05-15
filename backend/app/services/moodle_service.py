@@ -189,14 +189,12 @@ class MoodleService:
         self._group_members[group_id] = member_ids
         return member_ids
 
-    async def get_submissions_count(
+    async def _fetch_submissions(
         self,
         token: str,
         moodle_host: str,
         assignment_instance_id: int,
-        group_member_ids: set[int],
     ) -> dict:
-        """Cuenta submissions para un assignment, filtradas por grupo (client-side)."""
         url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
         params = {
             "wstoken": token,
@@ -219,23 +217,98 @@ class MoodleService:
                 raise MoodleAuthError("Token Moodle inválido")
             raise MoodleConnectionError(f"Error de Moodle: {data.get('message', '')}")
 
+        return data
+
+    async def _fetch_grades_map(
+        self,
+        token: str,
+        moodle_host: str,
+        assignment_instance_id: int,
+    ) -> dict[int, int]:
+        """Retorna userid → timemodified de la calificación más reciente.
+
+        Se usa para detectar re-entregas: si submission.timemodified > grade.timemodified,
+        el alumno volvió a entregar después de haber sido corregido.
+        """
+        url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
+        params = {
+            "wstoken": token,
+            "wsfunction": "mod_assign_get_grades",
+            "moodlewsrestformat": "json",
+            "assignmentids[0]": assignment_instance_id,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.TimeoutException as e:
+            raise MoodleConnectionError(f"Timeout consultando grades: {e}") from e
+        except httpx.RequestError as e:
+            raise MoodleConnectionError(f"Error de red consultando grades: {e}") from e
+
+        if isinstance(data, dict) and "exception" in data:
+            if "invalidtoken" in str(data).lower():
+                raise MoodleAuthError("Token Moodle inválido")
+            raise MoodleConnectionError(f"Error de Moodle: {data.get('message', '')}")
+
+        grades_map: dict[int, int] = {}
+        for assignment in data.get("assignments", []):
+            for grade in assignment.get("grades", []):
+                uid = grade.get("userid")
+                if uid is None:
+                    continue
+                tm = grade.get("timemodified") or 0
+                # quedarnos con el grade más reciente por user (puede haber varios attempts)
+                if tm > grades_map.get(uid, -1):
+                    grades_map[uid] = tm
+        return grades_map
+
+    async def get_submissions_count(
+        self,
+        token: str,
+        moodle_host: str,
+        assignment_instance_id: int,
+        group_member_ids: set[int],
+    ) -> dict:
+        """Cuenta submissions para un assignment, filtradas por grupo (client-side).
+
+        Una entrega cuenta como `espera` si:
+        - status == "submitted" y gradingstatus indica sin corregir, O
+        - fue corregida pero el alumno volvió a entregar después (submission.timemodified > grade.timemodified)
+        """
+        submissions_data, grades_map = await asyncio.gather(
+            self._fetch_submissions(token, moodle_host, assignment_instance_id),
+            self._fetch_grades_map(token, moodle_host, assignment_instance_id),
+        )
+
         espera = 0
         corregidos = 0
 
-        assignments = data.get("assignments", [])
-        for assignment in assignments:
+        for assignment in submissions_data.get("assignments", []):
             for submission in assignment.get("submissions", []):
                 user_id = submission.get("userid")
                 if user_id not in group_member_ids:
                     continue
-                grading_status = submission.get("gradingstatus", "")
                 status_val = submission.get("status", "")
-                if status_val == "submitted":
-                    if grading_status in ("notgraded", ""):
-                        espera += 1
-                    else:
-                        corregidos += 1
-                # status != "submitted" (draft, new, etc.) no cuenta como entregado
+                if status_val != "submitted":
+                    # draft, new, etc. no cuenta como entregado
+                    continue
+
+                grading_status = submission.get("gradingstatus", "")
+                sub_timemodified = submission.get("timemodified") or 0
+                grade_timemodified = grades_map.get(user_id, 0)
+
+                # Sin calificar nunca → espera
+                if grading_status in ("notgraded", "") or grade_timemodified == 0:
+                    espera += 1
+                    continue
+
+                # Re-entrega: entregó después de la última corrección → espera
+                if sub_timemodified > grade_timemodified:
+                    espera += 1
+                else:
+                    corregidos += 1
 
         # Los alumnos sin registro en submissions tampoco entregaron,
         # así que sinEntrega = total del grupo - los que sí entregaron
