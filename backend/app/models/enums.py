@@ -59,3 +59,11 @@ class TipoActividadEnum(str, Enum):
     MATERIA_CREADA = "MATERIA_CREADA"
     COMISION_CREADA = "COMISION_CREADA"
     RUBRICA_CREADA = "RUBRICA_CREADA"
+
+
+class MoodleSyncEstado(str, Enum):
+    """Estado de la sincronización de una corrección hacia Moodle."""
+
+    PENDIENTE = "PENDIENTE"  # Aún no enviada
+    ENVIADO = "ENVIADO"  # Nota + feedback publicados en Moodle
+    ERROR = "ERROR"  # Falló el envío

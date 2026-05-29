@@ -29,6 +29,10 @@ class PerfilResponse(BaseModel):
         None,
         description="Last 4 characters of API Key if configured",
     )
+    gemini_api_key_paga: bool = Field(
+        default=False,
+        description="Toggle manual: la API key tiene facturación habilitada (habilita 'Corregir todo')",
+    )
     moodle_username: str | None = Field(None, description="Usuario Moodle configurado")
     moodle_host: str | None = Field(None, description="Host Moodle configurado")
     moodle_configured: bool = Field(default=False, description="True si tiene credenciales Moodle")
@@ -56,3 +60,14 @@ class UpdateApiKeyResponse(BaseModel):
 
     message: str
     valid: bool
+
+
+class UpdateKeyPagaRequest(BaseModel):
+    """Toggle manual: marcar la API key como paga (con facturación habilitada)."""
+
+    paga: bool
+
+
+class UpdateKeyPagaResponse(BaseModel):
+    message: str
+    gemini_api_key_paga: bool

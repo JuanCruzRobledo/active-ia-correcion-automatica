@@ -9,20 +9,36 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 8
 Ref: skills/correccion-ia/SKILL.md
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
 from app.core.permissions import require_any_authenticated
 from app.models.usuario import Usuario
+from app.schemas.moodle_grade import (
+    PreviewCorreccionMoodleResponse,
+    SubirCorreccionMoodleRequest,
+    SubirCorreccionMoodleResponse,
+)
+from app.services.moodle_grade_service import MoodleGradeService
 from app.schemas.correccion import (
     CorreccionResponse,
     CorreccionUpdate,
+    CorregirGlobalAceptadoResponse,
     CorregirLoteAceptadoResponse,
     CorregirLoteRequest,
     CorregirLoteResponse,
+    ProgresoGlobalResponse,
 )
-from app.services.correccion_service import CorreccionService, procesar_lote_background
+from app.repositories.entrega_repository import EntregaRepository
+from app.services.correccion_service import (
+    CorreccionService,
+    procesar_global_background,
+    procesar_lote_background,
+)
+
+# Límite de seguridad para la corrección masiva global (evita encolar miles de una).
+GLOBAL_BATCH_MAX = 200
 
 router = APIRouter(
     prefix="/correcciones",
@@ -260,4 +276,146 @@ async def editar_correccion(
         correccion_id=correccion_id,
         data=data,
         editado_por_id=current_user.id,
+    )
+
+
+# =========================================================================
+# Subir corrección + devolución a Moodle (Fase 3)
+# =========================================================================
+
+
+@router.get(
+    "/{correccion_id}/moodle/preview",
+    response_model=PreviewCorreccionMoodleResponse,
+)
+async def preview_correccion_moodle(
+    correccion_id: int,
+    request: Request,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> PreviewCorreccionMoodleResponse:
+    """
+    Calcula lo que se enviaría a Moodle (sin enviarlo): nota mapeada, comentario
+    sugerido, si el tutor debe escribir comentario, y el link de devolución.
+
+    Permisos: tutor de la comisión o admin. Errores: 404/400/422/424/502.
+    """
+    from dataclasses import asdict
+
+    service = MoodleGradeService(db)
+    preview = await service.preview_correccion(
+        correccion_id=correccion_id,
+        usuario=current_user,
+        base_url=str(request.base_url),
+    )
+    return PreviewCorreccionMoodleResponse(**asdict(preview))
+
+
+@router.post(
+    "/{correccion_id}/moodle",
+    response_model=SubirCorreccionMoodleResponse,
+)
+async def subir_correccion_moodle(
+    correccion_id: int,
+    data: SubirCorreccionMoodleRequest,
+    request: Request,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> SubirCorreccionMoodleResponse:
+    """
+    Publica nota + feedback de la corrección en Moodle.
+
+    Permisos: tutor de la comisión o admin. Idempotente (409 si ya enviada salvo `forzar`).
+    """
+    service = MoodleGradeService(db)
+    sync = await service.subir_correccion(
+        correccion_id=correccion_id,
+        comentario_final=data.comentario,
+        usuario=current_user,
+        base_url=str(request.base_url),
+        forzar=data.forzar,
+    )
+    return SubirCorreccionMoodleResponse(
+        estado=sync.estado.value if hasattr(sync.estado, "value") else str(sync.estado),
+        nota_enviada=sync.nota_enviada,
+        intento=sync.intento,
+    )
+
+
+# =========================================================================
+# Corrección masiva global (API key paga) — Fase 4
+# =========================================================================
+
+
+@router.post(
+    "/global",
+    response_model=CorregirGlobalAceptadoResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def corregir_global(
+    background_tasks: BackgroundTasks,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CorregirGlobalAceptadoResponse:
+    """
+    Corrige TODAS las entregas SUBIDA del tutor (cross-materia/comisión/rúbrica).
+
+    Requiere API key Gemini configurada y marcada como paga (toggle del perfil).
+    Procesa en background con concurrencia controlada y resiliente a 429.
+    """
+    require_any_authenticated(current_user)
+
+    if not current_user.gemini_api_key_encrypted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configurá tu API key de Gemini en tu perfil",
+        )
+    if not getattr(current_user, "gemini_api_key_paga", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="La corrección masiva global requiere una API key paga. Activala en tu perfil.",
+        )
+
+    entrega_repo = EntregaRepository(db)
+    ids = await entrega_repo.get_subidas_ids_by_tutor(current_user.id, limite=GLOBAL_BATCH_MAX)
+    if not ids:
+        return CorregirGlobalAceptadoResponse(
+            mensaje="No hay entregas pendientes para corregir.", total_encoladas=0
+        )
+
+    background_tasks.add_task(
+        procesar_global_background,
+        ids,
+        current_user.gemini_api_key_encrypted,
+        current_user.id,
+    )
+    return CorregirGlobalAceptadoResponse(
+        mensaje=(
+            f"Corrección global iniciada para {len(ids)} entregas. "
+            "Los estados se actualizarán automáticamente."
+        ),
+        total_encoladas=len(ids),
+    )
+
+
+@router.get("/global/progreso", response_model=ProgresoGlobalResponse)
+async def progreso_global(
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ProgresoGlobalResponse:
+    """Conteo de estados de las entregas del tutor (para el feedback de progreso)."""
+    require_any_authenticated(current_user)
+
+    entrega_repo = EntregaRepository(db)
+    counts = await entrega_repo.contar_estados_by_tutor(current_user.id)
+    subidas = counts.get("SUBIDA", 0)
+    pendientes = counts.get("PENDIENTE", 0)
+    corregidas = counts.get("CORREGIDA", 0)
+    error = counts.get("ERROR", 0)
+    return ProgresoGlobalResponse(
+        subidas=subidas,
+        pendientes=pendientes,
+        corregidas=corregidas,
+        error=error,
+        total=subidas + pendientes + corregidas + error,
     )

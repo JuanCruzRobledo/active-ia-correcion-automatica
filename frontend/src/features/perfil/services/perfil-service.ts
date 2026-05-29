@@ -51,3 +51,16 @@ export async function updateMoodleCredentials(
   );
   return data;
 }
+
+/**
+ * Marca/desmarca la API key como paga (toggle manual). Habilita 'Corregir todo'.
+ */
+export async function updateKeyPaga(
+  paga: boolean
+): Promise<{ message: string; gemini_api_key_paga: boolean }> {
+  const { data } = await apiClient.patch<{
+    message: string;
+    gemini_api_key_paga: boolean;
+  }>('/perfil/key-paga', { paga });
+  return data;
+}

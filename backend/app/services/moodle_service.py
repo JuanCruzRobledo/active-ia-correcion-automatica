@@ -15,6 +15,7 @@ Notas importantes sobre la API de Moodle:
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 import httpx
@@ -41,6 +42,48 @@ class MoodleConnectionError(Exception):
     pass
 
 
+@dataclass
+class MoodleFile:
+    """Archivo entregado por un alumno en Moodle (de assignsubmission_file)."""
+
+    filename: str
+    fileurl: str
+    filesize: int = 0
+    mimetype: str | None = None
+
+
+@dataclass
+class MoodleSubmission:
+    """Submission de un alumno con sus archivos descargables.
+
+    `timemodified` permite detectar re-entregas comparando contra la fecha
+    de la corrección existente en Active-IA.
+    """
+
+    userid: int
+    status: str
+    gradingstatus: str
+    timemodified: int
+    attemptnumber: int
+    files: list[MoodleFile] = field(default_factory=list)
+
+
+@dataclass
+class AssignmentGradeConfig:
+    """Configuración de calificación de un assignment de Moodle.
+
+    Derivada del campo `grade` de mod_assign_get_assignments:
+      - grade > 0  → numérica (grade_max = grade)
+      - grade < 0  → escala cualitativa (scale_id = abs(grade))
+      - grade == 0 → sin calificación
+    """
+
+    instance_id: int
+    tipo: str  # "numerica" | "escala" | "sin_calificacion"
+    grade_max: float | None = None
+    scale_id: int | None = None
+
+
 class MoodleService:
     _token_cache: dict[int, tuple[str, datetime]] = {}
     _TTL_MINUTES = 50
@@ -51,6 +94,11 @@ class MoodleService:
         # Per-instance caches for a single get_pendientes call
         self._cmid_map: dict[int, dict[int, int]] = {}   # course_id -> {cmid: assign_id}
         self._group_members: dict[int, set[int]] = {}    # group_id -> {user_id, ...}
+        self._group_member_names: dict[int, dict[int, str]] = {}  # group_id -> {user_id: fullname}
+        # Cache de fetches pesados por assignment instance (evita refetch cuando una
+        # rúbrica tiene varias comisiones: las submissions del assignment son las mismas).
+        self._submissions_cache: dict[int, dict] = {}    # instance_id -> submissions data
+        self._grades_cache: dict[int, dict[int, int]] = {}  # instance_id -> {userid: timemodified}
 
     async def get_token(
         self,
@@ -91,20 +139,13 @@ class MoodleService:
         self._token_cache[user_id] = (token, datetime.utcnow() + timedelta(minutes=self._TTL_MINUTES))
         return token
 
-    async def _get_course_assignment_map(
+    async def _fetch_assignments(
         self,
         token: str,
         moodle_host: str,
         course_id: int,
-    ) -> dict[int, int]:
-        """Resuelve cmid → assignment instance id para un curso.
-
-        La API mod_assign_get_submissions necesita el instance ID (tabla assign),
-        no el cmid que el usuario ve en la URL de Moodle.
-        """
-        if course_id in self._cmid_map:
-            return self._cmid_map[course_id]
-
+    ) -> dict:
+        """GET crudo de mod_assign_get_assignments para un curso (con manejo de errores)."""
         url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
         params = {
             "wstoken": token,
@@ -124,6 +165,23 @@ class MoodleService:
 
         if isinstance(data, dict) and "exception" in data:
             raise MoodleConnectionError(f"Error Moodle al obtener assignments: {data.get('message', '')}")
+        return data
+
+    async def _get_course_assignment_map(
+        self,
+        token: str,
+        moodle_host: str,
+        course_id: int,
+    ) -> dict[int, int]:
+        """Resuelve cmid → assignment instance id para un curso.
+
+        La API mod_assign_get_submissions necesita el instance ID (tabla assign),
+        no el cmid que el usuario ve en la URL de Moodle.
+        """
+        if course_id in self._cmid_map:
+            return self._cmid_map[course_id]
+
+        data = await self._fetch_assignments(token, moodle_host, course_id)
 
         mapping: dict[int, int] = {}
         for course in data.get("courses", []):
@@ -195,6 +253,10 @@ class MoodleService:
         moodle_host: str,
         assignment_instance_id: int,
     ) -> dict:
+        # Cache por assignment: si una rúbrica tiene N comisiones, no refetcheamos N veces.
+        if assignment_instance_id in self._submissions_cache:
+            return self._submissions_cache[assignment_instance_id]
+
         url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
         params = {
             "wstoken": token,
@@ -217,6 +279,7 @@ class MoodleService:
                 raise MoodleAuthError("Token Moodle inválido")
             raise MoodleConnectionError(f"Error de Moodle: {data.get('message', '')}")
 
+        self._submissions_cache[assignment_instance_id] = data
         return data
 
     async def _fetch_grades_map(
@@ -230,6 +293,9 @@ class MoodleService:
         Se usa para detectar re-entregas: si submission.timemodified > grade.timemodified,
         el alumno volvió a entregar después de haber sido corregido.
         """
+        if assignment_instance_id in self._grades_cache:
+            return self._grades_cache[assignment_instance_id]
+
         url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
         params = {
             "wstoken": token,
@@ -262,6 +328,7 @@ class MoodleService:
                 # quedarnos con el grade más reciente por user (puede haber varios attempts)
                 if tm > grades_map.get(uid, -1):
                     grades_map[uid] = tm
+        self._grades_cache[assignment_instance_id] = grades_map
         return grades_map
 
     async def get_submissions_count(
@@ -315,6 +382,231 @@ class MoodleService:
         sin_entrega = max(0, len(group_member_ids) - espera - corregidos)
 
         return {"espera": espera, "corregidos": corregidos, "sinEntrega": sin_entrega}
+
+    async def get_group_members_map(
+        self,
+        token: str,
+        moodle_host: str,
+        course_id: int,
+        group_id: int,
+    ) -> dict[int, str]:
+        """Retorna {user_id: fullname} de los alumnos del grupo.
+
+        Usado por la importación para resolver el nombre del alumno a partir del
+        userid de la submission (NO se parsea del nombre del archivo).
+        """
+        if group_id in self._group_member_names:
+            return self._group_member_names[group_id]
+
+        url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
+        params = {
+            "wstoken": token,
+            "wsfunction": "core_enrol_get_enrolled_users",
+            "moodlewsrestformat": "json",
+            "courseid": course_id,
+            "options[0][name]": "groupid",
+            "options[0][value]": group_id,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.TimeoutException as e:
+            raise MoodleConnectionError(f"Timeout obteniendo miembros del grupo: {e}") from e
+        except httpx.RequestError as e:
+            raise MoodleConnectionError(f"Error de red obteniendo miembros del grupo: {e}") from e
+
+        if isinstance(data, dict) and "exception" in data:
+            raise MoodleConnectionError(f"Error Moodle al obtener grupo: {data.get('message', '')}")
+
+        STUDENT_ROLES = {"student"}
+        members: dict[int, str] = {}
+        for u in data:
+            if not isinstance(u, dict) or "id" not in u:
+                continue
+            roles = u.get("roles", [])
+            if any(r.get("shortname") in STUDENT_ROLES for r in roles):
+                members[u["id"]] = u.get("fullname", "") or ""
+
+        self._group_member_names[group_id] = members
+        return members
+
+    async def get_submissions_with_files(
+        self,
+        token: str,
+        moodle_host: str,
+        assignment_instance_id: int,
+        group_member_ids: set[int],
+        solo_pendientes: bool = True,
+    ) -> list[MoodleSubmission]:
+        """Lista las submissions entregadas del grupo con sus archivos descargables.
+
+        Filtra client-side por `group_member_ids` (la API no soporta groupid) y
+        sólo incluye submissions con status 'submitted'. Extrae los archivos del
+        plugin de tipo 'file' (estructura confirmada en Fase 0 contra el TUP).
+
+        Si `solo_pendientes` (default), aplica la MISMA lógica que el panel de
+        pendientes (get_submissions_count): incluye sólo las que están en "espera"
+        de corrección — sin calificar o re-entregadas después de la última nota —
+        y excluye las ya corregidas en Moodle. Así la importación trae sólo lo
+        pendiente, no todo el histórico.
+        """
+        if solo_pendientes:
+            data, grades_map = await asyncio.gather(
+                self._fetch_submissions(token, moodle_host, assignment_instance_id),
+                self._fetch_grades_map(token, moodle_host, assignment_instance_id),
+            )
+        else:
+            data = await self._fetch_submissions(token, moodle_host, assignment_instance_id)
+            grades_map = {}
+
+        result: list[MoodleSubmission] = []
+        for assignment in data.get("assignments", []):
+            for sub in assignment.get("submissions", []):
+                user_id = sub.get("userid")
+                if user_id not in group_member_ids:
+                    continue
+                if sub.get("status") != "submitted":
+                    continue
+
+                if solo_pendientes:
+                    grading_status = sub.get("gradingstatus", "")
+                    sub_tm = sub.get("timemodified") or 0
+                    grade_tm = grades_map.get(user_id, 0)
+                    # "espera" = sin calificar, o re-entregada después de la última nota.
+                    es_espera = (
+                        grading_status in ("notgraded", "")
+                        or grade_tm == 0
+                        or sub_tm > grade_tm
+                    )
+                    if not es_espera:
+                        continue  # ya corregida en Moodle → no es pendiente
+
+                files: list[MoodleFile] = []
+                for plugin in sub.get("plugins", []):
+                    if plugin.get("type") != "file":
+                        continue
+                    for area in plugin.get("fileareas", []):
+                        for f in area.get("files", []):
+                            url = f.get("fileurl")
+                            if url:
+                                files.append(MoodleFile(
+                                    filename=f.get("filename", ""),
+                                    fileurl=url,
+                                    filesize=f.get("filesize", 0) or 0,
+                                    mimetype=f.get("mimetype"),
+                                ))
+
+                result.append(MoodleSubmission(
+                    userid=user_id,
+                    status=sub.get("status", ""),
+                    gradingstatus=sub.get("gradingstatus", "") or "",
+                    timemodified=sub.get("timemodified") or 0,
+                    attemptnumber=sub.get("attemptnumber", 0) or 0,
+                    files=files,
+                ))
+
+        return result
+
+    async def download_submission_file(self, token: str, fileurl: str) -> bytes:
+        """Descarga el contenido de un archivo de Moodle (pluginfile.php) usando el token.
+
+        El token se agrega como query param `token=` (confirmado en Fase 0).
+        Nunca se loguea el fileurl con token.
+        """
+        sep = "&" if "?" in fileurl else "?"
+        url = f"{fileurl}{sep}token={token}"
+        try:
+            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                return resp.content
+        except httpx.TimeoutException as e:
+            raise MoodleConnectionError(f"Timeout descargando archivo de Moodle: {e}") from e
+        except httpx.HTTPStatusError as e:
+            raise MoodleConnectionError(
+                f"Moodle devolvió {e.response.status_code} al descargar el archivo"
+            ) from e
+        except httpx.RequestError as e:
+            raise MoodleConnectionError(f"Error de red descargando archivo de Moodle: {e}") from e
+
+    async def get_assignment_grade_config(
+        self,
+        token: str,
+        moodle_host: str,
+        course_id: int,
+        cmid: int,
+    ) -> AssignmentGradeConfig | None:
+        """Devuelve la config de calificación del assignment (por cmid), o None si no existe.
+
+        Interpreta el campo `grade` (confirmado en Fase 0):
+          grade > 0 → numérica; grade < 0 → escala (scale_id=abs); grade == 0 → sin calificación.
+        """
+        data = await self._fetch_assignments(token, moodle_host, course_id)
+        for course in data.get("courses", []):
+            for assignment in course.get("assignments", []):
+                if assignment.get("cmid") == cmid:
+                    grade = assignment.get("grade")
+                    instance_id = assignment.get("id")
+                    if grade is None or grade == 0:
+                        return AssignmentGradeConfig(instance_id=instance_id, tipo="sin_calificacion")
+                    if grade > 0:
+                        return AssignmentGradeConfig(
+                            instance_id=instance_id, tipo="numerica", grade_max=float(grade)
+                        )
+                    return AssignmentGradeConfig(
+                        instance_id=instance_id, tipo="escala", scale_id=abs(int(grade))
+                    )
+        return None
+
+    async def save_grade(
+        self,
+        token: str,
+        moodle_host: str,
+        assignment_instance_id: int,
+        moodle_user_id: int,
+        grade: float,
+        feedback_comment: str,
+    ) -> None:
+        """Publica nota + feedback en Moodle vía mod_assign_save_grade.
+
+        Para escalas cualitativas, `grade` es el ÍNDICE 1-based del ítem de la escala.
+        Para numéricas, es la nota en la escala del assignment.
+        El feedback va como HTML en el plugin assignfeedbackcomments.
+        NO se loguea el token.
+        """
+        url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
+        data = {
+            "wstoken": token,
+            "wsfunction": "mod_assign_save_grade",
+            "moodlewsrestformat": "json",
+            "assignmentid": assignment_instance_id,
+            "userid": moodle_user_id,
+            "grade": grade,
+            "attemptnumber": -1,  # último intento
+            "addattempt": 0,
+            "workflowstate": "",
+            "applytoall": 1,
+            "plugindata[assignfeedbackcomments_editor][text]": feedback_comment,
+            "plugindata[assignfeedbackcomments_editor][format]": 1,  # 1 = HTML
+        }
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, data=data)
+                resp.raise_for_status()
+                result = resp.json()
+        except httpx.TimeoutException as e:
+            raise MoodleConnectionError(f"Timeout enviando nota a Moodle: {e}") from e
+        except httpx.RequestError as e:
+            raise MoodleConnectionError(f"Error de red enviando nota a Moodle: {e}") from e
+
+        # mod_assign_save_grade devuelve null en éxito; un dict con 'exception' indica error.
+        if isinstance(result, dict) and "exception" in result:
+            msg = result.get("message", "Error desconocido")
+            if "invalidtoken" in str(result).lower():
+                raise MoodleAuthError("Token Moodle inválido")
+            raise MoodleConnectionError(f"Moodle rechazó la nota: {msg}")
 
     async def get_pendientes(self, user_id: int) -> MateriasPendientesResponse:
         from app.models.comision import Comision, ComisionTutor
@@ -437,6 +729,35 @@ class MoodleService:
                     "No se pudieron obtener miembros del grupo group_id=%s course_id=%s: %s",
                     group_id, course_id, e,
                 )
+
+        # Pre-cargar submissions + grades por assignment ÚNICO, en paralelo.
+        # Evita refetchear el mismo assignment una vez por comisión: el conteo posterior
+        # lee del cache (self._submissions_cache / self._grades_cache).
+        unique_instances: set[int] = set()
+        for rubrica in rubricas:
+            materia = materias_by_id.get(rubrica.materia_id)
+            if materia and materia.moodle_course_id:
+                cmid_map = self._cmid_map.get(materia.moodle_course_id, {})
+                iid = cmid_map.get(rubrica.moodle_assign_id)
+                if iid:
+                    unique_instances.add(iid)
+
+        prefetch_sem = asyncio.Semaphore(10)
+
+        async def _precargar(iid: int):
+            async with prefetch_sem:
+                try:
+                    await asyncio.gather(
+                        self._fetch_submissions(token, moodle_host, iid),
+                        self._fetch_grades_map(token, moodle_host, iid),
+                    )
+                except (MoodleConnectionError, MoodleAuthError) as e:
+                    logger.warning(
+                        "No se pudieron precargar submissions del assignment %s: %s", iid, e
+                    )
+
+        if unique_instances:
+            await asyncio.gather(*[_precargar(iid) for iid in unique_instances])
 
         # Paralelizar consultas con semaphore
         semaphore = asyncio.Semaphore(10)

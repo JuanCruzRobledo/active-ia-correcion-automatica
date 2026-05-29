@@ -10,8 +10,9 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
 import base64
 import hashlib
 import os
+from dataclasses import dataclass
 from datetime import date, datetime
-from typing import BinaryIO
+from typing import BinaryIO, Literal
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +38,25 @@ from app.schemas.entrega import (
 )
 from app.services.consolidacion_service import ConsolidacionService
 from app.services.historial_service import HistorialService
+
+
+@dataclass
+class ResultadoImportEntrega:
+    """Resultado clasificado de importar una entrega desde bytes (sin lanzar).
+
+    status:
+      - "creada"       : se creó una entrega nueva en estado SUBIDA.
+      - "duplicada"    : ya existía (sin corrección) → no se re-importa.
+      - "ya_corregida" : ya existía y tiene corrección → no se pisa.
+      - "error"        : tipo de archivo no soportado u otro problema.
+    """
+
+    status: Literal["creada", "duplicada", "ya_corregida", "error"]
+    entrega_id: int | None = None
+    detalle: str | None = None
+    # En caso "ya_corregida": fecha de la corrección existente, para que el
+    # importador pueda detectar re-entregas (timemodified Moodle > esta fecha).
+    correccion_actualizada_en: datetime | None = None
 
 
 class EntregaService:
@@ -200,6 +220,137 @@ class EntregaService:
 
         created_entrega = await self.entrega_repo.create(entrega)
         return EntregaResponse.model_validate(created_entrega)
+
+    async def verificar_entrega_existente(
+        self, rubrica_id: int, alumno_nombre: str
+    ) -> ResultadoImportEntrega | None:
+        """Verifica si ya existe una entrega para (rubrica_id, alumno_nombre) SIN descargar.
+
+        Permite al importador decidir si hace falta descargar el archivo desde Moodle:
+          - None          → no existe, hay que importarla.
+          - "ya_corregida"→ existe con corrección (incluye fecha para detectar reentregas).
+          - "duplicada"   → existe sin corrección.
+        """
+        existente = await self.entrega_repo.get_by_rubrica_alumno(
+            rubrica_id=rubrica_id,
+            alumno_nombre=alumno_nombre,
+        )
+        if not existente:
+            return None
+        if existente.correccion:
+            return ResultadoImportEntrega(
+                status="ya_corregida",
+                entrega_id=existente.id,
+                correccion_actualizada_en=getattr(existente.correccion, "updated_at", None),
+            )
+        return ResultadoImportEntrega(status="duplicada", entrega_id=existente.id)
+
+    async def crear_o_actualizar_desde_bytes(
+        self,
+        *,
+        comision_id: int,
+        rubrica_id: int,
+        alumno_nombre: str,
+        archivo_nombre: str,
+        contenido_bytes: bytes,
+        subido_por_id: int,
+        moodle_user_id: int | None = None,
+        modo_consolidacion: str = "solo_codigo",
+        extensiones_personalizadas: list[str] | None = None,
+    ) -> ResultadoImportEntrega:
+        """Crea una entrega a partir de bytes (descarga de Moodle), de forma idempotente.
+
+        A diferencia de `crear_entrega_individual`, NO recibe UploadFile y NO lanza
+        HTTPException por casos de negocio: devuelve un `ResultadoImportEntrega`
+        clasificado para que el importador arme el resumen.
+
+        Asume que `comision_id`/`rubrica_id` ya fueron validados aguas arriba
+        (el MoodleImportService los resuelve de la DB antes de llamar).
+
+        Reglas de idempotencia (no destructivas):
+          - Si ya existe entrega para (rubrica_id, alumno_nombre) CON corrección → "ya_corregida".
+          - Si existe SIN corrección → "duplicada" (no se re-descarga ni se pisa).
+          - Si no existe → se crea en estado SUBIDA → "creada".
+        """
+        archivo_tipo = self._get_file_type(archivo_nombre)
+        if archivo_tipo in ("binary", "unknown"):
+            return ResultadoImportEntrega(
+                status="error",
+                detalle=f"Tipo de archivo no soportado: {archivo_nombre}",
+            )
+
+        # Idempotencia: no re-importar ni pisar entregas existentes
+        existente = await self.verificar_entrega_existente(rubrica_id, alumno_nombre)
+        if existente is not None:
+            return existente
+
+        # Procesar contenido. Un ZIP sin archivos válidos (p. ej. solo .docx/imágenes)
+        # es un caso de negocio de UNA entrega: se reporta como error, NO se lanza
+        # (así no aborta la importación del resto del lote).
+        try:
+            (
+                contenido_consolidado,
+                contenido_preview,
+                archivos_incluidos,
+                pdf_contenido_b64,
+            ) = await self._procesar_contenido(
+                contenido_bytes, archivo_tipo, modo_consolidacion, archivo_nombre,
+                extensiones_personalizadas,
+            )
+        except HTTPException as e:
+            detalle = e.detail if isinstance(e.detail, str) else str(e.detail)
+            return ResultadoImportEntrega(status="error", detalle=detalle)
+        except Exception as e:  # noqa: BLE001 — robustez: una entrega no debe romper el lote
+            return ResultadoImportEntrega(status="error", detalle=str(e))
+
+        hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
+        archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo_nombre}"
+
+        entrega = Entrega(
+            comision_id=comision_id,
+            rubrica_id=rubrica_id,
+            alumno_nombre=alumno_nombre,
+            archivo_nombre=archivo_nombre,
+            archivo_ruta=archivo_ruta,
+            archivo_tamanio=len(contenido_bytes),
+            archivo_tipo=archivo_tipo,
+            contenido_preview=contenido_preview,
+            contenido_consolidado=contenido_consolidado,
+            archivos_incluidos=archivos_incluidos,
+            pdf_contenido_b64=pdf_contenido_b64,
+            estado=EstadoEntregaEnum.SUBIDA,
+            hash_sha256=hash_sha256,
+            subido_por_id=subido_por_id,
+            moodle_user_id=moodle_user_id,
+        )
+        created_entrega = await self.entrega_repo.create(entrega)
+        return ResultadoImportEntrega(status="creada", entrega_id=created_entrega.id)
+
+    async def _procesar_contenido(
+        self,
+        contenido_bytes: bytes,
+        archivo_tipo: str,
+        modo_consolidacion: str,
+        archivo_nombre: str,
+        extensiones_personalizadas: list[str] | None,
+    ) -> tuple[str | None, str, list[str], str | None]:
+        """Procesa el contenido de un archivo según su tipo.
+
+        Returns: (contenido_consolidado, contenido_preview, archivos_incluidos, pdf_contenido_b64)
+        Los PDF no se consolidan: se guardan como Base64.
+        """
+        if archivo_tipo == "pdf":
+            pdf_b64 = base64.b64encode(contenido_bytes).decode("utf-8")
+            return None, "[Entrega en formato PDF]", [archivo_nombre], pdf_b64
+
+        contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
+            contenido_bytes, archivo_tipo, modo_consolidacion, archivo_nombre,
+            extensiones_personalizadas=extensiones_personalizadas,
+        )
+        contenido_preview = self.consolidacion_service.generar_preview(
+            contenido_consolidado, max_chars=500
+        )
+        return contenido_consolidado, contenido_preview, archivos_incluidos, None
 
     async def listar_entregas(
         self,

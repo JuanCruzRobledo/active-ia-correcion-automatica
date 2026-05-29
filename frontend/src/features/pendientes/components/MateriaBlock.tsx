@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { MateriaPendiente } from '../types';
 import { UnidadBlock } from './UnidadBlock';
+import { ImportarButton } from './ImportarButton';
 
 interface MateriaBlockProps {
   materia: MateriaPendiente;
@@ -13,18 +14,18 @@ export function MateriaBlock({ materia, showUrgentOnly }: MateriaBlockProps) {
 
   return (
     <div className="rounded-lg border border-border bg-card">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-muted/30"
-      >
-        <div className="flex items-center gap-3">
+      <div className="flex w-full items-center justify-between px-5 py-4">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-3 text-left transition-opacity hover:opacity-80"
+        >
           {open ? (
             <ChevronDown className="h-5 w-5 text-muted-foreground" />
           ) : (
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
           )}
           <span className="text-base font-semibold text-foreground">{materia.nombre}</span>
-        </div>
+        </button>
         <div className="flex items-center gap-2">
           {materia.totalEspera > 0 && (
             <span className="rounded-full bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive">
@@ -37,8 +38,17 @@ export function MateriaBlock({ materia, showUrgentOnly }: MateriaBlockProps) {
           <span className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
             {materia.totalSinEntrega} sin entrega
           </span>
+          {materia.totalEspera > 0 && (
+            <ImportarButton
+              scope="materia"
+              materiaId={materia.id}
+              label="Importar materia"
+              modalTitle={`Importar — ${materia.nombre}`}
+              size="sm"
+            />
+          )}
         </div>
-      </button>
+      </div>
 
       {open && (
         <div className="space-y-3 border-t border-border px-5 py-4">

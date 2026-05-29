@@ -93,6 +93,12 @@ class Entrega(Base, TimestampMixin):
         ForeignKey("usuarios.id"),
         nullable=True,
     )
+    # ID del usuario en Moodle (poblado al importar desde Moodle). Necesario para
+    # publicar la nota/feedback de vuelta al alumno correcto vía mod_assign_save_grade.
+    moodle_user_id: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
 
     __table_args__ = (
         # Índice único: solo permite una entrega por alumno y rúbrica

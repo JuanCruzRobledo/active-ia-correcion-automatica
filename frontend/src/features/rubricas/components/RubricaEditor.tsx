@@ -9,6 +9,7 @@ import { Button } from '@/shared/components/ui/Button';
 import { Spinner } from '@/shared/components/ui/Spinner';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/shared/components/ui/Accordion';
 import { KeyValueInput } from '@/shared/components/ui/KeyValueInput';
+import { ExtensionTagInput } from '@/shared/components/ui/ExtensionTagInput';
 import { cn } from '@/shared/utils/cn';
 
 import { useCreateRubrica, useUpdateRubrica, useGenerarRubricaDesdePDF, usePreviewRubricaPDF, usePreviewRubricaPDFResumido } from '../hooks/useRubricas';
@@ -54,6 +55,8 @@ const rubricaFormSchema = z.object({
     .positive('Debe ser un número positivo')
     .nullable()
     .optional(),
+  modo_consolidacion: z.enum(['solo_codigo', 'web_completo', 'proyecto_completo', 'personalizado']),
+  extensiones_personalizadas: z.array(z.string()).nullable().optional(),
 }).refine(
   (data) => {
     const suma = data.criterios.reduce((acc, c) => acc + c.peso, 0);
@@ -120,6 +123,8 @@ export function RubricaEditor({
         penalizaciones: rubrica.penalizaciones_json || [],
         condiciones_desaprobacion: rubrica.condiciones_desaprobacion_json || [],
         moodle_assign_id: rubrica.moodle_assign_id ?? null,
+        modo_consolidacion: rubrica.modo_consolidacion ?? 'solo_codigo',
+        extensiones_personalizadas: rubrica.extensiones_personalizadas ?? [],
       }
       : {
         materia_id: materiaId || 0,
@@ -147,6 +152,8 @@ export function RubricaEditor({
         ],
         penalizaciones: [],
         condiciones_desaprobacion: [],
+        modo_consolidacion: 'solo_codigo',
+        extensiones_personalizadas: [],
       },
   });
 
@@ -177,6 +184,8 @@ export function RubricaEditor({
         penalizaciones: rubrica.penalizaciones_json || [],
         condiciones_desaprobacion: rubrica.condiciones_desaprobacion_json || [],
         moodle_assign_id: rubrica.moodle_assign_id ?? null,
+        modo_consolidacion: rubrica.modo_consolidacion ?? 'solo_codigo',
+        extensiones_personalizadas: rubrica.extensiones_personalizadas ?? [],
       });
     } else {
       // CREACIÓN: Empezar en modo PDF con datos vacíos
@@ -207,6 +216,8 @@ export function RubricaEditor({
         ],
         penalizaciones: [],
         condiciones_desaprobacion: [],
+        modo_consolidacion: 'solo_codigo',
+        extensiones_personalizadas: [],
       });
     }
   }, [isOpen, rubrica, materiaId, reset]);
@@ -374,6 +385,11 @@ export function RubricaEditor({
             penalizaciones_json: data.penalizaciones,
             condiciones_desaprobacion_json: data.condiciones_desaprobacion,
             moodle_assign_id: data.moodle_assign_id ?? undefined,
+            modo_consolidacion: data.modo_consolidacion,
+            extensiones_personalizadas:
+              data.modo_consolidacion === 'personalizado'
+                ? data.extensiones_personalizadas ?? []
+                : null,
           },
         });
       } else {
@@ -391,6 +407,11 @@ export function RubricaEditor({
           condiciones_desaprobacion_json: data.condiciones_desaprobacion,
           fuente: 'manual',
           moodle_assign_id: data.moodle_assign_id ?? undefined,
+          modo_consolidacion: data.modo_consolidacion,
+          extensiones_personalizadas:
+            data.modo_consolidacion === 'personalizado'
+              ? data.extensiones_personalizadas ?? []
+              : null,
         });
       }
 
@@ -451,6 +472,36 @@ export function RubricaEditor({
 
         {/* ── Manual: Editor Completo con Accordion ── */}
         {creationMode === 'manual' && (
+          <>
+          {/* Tipo de proyecto: define cómo se consolida el código de las entregas */}
+          <div className="space-y-2 rounded-lg border border-border bg-muted/20 p-4">
+            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Code className="h-4 w-4" />
+              Tipo de proyecto (consolidación del código)
+            </label>
+            <select
+              {...register('modo_consolidacion')}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="solo_codigo">Solo código (.py .java .js .ts .c .cpp …)</option>
+              <option value="web_completo">Web completo (+ .html .css .scss .json)</option>
+              <option value="proyecto_completo">Proyecto completo (+ .md .yml .xml .sql)</option>
+              <option value="personalizado">Personalizado</option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Define qué archivos se incluyen al consolidar las entregas (importadas de Moodle o
+              subidas a mano) antes de corregir con IA.
+            </p>
+            {watch('modo_consolidacion') === 'personalizado' && (
+              <div className="pt-1">
+                <ExtensionTagInput
+                  value={watch('extensiones_personalizadas') || []}
+                  onChange={(exts) => setValue('extensiones_personalizadas', exts)}
+                />
+              </div>
+            )}
+          </div>
+
           <Accordion defaultValue={[]} multiple>
             {/* Sección 1: Metadata (opcional) */}
             <AccordionItem value="metadata">
@@ -553,6 +604,7 @@ export function RubricaEditor({
               </AccordionContent>
             </AccordionItem>
           </Accordion>
+          </>
         )}
 
         {/* ── PDF Mode ── */}

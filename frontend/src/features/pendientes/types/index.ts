@@ -32,3 +32,36 @@ export interface MateriaPendiente {
 export interface MateriasPendientesResponse {
   materias: MateriaPendiente[];
 }
+
+// ── Importación desde Moodle ──────────────────────────────────────────────
+
+export type ImportScope = 'comision_unidad' | 'materia' | 'tutor';
+
+export interface ImportarMoodleRequest {
+  scope: ImportScope;
+  rubrica_id?: number;
+  comision_id?: number;
+  materia_id?: number;
+}
+
+export interface ImportErrorItem {
+  alumno: string;
+  motivo: string;
+}
+
+export interface ImportDetalleRubrica {
+  rubrica_id: number;
+  titulo: string;
+  comision_id: number;
+  cargadas: number;
+}
+
+export interface ImportarMoodleResponse {
+  cargadas: number;
+  duplicadas: number;
+  omitidas_ya_corregidas: number;
+  reentregas: number;
+  sin_archivos: number;
+  errores: ImportErrorItem[];
+  detalle_por_rubrica: ImportDetalleRubrica[];
+}

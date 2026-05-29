@@ -236,3 +236,20 @@ class CorregirLoteAceptadoResponse(BaseModel):
     mensaje: str = Field(..., description="Status message for the user")
     total_encoladas: int = Field(..., description="Number of submissions queued for correction")
     entrega_ids: list[int] = Field(..., description="IDs of the queued submissions")
+
+
+class CorregirGlobalAceptadoResponse(BaseModel):
+    """Respuesta 202 de la corrección masiva global (todas las SUBIDA del tutor)."""
+
+    mensaje: str
+    total_encoladas: int
+
+
+class ProgresoGlobalResponse(BaseModel):
+    """Conteo de estados de las entregas del tutor (para el progreso de 'Corregir todo')."""
+
+    subidas: int = 0
+    pendientes: int = 0
+    corregidas: int = 0
+    error: int = 0
+    total: int = 0

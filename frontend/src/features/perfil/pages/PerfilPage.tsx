@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { Eye, EyeOff, Key, Info, Shield, User as UserIcon, Globe } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { useProfile, useUpdateApiKey, useChangePassword } from '../hooks/usePerfil';
+import { useProfile, useUpdateApiKey, useChangePassword, useUpdateKeyPaga } from '../hooks/usePerfil';
 import { updateMoodleCredentials } from '../services/perfil-service';
 import { Button } from '../../../shared/components/ui/Button';
 import { Input } from '../../../shared/components/ui/Input';
@@ -23,6 +23,7 @@ type MoodleForm = z.infer<typeof moodleSchema>;
 export const PerfilPage = () => {
   const { data: profile, isLoading } = useProfile();
   const updateApiKeyMutation = useUpdateApiKey();
+  const updateKeyPagaMutation = useUpdateKeyPaga();
   const changePasswordMutation = useChangePassword();
   const queryClient = useQueryClient();
 
@@ -303,6 +304,29 @@ export const PerfilPage = () => {
               {profile.gemini_api_key_valid ? 'Cambiar' : 'Configurar'}
             </Button>
           </div>
+
+          {/* Toggle: API key paga (habilita corrección masiva global) */}
+          {profile.gemini_api_key_valid && (
+            <div className="mt-4 flex items-start justify-between gap-3 rounded-md border border-border bg-muted/20 px-4 py-3">
+              <div>
+                <label className="text-sm font-medium text-foreground">
+                  API key con facturación habilitada (paga)
+                </label>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  Activalo solo si habilitaste billing en Google Cloud. Habilita el botón
+                  “Corregir todo” (corrección masiva de todas tus entregas).
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={profile.gemini_api_key_paga}
+                onChange={(e) => updateKeyPagaMutation.mutate(e.target.checked)}
+                disabled={updateKeyPagaMutation.isPending}
+                className="mt-1 h-5 w-5 shrink-0 cursor-pointer"
+                aria-label="API key paga"
+              />
+            </div>
+          )}
         </div>
       </div>
 
