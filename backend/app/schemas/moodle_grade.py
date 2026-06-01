@@ -13,6 +13,9 @@ class PreviewCorreccionMoodleResponse(BaseModel):
     requiere_comentario_tutor: bool = Field(..., description="True si el tutor debe escribir su comentario (no-TP)")
     link_devolucion: str = Field(..., description="Link público al PDF de devolución")
     ya_enviada: bool = Field(..., description="True si ya se envió antes (reenvío requiere forzar)")
+    ya_calificada_en_moodle: bool = Field(
+        ..., description="True si la entrega ya tiene nota en Moodle (puesta por fuera de Active-IA)"
+    )
 
 
 class SubirCorreccionMoodleRequest(BaseModel):

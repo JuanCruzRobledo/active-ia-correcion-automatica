@@ -55,6 +55,7 @@ export interface PreviewMoodle {
   requiere_comentario_tutor: boolean;
   link_devolucion: string;
   ya_enviada: boolean;
+  ya_calificada_en_moodle: boolean;
 }
 
 export interface PreviewMoodleResult {

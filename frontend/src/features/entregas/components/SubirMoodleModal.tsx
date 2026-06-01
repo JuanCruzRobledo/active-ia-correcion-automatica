@@ -48,6 +48,8 @@ export function SubirMoodleModal({ entregaId, alumno, isOpen, onClose }: SubirMo
     onSuccess: (res) => {
       toast.success(`Corrección enviada a Moodle (${res.nota_enviada ?? res.estado})`);
       queryClient.invalidateQueries({ queryKey: ['entregas'] });
+      // Refresca también la lista "Por entregar" (no-op en otras páginas).
+      queryClient.invalidateQueries({ queryKey: ['por-entregar'] });
       onClose();
     },
     onError: (err) => {
@@ -60,11 +62,13 @@ export function SubirMoodleModal({ entregaId, alumno, isOpen, onClose }: SubirMo
     onClose();
   };
 
+  const bloqueadoSinForzar = !!preview && (preview.ya_enviada || preview.ya_calificada_en_moodle);
+
   const enviarDisabled =
     !preview ||
     mutation.isPending ||
     (preview.requiere_comentario_tutor && !comentario.trim()) ||
-    (preview.ya_enviada && !forzar);
+    (bloqueadoSinForzar && !forzar);
 
   return (
     <Modal
@@ -114,12 +118,14 @@ export function SubirMoodleModal({ entregaId, alumno, isOpen, onClose }: SubirMo
             <span className="text-lg font-bold text-foreground">{preview.nota_a_enviar}</span>
           </div>
 
-          {/* Aviso de re-envío */}
-          {preview.ya_enviada && (
+          {/* Aviso de re-envío / ya calificada en Moodle */}
+          {bloqueadoSinForzar && (
             <label className="flex items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-sm text-warning">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span className="flex-1">
-                Esta corrección ya fue enviada a Moodle.
+                {preview.ya_calificada_en_moodle && !preview.ya_enviada
+                  ? 'Esta entrega ya está calificada en Moodle (por fuera de Active-IA). Si la enviás, vas a pisar la nota actual.'
+                  : 'Esta corrección ya fue enviada a Moodle.'}
                 <span className="mt-1 flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -127,7 +133,9 @@ export function SubirMoodleModal({ entregaId, alumno, isOpen, onClose }: SubirMo
                     onChange={(e) => setForzar(e.target.checked)}
                     className="cursor-pointer"
                   />
-                  Reenviar de todas formas
+                  {preview.ya_calificada_en_moodle && !preview.ya_enviada
+                    ? 'Sobrescribir la nota de todas formas'
+                    : 'Reenviar de todas formas'}
                 </span>
               </span>
             </label>

@@ -99,6 +99,8 @@ class MoodleService:
         # rúbrica tiene varias comisiones: las submissions del assignment son las mismas).
         self._submissions_cache: dict[int, dict] = {}    # instance_id -> submissions data
         self._grades_cache: dict[int, dict[int, int]] = {}  # instance_id -> {userid: timemodified}
+        # Detalle del grade más reciente por user (timemodified + valor crudo de Moodle).
+        self._grades_full_cache: dict[int, dict[int, dict]] = {}  # instance_id -> {userid: {timemodified, grade}}
 
     async def get_token(
         self,
@@ -330,6 +332,75 @@ class MoodleService:
                     grades_map[uid] = tm
         self._grades_cache[assignment_instance_id] = grades_map
         return grades_map
+
+    async def get_grades_full(
+        self,
+        token: str,
+        moodle_host: str,
+        assignment_instance_id: int,
+    ) -> dict[int, dict]:
+        """Retorna userid → {'timemodified': int, 'grade': str|None} del grade más reciente.
+
+        A diferencia de `_fetch_grades_map` (que sólo guarda el timemodified para detectar
+        re-entregas), acá conservamos también el valor del grade. Se usa para saber si una
+        corrección YA está calificada en Moodle (timemodified > 0) y con qué nota, sin
+        depender de un MoodleSync local.
+        """
+        if assignment_instance_id in self._grades_full_cache:
+            return self._grades_full_cache[assignment_instance_id]
+
+        url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
+        params = {
+            "wstoken": token,
+            "wsfunction": "mod_assign_get_grades",
+            "moodlewsrestformat": "json",
+            "assignmentids[0]": assignment_instance_id,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.TimeoutException as e:
+            raise MoodleConnectionError(f"Timeout consultando grades: {e}") from e
+        except httpx.RequestError as e:
+            raise MoodleConnectionError(f"Error de red consultando grades: {e}") from e
+
+        if isinstance(data, dict) and "exception" in data:
+            if "invalidtoken" in str(data).lower():
+                raise MoodleAuthError("Token Moodle inválido")
+            raise MoodleConnectionError(f"Error de Moodle: {data.get('message', '')}")
+
+        full: dict[int, dict] = {}
+        for assignment in data.get("assignments", []):
+            for grade in assignment.get("grades", []):
+                uid = grade.get("userid")
+                if uid is None:
+                    continue
+                tm = grade.get("timemodified") or 0
+                # quedarnos con el grade más reciente por user (puede haber varios attempts)
+                if tm > full.get(uid, {}).get("timemodified", -1):
+                    full[uid] = {"timemodified": tm, "grade": grade.get("grade")}
+        self._grades_full_cache[assignment_instance_id] = full
+        return full
+
+    @staticmethod
+    def es_calificacion_real(entry: dict | None) -> bool:
+        """True si el entry de get_grades_full representa una nota REAL puesta en Moodle.
+
+        ⚠️ Moodle crea un registro de grade (con timemodified) al entregar, pero con
+        `grade = -1` mientras NO esté calificada. Por eso NO alcanza con timemodified > 0:
+        hay que mirar el valor. Calificada ⇔ existe grade y su valor es >= 0
+        (el 0 es nota válida; en escalas el índice es >= 1; -1 = sin nota).
+        """
+        if not entry:
+            return False
+        if (entry.get("timemodified") or 0) <= 0:
+            return False
+        try:
+            return float(entry.get("grade")) >= 0
+        except (TypeError, ValueError):
+            return False
 
     async def get_submissions_count(
         self,

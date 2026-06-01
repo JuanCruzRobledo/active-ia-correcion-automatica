@@ -46,7 +46,8 @@ class PreviewCorreccion:
     comentario_sugerido: str
     requiere_comentario_tutor: bool
     link_devolucion: str
-    ya_enviada: bool
+    ya_enviada: bool  # ya enviada por Active-IA (existe MoodleSync ENVIADO)
+    ya_calificada_en_moodle: bool  # ya tiene nota en Moodle (aunque no la haya puesto Active-IA)
 
 
 class GradeMapError(Exception):
@@ -70,8 +71,14 @@ class MoodleGradeService:
         usuario,
         base_url: str,
         forzar: bool = False,
+        verificar_moodle: bool = True,
     ) -> MoodleSync:
         """Publica nota + feedback de una corrección en Moodle (idempotente + auditado).
+
+        Si `verificar_moodle` y no `forzar`, además de la idempotencia local chequea
+        que la entrega no esté YA calificada en Moodle (puesta por fuera de Active-IA):
+        si lo está, lanza 409 para no pisar la nota. El masivo lo desactiva porque ya
+        verifica y registra esos casos antes (evita refetch por subida).
 
         Lanza HTTPException con el código adecuado en cada caso de error.
         """
@@ -139,6 +146,21 @@ class MoodleGradeService:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"El assignment (cmid={rubrica.moodle_assign_id}) no se encontró en Moodle",
             )
+
+        # Anti-pisado: si ya está calificada en Moodle (por fuera de Active-IA) y no se
+        # fuerza, no la reenviamos para no sobrescribir la nota existente.
+        if verificar_moodle and not forzar:
+            ya_en_moodle = await self._ya_calificada_en_moodle(
+                token, moodle_host, grade_config.instance_id, entrega.moodle_user_id
+            )
+            if ya_en_moodle:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        "Esta entrega ya está calificada en Moodle (por fuera de Active-IA). "
+                        "Usá 'forzar' para sobrescribir la nota."
+                    ),
+                )
 
         # Mapeo de nota (escala invertida / escalado numérico). GradeMapError → 422.
         try:
@@ -257,6 +279,9 @@ class MoodleGradeService:
             nombre_alumno=entrega.alumno_nombre,
         )
         ya = await self.moodle_sync_repo.get_ultimo_enviado(correccion_id)
+        ya_en_moodle = await self._ya_calificada_en_moodle(
+            token, moodle_host, grade_config.instance_id, entrega.moodle_user_id
+        )
 
         return PreviewCorreccion(
             nota_a_enviar=self._nota_texto(grade, grade_config),
@@ -265,7 +290,20 @@ class MoodleGradeService:
             requiere_comentario_tutor=render.requiere_comentario_tutor,
             link_devolucion=link,
             ya_enviada=ya is not None,
+            ya_calificada_en_moodle=ya_en_moodle,
         )
+
+    async def _ya_calificada_en_moodle(
+        self, token: str, moodle_host: str, instance_id: int, moodle_user_id: int | None
+    ) -> bool:
+        """True si el alumno ya tiene una calificación en este assignment de Moodle.
+
+        Criterio consistente con el resto de la app: existe grade con timemodified > 0.
+        """
+        if not moodle_user_id:
+            return False
+        grades_full = await self.moodle.get_grades_full(token, moodle_host, instance_id)
+        return MoodleService.es_calificacion_real(grades_full.get(moodle_user_id))
 
     @staticmethod
     def _construir_feedback_html(comentario_usuario: str, link: str) -> str:

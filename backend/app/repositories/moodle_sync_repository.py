@@ -25,6 +25,45 @@ class MoodleSyncRepository:
         )
         return result.scalars().first()
 
+    async def get_ultimo_estado_por_correcciones(
+        self, correccion_ids: list[int]
+    ) -> dict[int, tuple[MoodleSyncEstado, str | None]]:
+        """Último estado de sincronización de cada corrección (para etiquetar la lista).
+
+        Trae el registro más reciente (mayor id) por corrección, evitando N+1.
+        Las correcciones sin ningún registro simplemente no aparecen en el dict.
+
+        Args:
+            correccion_ids: IDs de corrección a consultar.
+
+        Returns:
+            Dict {correccion_id: (estado, mensaje_error)} con el último intento.
+        """
+        if not correccion_ids:
+            return {}
+
+        ultimos = (
+            select(
+                MoodleSync.correccion_id.label("correccion_id"),
+                func.max(MoodleSync.id).label("max_id"),
+            )
+            .where(MoodleSync.correccion_id.in_(correccion_ids))
+            .group_by(MoodleSync.correccion_id)
+            .subquery()
+        )
+
+        result = await self.db.execute(
+            select(
+                MoodleSync.correccion_id,
+                MoodleSync.estado,
+                MoodleSync.mensaje_error,
+            ).join(ultimos, MoodleSync.id == ultimos.c.max_id)
+        )
+        return {
+            row.correccion_id: (row.estado, row.mensaje_error)
+            for row in result.all()
+        }
+
     async def contar_por_correccion(self, correccion_id: int) -> int:
         result = await self.db.execute(
             select(func.count())

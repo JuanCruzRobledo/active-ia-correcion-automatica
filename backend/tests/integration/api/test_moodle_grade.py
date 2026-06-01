@@ -28,6 +28,7 @@ async def test_preview_devuelve_datos(auth):
         nota_a_enviar="Aprobado", nota_activeia=85.0,
         comentario_sugerido="Muy bien Juan!\nTe dejo tu devolución: http://x",
         requiere_comentario_tutor=False, link_devolucion="http://x", ya_enviada=False,
+        ya_calificada_en_moodle=False,
     )
     with patch("app.routers.correcciones.MoodleGradeService") as cls:
         cls.return_value.preview_correccion = AsyncMock(return_value=preview)
