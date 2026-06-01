@@ -8,7 +8,7 @@ Ref: docs/specs/Rubrica.md (V2 schema)
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Enum as SQLEnum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import ARRAY, Enum as SQLEnum, ForeignKey, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -106,6 +106,22 @@ class Rubrica(Base, TimestampMixin):
     )
     activa: Mapped[bool] = mapped_column(default=True, index=True)
     moodle_assign_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Modo de consolidación del código para las entregas de esta rúbrica.
+    # Determina qué extensiones se incluyen al consolidar el código antes de corregir.
+    # Valores: 'solo_codigo' | 'web_completo' | 'proyecto_completo' | 'personalizado'.
+    # Lo usan la importación desde Moodle (automática) y la carga manual (pre-selección).
+    modo_consolidacion: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="solo_codigo",
+        server_default="solo_codigo",
+    )
+    # Extensiones a incluir cuando modo_consolidacion == 'personalizado' (ej: ['.ipynb', '.sql']).
+    extensiones_personalizadas: Mapped[list[str] | None] = mapped_column(
+        ARRAY(String),
+        nullable=True,
+    )
 
     __table_args__ = (
         UniqueConstraint(

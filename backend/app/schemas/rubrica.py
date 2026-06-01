@@ -10,11 +10,14 @@ Ref: docs/specs/Rubrica.md
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.enums import FuenteRubricaEnum, TipoRubricaEnum
+
+# Modo de consolidación del código de las entregas de una rúbrica.
+ModoConsolidacion = Literal["solo_codigo", "web_completo", "proyecto_completo", "personalizado"]
 
 
 # ============================================================================
@@ -344,6 +347,14 @@ class RubricaCreate(RubricaBase):
         max_length=255,
         description="Ruta del archivo original (si fuente es IA)",
     )
+    modo_consolidacion: ModoConsolidacion = Field(
+        default="solo_codigo",
+        description="Cómo consolidar el código de las entregas de esta rúbrica",
+    )
+    extensiones_personalizadas: list[str] | None = Field(
+        None,
+        description="Extensiones a incluir si modo_consolidacion='personalizado' (ej: ['.ipynb', '.sql'])",
+    )
 
     @model_validator(mode="after")
     def validar_estructura_completa(self) -> "RubricaCreate":
@@ -399,6 +410,14 @@ class RubricaUpdate(BaseModel):
         None,
         description="ID de la asignación (cmid) en Moodle",
     )
+    modo_consolidacion: ModoConsolidacion | None = Field(
+        None,
+        description="Nuevo modo de consolidación del código",
+    )
+    extensiones_personalizadas: list[str] | None = Field(
+        None,
+        description="Extensiones para modo personalizado",
+    )
 
     @model_validator(mode="after")
     def validar_estructura_si_presente(self) -> "RubricaUpdate":
@@ -445,6 +464,8 @@ class RubricaResponse(BaseModel):
     archivo_original: str | None
     activa: bool
     moodle_assign_id: int | None = None
+    modo_consolidacion: str = "solo_codigo"
+    extensiones_personalizadas: list[str] | None = None
     created_at: str
     updated_at: str
 

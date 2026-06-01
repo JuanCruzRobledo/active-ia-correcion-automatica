@@ -15,6 +15,7 @@ export interface UserProfile {
   primer_login: boolean;
   gemini_api_key_valid: boolean;
   gemini_api_key_last_4: string | null;
+  gemini_api_key_paga: boolean;
   moodle_username: string | null;
   moodle_host: string | null;
   moodle_configured: boolean;

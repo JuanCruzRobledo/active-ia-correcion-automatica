@@ -8,7 +8,7 @@ Ref: docs/specs/06-MODELO-DATOS.md seccion 3.1
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum as SQLEnum, String, Text
+from sqlalchemy import Boolean, Enum as SQLEnum, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
@@ -60,6 +60,16 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
     moodle_password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     moodle_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
     gemini_api_key_valid: Mapped[bool] = mapped_column(default=False)
+
+    # Toggle manual declarado por el tutor: indica que su API key Gemini tiene
+    # facturación habilitada (paga). Habilita la corrección masiva global.
+    # No se infiere automáticamente: la API de Gemini no expone el tier de billing.
+    gemini_api_key_paga: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("false"),
+        nullable=False,
+    )
 
     # Proveedor de corrección preferido (ej: 'gemini', 'openai', 'anthropic')
     correction_provider: Mapped[str] = mapped_column(

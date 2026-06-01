@@ -799,3 +799,68 @@ async def procesar_lote_background(
     logger.info(
         f"[BG] Corrección masiva finalizada: {exitosas} exitosas, {fallidas} fallidas"
     )
+
+
+async def procesar_global_background(
+    entrega_ids: list[int],
+    api_key_encrypted: str,
+    corregido_por_id: int,
+    concurrency: int = 5,
+) -> None:
+    """Corrección masiva GLOBAL (cross-rúbrica) para tutores con API key paga.
+
+    A diferencia de procesar_lote_background (secuencial con sleep para free tier),
+    esta versión PARALELIZA con un semáforo (key paga tolera más RPM). Cada tarea
+    usa SU PROPIA sesión de DB (la AsyncSession no admite operaciones concurrentes).
+
+    Resiliente: un 429 reintenta con backoff; si persiste, ESA entrega falla pero el
+    job continúa (no aborta todo). Las que fallan quedan en estado ERROR (corregir_individual).
+    """
+    logger.info(
+        f"[BG-GLOBAL] Iniciando corrección global de {len(entrega_ids)} entregas "
+        f"(concurrencia={concurrency})"
+    )
+    max_retries_429 = 3
+    base_backoff = 30
+    sem = asyncio.Semaphore(max(1, concurrency))
+
+    async def _corregir_uno(entrega_id: int) -> str:
+        async with sem:
+            for attempt in range(1 + max_retries_429):
+                # Sesión propia por intento — seguro para concurrencia.
+                async with async_session_maker() as db:
+                    service = CorreccionService(db)
+                    try:
+                        await service.corregir_individual(
+                            entrega_id=entrega_id,
+                            api_key_encrypted=api_key_encrypted,
+                            corregido_por_id=corregido_por_id,
+                        )
+                        return "ok"
+                    except HTTPException as e:
+                        if e.status_code == 429 and attempt < max_retries_429:
+                            wait = base_backoff * (attempt + 1)
+                            logger.warning(
+                                f"[BG-GLOBAL] Rate limit (429) en entrega {entrega_id}. "
+                                f"Reintento {attempt + 1}/{max_retries_429} en {wait}s."
+                            )
+                            await asyncio.sleep(wait)
+                            continue
+                        logger.warning(
+                            f"[BG-GLOBAL] Error corrigiendo entrega {entrega_id}: "
+                            f"{getattr(e, 'detail', e)}"
+                        )
+                        return "fail"
+                    except Exception as e:  # noqa: BLE001
+                        logger.error(
+                            f"[BG-GLOBAL] Error inesperado en entrega {entrega_id}: {e}"
+                        )
+                        return "fail"
+            return "fail"
+
+    resultados = await asyncio.gather(*[_corregir_uno(eid) for eid in entrega_ids])
+    exitosas = resultados.count("ok")
+    fallidas = len(resultados) - exitosas
+    logger.info(
+        f"[BG-GLOBAL] Corrección global finalizada: {exitosas} exitosas, {fallidas} fallidas"
+    )

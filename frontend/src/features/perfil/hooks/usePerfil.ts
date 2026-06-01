@@ -86,3 +86,26 @@ export const useUpdateApiKey = () => {
     },
   });
 };
+
+/**
+ * Hook para marcar/desmarcar la API key como paga (toggle manual).
+ * Habilita la corrección masiva global ("Corregir todo").
+ */
+export const useUpdateKeyPaga = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ message: string; gemini_api_key_paga: boolean }, Error, boolean>({
+    mutationFn: (paga: boolean) => perfilService.updateKeyPaga(paga),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: perfilKeys.all });
+      toast.success(
+        res.gemini_api_key_paga
+          ? 'API key marcada como paga. Ya podés usar "Corregir todo".'
+          : 'API key marcada como gratuita.'
+      );
+    },
+    onError: (error) => {
+      toast.error(error.message || 'No se pudo actualizar la preferencia');
+    },
+  });
+};

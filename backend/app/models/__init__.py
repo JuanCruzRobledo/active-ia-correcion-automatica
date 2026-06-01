@@ -17,6 +17,7 @@ from app.models.enums import (
     EstadoCriterioEnum,
     EstadoEntregaEnum,
     FuenteRubricaEnum,
+    MoodleSyncEstado,
     RolEnum,
     TipoActividadEnum,
     TipoRubricaEnum,
@@ -28,6 +29,7 @@ from app.models.rubrica import Rubrica
 from app.models.entrega import Entrega, EntregaHistorial
 from app.models.correccion import Correccion
 from app.models.actividad import Actividad
+from app.models.moodle_sync import MoodleSync
 
 __all__ = [
     # Base
@@ -44,6 +46,7 @@ __all__ = [
     "FuenteRubricaEnum",
     "EstadoCriterioEnum",
     "TipoActividadEnum",
+    "MoodleSyncEstado",
     # Models
     "Usuario",
     "Materia",
@@ -55,4 +58,5 @@ __all__ = [
     "EntregaHistorial",
     "Correccion",
     "Actividad",
+    "MoodleSync",
 ]

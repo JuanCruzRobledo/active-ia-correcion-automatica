@@ -12,7 +12,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 8
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -320,6 +320,143 @@ class CorreccionRepository:
             .where(Correccion.id.in_(correccion_ids))
         )
         return list(result.scalars().all())
+
+    async def get_pendientes_subida_moodle(
+        self, tutor_id: int, es_admin: bool
+    ) -> list[Correccion]:
+        """Correcciones listas para subir a Moodle pero aún NO enviadas.
+
+        Una corrección es "pendiente de entregar" si:
+          - su entrega está CORREGIDA y no archivada;
+          - la entrega vino de Moodle (moodle_user_id poblado);
+          - la rúbrica y la materia tienen sus IDs de Moodle configurados; y
+          - NO existe un MoodleSync ENVIADO para esa corrección.
+
+        Es una consulta 100% local (sin tocar Moodle): el listado es instantáneo.
+
+        Args:
+            tutor_id: ID del tutor solicitante.
+            es_admin: si es True, ve correcciones de todas las comisiones.
+
+        Returns:
+            Lista de Correccion con entrega/comision/materia/rubrica cargadas,
+            ordenada por materia, rúbrica y alumno.
+        """
+        from app.models.comision import Comision, ComisionTutor
+        from app.models.entrega import Entrega
+        from app.models.enums import EstadoEntregaEnum, MoodleSyncEstado
+        from app.models.materia import Materia
+        from app.models.moodle_sync import MoodleSync
+        from app.models.rubrica import Rubrica
+
+        enviado_exists = (
+            select(MoodleSync.id)
+            .where(
+                MoodleSync.correccion_id == Correccion.id,
+                MoodleSync.estado == MoodleSyncEstado.ENVIADO,
+            )
+            .exists()
+        )
+
+        query = (
+            select(Correccion)
+            .options(
+                selectinload(Correccion.entrega).selectinload(Entrega.comision).selectinload(Comision.materia),
+                selectinload(Correccion.entrega).selectinload(Entrega.rubrica),
+            )
+            .join(Entrega, Entrega.id == Correccion.entrega_id)
+            .join(Comision, Comision.id == Entrega.comision_id)
+            .join(Rubrica, Rubrica.id == Entrega.rubrica_id)
+            .join(Materia, Materia.id == Comision.materia_id)
+            .where(
+                Entrega.estado == EstadoEntregaEnum.CORREGIDA,
+                Entrega.archivado == False,  # noqa: E712
+                Entrega.moodle_user_id.isnot(None),
+                Rubrica.moodle_assign_id.isnot(None),
+                Materia.moodle_course_id.isnot(None),
+                ~enviado_exists,
+            )
+            .order_by(Materia.nombre, Rubrica.titulo, Entrega.alumno_nombre)
+        )
+
+        if not es_admin:
+            tutor_exists = (
+                select(ComisionTutor.id)
+                .where(
+                    ComisionTutor.comision_id == Comision.id,
+                    ComisionTutor.tutor_id == tutor_id,
+                )
+                .exists()
+            )
+            query = query.where(tutor_exists)
+
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def contar_no_vinculadas_moodle(
+        self, tutor_id: int, es_admin: bool
+    ) -> int:
+        """Cuenta las correcciones CORREGIDA (no enviadas) que NO se pueden subir a Moodle.
+
+        Son las que faltan algún requisito de subida: entrega sin moodle_user_id
+        (cargada a mano), o rúbrica/materia sin IDs de Moodle configurados. Se usan
+        sólo para el contador informativo de la vista (no se listan como filas).
+
+        Args:
+            tutor_id: ID del tutor solicitante.
+            es_admin: si es True, cuenta sobre todas las comisiones.
+
+        Returns:
+            Cantidad de correcciones no vinculadas a Moodle.
+        """
+        from app.models.comision import Comision, ComisionTutor
+        from app.models.entrega import Entrega
+        from app.models.enums import EstadoEntregaEnum, MoodleSyncEstado
+        from app.models.materia import Materia
+        from app.models.moodle_sync import MoodleSync
+        from app.models.rubrica import Rubrica
+
+        enviado_exists = (
+            select(MoodleSync.id)
+            .where(
+                MoodleSync.correccion_id == Correccion.id,
+                MoodleSync.estado == MoodleSyncEstado.ENVIADO,
+            )
+            .exists()
+        )
+
+        query = (
+            select(func.count(Correccion.id))
+            .select_from(Correccion)
+            .join(Entrega, Entrega.id == Correccion.entrega_id)
+            .join(Comision, Comision.id == Entrega.comision_id)
+            .join(Rubrica, Rubrica.id == Entrega.rubrica_id)
+            .join(Materia, Materia.id == Comision.materia_id)
+            .where(
+                Entrega.estado == EstadoEntregaEnum.CORREGIDA,
+                Entrega.archivado == False,  # noqa: E712
+                ~enviado_exists,
+                or_(
+                    Entrega.moodle_user_id.is_(None),
+                    Rubrica.moodle_assign_id.is_(None),
+                    Materia.moodle_course_id.is_(None),
+                ),
+            )
+        )
+
+        if not es_admin:
+            tutor_exists = (
+                select(ComisionTutor.id)
+                .where(
+                    ComisionTutor.comision_id == Comision.id,
+                    ComisionTutor.tutor_id == tutor_id,
+                )
+                .exists()
+            )
+            query = query.where(tutor_exists)
+
+        result = await self.db.execute(query)
+        return int(result.scalar() or 0)
 
     async def get_by_entrega_ids_corregidas(
         self, entrega_ids: list[int]

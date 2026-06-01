@@ -24,6 +24,7 @@ import {
   exportarExcel,
 } from '@/features/correcciones/services/correcciones-service';
 import { CargaEntregaModal, EntregaViewModal } from '../components';
+import { SubirMoodleModal } from '../components/SubirMoodleModal';
 import CorreccionViewEditModal from '@/features/correcciones/components/CorreccionViewEditModal';
 import { Button } from '@/shared/components/ui/Button';
 import { Input } from '@/shared/components/ui/Input';
@@ -50,6 +51,7 @@ import {
   Archive,
   ArchiveRestore,
   X,
+  Send,
 } from 'lucide-react';
 import type { EstadoEntrega, EntregaListItem } from '../types';
 
@@ -96,6 +98,10 @@ export const EntregasPage = () => {
   const [viewEntregaId, setViewEntregaId] = useState<number | null>(null);
   const [viewAlumno, setViewAlumno] = useState('');
   const [viewArchivo, setViewArchivo] = useState('');
+
+  // Subir corrección a Moodle modal state
+  const [subirMoodleEntregaId, setSubirMoodleEntregaId] = useState<number | null>(null);
+  const [subirMoodleAlumno, setSubirMoodleAlumno] = useState('');
 
   // Download loading states
   const [downloadingPDFId, setDownloadingPDFId] = useState<number | null>(null);
@@ -1032,6 +1038,14 @@ export const EntregasPage = () => {
                                       onClick: () => handleDescargarPDF(entrega.id, entrega.alumno_nombre),
                                       disabled: downloadingPDFId === entrega.id,
                                     },
+                                    {
+                                      label: 'Subir corrección a Moodle',
+                                      icon: <Send className="w-4 h-4" />,
+                                      onClick: () => {
+                                        setSubirMoodleEntregaId(entrega.id);
+                                        setSubirMoodleAlumno(entrega.alumno_nombre);
+                                      },
+                                    },
                                   ]
                                   : []),
                                 // Actions for PENDIENTE/SUBIDA/ERROR states
@@ -1155,6 +1169,18 @@ export const EntregasPage = () => {
             setViewEntregaId(null);
             setViewAlumno('');
             setViewArchivo('');
+          }}
+        />
+      )}
+
+      {subirMoodleEntregaId && (
+        <SubirMoodleModal
+          entregaId={subirMoodleEntregaId}
+          alumno={subirMoodleAlumno}
+          isOpen={true}
+          onClose={() => {
+            setSubirMoodleEntregaId(null);
+            setSubirMoodleAlumno('');
           }}
         />
       )}

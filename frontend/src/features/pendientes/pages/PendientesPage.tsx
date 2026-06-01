@@ -4,6 +4,7 @@ import { Clock, CheckCircle, Users, RefreshCw, AlertTriangle } from 'lucide-reac
 import { StatCard } from '@/features/dashboard/components/StatCard';
 import { Spinner } from '@/shared/components/ui';
 import { MateriaBlock } from '../components';
+import { ImportarButton } from '../components/ImportarButton';
 import { usePendientesMoodle } from '../hooks/usePendientesMoodle';
 
 export function PendientesPage() {
@@ -89,14 +90,23 @@ export function PendientesPage() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Pendientes Moodle</h1>
-        <button
-          onClick={refresh}
-          disabled={isRefreshing}
-          className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          {isRefreshing ? 'Actualizando…' : 'Actualizar'}
-        </button>
+        <div className="flex items-center gap-2">
+          {totalEspera > 0 && (
+            <ImportarButton
+              scope="tutor"
+              label="Importar todo"
+              modalTitle="Importar todas mis pendientes"
+            />
+          )}
+          <button
+            onClick={refresh}
+            disabled={isRefreshing}
+            className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Actualizando…' : 'Actualizar'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

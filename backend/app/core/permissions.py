@@ -10,6 +10,8 @@ Ref: .claude/rules/backend.md
 """
 
 from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Usuario
 from app.models.enums import RolEnum
@@ -306,3 +308,35 @@ def require_tutor_of_comision(user: Usuario, comision_id: int) -> Usuario:
     #     raise HTTPException(403, "No eres tutor de esta comisión")
 
     return user
+
+
+async def verificar_acceso_comision(
+    db: AsyncSession, usuario: Usuario, comision_id: int
+) -> None:
+    """Versión async REAL: valida acceso a una comisión consultando la DB.
+
+    - ADMIN: acceso total.
+    - Otros roles: sólo si están asignados a la comisión (ComisionTutor).
+
+    Lanza HTTPException 403 si no tiene acceso. (Reemplaza el placeholder
+    `require_tutor_of_comision` para los flujos de Moodle, donde sí consultamos DB.)
+    """
+    if usuario.rol == RolEnum.ADMIN:
+        return
+
+    from app.models.comision import ComisionTutor
+
+    result = await db.execute(
+        select(ComisionTutor.id)
+        .where(
+            ComisionTutor.comision_id == comision_id,
+            ComisionTutor.tutor_id == usuario.id,
+        )
+        .limit(1)
+    )
+    if result.first() is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés acceso a esta comisión",
+        )
+

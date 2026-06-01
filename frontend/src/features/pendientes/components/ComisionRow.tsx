@@ -1,6 +1,7 @@
 import { ExternalLink, FileText } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { ComisionPendiente } from '../types';
+import { ImportarButton } from './ImportarButton';
 
 interface ComisionRowProps {
   comision: ComisionPendiente;
@@ -31,6 +32,17 @@ export function ComisionRow({ comision, rubricaId }: ComisionRowProps) {
           <span className="text-success font-semibold">{comision.corregidos} corregidos</span>
           <span className="text-muted-foreground">{comision.sinEntrega} sin entrega</span>
         </div>
+
+        {comision.espera > 0 && (
+          <ImportarButton
+            scope="comision_unidad"
+            rubricaId={rubricaId}
+            comisionId={comision.id}
+            label="Importar"
+            modalTitle={`Importar — ${comision.nombre}`}
+            size="sm"
+          />
+        )}
 
         {comision.moodleGraderUrl && comision.espera > 0 && (
           <a

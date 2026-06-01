@@ -157,6 +157,21 @@ def register_routers(app: FastAPI) -> None:
 
     app.include_router(pendientes_router, prefix="/api/v1")
 
+    # Moodle import (Fase 2 — importar entregas desde Moodle)
+    from app.routers.moodle_import import router as moodle_import_router
+
+    app.include_router(moodle_import_router, prefix="/api/v1")
+
+    # Por entregar (correcciones pendientes de subir a Moodle)
+    from app.routers.por_entregar import router as por_entregar_router
+
+    app.include_router(por_entregar_router, prefix="/api/v1")
+
+    # Público (Fase 3 — PDF de devolución sin JWT, vía token firmado)
+    from app.routers.public_docs import router as public_docs_router
+
+    app.include_router(public_docs_router, prefix="/api/v1")
+
 
 # Crear instancia de la aplicacion
 app = create_application()

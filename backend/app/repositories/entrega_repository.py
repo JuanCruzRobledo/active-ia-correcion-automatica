@@ -305,4 +305,51 @@ class EntregaRepository:
         await self.db.commit()
         return len(entregas)
 
+    async def get_subidas_ids_by_tutor(
+        self, tutor_id: int, limite: int | None = None
+    ) -> list[int]:
+        """IDs de entregas en estado SUBIDA de TODAS las comisiones del tutor (cross-rúbrica).
+
+        Para la corrección masiva global. Excluye archivadas.
+        """
+        from app.models.comision import ComisionTutor
+        from app.models.enums import EstadoEntregaEnum
+
+        stmt = (
+            select(Entrega.id)
+            .join(Comision, Comision.id == Entrega.comision_id)
+            .join(ComisionTutor, ComisionTutor.comision_id == Comision.id)
+            .where(
+                ComisionTutor.tutor_id == tutor_id,
+                Entrega.estado == EstadoEntregaEnum.SUBIDA,
+                Entrega.archivado == False,  # noqa: E712
+            )
+            .order_by(Entrega.id)
+        )
+        if limite is not None:
+            stmt = stmt.limit(limite)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
+    async def contar_estados_by_tutor(self, tutor_id: int) -> dict[str, int]:
+        """Conteo de entregas por estado para el tutor (para el progreso de 'Corregir todo')."""
+        from app.models.comision import ComisionTutor
+
+        stmt = (
+            select(Entrega.estado, func.count())
+            .join(Comision, Comision.id == Entrega.comision_id)
+            .join(ComisionTutor, ComisionTutor.comision_id == Comision.id)
+            .where(
+                ComisionTutor.tutor_id == tutor_id,
+                Entrega.archivado == False,  # noqa: E712
+            )
+            .group_by(Entrega.estado)
+        )
+        result = await self.db.execute(stmt)
+        counts: dict[str, int] = {}
+        for estado, count in result.all():
+            key = estado.value if hasattr(estado, "value") else str(estado)
+            counts[key] = int(count)
+        return counts
+
 

@@ -12,6 +12,7 @@ import { GraduationCap, Clock, CheckCircle, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { StatCard } from './StatCard';
 import { ComisionCard } from './ComisionCard';
+import { CorregirTodoButton } from './CorregirTodoButton';
 import { useDashboardTutorStats } from '../hooks';
 import { usePendientesMoodle } from '@/features/pendientes';
 import { Spinner } from '@/shared/components/ui';
@@ -77,6 +78,9 @@ export function DashboardTutor() {
           </button>
         </div>
       )}
+
+      {/* Corrección masiva global (sólo API key paga) */}
+      <CorregirTodoButton />
 
       {/* Header */}
       <div>

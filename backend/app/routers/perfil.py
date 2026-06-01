@@ -21,9 +21,31 @@ from app.schemas.perfil import (
     PerfilResponse,
     UpdateApiKeyRequest,
     UpdateApiKeyResponse,
+    UpdateKeyPagaRequest,
+    UpdateKeyPagaResponse,
 )
 
 router = APIRouter(prefix="/perfil", tags=["perfil"])
+
+
+@router.patch("/key-paga", response_model=UpdateKeyPagaResponse)
+async def update_key_paga(
+    data: UpdateKeyPagaRequest,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UpdateKeyPagaResponse:
+    """
+    Toggle manual: marca si la API key Gemini del usuario es paga (billing habilitado).
+
+    Habilita la corrección masiva global ('Corregir todo'). No se infiere por API
+    (la Fase 0 demostró que el tier no es detectable de forma fiable).
+    """
+    user_repo = UsuarioRepository(db)
+    current_user.gemini_api_key_paga = data.paga
+    await user_repo.update(current_user)
+    return UpdateKeyPagaResponse(
+        message="Preferencia actualizada", gemini_api_key_paga=data.paga
+    )
 
 
 @router.get("", response_model=PerfilResponse)
@@ -56,6 +78,7 @@ async def get_profile(
         primer_login=current_user.primer_login,
         gemini_api_key_valid=current_user.gemini_api_key_valid,
         gemini_api_key_last_4=gemini_api_key_last_4,
+        gemini_api_key_paga=getattr(current_user, "gemini_api_key_paga", False),
         moodle_username=current_user.moodle_username,
         moodle_host=current_user.moodle_host,
         moodle_configured=bool(current_user.moodle_username and current_user.moodle_password_encrypted),

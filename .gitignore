@@ -88,3 +88,8 @@ backups/postgres/
 *.sqlite
 *.sqlite3
 nul
+
+# Dumps de base de datos (pueden contener datos sensibles de prod)
+*.dump
+*.sql.gz
+prod_backup*

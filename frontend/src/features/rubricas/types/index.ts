@@ -17,6 +17,16 @@ export type TipoRubrica =
 
 export type FuenteRubrica = 'manual' | 'pdf';
 
+/**
+ * Modo de consolidación del código de las entregas de la rúbrica.
+ * Valores en minúsculas (coinciden con el backend; el endpoint de rúbrica NO los normaliza).
+ */
+export type ModoConsolidacion =
+  | 'solo_codigo'
+  | 'web_completo'
+  | 'proyecto_completo'
+  | 'personalizado';
+
 // ============================================================================
 // Schema Types (Hierarchical)
 // ============================================================================
@@ -107,6 +117,8 @@ export interface Rubrica {
   archivo_original: string | null;
   activa: boolean;
   moodle_assign_id: number | null;
+  modo_consolidacion: ModoConsolidacion;
+  extensiones_personalizadas: string[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -158,6 +170,8 @@ export interface RubricaCreate {
   fuente?: FuenteRubrica;
   archivo_original?: string;
   moodle_assign_id?: number | null;
+  modo_consolidacion?: ModoConsolidacion;
+  extensiones_personalizadas?: string[] | null;
 }
 
 export interface RubricaUpdate {
@@ -168,6 +182,8 @@ export interface RubricaUpdate {
   penalizaciones_json?: Penalizacion[];
   condiciones_desaprobacion_json?: CondicionDesaprobacion[];
   moodle_assign_id?: number | null;
+  modo_consolidacion?: ModoConsolidacion;
+  extensiones_personalizadas?: string[] | null;
 }
 
 export interface RubricaDuplicar {

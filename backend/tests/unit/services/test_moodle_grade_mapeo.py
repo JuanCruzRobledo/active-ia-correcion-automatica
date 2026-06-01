@@ -1,0 +1,61 @@
+"""Tests del mapeo de nota Active-IA → nota Moodle (Fase 3, lógica crítica).
+
+Cubre:
+- TP (escala cualitativa): nota >= 60 → índice 'Aprobado'; < 60 → 'Desaprobado'.
+  ⚠️ scale_id=5 tiene el orden INVERTIDO (1=Aprobado, 2=Desaprobado).
+- No-TP (numérica): nota escalada al máximo REAL del assignment (no se asume 100).
+- Discordancias de escala → error explícito (no se envía a ciegas).
+"""
+
+import pytest
+
+from app.services.moodle_grade_service import MoodleGradeService, GradeMapError
+from app.services.moodle_service import AssignmentGradeConfig
+
+
+def _escala(scale_id=5, instance_id=478):
+    return AssignmentGradeConfig(instance_id=instance_id, tipo="escala", scale_id=scale_id)
+
+
+def _numerica(grade_max=100, instance_id=484):
+    return AssignmentGradeConfig(instance_id=instance_id, tipo="numerica", grade_max=grade_max)
+
+
+# ── TP → escala cualitativa (scale 5: 1=Aprobado, 2=Desaprobado) ──
+
+@pytest.mark.parametrize("nota,indice_esperado", [
+    (100, 1.0),  # Aprobado
+    (60, 1.0),   # Aprobado (umbral)
+    (59, 2.0),   # Desaprobado
+    (0, 2.0),    # Desaprobado
+])
+def test_tp_mapea_a_indice_de_escala(nota, indice_esperado):
+    grade = MoodleGradeService._mapear_nota("TP", nota, _escala())
+    assert grade == indice_esperado
+
+
+def test_tp_con_assignment_numerico_es_error():
+    # Si la rúbrica es TP pero el assignment resultó numérico → discordancia, no se envía
+    with pytest.raises(GradeMapError):
+        MoodleGradeService._mapear_nota("TP", 80, _numerica())
+
+
+def test_tp_con_escala_no_mapeada_es_error():
+    with pytest.raises(GradeMapError):
+        MoodleGradeService._mapear_nota("TP", 80, _escala(scale_id=99))
+
+
+# ── No-TP → numérica, escalada al máximo real ──
+
+def test_no_tp_numerica_max_100():
+    assert MoodleGradeService._mapear_nota("PARCIAL_1", 90, _numerica(100)) == 90.0
+
+
+def test_no_tp_numerica_max_10_escala():
+    # ¡Trabajo Integrador era sobre 10! 90/100*10 = 9.0
+    assert MoodleGradeService._mapear_nota("GLOBAL", 90, _numerica(10)) == 9.0
+
+
+def test_no_tp_con_assignment_escala_es_error():
+    with pytest.raises(GradeMapError):
+        MoodleGradeService._mapear_nota("PARCIAL_1", 90, _escala())

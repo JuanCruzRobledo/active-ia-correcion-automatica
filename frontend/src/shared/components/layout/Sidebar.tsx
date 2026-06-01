@@ -7,6 +7,7 @@ import {
   FolderOpen,
   FileText,
   CheckSquare,
+  Send,
   User,
   LogOut,
 } from 'lucide-react';
@@ -38,6 +39,7 @@ const navItems: NavItem[] = [
   },
   { to: '/entregas', icon: CheckSquare, label: 'Entregas', roles: ['TUTOR', 'ADMIN', 'COORDINADOR'] },
   { to: '/pendientes', icon: Clock, label: 'Pendientes', roles: ['TUTOR', 'ADMIN'] },
+  { to: '/por-entregar', icon: Send, label: 'Por entregar', roles: ['TUTOR', 'ADMIN'] },
 ];
 
 export const Sidebar = () => {

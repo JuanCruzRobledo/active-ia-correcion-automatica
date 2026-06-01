@@ -47,6 +47,28 @@ export interface CriterioEvaluado {
   feedback: string;
 }
 
+// ── Subir corrección a Moodle (Fase 3) ──────────────────────────────────
+export interface PreviewMoodle {
+  nota_a_enviar: string;
+  nota_activeia: number;
+  comentario_sugerido: string;
+  requiere_comentario_tutor: boolean;
+  link_devolucion: string;
+  ya_enviada: boolean;
+  ya_calificada_en_moodle: boolean;
+}
+
+export interface PreviewMoodleResult {
+  correccionId: number;
+  preview: PreviewMoodle;
+}
+
+export interface SubirMoodleResponse {
+  estado: string;
+  nota_enviada: string | null;
+  intento: number;
+}
+
 export interface Correccion {
   id: number;
   entrega_id: number;
