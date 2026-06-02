@@ -8,6 +8,7 @@ import {
   FileText,
   CheckSquare,
   Send,
+  BarChart3,
   User,
   LogOut,
 } from 'lucide-react';
@@ -40,6 +41,7 @@ const navItems: NavItem[] = [
   { to: '/entregas', icon: CheckSquare, label: 'Entregas', roles: ['TUTOR', 'ADMIN', 'COORDINADOR'] },
   { to: '/pendientes', icon: Clock, label: 'Pendientes', roles: ['TUTOR', 'ADMIN'] },
   { to: '/por-entregar', icon: Send, label: 'Por entregar', roles: ['TUTOR', 'ADMIN'] },
+  { to: '/gestion', icon: BarChart3, label: 'Gestión', roles: ['GESTOR', 'ADMIN'] },
 ];
 
 export const Sidebar = () => {

@@ -1,0 +1,141 @@
+import { useState } from 'react';
+import { AlertTriangle, Users } from 'lucide-react';
+import { Spinner } from '@/shared/components/ui';
+import {
+  useConsultaGestion,
+  useCursosGestion,
+  useFiltrosGestion,
+} from '../hooks/useGestion';
+import { descargarExcel } from '../services/gestion.service';
+import { FiltrosGestionForm } from '../components/FiltrosGestionForm';
+import { ResultadosGestionTable } from '../components/ResultadosGestionTable';
+import { FILTROS_VACIOS, type ConsultaGestion, type FiltrosGestion } from '../types';
+
+const SELECT_CLS =
+  'w-full max-w-md rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground';
+
+export function GestionPage() {
+  const [materiaId, setMateriaId] = useState<number | null>(null);
+  const [filtros, setFiltros] = useState<FiltrosGestion>(FILTROS_VACIOS);
+  const [resultados, setResultados] = useState<ConsultaGestion | null>(null);
+  const [descargando, setDescargando] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const cursosQuery = useCursosGestion();
+  const filtrosQuery = useFiltrosGestion(materiaId);
+  const consulta = useConsultaGestion();
+
+  const handleCursoChange = (id: number | null) => {
+    setMateriaId(id);
+    setFiltros(FILTROS_VACIOS);
+    setResultados(null);
+    setErrorMsg(null);
+  };
+
+  const handleConsultar = () => {
+    if (materiaId == null) return;
+    setErrorMsg(null);
+    consulta.mutate(
+      { materiaId, filtros },
+      {
+        onSuccess: setResultados,
+        onError: () => setErrorMsg('No se pudo consultar. Revisá tus credenciales Moodle.'),
+      }
+    );
+  };
+
+  const handleDescargar = async () => {
+    if (materiaId == null) return;
+    setDescargando(true);
+    setErrorMsg(null);
+    try {
+      await descargarExcel(materiaId, filtros);
+    } catch {
+      setErrorMsg('No se pudo generar el Excel.');
+    } finally {
+      setDescargando(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6 p-6">
+      <div className="flex items-center gap-3">
+        <Users className="h-7 w-7 text-accent" />
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Gestión</h1>
+          <p className="text-sm text-muted-foreground">
+            Filtrá usuarios de un curso de Moodle y descargá el Excel por regional.
+          </p>
+        </div>
+      </div>
+
+      {/* Selector de curso */}
+      <div>
+        <label className="mb-1 block text-sm font-medium text-muted-foreground">Curso</label>
+        {cursosQuery.isLoading ? (
+          <Spinner />
+        ) : (
+          <select
+            className={SELECT_CLS}
+            value={materiaId ?? ''}
+            onChange={(e) => handleCursoChange(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">Elegí un curso…</option>
+            {(cursosQuery.data ?? []).map((c) => (
+              <option key={c.materia_id} value={c.materia_id}>
+                {c.nombre} ({c.codigo})
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* Filtros + resultados (solo con curso elegido) */}
+      {materiaId != null && (
+        <>
+          {filtrosQuery.isLoading && (
+            <div className="flex h-32 items-center justify-center">
+              <Spinner />
+            </div>
+          )}
+
+          {filtrosQuery.isError && (
+            <div className="flex items-center gap-2 rounded-md border border-border bg-card p-4 text-sm text-foreground">
+              <AlertTriangle className="h-5 w-5 text-warning" />
+              No se pudieron cargar los filtros del curso. Verificá tus credenciales Moodle en tu
+              perfil.
+            </div>
+          )}
+
+          {filtrosQuery.data && (
+            <FiltrosGestionForm
+              opciones={filtrosQuery.data}
+              filtros={filtros}
+              onChange={setFiltros}
+              onConsultar={handleConsultar}
+              onDescargar={handleDescargar}
+              consultando={consulta.isPending}
+              descargando={descargando}
+            />
+          )}
+
+          {errorMsg && (
+            <div className="flex items-center gap-2 rounded-md bg-warning/10 px-4 py-2 text-sm text-warning">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              {errorMsg}
+            </div>
+          )}
+
+          {resultados &&
+            (resultados.total === 0 ? (
+              <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
+                Ningún alumno coincide con estos filtros.
+              </div>
+            ) : (
+              <ResultadosGestionTable items={resultados.items} total={resultados.total} />
+            ))}
+        </>
+      )}
+    </div>
+  );
+}

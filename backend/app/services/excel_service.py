@@ -233,6 +233,106 @@ class ExcelService:
 
         return excel_bytes, excel_filename
 
+    # =========================================================================
+    # Gestión (pantalla rol GESTOR) — export multi-hoja por Regional
+    # =========================================================================
+
+    GESTION_HEADERS = ["Nombre", "Apellido", "Email", "Regional", "Comisión", "Tiempo de inactividad"]
+
+    def exportar_gestion(self, resultado, materia_nombre: str) -> tuple[bytes, str]:
+        """Arma el .xlsx de la pantalla Gestión: una hoja por Regional (ordenada por
+        comisión) con las columnas pedidas + total por hoja, y una hoja "Resumen" con
+        el total por regional y el global.
+
+        `resultado` es un ResultadoGestion (items: AlumnoGestion, total: int). No toca
+        la DB: se construye sólo a partir del resultado ya consultado.
+        """
+        header_fill = PatternFill(start_color="1F4788", end_color="1F4788", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        thin = Side(style="thin")
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        # Agrupar por regional (los items ya vienen ordenados; igual reordenamos por las dudas).
+        grupos: dict[str, list] = {}
+        for a in resultado.items:
+            grupos.setdefault(a.regional, []).append(a)
+
+        wb = Workbook()
+        resumen = wb.active
+        resumen.title = "Resumen"
+
+        # --- Una hoja por regional ---
+        for regional in sorted(grupos):
+            alumnos = sorted(
+                grupos[regional],
+                key=lambda x: (x.comision, x.apellido.lower(), x.nombre.lower()),
+            )
+            ws = wb.create_sheet(title=self._sheet_title(regional))
+
+            ws.merge_cells("A1:F1")
+            titulo = ws["A1"]
+            titulo.value = f"Regional: {regional}"
+            titulo.font = Font(size=13, bold=True, color="1F4788")
+            titulo.alignment = Alignment(horizontal="center", vertical="center")
+
+            for col, h in enumerate(self.GESTION_HEADERS, 1):
+                c = ws.cell(row=2, column=col, value=h)
+                c.font = header_font
+                c.fill = header_fill
+                c.alignment = center
+                c.border = border
+
+            row = 3
+            for a in alumnos:
+                valores = [a.nombre, a.apellido, a.email, a.regional, a.comision, a.tiempo_inactividad]
+                for col, val in enumerate(valores, 1):
+                    cell = ws.cell(row=row, column=col, value=val)
+                    cell.border = border
+                row += 1
+
+            total_cell = ws.cell(row=row + 1, column=1, value=f"Total de alumnos: {len(alumnos)}")
+            total_cell.font = Font(bold=True)
+
+            for col, width in enumerate([20, 20, 32, 24, 14, 20], 1):
+                ws.column_dimensions[get_column_letter(col)].width = width
+            ws.freeze_panes = "A3"
+
+        # --- Hoja Resumen ---
+        resumen["A1"] = f"Gestión — {materia_nombre}"
+        resumen["A1"].font = Font(size=14, bold=True, color="1F4788")
+        for col, h in enumerate(["Regional", "Alumnos"], 1):
+            c = resumen.cell(row=3, column=col, value=h)
+            c.font = header_font
+            c.fill = header_fill
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.border = border
+        r = 4
+        for regional in sorted(grupos):
+            resumen.cell(row=r, column=1, value=regional)
+            resumen.cell(row=r, column=2, value=len(grupos[regional]))
+            r += 1
+        resumen.cell(row=r, column=1, value="Total").font = Font(bold=True)
+        resumen.cell(row=r, column=2, value=resultado.total).font = Font(bold=True)
+        resumen.column_dimensions["A"].width = 26
+        resumen.column_dimensions["B"].width = 12
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        data = buffer.getvalue()
+        buffer.close()
+
+        fecha = datetime.now().strftime("%Y%m%d")
+        filename = self._sanitize_filename(f"gestion_{materia_nombre}_{fecha}.xlsx")
+        return data, filename
+
+    def _sheet_title(self, regional: str) -> str:
+        """Nombre de hoja válido para Excel: sin caracteres prohibidos y ≤ 31 chars."""
+        import re
+
+        limpio = re.sub(r"[:\\/?*\[\]]", " ", regional).strip()
+        return (limpio or "Sin regional")[:31]
+
     def _get_nota_fill(self, nota: float) -> PatternFill:
         """
         Get background color for nota cell based on value.

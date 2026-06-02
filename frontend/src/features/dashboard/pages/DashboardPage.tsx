@@ -10,7 +10,7 @@
  * Ref: skills/react-typescript/SKILL.md
  */
 
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks';
 import { useProfile } from '@/features/perfil/hooks/usePerfil';
 import { ROL } from '@/shared/types';
@@ -40,6 +40,12 @@ export function DashboardPage() {
         <p className="text-muted-foreground">No se pudo cargar la información del usuario</p>
       </div>
     );
+  }
+
+  // El GESTOR no tiene dashboard propio todavía (pendiente 2da corrida): lo mandamos
+  // directo a su pantalla real para no mostrar un "Rol desconocido".
+  if (user.rol === ROL.GESTOR) {
+    return <Navigate to="/gestion" replace />;
   }
 
   // Show API Key warning if not configured

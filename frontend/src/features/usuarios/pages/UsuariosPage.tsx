@@ -125,11 +125,13 @@ export const UsuariosPage = () => {
           ADMIN: 'destructive',
           COORDINADOR: 'info',
           TUTOR: 'success',
+          GESTOR: 'info',
         };
         const rolLabels: Record<RolEnum, string> = {
           ADMIN: 'Administrador',
           COORDINADOR: 'Coordinador',
           TUTOR: 'Tutor',
+          GESTOR: 'Gestor',
         };
         return (
           <Badge variant={rolVariants[usuario.rol]}>

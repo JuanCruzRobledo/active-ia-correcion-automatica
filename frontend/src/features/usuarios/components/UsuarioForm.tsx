@@ -24,7 +24,7 @@ const usuarioSchema = z.object({
     .string()
     .min(2, 'El nombre debe tener al menos 2 caracteres')
     .max(100, 'El nombre no puede exceder 100 caracteres'),
-  rol: z.enum(['ADMIN', 'COORDINADOR', 'TUTOR'], {
+  rol: z.enum(['ADMIN', 'COORDINADOR', 'TUTOR', 'GESTOR'], {
     message: 'Selecciona un rol válido',
   }),
 });
@@ -122,6 +122,7 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
     { value: 'ADMIN', label: 'Administrador' },
     { value: 'COORDINADOR', label: 'Coordinador' },
     { value: 'TUTOR', label: 'Tutor' },
+    { value: 'GESTOR', label: 'Gestor' },
   ];
 
   // Password display modal

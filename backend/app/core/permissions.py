@@ -115,6 +115,36 @@ def require_tutor(user: Usuario) -> Usuario:
     return user
 
 
+def require_gestor(user: Usuario) -> Usuario:
+    """
+    Validate that the user has GESTOR role.
+
+    Args:
+        user: Current authenticated user.
+
+    Returns:
+        Usuario: The same user object (for chaining).
+
+    Raises:
+        HTTPException 403: If user is not a gestor.
+
+    Usage:
+        @router.get("/gestion/cursos")
+        async def list_cursos(
+            current_user: Usuario = Depends(get_current_user)
+        ):
+            require_gestor(current_user)
+            # Only gestores can reach here
+            pass
+    """
+    if user.rol != RolEnum.GESTOR:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requiere rol de gestor",
+        )
+    return user
+
+
 # =========================================
 # Combined Role Validators
 # =========================================
@@ -176,6 +206,29 @@ def require_tutor_or_coordinador(user: Usuario) -> Usuario:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol de tutor o coordinador",
+        )
+    return user
+
+
+def require_gestor_or_admin(user: Usuario) -> Usuario:
+    """
+    Validate that the user has GESTOR or ADMIN role.
+
+    Guard de la pantalla "Gestión": la usa el GESTOR, y el ADMIN puede entrar también.
+
+    Args:
+        user: Current authenticated user.
+
+    Returns:
+        Usuario: The same user object (for chaining).
+
+    Raises:
+        HTTPException 403: If user is neither gestor nor admin.
+    """
+    if user.rol not in (RolEnum.ADMIN, RolEnum.GESTOR):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requiere rol de gestor o administrador",
         )
     return user
 

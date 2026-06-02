@@ -19,7 +19,7 @@
  * User roles in the system.
  * Mirrors: backend/app/models/enums.py::RolEnum
  */
-export type Rol = 'ADMIN' | 'COORDINADOR' | 'TUTOR';
+export type Rol = 'ADMIN' | 'COORDINADOR' | 'TUTOR' | 'GESTOR';
 
 /**
  * Rol values object for runtime usage (e.g., in dropdowns, validation).
@@ -28,6 +28,7 @@ export const ROL = {
   ADMIN: 'ADMIN' as const,
   COORDINADOR: 'COORDINADOR' as const,
   TUTOR: 'TUTOR' as const,
+  GESTOR: 'GESTOR' as const,
 } as const;
 
 /**
