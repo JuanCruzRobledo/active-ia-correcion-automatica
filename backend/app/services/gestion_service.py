@@ -10,12 +10,17 @@ Decisiones y formatos confirmados en el spike T0 (ver PLAN_GESTION.md):
 - Inactividad = bandas cerradas sobre lastcourseaccess (no acumulativo).
 """
 
+import asyncio
+import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from fastapi import HTTPException, status
 
+from app.repositories.comision_repository import ComisionRepository
 from app.repositories.materia_repository import MateriaRepository
+from app.repositories.rubrica_repository import RubricaRepository
 from app.services.gestion_inactividad import (
     NUNCA,
     RANGO,
@@ -23,12 +28,19 @@ from app.services.gestion_inactividad import (
     dias_inactividad,
 )
 from app.services.gestion_parser import (
+    SIN_COMISION,
     parse_comision,
     parse_regional,
     resolver_grupos_alumno,
 )
 from app.services.excel_service import ExcelService
-from app.services.moodle_service import MoodleService
+from app.services.moodle_service import (
+    MoodleAuthError,
+    MoodleConnectionError,
+    MoodleService,
+)
+
+logger = logging.getLogger(__name__)
 
 # --- Catálogos de filtros (lo que ofrece la UI) -------------------------------
 
@@ -104,6 +116,19 @@ class ResultadoGestion:
     total: int
 
 
+@dataclass
+class EntregaPendiente:
+    """Una entrega pendiente de corregir (entregada en Moodle, sin calificar)."""
+
+    trabajo: str
+    comision: str
+    tutor: str
+    nombre: str
+    apellido: str
+    email: str
+    fecha_entrega: str
+
+
 def _humanizar_inactividad(dias: int | None) -> str:
     if dias is None:
         return "Nunca"
@@ -113,9 +138,13 @@ def _humanizar_inactividad(dias: int | None) -> str:
 
 
 class GestionService:
+    _MOODLE_REINTENTOS = 3  # reintentos ante ConnectTimeout transitorio de Moodle
+
     def __init__(self, db):
         self.db = db
         self.materia_repo = MateriaRepository(db)
+        self.rubrica_repo = RubricaRepository(db)
+        self.comision_repo = ComisionRepository(db)
         self.moodle = MoodleService(db)
         self.excel = ExcelService(db)
 
@@ -227,12 +256,129 @@ class GestionService:
         materia_id: int,
         filtros: FiltrosGestion,
         *,
+        agrupar_por: str = "regional",
         now: int | None = None,
     ) -> tuple[bytes, str]:
-        """Consulta con los filtros y arma el .xlsx (una hoja por regional)."""
+        """Consulta con los filtros y arma el .xlsx.
+
+        `agrupar_por`: "regional" (Excel para Nexos) o "comision" (Excel para Tutores).
+        """
         materia = await self._resolver_curso(materia_id)
         resultado = await self.consultar(usuario, materia_id, filtros, now=now)
-        return self.excel.exportar_gestion(resultado, materia.nombre)
+        return self.excel.exportar_gestion(resultado, materia.nombre, agrupar_por=agrupar_por)
+
+    async def exportar_pendientes_excel(
+        self,
+        usuario,
+        materia_id: int,
+        *,
+        agrupar_por: str = "trabajo",
+    ) -> tuple[bytes, str]:
+        """Excel de entregas pendientes de corregir del curso (entregadas sin calificar).
+
+        `agrupar_por`: "trabajo" (Pendientes por Práctico) o "comision" (Pendientes
+        por Comisión). En ambos, las filas salen de la misma lista plana.
+
+        Eficiente: UNA sola consulta de participantes (get_enrolled_users_full) da
+        nombre/apellido/email, quién es alumno y la comisión (parseada del código del
+        grupo). Luego, por rúbrica, una sola consulta de submissions (cacheada por
+        assignment). NO consulta miembros por comisión.
+        """
+        materia = await self._resolver_curso(materia_id)
+        token, host = await self._token(usuario)
+        course_id = materia.moodle_course_id
+
+        rubricas = [
+            r for r in await self.rubrica_repo.get_by_materia(materia_id)
+            if r.activa and r.moodle_assign_id
+        ]
+
+        # 1 query: comisiones + tutores → mapa {moodle_group_id: "Tutor1, Tutor2"}.
+        # El puente comisión↔tutor es moodle_group_id (la comisión-código sale del nombre
+        # del grupo, pero el id de ESE grupo coincide con Comision.moodle_group_id).
+        tutor_por_group: dict[int, str] = {}
+        for c in await self.comision_repo.get_by_materia_con_tutores(materia_id):
+            if c.moodle_group_id:
+                tutor_por_group[c.moodle_group_id] = ", ".join(
+                    ct.tutor.nombre for ct in c.tutores if ct.tutor
+                )
+
+        # 1 consulta: de acá salen los alumnos, sus datos, su comisión y su tutor.
+        enrolled = await self.moodle.get_enrolled_users_full(token, host, course_id)
+        info_por_user: dict[int, dict] = {}
+        alumno_ids: set[int] = set()
+        for u in enrolled:
+            if not isinstance(u, dict) or "id" not in u:
+                continue
+            comision = SIN_COMISION
+            tutor = ""
+            for g in u.get("groups", []):
+                if parse_comision(g.get("name", "")):
+                    comision = parse_comision(g.get("name", ""))
+                    tutor = tutor_por_group.get(g.get("id"), "")
+                    break
+            info_por_user[u["id"]] = {
+                "nombre": u.get("firstname", ""),
+                "apellido": u.get("lastname", ""),
+                "email": u.get("email", ""),
+                "comision": comision,
+                "tutor": tutor,
+            }
+            if any(rol.get("shortname") == "student" for rol in u.get("roles", [])):
+                alumno_ids.add(u["id"])
+
+        cmid_map = await self.moodle._get_course_assignment_map(token, host, course_id)
+
+        pendientes: list[EntregaPendiente] = []
+        for r in rubricas:
+            instance_id = cmid_map.get(r.moodle_assign_id)
+            if not instance_id:
+                continue  # cmid sin assignment en Moodle → se omite
+
+            subs = await self._submissions_pendientes(token, host, instance_id, alumno_ids, r.titulo)
+            if subs is None:
+                continue  # falló tras reintentos → se saltea esa rúbrica (logueado)
+
+            for s in subs:
+                info = info_por_user.get(s.userid)
+                if info is None:
+                    continue  # submission de alguien que no es alumno del curso
+                pendientes.append(EntregaPendiente(
+                    trabajo=r.titulo,
+                    comision=info["comision"],
+                    tutor=info["tutor"],
+                    nombre=info["nombre"],
+                    apellido=info["apellido"],
+                    email=info["email"],
+                    fecha_entrega=self._fmt_fecha(getattr(s, "timemodified", None)),
+                ))
+
+        return self.excel.exportar_pendientes(pendientes, materia.nombre, agrupar_por=agrupar_por)
+
+    async def _submissions_pendientes(self, token, host, instance_id, alumno_ids, titulo):
+        """Submissions pendientes de una rúbrica, con reintentos ante ConnectTimeout
+        transitorio de Moodle. Devuelve None (y loguea) si falla tras los reintentos."""
+        ultimo_error = None
+        for intento in range(self._MOODLE_REINTENTOS):
+            try:
+                return await self.moodle.get_submissions_with_files(
+                    token, host, instance_id, alumno_ids, solo_pendientes=True
+                )
+            except (MoodleConnectionError, MoodleAuthError) as e:
+                ultimo_error = e
+                if intento < self._MOODLE_REINTENTOS - 1:
+                    await asyncio.sleep(0.5 * (intento + 1))
+        logger.warning(
+            "Pendientes: salteo rúbrica %r tras %d intentos: %s",
+            titulo, self._MOODLE_REINTENTOS, ultimo_error,
+        )
+        return None
+
+    @staticmethod
+    def _fmt_fecha(timemodified: int | None) -> str:
+        if not timemodified:
+            return ""
+        return datetime.fromtimestamp(timemodified).strftime("%d/%m/%Y %H:%M")
 
     # --- helpers privados -----------------------------------------------------
 

@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { Send, CheckCircle, Pencil, Info, RefreshCw, AlertTriangle } from 'lucide-react';
 import { StatCard } from '@/features/dashboard/components/StatCard';
-import { Spinner } from '@/shared/components/ui';
+import { HelpButton, LoadingState } from '@/shared/components/ui';
+import { helpContent } from '@/shared/content/helpContent';
 import { usePorEntregar } from '../hooks/usePorEntregar';
 import { EntregarTodoButton } from '../components/EntregarTodoButton';
 import { PorEntregarTable } from '../components/PorEntregarTable';
@@ -11,17 +12,13 @@ export function PorEntregarPage() {
   const { data, isLoading, isFetching, refetch, error } = usePorEntregar();
 
   if (isLoading) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <Spinner />
-      </div>
-    );
+    return <LoadingState title="Cargando…" subtitle="Buscando correcciones por entregar." />;
   }
 
   if (error) {
     return (
       <div className="space-y-6 p-6">
-        <h1 className="text-2xl font-bold text-foreground">Por entregar</h1>
+        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Por entregar</h1><HelpButton title="Ayuda — Por entregar" content={helpContent.porEntregar} /></div>
         <div className="flex flex-col items-center gap-4 rounded-lg border border-border bg-card p-8 text-center">
           <AlertTriangle className="h-10 w-10 text-warning" />
           <p className="font-semibold text-foreground">No se pudo cargar la lista</p>
@@ -47,7 +44,7 @@ export function PorEntregarPage() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Por entregar</h1>
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Por entregar</h1><HelpButton title="Ayuda — Por entregar" content={helpContent.porEntregar} /></div>
           <p className="text-sm text-muted-foreground">
             Correcciones hechas en Active-IA que todavía no subiste a Moodle.
           </p>

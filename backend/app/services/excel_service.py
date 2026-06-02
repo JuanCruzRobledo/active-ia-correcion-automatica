@@ -234,45 +234,59 @@ class ExcelService:
         return excel_bytes, excel_filename
 
     # =========================================================================
-    # Gestión (pantalla rol GESTOR) — export multi-hoja por Regional
+    # Gestión (pantalla rol GESTOR) — export multi-hoja
     # =========================================================================
 
     GESTION_HEADERS = ["Nombre", "Apellido", "Email", "Regional", "Comisión", "Tiempo de inactividad"]
 
-    def exportar_gestion(self, resultado, materia_nombre: str) -> tuple[bytes, str]:
-        """Arma el .xlsx de la pantalla Gestión: una hoja por Regional (ordenada por
-        comisión) con las columnas pedidas + total por hoja, y una hoja "Resumen" con
-        el total por regional y el global.
+    def exportar_gestion(
+        self,
+        resultado,
+        materia_nombre: str,
+        agrupar_por: str = "regional",
+    ) -> tuple[bytes, str]:
+        """Arma el .xlsx de la pantalla Gestión, con las columnas pedidas, total por
+        hoja y una hoja "Resumen" (total por grupo + global).
+
+        `agrupar_por`:
+        - "regional" (Excel para Nexos): una hoja por Regional, ordenada por comisión.
+        - "comision" (Excel para Tutores): una hoja por Comisión, ordenada por regional.
 
         `resultado` es un ResultadoGestion (items: AlumnoGestion, total: int). No toca
         la DB: se construye sólo a partir del resultado ya consultado.
         """
+        por_comision = agrupar_por == "comision"
+        clave = (lambda a: a.comision) if por_comision else (lambda a: a.regional)
+        orden_interno = (
+            (lambda a: (a.regional.lower(), a.apellido.lower(), a.nombre.lower()))
+            if por_comision
+            else (lambda a: (a.comision, a.apellido.lower(), a.nombre.lower()))
+        )
+        etiqueta = "Comisión" if por_comision else "Regional"
+        variante = "tutores" if por_comision else "nexos"
+
         header_fill = PatternFill(start_color="1F4788", end_color="1F4788", fill_type="solid")
         header_font = Font(bold=True, color="FFFFFF")
         thin = Side(style="thin")
         border = Border(left=thin, right=thin, top=thin, bottom=thin)
         center = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-        # Agrupar por regional (los items ya vienen ordenados; igual reordenamos por las dudas).
         grupos: dict[str, list] = {}
         for a in resultado.items:
-            grupos.setdefault(a.regional, []).append(a)
+            grupos.setdefault(clave(a), []).append(a)
 
         wb = Workbook()
         resumen = wb.active
         resumen.title = "Resumen"
 
-        # --- Una hoja por regional ---
-        for regional in sorted(grupos):
-            alumnos = sorted(
-                grupos[regional],
-                key=lambda x: (x.comision, x.apellido.lower(), x.nombre.lower()),
-            )
-            ws = wb.create_sheet(title=self._sheet_title(regional))
+        # --- Una hoja por grupo (regional o comisión) ---
+        for grupo in sorted(grupos):
+            alumnos = sorted(grupos[grupo], key=orden_interno)
+            ws = wb.create_sheet(title=self._sheet_title(grupo))
 
             ws.merge_cells("A1:F1")
             titulo = ws["A1"]
-            titulo.value = f"Regional: {regional}"
+            titulo.value = f"{etiqueta}: {grupo}"
             titulo.font = Font(size=13, bold=True, color="1F4788")
             titulo.alignment = Alignment(horizontal="center", vertical="center")
 
@@ -301,16 +315,16 @@ class ExcelService:
         # --- Hoja Resumen ---
         resumen["A1"] = f"Gestión — {materia_nombre}"
         resumen["A1"].font = Font(size=14, bold=True, color="1F4788")
-        for col, h in enumerate(["Regional", "Alumnos"], 1):
+        for col, h in enumerate([etiqueta, "Alumnos"], 1):
             c = resumen.cell(row=3, column=col, value=h)
             c.font = header_font
             c.fill = header_fill
             c.alignment = Alignment(horizontal="center", vertical="center")
             c.border = border
         r = 4
-        for regional in sorted(grupos):
-            resumen.cell(row=r, column=1, value=regional)
-            resumen.cell(row=r, column=2, value=len(grupos[regional]))
+        for grupo in sorted(grupos):
+            resumen.cell(row=r, column=1, value=grupo)
+            resumen.cell(row=r, column=2, value=len(grupos[grupo]))
             r += 1
         resumen.cell(row=r, column=1, value="Total").font = Font(bold=True)
         resumen.cell(row=r, column=2, value=resultado.total).font = Font(bold=True)
@@ -323,7 +337,7 @@ class ExcelService:
         buffer.close()
 
         fecha = datetime.now().strftime("%Y%m%d")
-        filename = self._sanitize_filename(f"gestion_{materia_nombre}_{fecha}.xlsx")
+        filename = self._sanitize_filename(f"gestion_{variante}_{materia_nombre}_{fecha}.xlsx")
         return data, filename
 
     def _sheet_title(self, regional: str) -> str:
@@ -332,6 +346,141 @@ class ExcelService:
 
         limpio = re.sub(r"[:\\/?*\[\]]", " ", regional).strip()
         return (limpio or "Sin regional")[:31]
+
+    def exportar_pendientes(self, pendientes, materia_nombre: str, agrupar_por: str = "trabajo") -> tuple[bytes, str]:
+        """Arma el .xlsx de "entregas pendientes" (entregadas en Moodle sin corregir).
+
+        `agrupar_por`:
+        - "trabajo" (Pendientes por Práctico): hoja por trabajo, columnas
+          Comisión·Nombre·Apellido·Email·Fecha; resumen = pendientes por práctico.
+        - "comision" (Pendientes por Comisión): hoja por comisión, columnas
+          Trabajo·Nombre·Apellido·Email·Fecha; resumen = pendientes por comisión.
+
+        La primera hoja siempre es "Resumen". `pendientes` es una lista plana de
+        EntregaPendiente (trabajo, comision, nombre, apellido, email, fecha_entrega).
+        """
+        por_comision = agrupar_por == "comision"
+        if por_comision:
+            # Hoja por comisión: el tutor es constante por hoja → va en título y Resumen.
+            clave = lambda p: p.comision  # noqa: E731
+            etiqueta = "Comisión"
+            headers = ["Trabajo", "Nombre", "Apellido", "Email", "Fecha de entrega"]
+            fila = lambda p: [p.trabajo, p.nombre, p.apellido, p.email, p.fecha_entrega]  # noqa: E731
+            orden = lambda p: (p.trabajo, p.apellido.lower(), p.nombre.lower())  # noqa: E731
+            anchos = [24, 22, 22, 30, 20]
+            variante = "comision"
+        else:
+            # Hoja por trabajo: la comisión varía por fila → tutor como columna al lado.
+            clave = lambda p: p.trabajo  # noqa: E731
+            etiqueta = "Trabajo"
+            headers = ["Comisión", "Tutor", "Nombre", "Apellido", "Email", "Fecha de entrega"]
+            fila = lambda p: [p.comision, p.tutor, p.nombre, p.apellido, p.email, p.fecha_entrega]  # noqa: E731
+            orden = lambda p: (p.comision, p.apellido.lower(), p.nombre.lower())  # noqa: E731
+            anchos = [18, 26, 22, 22, 30, 20]
+            variante = "practico"
+
+        header_fill = PatternFill(start_color="1F4788", end_color="1F4788", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        thin = Side(style="thin")
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+        grupos: dict[str, list] = {}
+        for p in pendientes:
+            grupos.setdefault(clave(p), []).append(p)
+
+        # Tutor por comisión (constante por hoja): lo toma de la primera fila del grupo.
+        tutor_de: dict[str, str] = {}
+        if por_comision:
+            for grupo, filas in grupos.items():
+                tutor_de[grupo] = filas[0].tutor if filas else ""
+
+        wb = Workbook()
+        resumen = wb.active
+        resumen.title = "Resumen"
+
+        # --- Hoja Resumen (primera) ---
+        resumen["A1"] = f"Pendientes — {materia_nombre}"
+        resumen["A1"].font = Font(size=14, bold=True, color="1F4788")
+        resumen_headers = [etiqueta, "Tutor", "Pendientes"] if por_comision else [etiqueta, "Pendientes"]
+        col_total = len(resumen_headers)  # columna donde va el conteo
+        for col, h in enumerate(resumen_headers, 1):
+            c = resumen.cell(row=3, column=col, value=h)
+            c.font = header_font
+            c.fill = header_fill
+            c.alignment = Alignment(horizontal="center", vertical="center")
+            c.border = border
+        rr = 4
+        for grupo in sorted(grupos):
+            resumen.cell(row=rr, column=1, value=grupo)
+            if por_comision:
+                resumen.cell(row=rr, column=2, value=tutor_de.get(grupo, ""))
+            resumen.cell(row=rr, column=col_total, value=len(grupos[grupo]))
+            rr += 1
+        resumen.cell(row=rr, column=1, value="Total").font = Font(bold=True)
+        resumen.cell(row=rr, column=col_total, value=len(pendientes)).font = Font(bold=True)
+        resumen.column_dimensions["A"].width = 28
+        if por_comision:
+            resumen.column_dimensions["B"].width = 26
+            resumen.column_dimensions["C"].width = 12
+        else:
+            resumen.column_dimensions["B"].width = 12
+
+        # --- Una hoja por grupo (trabajo o comisión) ---
+        usados: set[str] = {"Resumen"}
+        merge_end = get_column_letter(len(headers))
+        for grupo in sorted(grupos):
+            ws = wb.create_sheet(title=self._titulo_unico(grupo, usados))
+
+            ws.merge_cells(f"A1:{merge_end}1")
+            t = ws["A1"]
+            titulo = f"{etiqueta}: {grupo}"
+            if por_comision and tutor_de.get(grupo):
+                titulo += f" — Tutor: {tutor_de[grupo]}"
+            t.value = titulo
+            t.font = Font(size=13, bold=True, color="1F4788")
+            t.alignment = Alignment(horizontal="center", vertical="center")
+
+            for col, h in enumerate(headers, 1):
+                c = ws.cell(row=2, column=col, value=h)
+                c.font = header_font
+                c.fill = header_fill
+                c.alignment = center
+                c.border = border
+
+            row = 3
+            for p in sorted(grupos[grupo], key=orden):
+                for col, val in enumerate(fila(p), 1):
+                    cell = ws.cell(row=row, column=col, value=val)
+                    cell.border = border
+                row += 1
+
+            ws.cell(row=row + 1, column=1, value=f"Total pendientes: {len(grupos[grupo])}").font = Font(bold=True)
+
+            for col, width in enumerate(anchos, 1):
+                ws.column_dimensions[get_column_letter(col)].width = width
+            ws.freeze_panes = "A3"
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        data = buffer.getvalue()
+        buffer.close()
+
+        fecha = datetime.now().strftime("%Y%m%d")
+        filename = self._sanitize_filename(f"pendientes_{variante}_{materia_nombre}_{fecha}.xlsx")
+        return data, filename
+
+    def _titulo_unico(self, titulo: str, usados: set[str]) -> str:
+        """Nombre de hoja válido y único (Excel no permite hojas con el mismo nombre)."""
+        base = self._sheet_title(titulo)
+        candidato = base
+        i = 2
+        while candidato in usados:
+            sufijo = f" ({i})"
+            candidato = base[: 31 - len(sufijo)] + sufijo
+            i += 1
+        usados.add(candidato)
+        return candidato
 
     def _get_nota_fill(self, nota: float) -> PatternFill:
         """

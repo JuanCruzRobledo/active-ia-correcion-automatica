@@ -11,8 +11,9 @@ Todos requieren rol GESTOR o ADMIN. El 424 (sin credenciales Moodle) y el 404
 """
 
 from dataclasses import asdict
+from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,12 +91,37 @@ async def consultar(
 async def exportar_excel(
     materia_id: int,
     filtros: FiltrosGestionRequest,
+    agrupar_por: Literal["regional", "comision"] = Query("regional"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> StreamingResponse:
+    """`agrupar_por`: 'regional' (Excel para Nexos) o 'comision' (Excel para Tutores)."""
     require_gestor_or_admin(current_user)
     service = GestionService(db)
-    data, filename = await service.exportar_excel(current_user, materia_id, _to_filtros(filtros))
+    data, filename = await service.exportar_excel(
+        current_user, materia_id, _to_filtros(filtros), agrupar_por=agrupar_por
+    )
+    return StreamingResponse(
+        iter([data]),
+        media_type=XLSX_MEDIA,
+        headers={"Content-Disposition": f'attachment; filename="{_ascii_filename(filename)}"'},
+    )
+
+
+@router.get("/cursos/{materia_id}/pendientes/excel", response_class=StreamingResponse)
+async def exportar_pendientes_excel(
+    materia_id: int,
+    agrupar_por: Literal["trabajo", "comision"] = Query("trabajo"),
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Excel de entregas pendientes de corregir del curso. `agrupar_por`: 'trabajo'
+    (por práctico) o 'comision'. Consulta Moodle en vivo, puede tardar unos segundos."""
+    require_gestor_or_admin(current_user)
+    service = GestionService(db)
+    data, filename = await service.exportar_pendientes_excel(
+        current_user, materia_id, agrupar_por=agrupar_por
+    )
     return StreamingResponse(
         iter([data]),
         media_type=XLSX_MEDIA,

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, CheckCircle, Users, RefreshCw, AlertTriangle } from 'lucide-react';
 import { StatCard } from '@/features/dashboard/components/StatCard';
-import { Spinner } from '@/shared/components/ui';
+import { HelpButton, LoadingState } from '@/shared/components/ui';
+import { helpContent } from '@/shared/content/helpContent';
 import { MateriaBlock } from '../components';
 import { ImportarButton } from '../components/ImportarButton';
 import { usePendientesMoodle } from '../hooks/usePendientesMoodle';
@@ -14,9 +15,10 @@ export function PendientesPage() {
 
   if (isLoading) {
     return (
-      <div className="flex h-64 items-center justify-center">
-        <Spinner />
-      </div>
+      <LoadingState
+        title="Cargando pendientes…"
+        subtitle="Consultando Moodle, puede tardar unos segundos."
+      />
     );
   }
 
@@ -29,7 +31,7 @@ export function PendientesPage() {
     return (
       <div className="space-y-6 p-6">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Pendientes Moodle</h1>
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Pendientes Moodle</h1><HelpButton title="Ayuda — Pendientes" content={helpContent.pendientes} /></div>
           {!is424 && (
             <button
               onClick={refresh}
@@ -89,7 +91,7 @@ export function PendientesPage() {
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-foreground">Pendientes Moodle</h1>
+        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Pendientes Moodle</h1><HelpButton title="Ayuda — Pendientes" content={helpContent.pendientes} /></div>
         <div className="flex items-center gap-2">
           {totalEspera > 0 && (
             <ImportarButton

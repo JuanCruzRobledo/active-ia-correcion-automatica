@@ -1,5 +1,9 @@
 // Tipos de la feature "Gestión" (rol GESTOR) — espejo de app/schemas/gestion.py.
 
+// Eje del Excel: 'regional' = una hoja por regional (Nexos);
+// 'comision' = una hoja por comisión, ordenado por regional (Tutores).
+export type AgruparPor = 'regional' | 'comision';
+
 export interface CursoGestion {
   materia_id: number;
   nombre: string;

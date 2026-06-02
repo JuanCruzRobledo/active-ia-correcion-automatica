@@ -14,7 +14,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks';
 import { useProfile } from '@/features/perfil/hooks/usePerfil';
 import { ROL } from '@/shared/types';
-import { Spinner } from '@/shared/components/ui/Spinner';
+import { LoadingState } from '@/shared/components/ui';
 import { Alert } from '@/shared/components/ui/Alert';
 import { Button } from '@/shared/components/ui/Button';
 import { DashboardAdmin } from '../components/DashboardAdmin';
@@ -27,11 +27,7 @@ export function DashboardPage() {
   const navigate = useNavigate();
 
   if (isLoading) {
-    return (
-      <div className="flex h-[50vh] items-center justify-center">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!user) {

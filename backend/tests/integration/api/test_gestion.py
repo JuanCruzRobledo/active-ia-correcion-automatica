@@ -99,6 +99,63 @@ async def test_exportar_excel(auth):
 
 
 @pytest.mark.asyncio
+async def test_exportar_excel_por_comision_pasa_agrupar_por(auth):
+    with patch("app.routers.gestion.GestionService") as cls:
+        cls.return_value.exportar_excel = AsyncMock(return_value=(b"xlsx", "gestion_tutores.xlsx"))
+        async with AsyncClient(transport=ASGI, base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/gestion/cursos/1/excel?agrupar_por=comision", json={}
+            )
+
+    assert resp.status_code == 200
+    assert cls.return_value.exportar_excel.call_args.kwargs["agrupar_por"] == "comision"
+
+
+@pytest.mark.asyncio
+async def test_exportar_excel_agrupar_por_invalido_es_422(auth):
+    with patch("app.routers.gestion.GestionService"):
+        async with AsyncClient(transport=ASGI, base_url="http://test") as client:
+            resp = await client.post("/api/v1/gestion/cursos/1/excel?agrupar_por=zzz", json={})
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_exportar_pendientes_excel(auth):
+    with patch("app.routers.gestion.GestionService") as cls:
+        cls.return_value.exportar_pendientes_excel = AsyncMock(
+            return_value=(b"PK\x03\x04pend", "pendientes_Prog_I.xlsx")
+        )
+        async with AsyncClient(transport=ASGI, base_url="http://test") as client:
+            resp = await client.get("/api/v1/gestion/cursos/1/pendientes/excel")
+
+    assert resp.status_code == 200
+    assert "spreadsheetml" in resp.headers["content-type"]
+    assert "attachment" in resp.headers["content-disposition"]
+    assert resp.content == b"PK\x03\x04pend"
+
+
+@pytest.mark.asyncio
+async def test_pendientes_excel_por_comision_pasa_agrupar_por(auth):
+    with patch("app.routers.gestion.GestionService") as cls:
+        cls.return_value.exportar_pendientes_excel = AsyncMock(return_value=(b"x", "p.xlsx"))
+        async with AsyncClient(transport=ASGI, base_url="http://test") as client:
+            resp = await client.get("/api/v1/gestion/cursos/1/pendientes/excel?agrupar_por=comision")
+
+    assert resp.status_code == 200
+    assert cls.return_value.exportar_pendientes_excel.call_args.kwargs["agrupar_por"] == "comision"
+
+
+@pytest.mark.asyncio
+async def test_pendientes_excel_agrupar_por_invalido_es_422(auth):
+    with patch("app.routers.gestion.GestionService"):
+        async with AsyncClient(transport=ASGI, base_url="http://test") as client:
+            resp = await client.get("/api/v1/gestion/cursos/1/pendientes/excel?agrupar_por=zzz")
+
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_consulta_inactividad_invalida_es_422(auth):
     with patch("app.routers.gestion.GestionService"):
         async with AsyncClient(transport=ASGI, base_url="http://test") as client:

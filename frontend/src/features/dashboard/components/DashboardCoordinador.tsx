@@ -12,18 +12,15 @@ import { GraduationCap, FileText, Clock } from 'lucide-react';
 import { StatCard } from './StatCard';
 import { CorrectionsProgress } from './CorrectionsProgress';
 import { useDashboardCoordinadorStats } from '../hooks';
-import { Spinner } from '@/shared/components/ui';
+import { HelpButton, LoadingState } from '@/shared/components/ui';
+import { helpContent } from '@/shared/content/helpContent';
 
 export function DashboardCoordinador() {
   const { data: dashboardData, isLoading, error } = useDashboardCoordinadorStats();
 
   // Loading state
   if (isLoading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState title="Cargando tu panel…" />;
   }
 
   // Error state
@@ -51,7 +48,7 @@ export function DashboardCoordinador() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard - Mis Materias</h1>
+        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Dashboard - Mis Materias</h1><HelpButton title="Ayuda — Dashboard" content={helpContent.dashboard} /></div>
         <p className="text-sm text-muted-foreground">
           Estado de correcciones y comisiones asignadas
         </p>

@@ -25,12 +25,14 @@ import {
   Select,
   Badge,
   Table,
-  Spinner,
+  LoadingState,
+  HelpButton,
   EmptyState,
   Dropdown,
   type TableColumn,
   type SelectOption,
 } from '@/shared/components/ui';
+import { helpContent } from '@/shared/content/helpContent';
 import { formatDate } from '@/shared/utils';
 import { useMaterias } from '@/features/materias/hooks';
 import { useAuth } from '@/features/auth/hooks';
@@ -332,11 +334,7 @@ export const RubricasPage = () => {
   ];
 
   if (isLoading) {
-    return (
-      <div className="flex h-96 items-center justify-center">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState title="Cargando rúbricas…" />;
   }
 
   if (error) {
@@ -356,7 +354,7 @@ export const RubricasPage = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Rúbricas</h1>
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Rúbricas</h1><HelpButton title="Ayuda — Rúbricas" content={helpContent.rubricas} /></div>
           <p className="text-sm text-muted-foreground mt-1">
             Gestión de criterios de evaluación
           </p>

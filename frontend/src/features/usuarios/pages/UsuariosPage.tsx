@@ -19,12 +19,14 @@ import {
   Select,
   Badge,
   Table,
-  Spinner,
+  LoadingState,
+  HelpButton,
   EmptyState,
   Dropdown,
   type TableColumn,
   type SelectOption,
 } from '@/shared/components/ui';
+import { helpContent } from '@/shared/content/helpContent';
 import { formatDate } from '@/shared/utils';
 
 export const UsuariosPage = () => {
@@ -229,11 +231,7 @@ export const UsuariosPage = () => {
 
   // Loading state
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState title="Cargando usuarios…" />;
   }
 
   // Error state
@@ -254,7 +252,7 @@ export const UsuariosPage = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Usuarios</h1>
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-gray-900">Usuarios</h1><HelpButton title="Ayuda — Usuarios" content={helpContent.usuarios} /></div>
           <p className="text-sm text-gray-500 mt-1">
             Gestiona los usuarios del sistema
           </p>

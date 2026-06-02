@@ -15,7 +15,8 @@ import { StatCard } from './StatCard';
 import { QuickActions } from './QuickActions';
 import { RecentActivity } from './RecentActivity';
 import { useDashboardAdminStats, useActividadesRecientes } from '../hooks';
-import { Spinner } from '@/shared/components/ui';
+import { HelpButton, LoadingState } from '@/shared/components/ui';
+import { helpContent } from '@/shared/content/helpContent';
 
 export function DashboardAdmin() {
   const navigate = useNavigate();
@@ -26,11 +27,7 @@ export function DashboardAdmin() {
 
   // Loading state
   if (isLoading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState title="Cargando tu panel…" />;
   }
 
   // Error state
@@ -89,7 +86,7 @@ export function DashboardAdmin() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard Administrativo</h1>
+        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Dashboard Administrativo</h1><HelpButton title="Ayuda — Dashboard" content={helpContent.dashboard} /></div>
         <p className="text-sm text-muted-foreground">
           Vista general del sistema Active-IA
         </p>

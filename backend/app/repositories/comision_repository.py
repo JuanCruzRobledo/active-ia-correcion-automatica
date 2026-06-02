@@ -153,6 +153,22 @@ class ComisionRepository:
         )
         return list(result.scalars().all())
 
+    async def get_by_materia_con_tutores(self, materia_id: int) -> list[Comision]:
+        """Comisiones activas de una materia con sus tutores (y el usuario) eager-loaded.
+
+        Una sola query: evita N+1 al mapear comisión → tutor (pantalla Gestión).
+        """
+        result = await self.db.execute(
+            select(Comision)
+            .where(
+                Comision.materia_id == materia_id,
+                Comision.activa == True,  # noqa: E712
+            )
+            .options(selectinload(Comision.tutores).selectinload(ComisionTutor.tutor))
+            .order_by(Comision.nombre.asc())
+        )
+        return list(result.scalars().all())
+
     async def get_by_tutor(self, tutor_id: int) -> list[Comision]:
         """
         Get all active comisiones assigned to a tutor.
