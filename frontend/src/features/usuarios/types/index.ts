@@ -6,7 +6,7 @@
  * Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 3
  */
 
-export type RolEnum = 'ADMIN' | 'COORDINADOR' | 'TUTOR';
+export type RolEnum = 'ADMIN' | 'COORDINADOR' | 'TUTOR' | 'GESTOR';
 
 export interface Usuario {
   id: number;

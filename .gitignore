@@ -9,6 +9,8 @@
 .env.production
 .env.*.local
 .env.bak
+.env.db
+.env.db.*
 *.bak
 
 # Archivos de configuración con secretos

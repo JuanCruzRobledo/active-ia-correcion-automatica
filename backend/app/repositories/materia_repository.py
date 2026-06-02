@@ -164,6 +164,21 @@ class MateriaRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_con_moodle(self) -> list[Materia]:
+        """Materias activas vinculadas a un curso de Moodle (moodle_course_id no nulo).
+
+        Son los cursos que el Gestor puede elegir en la pantalla "Gestión".
+        """
+        result = await self.db.execute(
+            select(Materia)
+            .where(
+                Materia.activa == True,  # noqa: E712
+                Materia.moodle_course_id.isnot(None),
+            )
+            .order_by(Materia.nombre.asc())
+        )
+        return list(result.scalars().all())
+
     async def exists_codigo(self, codigo: str) -> bool:
         """
         Check if a codigo already exists.

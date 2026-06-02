@@ -14,6 +14,7 @@ class RolEnum(str, Enum):
     ADMIN = "ADMIN"
     COORDINADOR = "COORDINADOR"
     TUTOR = "TUTOR"
+    GESTOR = "GESTOR"  # Gestión/reportes de usuarios de Moodle (pantalla "Gestión")
 
 
 class TipoRubricaEnum(str, Enum):

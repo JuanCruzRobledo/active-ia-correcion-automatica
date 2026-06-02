@@ -101,6 +101,8 @@ class MoodleService:
         self._grades_cache: dict[int, dict[int, int]] = {}  # instance_id -> {userid: timemodified}
         # Detalle del grade más reciente por user (timemodified + valor crudo de Moodle).
         self._grades_full_cache: dict[int, dict[int, dict]] = {}  # instance_id -> {userid: {timemodified, grade}}
+        # Participantes completos por (course_id, only_active) — evita refetch en la misma request.
+        self._enrolled_cache: dict[tuple[int, bool], list] = {}
 
     async def get_token(
         self,
@@ -248,6 +250,78 @@ class MoodleService:
         )
         self._group_members[group_id] = member_ids
         return member_ids
+
+    async def get_enrolled_users_full(
+        self,
+        token: str,
+        moodle_host: str,
+        course_id: int,
+        *,
+        only_active: bool = False,
+    ) -> list[dict]:
+        """Trae los matriculados de un curso con todos los campos que usa Gestión.
+
+        core_enrol_get_enrolled_users devuelve por usuario: id, firstname, lastname,
+        fullname, email, roles[] (con shortname), groups[] (con name), lastcourseaccess,
+        lastaccess (confirmado en T0). `only_active=True` agrega onlyactive=1 (solo
+        matriculaciones activas). Cacheado por (course_id, only_active).
+        """
+        cache_key = (course_id, only_active)
+        if cache_key in self._enrolled_cache:
+            return self._enrolled_cache[cache_key]
+
+        url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
+        params = {
+            "wstoken": token,
+            "wsfunction": "core_enrol_get_enrolled_users",
+            "moodlewsrestformat": "json",
+            "courseid": course_id,
+        }
+        if only_active:
+            params["options[0][name]"] = "onlyactive"
+            params["options[0][value]"] = 1
+
+        try:
+            # Timeout amplio: cursos grandes pueden tardar >30s (visto en T0).
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.TimeoutException as e:
+            raise MoodleConnectionError(f"Timeout obteniendo participantes: {e}") from e
+        except httpx.RequestError as e:
+            raise MoodleConnectionError(f"Error de red obteniendo participantes: {e}") from e
+
+        if isinstance(data, dict) and "exception" in data:
+            if "invalidtoken" in str(data).lower():
+                raise MoodleAuthError("Token Moodle inválido")
+            raise MoodleConnectionError(
+                f"Error Moodle al obtener participantes: {data.get('message', '')}"
+            )
+
+        self._enrolled_cache[cache_key] = data
+        return data
+
+    async def get_enrolled_users_with_status(
+        self,
+        token: str,
+        moodle_host: str,
+        course_id: int,
+    ) -> list[dict]:
+        """Devuelve TODOS los matriculados, anotando cada uno con `suspendido` (bool).
+
+        Moodle no expone el estado de la matriculación por usuario (T0), así que se
+        resuelve por DOBLE llamada: los que están en 'todos' (onlyactive=0) pero no en
+        'activos' (onlyactive=1) están suspendidos.
+        """
+        todos = await self.get_enrolled_users_full(token, moodle_host, course_id, only_active=False)
+        activos = await self.get_enrolled_users_full(token, moodle_host, course_id, only_active=True)
+
+        activos_ids = {u["id"] for u in activos if isinstance(u, dict) and "id" in u}
+        for u in todos:
+            if isinstance(u, dict):
+                u["suspendido"] = u.get("id") not in activos_ids
+        return todos
 
     async def _fetch_submissions(
         self,

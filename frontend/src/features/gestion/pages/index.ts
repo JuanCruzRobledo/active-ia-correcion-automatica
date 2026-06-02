@@ -1,0 +1,1 @@
+export { GestionPage } from './GestionPage';

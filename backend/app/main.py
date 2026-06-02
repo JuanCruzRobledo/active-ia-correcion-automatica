@@ -167,6 +167,11 @@ def register_routers(app: FastAPI) -> None:
 
     app.include_router(por_entregar_router, prefix="/api/v1")
 
+    # Gestión (rol GESTOR — reportes/export de usuarios de Moodle)
+    from app.routers.gestion import router as gestion_router
+
+    app.include_router(gestion_router, prefix="/api/v1")
+
     # Público (Fase 3 — PDF de devolución sin JWT, vía token firmado)
     from app.routers.public_docs import router as public_docs_router
 

@@ -11,6 +11,7 @@ import { RubricasPage } from '@/features/rubricas/pages/RubricasPage';
 import { EntregasPage } from '@/features/entregas/pages/EntregasPage';
 import { PendientesPage } from '@/features/pendientes/pages';
 import { PorEntregarPage } from '@/features/por-entregar/pages';
+import { GestionPage } from '@/features/gestion/pages';
 import { PerfilPage } from '@/features/perfil/pages/PerfilPage';
 
 export const router = createBrowserRouter([
@@ -76,6 +77,11 @@ export const router = createBrowserRouter([
       {
         path: 'por-entregar',
         element: <PorEntregarPage />,
+      },
+      // Gestor routes
+      {
+        path: 'gestion',
+        element: <GestionPage />,
       },
       // Common routes
       {
