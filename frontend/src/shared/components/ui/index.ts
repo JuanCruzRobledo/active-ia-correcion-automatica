@@ -18,8 +18,14 @@ export type { SelectProps, SelectOption } from './Select';
 export { Spinner } from './Spinner';
 export type { SpinnerProps } from './Spinner';
 
+export { LoadingState } from './LoadingState';
+export type { LoadingStateProps } from './LoadingState';
+
 export { Modal } from './Modal';
 export type { ModalProps } from './Modal';
+
+export { HelpButton } from './HelpButton';
+export type { HelpButtonProps } from './HelpButton';
 
 export { Progress } from './Progress';
 export type { ProgressProps } from './Progress';

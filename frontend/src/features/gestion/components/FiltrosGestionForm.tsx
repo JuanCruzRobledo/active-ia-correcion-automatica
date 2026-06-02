@@ -1,14 +1,17 @@
 import { Search, Download } from 'lucide-react';
-import type { FiltrosDisponibles, FiltrosGestion } from '../types';
+import type { AgruparPor, FiltrosDisponibles, FiltrosGestion } from '../types';
+import { botonAccionCls } from './botonAccion';
 
 interface Props {
   opciones: FiltrosDisponibles;
   filtros: FiltrosGestion;
   onChange: (f: FiltrosGestion) => void;
   onConsultar: () => void;
-  onDescargar: () => void;
+  onDescargar: (agruparPor: AgruparPor) => void;
   consultando: boolean;
-  descargando: boolean;
+  descargando: AgruparPor | null;
+  /** Deshabilita TODOS los botones mientras hay alguna operación en curso. */
+  bloqueado: boolean;
 }
 
 function toggle(arr: string[], val: string): string[] {
@@ -27,6 +30,7 @@ export function FiltrosGestionForm({
   onDescargar,
   consultando,
   descargando,
+  bloqueado,
 }: Props) {
   const set = (parcial: Partial<FiltrosGestion>) =>
     onChange({ ...filtros, ...parcial });
@@ -130,22 +134,26 @@ export function FiltrosGestionForm({
         />
       </div>
 
-      <div className="flex items-center gap-2">
-        <button
-          onClick={onConsultar}
-          disabled={consultando}
-          className="flex cursor-pointer items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-        >
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={onConsultar} disabled={bloqueado} className={botonAccionCls(consultando)}>
           <Search className="h-4 w-4" />
           {consultando ? 'Consultando…' : 'Consultar'}
         </button>
         <button
-          onClick={onDescargar}
-          disabled={descargando}
-          className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => onDescargar('regional')}
+          disabled={bloqueado}
+          className={botonAccionCls(descargando === 'regional')}
         >
           <Download className="h-4 w-4" />
-          {descargando ? 'Generando…' : 'Descargar Excel'}
+          {descargando === 'regional' ? 'Generando…' : 'Excel para Nexos'}
+        </button>
+        <button
+          onClick={() => onDescargar('comision')}
+          disabled={bloqueado}
+          className={botonAccionCls(descargando === 'comision')}
+        >
+          <Download className="h-4 w-4" />
+          {descargando === 'comision' ? 'Generando…' : 'Excel para Tutores'}
         </button>
       </div>
     </div>

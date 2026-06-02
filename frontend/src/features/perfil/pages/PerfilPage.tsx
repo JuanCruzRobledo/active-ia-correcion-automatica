@@ -11,7 +11,8 @@ import { Button } from '../../../shared/components/ui/Button';
 import { Input } from '../../../shared/components/ui/Input';
 import { Modal } from '../../../shared/components/ui/Modal';
 import { Badge } from '../../../shared/components/ui/Badge';
-import { Spinner } from '../../../shared/components/ui/Spinner';
+import { HelpButton, LoadingState } from '@/shared/components/ui';
+import { helpContent } from '@/shared/content/helpContent';
 
 const moodleSchema = z.object({
   moodle_host: z.string().url('Ingresá una URL válida').min(1),
@@ -75,11 +76,7 @@ export const PerfilPage = () => {
   const [passwordError, setPasswordError] = useState('');
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState title="Cargando tu perfil…" />;
   }
 
   if (!profile) {
@@ -175,7 +172,7 @@ export const PerfilPage = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground">Mi Perfil</h1>
+        <div className="flex items-center gap-2"><h1 className="text-3xl font-bold text-foreground">Mi Perfil</h1><HelpButton title="Ayuda — Mi Perfil" content={helpContent.perfil} /></div>
         <p className="text-sm text-muted-foreground">
           Configuración de cuenta y API Key
         </p>

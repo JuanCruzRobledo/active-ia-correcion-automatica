@@ -1,15 +1,26 @@
 import { useState } from 'react';
-import { AlertTriangle, Users } from 'lucide-react';
-import { Spinner } from '@/shared/components/ui';
+import { AlertTriangle, ClipboardList, Users } from 'lucide-react';
+import { HelpButton, LoadingState } from '@/shared/components/ui';
+import { helpContent } from '@/shared/content/helpContent';
 import {
   useConsultaGestion,
   useCursosGestion,
   useFiltrosGestion,
 } from '../hooks/useGestion';
-import { descargarExcel } from '../services/gestion.service';
+import {
+  descargarExcel,
+  descargarPendientesExcel,
+  type PendientesPor,
+} from '../services/gestion.service';
 import { FiltrosGestionForm } from '../components/FiltrosGestionForm';
+import { botonAccionCls } from '../components/botonAccion';
 import { ResultadosGestionTable } from '../components/ResultadosGestionTable';
-import { FILTROS_VACIOS, type ConsultaGestion, type FiltrosGestion } from '../types';
+import {
+  FILTROS_VACIOS,
+  type AgruparPor,
+  type ConsultaGestion,
+  type FiltrosGestion,
+} from '../types';
 
 const SELECT_CLS =
   'w-full max-w-md rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground';
@@ -18,12 +29,21 @@ export function GestionPage() {
   const [materiaId, setMateriaId] = useState<number | null>(null);
   const [filtros, setFiltros] = useState<FiltrosGestion>(FILTROS_VACIOS);
   const [resultados, setResultados] = useState<ConsultaGestion | null>(null);
-  const [descargando, setDescargando] = useState(false);
+  const [descargando, setDescargando] = useState<AgruparPor | null>(null);
+  const [descargandoPendientes, setDescargandoPendientes] = useState<PendientesPor | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const cursosQuery = useCursosGestion();
   const filtrosQuery = useFiltrosGestion(materiaId);
   const consulta = useConsultaGestion();
+
+  // Mientras haya CUALQUIER operación en curso (o cargando filtros), se deshabilitan
+  // todos los botones: evita disparar muchas consultas a Moodle en paralelo (se rompe).
+  const ocupado =
+    consulta.isPending ||
+    descargando !== null ||
+    descargandoPendientes !== null ||
+    filtrosQuery.isFetching;
 
   const handleCursoChange = (id: number | null) => {
     setMateriaId(id);
@@ -44,16 +64,29 @@ export function GestionPage() {
     );
   };
 
-  const handleDescargar = async () => {
+  const handleDescargarPendientes = async (agruparPor: PendientesPor) => {
     if (materiaId == null) return;
-    setDescargando(true);
+    setDescargandoPendientes(agruparPor);
     setErrorMsg(null);
     try {
-      await descargarExcel(materiaId, filtros);
+      await descargarPendientesExcel(materiaId, agruparPor);
+    } catch {
+      setErrorMsg('No se pudo generar el Excel de pendientes.');
+    } finally {
+      setDescargandoPendientes(null);
+    }
+  };
+
+  const handleDescargar = async (agruparPor: AgruparPor) => {
+    if (materiaId == null) return;
+    setDescargando(agruparPor);
+    setErrorMsg(null);
+    try {
+      await descargarExcel(materiaId, filtros, agruparPor);
     } catch {
       setErrorMsg('No se pudo generar el Excel.');
     } finally {
-      setDescargando(false);
+      setDescargando(null);
     }
   };
 
@@ -67,26 +100,53 @@ export function GestionPage() {
             Filtrá usuarios de un curso de Moodle y descargá el Excel por regional.
           </p>
         </div>
+        <div className="ml-auto">
+          <HelpButton title="Ayuda — Gestión" content={helpContent.gestion} label="Ayuda" />
+        </div>
       </div>
 
       {/* Selector de curso */}
       <div>
         <label className="mb-1 block text-sm font-medium text-muted-foreground">Curso</label>
         {cursosQuery.isLoading ? (
-          <Spinner />
+          <LoadingState title="Cargando cursos…" />
         ) : (
-          <select
-            className={SELECT_CLS}
-            value={materiaId ?? ''}
-            onChange={(e) => handleCursoChange(e.target.value ? Number(e.target.value) : null)}
-          >
-            <option value="">Elegí un curso…</option>
-            {(cursosQuery.data ?? []).map((c) => (
-              <option key={c.materia_id} value={c.materia_id}>
-                {c.nombre} ({c.codigo})
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              className={SELECT_CLS}
+              value={materiaId ?? ''}
+              onChange={(e) => handleCursoChange(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Elegí un curso…</option>
+              {(cursosQuery.data ?? []).map((c) => (
+                <option key={c.materia_id} value={c.materia_id}>
+                  {c.nombre} ({c.codigo})
+                </option>
+              ))}
+            </select>
+            {materiaId != null && (
+              <>
+                <button
+                  onClick={() => handleDescargarPendientes('trabajo')}
+                  disabled={ocupado}
+                  title="Entregas pendientes de corregir, una hoja por trabajo (resumen por práctico)"
+                  className={botonAccionCls(descargandoPendientes === 'trabajo')}
+                >
+                  <ClipboardList className="h-4 w-4" />
+                  {descargandoPendientes === 'trabajo' ? 'Generando…' : 'Pendientes por Práctico'}
+                </button>
+                <button
+                  onClick={() => handleDescargarPendientes('comision')}
+                  disabled={ocupado}
+                  title="Entregas pendientes de corregir, una hoja por comisión (resumen por comisión)"
+                  className={botonAccionCls(descargandoPendientes === 'comision')}
+                >
+                  <ClipboardList className="h-4 w-4" />
+                  {descargandoPendientes === 'comision' ? 'Generando…' : 'Pendientes por Comisión'}
+                </button>
+              </>
+            )}
+          </div>
         )}
       </div>
 
@@ -94,9 +154,7 @@ export function GestionPage() {
       {materiaId != null && (
         <>
           {filtrosQuery.isLoading && (
-            <div className="flex h-32 items-center justify-center">
-              <Spinner />
-            </div>
+            <LoadingState title="Cargando filtros del curso…" subtitle="Consultando Moodle." />
           )}
 
           {filtrosQuery.isError && (
@@ -116,6 +174,7 @@ export function GestionPage() {
               onDescargar={handleDescargar}
               consultando={consulta.isPending}
               descargando={descargando}
+              bloqueado={ocupado}
             />
           )}
 

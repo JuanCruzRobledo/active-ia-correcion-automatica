@@ -14,12 +14,14 @@ import {
   Select,
   Badge,
   Table,
-  Spinner,
+  LoadingState,
+  HelpButton,
   EmptyState,
   Dropdown,
   type TableColumn,
   type SelectOption,
 } from '@/shared/components/ui';
+import { helpContent } from '@/shared/content/helpContent';
 import { formatDate } from '@/shared/utils';
 
 interface MateriaPageFilters {
@@ -197,11 +199,7 @@ export const MateriasPage = () => {
 
   // Loading state
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState title="Cargando materias…" />;
   }
 
   // Error state
@@ -222,7 +220,7 @@ export const MateriasPage = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Materias</h1>
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-gray-900">Materias</h1><HelpButton title="Ayuda — Materias" content={helpContent.materias} /></div>
           <p className="text-sm text-gray-500 mt-1">
             Gestión de materias y coordinadores
           </p>

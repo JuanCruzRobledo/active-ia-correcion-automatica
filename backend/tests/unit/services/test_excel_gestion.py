@@ -75,3 +75,49 @@ def test_tiempo_inactividad_nunca_se_escribe():
 def test_resultado_vacio_solo_resumen():
     data, _ = ExcelService(AsyncMock()).exportar_gestion(ResultadoGestion(items=[], total=0), "Prog I")
     assert _wb(data).sheetnames == ["Resumen"]
+
+
+# --- agrupar_por="comision" (Excel para Tutores) ------------------------------
+
+def _resultado_misma_comision():
+    """Dos alumnos en la MISMA comisión pero de distinta regional."""
+    items = [
+        _alumno("Ana", "Aaa", "ana@x", "Rosario", "M26 C1-01", 5, "5 días"),
+        _alumno("Beto", "Bbb", "beto@x", "Mendoza", "M26 C1-01", 5, "5 días"),
+    ]
+    return ResultadoGestion(items=items, total=2)
+
+
+def test_por_comision_una_hoja_por_comision_ordenada_por_regional():
+    data, _ = ExcelService(AsyncMock()).exportar_gestion(
+        _resultado_misma_comision(), "Prog I", agrupar_por="comision"
+    )
+    wb = _wb(data)
+    assert set(wb.sheetnames) == {"Resumen", "M26 C1-01"}
+    ws = wb["M26 C1-01"]
+    emails = [
+        r[2] for r in ws.iter_rows(values_only=True) if r[2] and "@" in str(r[2])
+    ]
+    # ordenado por regional: Mendoza (beto) antes que Rosario (ana)
+    assert emails == ["beto@x", "ana@x"]
+
+
+def test_por_comision_resumen_por_comision():
+    data, _ = ExcelService(AsyncMock()).exportar_gestion(
+        _resultado(), "Prog I", agrupar_por="comision"
+    )
+    ws = _wb(data)["Resumen"]
+    pares = [(r[0], r[1]) for r in ws.iter_rows(values_only=True)]
+    assert ("M26 C1-09", 1) in pares  # 3 comisiones distintas en _resultado()
+    assert ("M26 C1-01", 1) in pares
+    assert ("M26 C1-02", 1) in pares
+    assert ("Total", 3) in pares
+
+
+def test_por_comision_nombre_archivo_distinto():
+    _, fn_nexos = ExcelService(AsyncMock()).exportar_gestion(_resultado(), "Prog I")
+    _, fn_tutores = ExcelService(AsyncMock()).exportar_gestion(
+        _resultado(), "Prog I", agrupar_por="comision"
+    )
+    assert "nexos" in fn_nexos.lower()
+    assert "tutores" in fn_tutores.lower()

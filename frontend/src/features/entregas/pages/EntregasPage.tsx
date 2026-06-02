@@ -32,6 +32,8 @@ import { Select } from '@/shared/components/ui/Select';
 import { Checkbox } from '@/shared/components/ui/Checkbox';
 import { Badge } from '@/shared/components/ui/Badge';
 import { Spinner } from '@/shared/components/ui/Spinner';
+import { HelpButton, LoadingState } from '@/shared/components/ui';
+import { helpContent } from '@/shared/content/helpContent';
 import { EmptyState } from '@/shared/components/ui/EmptyState';
 import { Dropdown } from '@/shared/components/ui/Dropdown';
 import { Alert } from '@/shared/components/ui/Alert';
@@ -586,11 +588,7 @@ export const EntregasPage = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center py-12">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState title="Cargando entregas…" />;
   }
 
   if (error) {
@@ -634,7 +632,7 @@ export const EntregasPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Entregas</h1>
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-gray-900">Entregas</h1><HelpButton title="Ayuda — Entregas" content={helpContent.entregas} /></div>
           <p className="text-sm text-gray-600 mt-1">
             Gestiona las entregas de los alumnos
           </p>

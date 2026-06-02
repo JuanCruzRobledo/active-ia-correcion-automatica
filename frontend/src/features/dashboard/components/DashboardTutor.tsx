@@ -15,7 +15,8 @@ import { ComisionCard } from './ComisionCard';
 import { CorregirTodoButton } from './CorregirTodoButton';
 import { useDashboardTutorStats } from '../hooks';
 import { usePendientesMoodle } from '@/features/pendientes';
-import { Spinner } from '@/shared/components/ui';
+import { HelpButton, LoadingState } from '@/shared/components/ui';
+import { helpContent } from '@/shared/content/helpContent';
 
 export function DashboardTutor() {
   const { data: dashboardData, isLoading, error } = useDashboardTutorStats();
@@ -29,11 +30,7 @@ export function DashboardTutor() {
 
   // Loading state
   if (isLoading) {
-    return (
-      <div className="flex justify-center py-12">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <LoadingState title="Cargando tu panel…" />;
   }
 
   // Error state
@@ -84,7 +81,7 @@ export function DashboardTutor() {
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard - Mis Comisiones</h1>
+        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Dashboard - Mis Comisiones</h1><HelpButton title="Ayuda — Dashboard" content={helpContent.dashboard} /></div>
         <p className="text-sm text-muted-foreground">
           Entregas pendientes y estado de correcciones
         </p>
