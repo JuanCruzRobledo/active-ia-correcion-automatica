@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast';
 import { QueryProvider } from './providers';
 import { router } from './router';
 import { useVersionCheck } from '@/shared/hooks/useVersionCheck';
+import { ThemeProvider } from '@/shared/hooks/ThemeProvider';
 
 const AppContent = () => {
   useVersionCheck();
@@ -13,31 +14,33 @@ const AppContent = () => {
 
 export const App = () => {
   return (
-    <QueryProvider>
-      <AppContent />
-      <Toaster
-        position="top-right"
-        toastOptions={{
-          duration: 4000,
-          style: {
-            background: 'oklch(var(--card))',
-            color: 'oklch(var(--card-foreground))',
-            border: '1px solid oklch(var(--border))',
-          },
-          success: {
-            iconTheme: {
-              primary: 'oklch(var(--success))',
-              secondary: 'oklch(var(--success-foreground))',
+    <ThemeProvider>
+      <QueryProvider>
+        <AppContent />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: 'oklch(var(--card))',
+              color: 'oklch(var(--card-foreground))',
+              border: '1px solid oklch(var(--border))',
             },
-          },
-          error: {
-            iconTheme: {
-              primary: 'oklch(var(--destructive))',
-              secondary: 'oklch(var(--destructive-foreground))',
+            success: {
+              iconTheme: {
+                primary: 'oklch(var(--success))',
+                secondary: 'oklch(var(--success-foreground))',
+              },
             },
-          },
-        }}
-      />
-    </QueryProvider>
+            error: {
+              iconTheme: {
+                primary: 'oklch(var(--destructive))',
+                secondary: 'oklch(var(--destructive-foreground))',
+              },
+            },
+          }}
+        />
+      </QueryProvider>
+    </ThemeProvider>
   );
 };

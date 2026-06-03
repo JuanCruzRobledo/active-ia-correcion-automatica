@@ -179,6 +179,36 @@ class MateriaRepository:
         )
         return list(result.scalars().all())
 
+    async def get_by_cuatrimestre(self, cuatrimestre_id: int) -> list[Materia]:
+        """Materias activas de un cuatrimestre (para los selectores del dashboard)."""
+        result = await self.db.execute(
+            select(Materia)
+            .where(
+                Materia.cuatrimestre_id == cuatrimestre_id,
+                Materia.activa == True,  # noqa: E712
+            )
+            .order_by(Materia.nombre.asc())
+        )
+        return list(result.scalars().all())
+
+    async def get_configuradas_dashboard(self) -> list[Materia]:
+        """Materias listas para el snapshot de avance (Dashboard de Gestores).
+
+        Activas + con moodle_course_id + cuatrimestre + unidad_actual. (La existencia
+        de unidades la valida el SnapshotService al generar.)
+        """
+        result = await self.db.execute(
+            select(Materia)
+            .where(
+                Materia.activa == True,  # noqa: E712
+                Materia.moodle_course_id.isnot(None),
+                Materia.cuatrimestre_id.isnot(None),
+                Materia.unidad_actual.isnot(None),
+            )
+            .order_by(Materia.id.asc())
+        )
+        return list(result.scalars().all())
+
     async def exists_codigo(self, codigo: str) -> bool:
         """
         Check if a codigo already exists.

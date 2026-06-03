@@ -18,6 +18,7 @@ from app.models.enums import FuenteRubricaEnum, TipoRubricaEnum
 if TYPE_CHECKING:
     from app.models.entrega import Entrega
     from app.models.materia import Materia
+    from app.models.unidad import Unidad
 
 
 class Rubrica(Base, TimestampMixin):
@@ -107,6 +108,15 @@ class Rubrica(Base, TimestampMixin):
     activa: Mapped[bool] = mapped_column(default=True, index=True)
     moodle_assign_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # Unidad de contenido a la que pertenece este TP/actividad (Dashboard de Gestores).
+    # Opcional: el cálculo de avance NO depende de esto (usa el section# de la
+    # actividad completada), pero permite vincular explícitamente una rúbrica a su unidad.
+    unidad_id: Mapped[int | None] = mapped_column(
+        ForeignKey("unidades.id"),
+        nullable=True,
+        index=True,
+    )
+
     # Modo de consolidación del código para las entregas de esta rúbrica.
     # Determina qué extensiones se incluyen al consolidar el código antes de corregir.
     # Valores: 'solo_codigo' | 'web_completo' | 'proyecto_completo' | 'personalizado'.
@@ -142,6 +152,10 @@ class Rubrica(Base, TimestampMixin):
         "Entrega",
         back_populates="rubrica",
         lazy="selectin",
+    )
+    unidad: Mapped["Unidad | None"] = relationship(
+        "Unidad",
+        back_populates="rubricas",
     )
 
     def __repr__(self) -> str:

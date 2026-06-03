@@ -134,14 +134,14 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
         title="Usuario creado exitosamente"
       >
         <div className="space-y-4">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-sm text-yellow-800 mb-2">
+          <div className="bg-warning/10 border border-warning/30 rounded-lg p-4">
+            <p className="text-sm text-foreground mb-2">
               ⚠️ <strong>Importante:</strong> Guarda esta contraseña temporal. No se volverá a mostrar.
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Contraseña temporal
             </label>
             <div className="flex gap-2">
@@ -159,8 +159,8 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
             </div>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm text-blue-800">
+          <div className="bg-info/10 border border-info/30 rounded-lg p-4">
+            <p className="text-sm text-foreground">
               El usuario deberá cambiar esta contraseña en su primer inicio de sesión.
             </p>
           </div>
@@ -206,8 +206,8 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
         />
 
         {!isEditMode && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="text-sm text-gray-600">
+          <div className="bg-muted border border-border rounded-lg p-4">
+            <p className="text-sm text-muted-foreground">
               💡 Se generará automáticamente una contraseña temporal que se mostrará al crear el usuario.
             </p>
           </div>

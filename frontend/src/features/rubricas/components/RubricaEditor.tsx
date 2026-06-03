@@ -563,7 +563,7 @@ export function RubricaEditor({
                 icon={<AlertTriangle className="h-4 w-4" />}
                 badge={
                   (watch('penalizaciones') || []).length > 0 && (
-                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full">
+                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-warning/20 text-warning rounded-full">
                       {(watch('penalizaciones') || []).length}
                     </span>
                   )
@@ -587,7 +587,7 @@ export function RubricaEditor({
                 icon={<XCircle className="h-4 w-4" />}
                 badge={
                   (watch('condiciones_desaprobacion') || []).length > 0 && (
-                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-red-500/20 text-red-600 dark:text-red-400 rounded-full">
+                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-destructive/20 text-destructive rounded-full">
                       {(watch('condiciones_desaprobacion') || []).length}
                     </span>
                   )

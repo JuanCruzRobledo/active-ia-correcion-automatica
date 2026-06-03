@@ -5,6 +5,20 @@
     <link rel="icon" type="image/svg+xml" href="/active-ia-logo.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Active-IA</title>
+    <script>
+      // Anti-FOUC: aplica el tema guardado (o la preferencia del SO) antes
+      // del primer pintado, para no mostrar un flash de tema incorrecto.
+      (function () {
+        try {
+          var stored = localStorage.getItem('active-ia-theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = stored === 'light' || stored === 'dark' ? stored : prefersDark ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          /* localStorage no disponible: queda el tema claro por defecto */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

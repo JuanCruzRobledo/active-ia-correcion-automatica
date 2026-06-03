@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Menu, X, User } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { ThemeToggle } from './ThemeToggle';
 
 export const MobileHeader = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -34,14 +35,17 @@ export const MobileHeader = () => {
           <span className="text-lg font-semibold">Active-IA</span>
         </div>
 
-        {/* Avatar */}
-        <NavLink
-          to="/perfil"
-          className="rounded-full p-2 hover:bg-muted"
-          aria-label="Perfil"
-        >
-          <User className="h-6 w-6" />
-        </NavLink>
+        {/* Tema + Avatar */}
+        <div className="flex items-center gap-1">
+          <ThemeToggle variant="icon" />
+          <NavLink
+            to="/perfil"
+            className="rounded-full p-2 hover:bg-muted"
+            aria-label="Perfil"
+          >
+            <User className="h-6 w-6" />
+          </NavLink>
+        </div>
       </div>
 
       {/* Mobile menu */}

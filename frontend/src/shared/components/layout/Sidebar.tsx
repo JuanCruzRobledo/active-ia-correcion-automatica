@@ -9,11 +9,15 @@ import {
   CheckSquare,
   Send,
   BarChart3,
+  GraduationCap,
+  CalendarClock,
+  PieChart,
   User,
   LogOut,
 } from 'lucide-react';
 import { cn } from '@/shared/utils';
 import { useAuth, useLogout } from '@/features/auth/hooks';
+import { ThemeToggle } from './ThemeToggle';
 
 interface NavItem {
   to: string;
@@ -26,6 +30,8 @@ const navItems: NavItem[] = [
   { to: '/dashboard', icon: Home, label: 'Dashboard' },
   { to: '/usuarios', icon: Users, label: 'Usuarios', roles: ['ADMIN'] },
   { to: '/materias', icon: BookOpen, label: 'Materias', roles: ['ADMIN'] },
+  { to: '/cohortes', icon: GraduationCap, label: 'Cohortes', roles: ['ADMIN'] },
+  { to: '/snapshots', icon: CalendarClock, label: 'Snapshots', roles: ['ADMIN'] },
   {
     to: '/comisiones',
     icon: FolderOpen,
@@ -41,6 +47,7 @@ const navItems: NavItem[] = [
   { to: '/entregas', icon: CheckSquare, label: 'Entregas', roles: ['TUTOR', 'ADMIN', 'COORDINADOR'] },
   { to: '/pendientes', icon: Clock, label: 'Pendientes', roles: ['TUTOR', 'ADMIN'] },
   { to: '/por-entregar', icon: Send, label: 'Por entregar', roles: ['TUTOR', 'ADMIN'] },
+  { to: '/avance', icon: PieChart, label: 'Avance', roles: ['GESTOR', 'ADMIN'] },
   { to: '/gestion', icon: BarChart3, label: 'Gestión', roles: ['GESTOR', 'ADMIN'] },
 ];
 
@@ -113,6 +120,8 @@ export const Sidebar = () => {
               </p>
             </div>
           </NavLink>
+
+          <ThemeToggle />
 
           <button
             onClick={() => logoutMutation.mutate()}

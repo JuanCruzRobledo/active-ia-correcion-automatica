@@ -9,23 +9,23 @@ export interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const variantStyles = {
   default: {
-    container: 'bg-blue-50 border-blue-200 text-blue-900',
-    icon: 'text-blue-600',
+    container: 'bg-info/10 border-info/30 text-foreground',
+    icon: 'text-info',
     Icon: Info,
   },
   success: {
-    container: 'bg-green-50 border-green-200 text-green-900',
-    icon: 'text-green-600',
+    container: 'bg-success/10 border-success/30 text-foreground',
+    icon: 'text-success',
     Icon: CheckCircle,
   },
   warning: {
-    container: 'bg-yellow-50 border-yellow-200 text-yellow-900',
-    icon: 'text-yellow-600',
+    container: 'bg-warning/10 border-warning/30 text-foreground',
+    icon: 'text-warning',
     Icon: AlertTriangle,
   },
   destructive: {
-    container: 'bg-red-50 border-red-200 text-red-900',
-    icon: 'text-red-600',
+    container: 'bg-destructive/10 border-destructive/30 text-foreground',
+    icon: 'text-destructive',
     Icon: AlertCircle,
   },
 };

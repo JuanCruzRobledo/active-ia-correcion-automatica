@@ -103,6 +103,8 @@ class MoodleService:
         self._grades_full_cache: dict[int, dict[int, dict]] = {}  # instance_id -> {userid: {timemodified, grade}}
         # Participantes completos por (course_id, only_active) — evita refetch en la misma request.
         self._enrolled_cache: dict[tuple[int, bool], list] = {}
+        # Contenidos (secciones + módulos) por course_id — el snapshot lo usa 1 vez para N alumnos.
+        self._contents_cache: dict[int, list] = {}
 
     async def get_token(
         self,
@@ -258,6 +260,7 @@ class MoodleService:
         course_id: int,
         *,
         only_active: bool = False,
+        client: "httpx.AsyncClient | None" = None,
     ) -> list[dict]:
         """Trae los matriculados de un curso con todos los campos que usa Gestión.
 
@@ -281,16 +284,10 @@ class MoodleService:
             params["options[0][name]"] = "onlyactive"
             params["options[0][value]"] = 1
 
-        try:
-            # Timeout amplio: cursos grandes pueden tardar >30s (visto en T0).
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.get(url, params=params)
-                resp.raise_for_status()
-                data = resp.json()
-        except httpx.TimeoutException as e:
-            raise MoodleConnectionError(f"Timeout obteniendo participantes: {e}") from e
-        except httpx.RequestError as e:
-            raise MoodleConnectionError(f"Error de red obteniendo participantes: {e}") from e
+        # Timeout amplio: cursos grandes pueden tardar >30s (visto en T0).
+        data = await self._ws_get_json(
+            url, params, timeout=60.0, descripcion="obteniendo participantes", client=client
+        )
 
         if isinstance(data, dict) and "exception" in data:
             if "invalidtoken" in str(data).lower():
@@ -322,6 +319,129 @@ class MoodleService:
             if isinstance(u, dict):
                 u["suspendido"] = u.get("id") not in activos_ids
         return todos
+
+    async def _ws_get_json(
+        self,
+        url: str,
+        params: dict,
+        *,
+        timeout: float,
+        descripcion: str,
+        client: "httpx.AsyncClient | None" = None,
+        reintentos: int = 2,
+    ):
+        """GET a un web service con reintentos ante timeout/conexión.
+
+        Si se pasa `client`, se REUSA (keep-alive → no abre una conexión TLS nueva por
+        llamada, clave para los snapshots con cientos de alumnos: evita el throttling
+        de conexiones nuevas que dispara ConnectTimeout). Si no, crea uno efímero.
+        """
+        last_exc: Exception | None = None
+        for intento in range(reintentos + 1):
+            try:
+                if client is not None:
+                    resp = await client.get(url, params=params, timeout=timeout)
+                else:
+                    async with httpx.AsyncClient(timeout=timeout) as efimero:
+                        resp = await efimero.get(url, params=params)
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.TimeoutException as e:
+                # ConnectTimeout/ReadTimeout: reintentar con backoff (Moodle puede
+                # estar throttleando conexiones nuevas momentáneamente).
+                last_exc = e
+                if intento < reintentos:
+                    await asyncio.sleep(1.5 * (intento + 1))
+                    continue
+                raise MoodleConnectionError(f"Timeout {descripcion}: {e}") from e
+            except httpx.RequestError as e:
+                last_exc = e
+                if intento < reintentos:
+                    await asyncio.sleep(1.5 * (intento + 1))
+                    continue
+                raise MoodleConnectionError(f"Error de red {descripcion}: {e}") from e
+        raise MoodleConnectionError(f"Error {descripcion}: {last_exc}")
+
+    async def get_course_contents(
+        self,
+        token: str,
+        moodle_host: str,
+        course_id: int,
+        *,
+        client: "httpx.AsyncClient | None" = None,
+    ) -> list[dict]:
+        """Secciones (unidades) y módulos del curso vía core_course_get_contents.
+
+        Devuelve la lista de secciones; cada una con 'id' (estable), 'section' (orden
+        visual #), 'name' y 'modules[]' (cada módulo con 'id'=cmid, 'modname',
+        'name', 'completion'). Cacheado por course_id (el snapshot lo usa una sola
+        vez para todos los alumnos de la materia). Validado en spike T0 (§6.1).
+        """
+        if course_id in self._contents_cache:
+            return self._contents_cache[course_id]
+
+        url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
+        params = {
+            "wstoken": token,
+            "wsfunction": "core_course_get_contents",
+            "moodlewsrestformat": "json",
+            "courseid": course_id,
+        }
+        data = await self._ws_get_json(
+            url, params, timeout=60.0, descripcion="obteniendo contenidos del curso", client=client
+        )
+
+        if isinstance(data, dict) and "exception" in data:
+            if "invalidtoken" in str(data).lower():
+                raise MoodleAuthError("Token Moodle inválido")
+            raise MoodleConnectionError(
+                f"Error Moodle al obtener contenidos: {data.get('message', '')}"
+            )
+
+        if not isinstance(data, list):
+            raise MoodleConnectionError("Respuesta inesperada de core_course_get_contents")
+
+        self._contents_cache[course_id] = data
+        return data
+
+    async def get_activities_completion(
+        self,
+        token: str,
+        moodle_host: str,
+        course_id: int,
+        user_id: int,
+        *,
+        client: "httpx.AsyncClient | None" = None,
+    ) -> list[dict]:
+        """Estado de finalización de actividades de UN alumno en el curso.
+
+        core_completion_get_activities_completion_status → lista de statuses, cada uno
+        con 'cmid', 'state' (0 incompleta / 1 completa / 2 completa-aprobada /
+        3 completa-reprobada) y 'timecompleted'. Es **1 llamada por alumno** (~2s en
+        T0). Pasá `client` para reusar la conexión (evita ConnectTimeout por volumen).
+        """
+        url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
+        params = {
+            "wstoken": token,
+            "wsfunction": "core_completion_get_activities_completion_status",
+            "moodlewsrestformat": "json",
+            "courseid": course_id,
+            "userid": user_id,
+        }
+        data = await self._ws_get_json(
+            url, params, timeout=30.0, descripcion="obteniendo completion", client=client
+        )
+
+        if isinstance(data, dict) and "exception" in data:
+            if "invalidtoken" in str(data).lower():
+                raise MoodleAuthError("Token Moodle inválido")
+            raise MoodleConnectionError(
+                f"Error Moodle al obtener completion: {data.get('message', '')}"
+            )
+
+        if isinstance(data, dict):
+            return data.get("statuses", []) or []
+        return []
 
     async def _fetch_submissions(
         self,

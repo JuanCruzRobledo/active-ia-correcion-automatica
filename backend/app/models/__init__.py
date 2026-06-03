@@ -14,22 +14,27 @@ from app.models.base import (
     get_async_session,
 )
 from app.models.enums import (
+    EstadoAvanceEnum,
     EstadoCriterioEnum,
     EstadoEntregaEnum,
     FuenteRubricaEnum,
     MoodleSyncEstado,
+    OrigenSnapshotEnum,
     RolEnum,
     TipoActividadEnum,
     TipoRubricaEnum,
 )
 from app.models.usuario import Usuario
+from app.models.cohorte import Cohorte, Cuatrimestre
 from app.models.materia import CoordinadorMateria, Materia
+from app.models.unidad import Unidad
 from app.models.comision import Comision, ComisionTutor
 from app.models.rubrica import Rubrica
 from app.models.entrega import Entrega, EntregaHistorial
 from app.models.correccion import Correccion
 from app.models.actividad import Actividad
 from app.models.moodle_sync import MoodleSync
+from app.models.avance import AvanceAlumno, AvanceSnapshot, SnapshotCronConfig
 
 __all__ = [
     # Base
@@ -47,9 +52,14 @@ __all__ = [
     "EstadoCriterioEnum",
     "TipoActividadEnum",
     "MoodleSyncEstado",
+    "EstadoAvanceEnum",
+    "OrigenSnapshotEnum",
     # Models
     "Usuario",
+    "Cohorte",
+    "Cuatrimestre",
     "Materia",
+    "Unidad",
     "CoordinadorMateria",
     "Comision",
     "ComisionTutor",
@@ -59,4 +69,7 @@ __all__ = [
     "Correccion",
     "Actividad",
     "MoodleSync",
+    "AvanceSnapshot",
+    "AvanceAlumno",
+    "SnapshotCronConfig",
 ]

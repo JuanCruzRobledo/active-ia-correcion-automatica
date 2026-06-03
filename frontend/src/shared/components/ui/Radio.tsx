@@ -17,10 +17,10 @@ export const Radio = forwardRef<HTMLInputElement, RadioProps>(
             type="radio"
             ref={ref}
             className={cn(
-              'h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500',
+              'h-4 w-4 border-input text-accent focus:ring-ring',
               'transition duration-150 ease-in-out',
               'disabled:opacity-50 disabled:cursor-not-allowed',
-              error && 'border-red-300 focus:ring-red-500',
+              error && 'border-destructive focus:ring-destructive',
               className
             )}
             {...props}
@@ -30,16 +30,16 @@ export const Radio = forwardRef<HTMLInputElement, RadioProps>(
           <label
             htmlFor={props.id}
             className={cn(
-              'font-medium text-gray-700',
+              'font-medium text-foreground',
               props.disabled && 'opacity-50 cursor-not-allowed'
             )}
           >
             {label}
           </label>
           {description && (
-            <p className="text-gray-500">{description}</p>
+            <p className="text-muted-foreground">{description}</p>
           )}
-          {error && <p className="text-red-600 mt-1">{error}</p>}
+          {error && <p className="text-destructive mt-1">{error}</p>}
         </div>
       </div>
     );

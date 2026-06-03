@@ -157,14 +157,14 @@ export const ComisionesPage = () => {
       header: 'Materia',
       render: (comision) => (
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100">
-            <FolderOpen className="h-4 w-4 text-blue-600" />
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent/10">
+            <FolderOpen className="h-4 w-4 text-accent" />
           </div>
           <div>
-            <div className="font-medium text-gray-900">
+            <div className="font-medium text-foreground">
               {comision.materia_codigo}
             </div>
-            <div className="text-sm text-gray-500">{comision.materia_nombre}</div>
+            <div className="text-sm text-muted-foreground">{comision.materia_nombre}</div>
           </div>
         </div>
       ),
@@ -174,8 +174,8 @@ export const ComisionesPage = () => {
       header: 'Comisión',
       render: (comision) => (
         <div>
-          <div className="font-medium text-gray-900">{comision.nombre}</div>
-          <div className="text-sm text-gray-500">Año {comision.anio}</div>
+          <div className="font-medium text-foreground">{comision.nombre}</div>
+          <div className="text-sm text-muted-foreground">Año {comision.anio}</div>
         </div>
       ),
     },
@@ -183,7 +183,7 @@ export const ComisionesPage = () => {
       key: 'num_tutores',
       header: 'Tutores',
       render: (comision) => (
-        <span className="text-sm text-gray-700">
+        <span className="text-sm text-foreground">
           {comision.num_tutores} {comision.num_tutores === 1 ? 'tutor' : 'tutores'}
         </span>
       ),
@@ -192,7 +192,7 @@ export const ComisionesPage = () => {
       key: 'num_entregas',
       header: 'Entregas',
       render: (comision) => (
-        <span className="text-sm text-gray-700">{comision.num_entregas}</span>
+        <span className="text-sm text-foreground">{comision.num_entregas}</span>
       ),
     },
     {
@@ -208,7 +208,7 @@ export const ComisionesPage = () => {
       key: 'created_at',
       header: 'Fecha creación',
       render: (comision) => (
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-muted-foreground">
           {formatDate(comision.created_at)}
         </span>
       ),
@@ -253,7 +253,7 @@ export const ComisionesPage = () => {
         return (
           <Dropdown
             trigger={
-              <button className="text-gray-400 hover:text-gray-600 px-2 py-1 rounded hover:bg-gray-100">
+              <button className="text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted">
                 •••
               </button>
             }
@@ -273,8 +273,8 @@ export const ComisionesPage = () => {
   if (error) {
     return (
       <div className="text-center py-12">
-        <div className="text-red-600 mb-4">Error al cargar comisiones</div>
-        <p className="text-gray-500 mb-4">
+        <div className="text-destructive mb-4">Error al cargar comisiones</div>
+        <p className="text-muted-foreground mb-4">
           {error instanceof Error ? error.message : 'Error desconocido'}
         </p>
         <Button onClick={() => window.location.reload()}>Reintentar</Button>
@@ -293,8 +293,8 @@ export const ComisionesPage = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-gray-900">Comisiones</h1><HelpButton title="Ayuda — Comisiones" content={helpContent.comisiones} /></div>
-          <p className="text-sm text-gray-500 mt-1">
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Comisiones</h1><HelpButton title="Ayuda — Comisiones" content={helpContent.comisiones} /></div>
+          <p className="text-sm text-muted-foreground mt-1">
             {isTutor
               ? 'Editá la configuración de Moodle de tus comisiones asignadas'
               : 'Gestiona las comisiones de cada materia'}
@@ -309,7 +309,7 @@ export const ComisionesPage = () => {
 
       {/* Filters */}
       {!sinMateriasAsignadas && (
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="bg-card rounded-lg border border-border p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Input
             label="Buscar"
@@ -346,13 +346,13 @@ export const ComisionesPage = () => {
 
       {/* Results summary */}
       {filteredData && filteredData.length > 0 && (
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-muted-foreground">
           Mostrando {filteredData.length} de {data?.total} comisiones
         </div>
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
         {filteredData && filteredData.length > 0 ? (
           <Table
             columns={columns}
@@ -409,7 +409,7 @@ export const ComisionesPage = () => {
           >
             ← Anterior
           </Button>
-          <div className="flex items-center px-4 text-sm text-gray-600">
+          <div className="flex items-center px-4 text-sm text-muted-foreground">
             Página {filters.page} de {Math.ceil(data.total / data.per_page)}
           </div>
           <Button

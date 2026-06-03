@@ -594,8 +594,8 @@ export const EntregasPage = () => {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-        <p className="text-red-600 mb-4">Error al cargar entregas</p>
-        <p className="text-sm text-gray-600 mb-6">{error.message}</p>
+        <p className="text-destructive mb-4">Error al cargar entregas</p>
+        <p className="text-sm text-muted-foreground mb-6">{error.message}</p>
         <Button onClick={() => window.location.reload()}>Reintentar</Button>
       </div>
     );
@@ -632,8 +632,8 @@ export const EntregasPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-gray-900">Entregas</h1><HelpButton title="Ayuda — Entregas" content={helpContent.entregas} /></div>
-          <p className="text-sm text-gray-600 mt-1">
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Entregas</h1><HelpButton title="Ayuda — Entregas" content={helpContent.entregas} /></div>
+          <p className="text-sm text-muted-foreground mt-1">
             Gestiona las entregas de los alumnos
           </p>
         </div>
@@ -675,11 +675,11 @@ export const EntregasPage = () => {
       </div>
 
       {/* Selectors: Comisión y Rúbrica */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="bg-card rounded-lg border border-border p-4">
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Comisión Selector */}
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium text-foreground mb-1.5">
               Comisión
             </label>
             <Select
@@ -713,7 +713,7 @@ export const EntregasPage = () => {
 
           {/* Rúbrica Selector */}
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium text-foreground mb-1.5">
               Rúbrica / Trabajo Práctico
             </label>
             <Select
@@ -747,7 +747,7 @@ export const EntregasPage = () => {
 
       {/* Filters and Actions */}
       {selectedComisionId && selectedRubricaId && (
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="bg-card rounded-lg border border-border p-4">
           <div className="flex flex-col lg:flex-row gap-4">
             {/* Search */}
             <div className="flex-1">
@@ -776,7 +776,7 @@ export const EntregasPage = () => {
             {/* Batch Action Buttons */}
             {/* Batch in progress indicator */}
             {isBatchActive && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-info/10 border border-info/30 rounded-lg text-sm text-info">
                 <Spinner size="sm" />
                 <span>Corrección en lote en progreso...</span>
               </div>
@@ -841,21 +841,21 @@ export const EntregasPage = () => {
 
           {/* Date Range Filter */}
           <div className="flex flex-wrap gap-2 items-center pt-1">
-            <span className="text-sm text-gray-500 whitespace-nowrap">Período:</span>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Período:</span>
             <input
               type="date"
               value={fechaDesde}
               max={fechaHasta || undefined}
               onChange={(e) => handleFechaDesdeChange(e.target.value)}
-              className="border border-gray-200 rounded-md px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-primary-500 focus:border-transparent"
+              className="border border-border rounded-md px-3 py-1.5 text-sm text-foreground bg-card focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-primary-500 focus:border-transparent"
             />
-            <span className="text-sm text-gray-400">–</span>
+            <span className="text-sm text-muted-foreground">–</span>
             <input
               type="date"
               value={fechaHasta}
               min={fechaDesde || undefined}
               onChange={(e) => handleFechaHastaChange(e.target.value)}
-              className="border border-gray-200 rounded-md px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-primary-500 focus:border-transparent"
+              className="border border-border rounded-md px-3 py-1.5 text-sm text-foreground bg-card focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-primary-500 focus:border-transparent"
             />
             {(fechaDesde || fechaHasta) && (
               <Button variant="ghost" size="sm" onClick={handleClearFechas}>
@@ -870,7 +870,7 @@ export const EntregasPage = () => {
       {/* Empty State when no selection */}
       {(!selectedComisionId || !selectedRubricaId) && (
         <EmptyState
-          icon={<Upload className="w-12 h-12 text-gray-400" />}
+          icon={<Upload className="w-12 h-12 text-muted-foreground" />}
           title="Selecciona una comisión y rúbrica"
           description="Para ver las entregas, primero debes seleccionar una comisión y el trabajo práctico (rúbrica) correspondiente"
         />
@@ -880,7 +880,7 @@ export const EntregasPage = () => {
       {selectedComisionId && selectedRubricaId && (
         entregas.length === 0 ? (
           <EmptyState
-            icon={<Upload className="w-12 h-12 text-gray-400" />}
+            icon={<Upload className="w-12 h-12 text-muted-foreground" />}
             title="No hay entregas"
             description={
               searchTerm || estadoFilter !== 'TODOS'
@@ -909,10 +909,10 @@ export const EntregasPage = () => {
         ) : (
           <>
             {/* Table */}
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="bg-card rounded-lg border border-border overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                <table className="min-w-full divide-y divide-border">
+                  <thead className="bg-muted">
                     <tr>
                       <th className="px-6 py-3 w-4">
                         <Checkbox
@@ -920,33 +920,33 @@ export const EntregasPage = () => {
                           onChange={(e) => handleSelectAll(e.target.checked)}
                         />
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Alumno
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Archivo
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Estado
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Nota
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Fecha
                       </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Acciones
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-card divide-y divide-border">
                     {entregas.map((entrega: EntregaListItem) => {
                       const isCorregida = entrega.estado === 'CORREGIDA';
                       const isPendiente = entrega.estado === 'PENDIENTE' || entrega.estado === 'SUBIDA' || entrega.estado === 'ERROR';
 
                       return (
-                        <tr key={entrega.id} className={`hover:bg-gray-50 ${entrega.archivado ? 'opacity-60 bg-gray-50' : ''}`}>
+                        <tr key={entrega.id} className={`hover:bg-muted ${entrega.archivado ? 'opacity-60 bg-muted' : ''}`}>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <Checkbox
                               checked={selectedIds.includes(entrega.id)}
@@ -955,7 +955,7 @@ export const EntregasPage = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-900">
+                              <span className="text-sm font-medium text-foreground">
                                 {entrega.alumno_nombre}
                               </span>
                               {entrega.archivado && (
@@ -967,10 +967,10 @@ export const EntregasPage = () => {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900">
+                            <div className="text-sm text-foreground">
                               {entrega.archivo_nombre}
                             </div>
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs text-muted-foreground">
                               {formatFileSize(entrega.archivo_tamanio)}
                             </div>
                           </td>
@@ -978,15 +978,15 @@ export const EntregasPage = () => {
                             {getEstadoBadge(entrega.estado)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
+                            <div className="text-sm text-foreground">
                               {entrega.nota !== null ? (
                                 <span className="font-medium">{entrega.nota}</span>
                               ) : (
-                                <span className="text-gray-400">-</span>
+                                <span className="text-muted-foreground">-</span>
                               )}
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
                             {formatDate(entrega.created_at)}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -1097,8 +1097,8 @@ export const EntregasPage = () => {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-200">
-                  <div className="text-sm text-gray-700">
+                <div className="bg-muted px-6 py-4 flex items-center justify-between border-t border-border">
+                  <div className="text-sm text-foreground">
                     Mostrando {(page - 1) * perPage + 1} -{' '}
                     {Math.min(page * perPage, data?.total || 0)} de {data?.total}{' '}
                     entregas

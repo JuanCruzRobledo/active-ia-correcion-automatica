@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { BarChart3, Pencil, Trash2, RotateCcw } from 'lucide-react';
 import {
   useMaterias,
   useDeleteMateria,
@@ -40,6 +41,7 @@ export const MateriasPage = () => {
     per_page: 20,
   });
   const isFirstRender = useRef(true);
+  const navigate = useNavigate();
 
   // Debounce: actualiza el filtro 400ms después de que el usuario deja de escribir
   useEffect(() => {
@@ -110,8 +112,8 @@ export const MateriasPage = () => {
       header: 'Código',
       render: (materia) => (
         <div>
-          <div className="font-medium text-gray-900">{materia.codigo}</div>
-          <div className="text-sm text-gray-500">{materia.nombre}</div>
+          <div className="font-medium text-foreground">{materia.codigo}</div>
+          <div className="text-sm text-muted-foreground">{materia.nombre}</div>
         </div>
       ),
     },
@@ -119,7 +121,7 @@ export const MateriasPage = () => {
       key: 'num_coordinadores',
       header: 'Coordinadores',
       render: (materia) => (
-        <span className="text-gray-500">
+        <span className="text-muted-foreground">
           {materia.num_coordinadores}
         </span>
       ),
@@ -128,7 +130,7 @@ export const MateriasPage = () => {
       key: 'num_comisiones',
       header: 'Comisiones',
       render: (materia) => (
-        <span className="text-gray-500">
+        <span className="text-muted-foreground">
           {materia.num_comisiones}
         </span>
       ),
@@ -146,7 +148,7 @@ export const MateriasPage = () => {
       key: 'created_at',
       header: 'Fecha creación',
       render: (materia) => (
-        <span className="text-gray-500">
+        <span className="text-muted-foreground">
           {formatDate(materia.created_at)}
         </span>
       ),
@@ -159,7 +161,7 @@ export const MateriasPage = () => {
       render: (materia) => (
         <Dropdown
           trigger={
-            <button className="text-gray-400 hover:text-gray-600 px-2 py-1">
+            <button className="text-muted-foreground hover:text-foreground px-2 py-1">
               •••
             </button>
           }
@@ -168,6 +170,11 @@ export const MateriasPage = () => {
               label: 'Editar',
               onClick: () => handleEdit(materia.id),
               icon: <Pencil className="w-4 h-4" />,
+            },
+            {
+              label: 'Config. dashboard',
+              onClick: () => navigate(`/materias/${materia.id}/dashboard`),
+              icon: <BarChart3 className="w-4 h-4" />,
             },
             materia.activa
               ? {
@@ -206,8 +213,8 @@ export const MateriasPage = () => {
   if (error) {
     return (
       <div className="text-center py-12">
-        <div className="text-red-600 mb-4">Error al cargar materias</div>
-        <p className="text-gray-500 mb-4">
+        <div className="text-destructive mb-4">Error al cargar materias</div>
+        <p className="text-muted-foreground mb-4">
           {error instanceof Error ? error.message : 'Error desconocido'}
         </p>
         <Button onClick={() => window.location.reload()}>Reintentar</Button>
@@ -220,8 +227,8 @@ export const MateriasPage = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-gray-900">Materias</h1><HelpButton title="Ayuda — Materias" content={helpContent.materias} /></div>
-          <p className="text-sm text-gray-500 mt-1">
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Materias</h1><HelpButton title="Ayuda — Materias" content={helpContent.materias} /></div>
+          <p className="text-sm text-muted-foreground mt-1">
             Gestión de materias y coordinadores
           </p>
         </div>
@@ -231,7 +238,7 @@ export const MateriasPage = () => {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="bg-card rounded-lg border border-border p-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input
             label="Buscar"
@@ -250,13 +257,13 @@ export const MateriasPage = () => {
 
       {/* Results summary */}
       {data?.items && data.items.length > 0 && (
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-muted-foreground">
           Mostrando {data.items.length} de {data.total} materias
         </div>
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <div className="bg-card rounded-lg border border-border overflow-hidden">
         {data?.items && data.items.length > 0 ? (
           <Table
             columns={columns}
@@ -306,7 +313,7 @@ export const MateriasPage = () => {
           >
             ← Anterior
           </Button>
-          <div className="flex items-center px-4 text-sm text-gray-600">
+          <div className="flex items-center px-4 text-sm text-muted-foreground">
             Página {filters.page} de {Math.ceil(data.total / data.per_page)}
           </div>
           <Button

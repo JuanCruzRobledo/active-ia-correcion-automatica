@@ -37,7 +37,7 @@ const buttonVariants = {
     secondary:
       'bg-secondary text-secondary-foreground hover:bg-secondary/80 focus-visible:ring-secondary',
     success:
-      'bg-green-600 text-white hover:bg-green-700 focus-visible:ring-green-600',
+      'bg-success text-success-foreground hover:bg-success/90 focus-visible:ring-success',
     destructive:
       'bg-destructive text-destructive-foreground hover:bg-destructive/90 focus-visible:ring-destructive',
     outline:

@@ -137,41 +137,41 @@ function UploadResultView({
     <div className="space-y-4">
       {/* Summary */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-gray-50 p-4 rounded-lg text-center">
-          <div className="text-2xl font-bold text-gray-900">
+        <div className="bg-muted p-4 rounded-lg text-center">
+          <div className="text-2xl font-bold text-foreground">
             {uploadResult.total_procesadas}
           </div>
-          <div className="text-sm text-gray-600">Procesadas</div>
+          <div className="text-sm text-muted-foreground">Procesadas</div>
         </div>
-        <div className="bg-green-50 p-4 rounded-lg text-center">
-          <div className="text-2xl font-bold text-green-700">
+        <div className="bg-success/10 p-4 rounded-lg text-center">
+          <div className="text-2xl font-bold text-success">
             {uploadResult.total_exitosas}
           </div>
-          <div className="text-sm text-green-600">Exitosas</div>
+          <div className="text-sm text-success">Exitosas</div>
         </div>
-        <div className="bg-red-50 p-4 rounded-lg text-center">
-          <div className="text-2xl font-bold text-red-700">
+        <div className="bg-destructive/10 p-4 rounded-lg text-center">
+          <div className="text-2xl font-bold text-destructive">
             {uploadResult.total_errores}
           </div>
-          <div className="text-sm text-red-600">Errores</div>
+          <div className="text-sm text-destructive">Errores</div>
         </div>
       </div>
 
       {/* Successful uploads */}
       {uploadResult.exitosas.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium text-gray-900 mb-2">
+          <h4 className="text-sm font-medium text-foreground mb-2">
             Entregas exitosas ({uploadResult.exitosas.length})
           </h4>
           <div className="max-h-40 overflow-y-auto space-y-1">
             {uploadResult.exitosas.map((entrega, index) => (
               <div
                 key={index}
-                className="flex items-center gap-2 text-sm text-gray-700 bg-green-50 px-3 py-2 rounded"
+                className="flex items-center gap-2 text-sm text-foreground bg-success/10 px-3 py-2 rounded"
               >
-                <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                <CheckCircle className="w-4 h-4 text-success flex-shrink-0" />
                 <span className="flex-1">{entrega.alumno_nombre}</span>
-                <span className="text-xs text-gray-500">{entrega.archivo_nombre}</span>
+                <span className="text-xs text-muted-foreground">{entrega.archivo_nombre}</span>
               </div>
             ))}
           </div>
@@ -181,19 +181,19 @@ function UploadResultView({
       {/* Errors */}
       {uploadResult.errores.length > 0 && (
         <div>
-          <h4 className="text-sm font-medium text-gray-900 mb-2">
+          <h4 className="text-sm font-medium text-foreground mb-2">
             Errores ({uploadResult.errores.length})
           </h4>
           <div className="max-h-40 overflow-y-auto space-y-1">
             {uploadResult.errores.map((error, index) => (
               <div
                 key={index}
-                className="flex items-start gap-2 text-sm text-gray-700 bg-red-50 px-3 py-2 rounded"
+                className="flex items-start gap-2 text-sm text-foreground bg-destructive/10 px-3 py-2 rounded"
               >
-                <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+                <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
                 <div className="flex-1">
                   <div className="font-medium">{error.alumno_nombre}</div>
-                  <div className="text-xs text-red-600">{error.error}</div>
+                  <div className="text-xs text-destructive">{error.error}</div>
                 </div>
               </div>
             ))}
@@ -372,15 +372,15 @@ function CargaEntregaForm({
 
       {/* File upload dropzone */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+        <label className="block text-sm font-medium text-foreground mb-1.5">
           Archivo{mode === 'masivo' ? ' ZIP' : ''} *
         </label>
         <div
           className={`
             relative border-2 border-dashed rounded-lg p-6 text-center
-            ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50'}
-            ${selectedFile ? 'bg-white' : ''}
-            hover:border-gray-400 transition-colors cursor-pointer
+            ${isDragging ? 'border-accent bg-accent/10' : 'border-input bg-muted'}
+            ${selectedFile ? 'bg-card' : ''}
+            hover:border-ring transition-colors cursor-pointer
           `}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -398,12 +398,12 @@ function CargaEntregaForm({
           {selectedFile ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <FileUp className="w-8 h-8 text-blue-600" />
+                <FileUp className="w-8 h-8 text-accent" />
                 <div className="text-left">
-                  <div className="text-sm font-medium text-gray-900">
+                  <div className="text-sm font-medium text-foreground">
                     {selectedFile.name}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-muted-foreground">
                     {formatFileSize(selectedFile.size)}
                   </div>
                 </div>
@@ -414,18 +414,18 @@ function CargaEntregaForm({
                   e.stopPropagation();
                   handleFileChange(null);
                 }}
-                className="p-1 hover:bg-gray-100 rounded"
+                className="p-1 hover:bg-muted rounded"
               >
-                <X className="w-5 h-5 text-gray-500" />
+                <X className="w-5 h-5 text-muted-foreground" />
               </button>
             </div>
           ) : (
             <div>
-              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-              <p className="text-sm font-medium text-gray-700 mb-1">
+              <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
+              <p className="text-sm font-medium text-foreground mb-1">
                 Arrastra un archivo aquí o haz clic
               </p>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 {mode === 'individual'
                   ? 'Cualquier formato: .zip, .txt, .py, .java, .pdf, etc. (máx 100MB)'
                   : 'Formato: .zip (máx 100MB)'}
@@ -434,37 +434,37 @@ function CargaEntregaForm({
           )}
         </div>
         {(errors as any).archivo?.message && (
-          <p className="mt-1 text-sm text-red-600">{(errors as any).archivo.message}</p>
+          <p className="mt-1 text-sm text-destructive">{(errors as any).archivo.message}</p>
         )}
         {(errors as any).archivo_zip?.message && (
-          <p className="mt-1 text-sm text-red-600">{(errors as any).archivo_zip.message}</p>
+          <p className="mt-1 text-sm text-destructive">{(errors as any).archivo_zip.message}</p>
         )}
       </div>
 
       {/* Consolidation mode or PDF notice */}
       {isAlreadyConsolidated ? (
-        <div className="flex items-start gap-2 bg-green-50 border border-green-200 rounded-lg p-3">
-          <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2 bg-success/10 border border-success/30 rounded-lg p-3">
+          <CheckCircle className="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-medium text-green-800">Archivo ya procesado</p>
-            <p className="text-xs text-green-600 mt-0.5">
+            <p className="text-sm font-medium text-success">Archivo ya procesado</p>
+            <p className="text-xs text-success mt-0.5">
               Este archivo TXT ya contiene el código procesado. No se requiere seleccionar modo de procesamiento.
             </p>
           </div>
         </div>
       ) : isPdfFile ? (
-        <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <FileText className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-2 bg-info/10 border border-info/30 rounded-lg p-3">
+          <FileText className="w-5 h-5 text-info flex-shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-medium text-blue-800">Entrega en formato PDF</p>
-            <p className="text-xs text-blue-600 mt-0.5">
+            <p className="text-sm font-medium text-info">Entrega en formato PDF</p>
+            <p className="text-xs text-info mt-0.5">
               Este PDF se enviará directamente al flujo de corrección especializado. No se requiere modo de procesamiento.
             </p>
           </div>
         </div>
       ) : shouldShowModoProcessing ? (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-foreground mb-2">
             Modo de Procesamiento *
           </label>
           <Controller
@@ -517,7 +517,7 @@ function CargaEntregaForm({
           }
           {...register('sobrescribir')}
         />
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-muted-foreground">
           {mode === 'individual'
             ? 'Si ya existe una entrega del mismo alumno, será reemplazada'
             : 'Las entregas de alumnos que ya subieron serán reemplazadas'}
@@ -586,7 +586,7 @@ export const CargaEntregaModal = ({
     <Modal isOpen={isOpen} onClose={handleClose} title="Subir Entregas">
       {/* Modo de Carga — card picker (same pattern as RubricaEditor CREATION_MODES) */}
       <div className="mb-6">
-        <h3 className="text-sm font-semibold text-gray-900 mb-3">Modo de Carga</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">Modo de Carga</h3>
         <div className="grid grid-cols-2 gap-3">
           {CARGA_MODES.map((m) => {
             const Icon = m.icon;
