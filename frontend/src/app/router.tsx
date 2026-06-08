@@ -9,6 +9,8 @@ import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
 import { UsuariosPage } from '@/features/usuarios/pages/UsuariosPage';
 import { MateriasPage } from '@/features/materias/pages/MateriasPage';
 import { CohortesPage } from '@/features/cohortes/pages';
+import { TutoresNexoPage } from '@/features/tutores-nexo/pages';
+import { NotificacionesPage } from '@/features/notificaciones/pages';
 import { MateriaDashboardConfigPage } from '@/features/materia-dashboard/pages';
 import { CronConfigPage } from '@/features/cron-config/pages';
 import { ComisionesPage } from '@/features/comisiones/pages/ComisionesPage';
@@ -72,6 +74,14 @@ export const router = createBrowserRouter([
       {
         path: 'cohortes',
         element: <CohortesPage />,
+      },
+      {
+        path: 'tutores-nexo',
+        element: <TutoresNexoPage />,
+      },
+      {
+        path: 'notificaciones',
+        element: <NotificacionesPage />,
       },
       {
         path: 'materias/:materiaId/dashboard',

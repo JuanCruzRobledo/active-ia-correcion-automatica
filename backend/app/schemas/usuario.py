@@ -37,6 +37,12 @@ class UsuarioBase(BaseModel):
         ...,
         description="Rol del usuario en el sistema",
     )
+    email: str | None = Field(
+        None,
+        max_length=150,
+        description="Email del usuario (lo usa la notificación al tutor académico)",
+        examples=["jperez@active-ia.com"],
+    )
 
 
 class UsuarioCreate(UsuarioBase):
@@ -65,6 +71,11 @@ class UsuarioUpdate(BaseModel):
         None,
         description="Nuevo rol del usuario",
     )
+    email: str | None = Field(
+        None,
+        max_length=150,
+        description="Email del usuario (notificaciones)",
+    )
 
 
 class UsuarioResponse(BaseModel):
@@ -74,6 +85,7 @@ class UsuarioResponse(BaseModel):
     username: str
     nombre: str
     rol: RolEnum
+    email: str | None = None
     primer_login: bool = Field(
         description="True si el usuario debe cambiar su contraseña",
     )

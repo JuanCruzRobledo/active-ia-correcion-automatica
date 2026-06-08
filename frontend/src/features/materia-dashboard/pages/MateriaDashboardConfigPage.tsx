@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, RefreshCw, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Save, SlidersHorizontal, Trash2 } from 'lucide-react';
 import {
   Button,
   Checkbox,
@@ -18,6 +18,7 @@ import {
   useUnidades,
 } from '../hooks/useMateriaDashboard';
 import { ConfigForm } from '../components/ConfigForm';
+import { UnidadComponentesEditor } from '../components/UnidadComponentesEditor';
 
 export const MateriaDashboardConfigPage = () => {
   const { materiaId: materiaIdParam } = useParams<{ materiaId: string }>();
@@ -33,6 +34,7 @@ export const MateriaDashboardConfigPage = () => {
   const sincronizar = useSincronizarUnidades(materiaId);
 
   const [seleccionadas, setSeleccionadas] = useState<number[]>([]);
+  const [unidadComp, setUnidadComp] = useState<number | null>(null);
 
   const handleDetectar = () => {
     detectar.mutate(undefined, {
@@ -130,12 +132,24 @@ export const MateriaDashboardConfigPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {(unidades ?? []).map((u) => (
+                {(unidades ?? []).map((u) => {
+                  const comps = u.componentes?.length ?? 0;
+                  return (
                   <tr key={u.id}>
                     <td className="px-4 py-2 font-medium text-foreground">Unidad {u.numero}</td>
                     <td className="px-4 py-2 text-muted-foreground">#{u.moodle_section_id}</td>
                     <td className="px-4 py-2 text-muted-foreground">{u.nombre ?? '—'}</td>
                     <td className="px-4 py-2 text-right">
+                      <span className="mr-2 text-xs text-muted-foreground">
+                        {comps} {comps === 1 ? 'componente' : 'componentes'}
+                      </span>
+                      <button
+                        onClick={() => setUnidadComp(unidadComp === u.id ? null : u.id)}
+                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        aria-label="Configurar componentes"
+                      >
+                        <SlidersHorizontal className="h-4 w-4" />
+                      </button>
                       <button
                         onClick={() => eliminarUnidad.mutate(u.id)}
                         className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
@@ -145,9 +159,22 @@ export const MateriaDashboardConfigPage = () => {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Editor de componentes (TP/autoeval/cierre) de la unidad expandida */}
+        {unidadComp != null && (
+          <div className="mt-3">
+            {(() => {
+              const u = (unidades ?? []).find((x) => x.id === unidadComp);
+              return u ? (
+                <UnidadComponentesEditor unidad={u} materiaId={materiaId} />
+              ) : null;
+            })()}
           </div>
         )}
 

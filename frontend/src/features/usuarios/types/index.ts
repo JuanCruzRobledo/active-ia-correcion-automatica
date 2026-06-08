@@ -13,6 +13,7 @@ export interface Usuario {
   username: string;
   nombre: string;
   rol: RolEnum;
+  email?: string | null;
   primer_login: boolean;
   gemini_api_key_valid: boolean;
   activo: boolean;
@@ -42,11 +43,13 @@ export interface UsuarioCreate {
   username: string;
   nombre: string;
   rol: RolEnum;
+  email?: string | null;
 }
 
 export interface UsuarioUpdate {
   nombre?: string;
   rol?: RolEnum;
+  email?: string | null;
 }
 
 export interface UsuarioCreateResponse {

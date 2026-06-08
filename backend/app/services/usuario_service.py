@@ -72,6 +72,7 @@ class UsuarioService:
             username=data.username.lower(),
             nombre=data.nombre,
             rol=data.rol,
+            email=data.email,
             password_hash=hash_password(temp_password),
             primer_login=True,
             activo=True,
@@ -186,6 +187,8 @@ class UsuarioService:
             user.nombre = data.nombre
         if data.rol is not None:
             user.rol = data.rol
+        if data.email is not None:
+            user.email = data.email
 
         updated_user = await self.repo.update(user)
 

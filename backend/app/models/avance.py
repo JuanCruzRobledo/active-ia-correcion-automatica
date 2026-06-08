@@ -21,6 +21,7 @@ from sqlalchemy import (
     Integer,
     String,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -91,6 +92,9 @@ class AvanceAlumno(Base):
     apellido: Mapped[str | None] = mapped_column(String(100), nullable=True)
     email: Mapped[str | None] = mapped_column(String(150), nullable=True)
     comision: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Regional derivada del grupo Moodle "R-<nombre>" (gestion_parser). Se usa para
+    # agrupar a los alumnos del tutor nexo. Ver PLAN_NOTIFICACIONES_EMAIL.md §4.1.
+    regional: Mapped[str | None] = mapped_column(String(120), nullable=True, index=True)
 
     unidad_alcanzada: Mapped[int | None] = mapped_column(
         Integer,
@@ -110,6 +114,12 @@ class AvanceAlumno(Base):
         nullable=False,
         index=True,
     )
+    # Actividades faltantes ya resueltas para el email (PLAN_NOTIFICACIONES_EMAIL.md §4.4):
+    #   {"modo": "UNIDADES"|"ACTIVIDADES",
+    #    "unidades": [int, ...],
+    #    "actividades": [{"cmid": int, "nombre": str, "unidad": int}, ...]}
+    # NULL/None => no le falta nada en esta materia (no se reporta).
+    actividades_faltantes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     snapshot: Mapped["AvanceSnapshot"] = relationship(

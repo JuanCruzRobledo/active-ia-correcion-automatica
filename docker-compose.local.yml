@@ -63,6 +63,11 @@ services:
       N8N_WEBHOOK_HEALTH: http://n8n:5678/webhook/health
       N8N_TIMEOUT_SECONDS: 90
 
+      # Email / Resend (notificaciones)
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_REMITENTE: ${EMAIL_REMITENTE:-onboarding@resend.dev}
+      EMAIL_RATE_POR_SEGUNDO: ${EMAIL_RATE_POR_SEGUNDO:-8}
+
       # Archivos
       UPLOAD_DIR: /app/uploads
       MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-104857600}

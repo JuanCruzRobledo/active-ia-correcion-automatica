@@ -12,6 +12,8 @@ import {
   GraduationCap,
   CalendarClock,
   PieChart,
+  Mail,
+  BellRing,
   User,
   LogOut,
 } from 'lucide-react';
@@ -32,6 +34,8 @@ const navItems: NavItem[] = [
   { to: '/materias', icon: BookOpen, label: 'Materias', roles: ['ADMIN'] },
   { to: '/cohortes', icon: GraduationCap, label: 'Cohortes', roles: ['ADMIN'] },
   { to: '/snapshots', icon: CalendarClock, label: 'Snapshots', roles: ['ADMIN'] },
+  { to: '/tutores-nexo', icon: Mail, label: 'Tutores Nexo', roles: ['ADMIN'] },
+  { to: '/notificaciones', icon: BellRing, label: 'Notificaciones', roles: ['ADMIN'] },
   {
     to: '/comisiones',
     icon: FolderOpen,

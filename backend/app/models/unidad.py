@@ -19,6 +19,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.componente_unidad import ComponenteUnidad
     from app.models.materia import Materia
     from app.models.rubrica import Rubrica
 
@@ -63,6 +64,16 @@ class Unidad(Base, TimestampMixin):
     rubricas: Mapped[list["Rubrica"]] = relationship(
         "Rubrica",
         back_populates="unidad",
+    )
+    # Componentes evaluables (TP/Quiz/Autoeval/Cierre), configurados a mano en el ABM.
+    # §9.bis F. lazy="selectin" para que el snapshot acceda a u.componentes sin eager
+    # load explícito (igual que materia.unidades).
+    componentes: Mapped[list["ComponenteUnidad"]] = relationship(
+        "ComponenteUnidad",
+        back_populates="unidad",
+        cascade="all, delete-orphan",
+        order_by="ComponenteUnidad.orden",
+        lazy="selectin",
     )
 
     def __repr__(self) -> str:

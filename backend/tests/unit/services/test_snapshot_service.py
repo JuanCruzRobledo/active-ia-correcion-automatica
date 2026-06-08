@@ -5,6 +5,7 @@ Moodle y repos mockeados. Cubre la orquestación: filtra students, calcula estad
 por alumno (vía avance_mapper), parsea comisión y arma el snapshot.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -42,14 +43,18 @@ ENROLLED = [
 ]
 
 COMPLETION = {
-    1: [  # Ana: completó hasta U2 → AL_DIA (unidad_actual=2)
-        {"cmid": 11, "state": 2, "timecompleted": 100},
-        {"cmid": 22, "state": 1, "timecompleted": 300},
-        {"cmid": 23, "state": 1, "timecompleted": 400},
+    1: [  # Ana: autoeval U2 (22) por seguimiento; los TP (11, 23) van por nota
+        {"cmid": 22, "state": 1},
     ],
-    2: [  # Beto: nada completado → SIN_ACTIVIDAD
-        {"cmid": 11, "state": 0, "timecompleted": 0},
+    2: [  # Beto: nada realizado → SIN_ACTIVIDAD
+        {"cmid": 11, "state": 0},
     ],
+}
+
+# Notas de los TP (calificación) por alumno: {cmid → texto}. §9.bis E7.
+GRADES = {
+    1: {11: "Aprobado", 23: "Aprobado"},  # Ana: ambos TP aprobados → alcanzada 2 → AL_DIA
+    2: {},  # Beto: sin notas → SIN_ACTIVIDAD
 }
 
 
@@ -61,6 +66,15 @@ def _make_service() -> SnapshotService:
     return service
 
 
+def _comp(tipo, cmid, fuente):
+    """Componente mock con la forma que lee snapshot_service (tipo.value / fuente.value)."""
+    return SimpleNamespace(
+        tipo=SimpleNamespace(value=tipo),
+        moodle_cmid=cmid,
+        fuente=SimpleNamespace(value=fuente),
+    )
+
+
 def _materia_configurada():
     return MagicMock(
         id=7,
@@ -68,8 +82,14 @@ def _materia_configurada():
         unidad_actual=2,
         moodle_section_fin_id=None,
         unidades=[
-            MagicMock(numero=1, moodle_section_id=100),
-            MagicMock(numero=2, moodle_section_id=200),
+            MagicMock(numero=1, componentes=[_comp("TP", 11, "CALIFICACION")]),
+            MagicMock(
+                numero=2,
+                componentes=[
+                    _comp("TP", 23, "CALIFICACION"),
+                    _comp("AUTOEVALUACION", 22, "SEGUIMIENTO"),
+                ],
+            ),
         ],
     )
 
@@ -108,7 +128,11 @@ async def test_generar_arma_snapshot_con_estados_y_comision():
     async def _completion(token, host, course_id, uid, client=None):
         return COMPLETION[uid]
 
+    async def _grades(token, host, course_id, uid, client=None):
+        return GRADES[uid]
+
     service.moodle.get_activities_completion.side_effect = _completion
+    service.moodle.get_grade_items.side_effect = _grades
     service.avance_repo.crear.side_effect = lambda snap: snap  # devuelve el mismo snapshot
 
     snapshot = await service.generar(7, token="t", moodle_host="h", origen=OrigenSnapshotEnum.MANUAL)
@@ -122,7 +146,7 @@ async def test_generar_arma_snapshot_con_estados_y_comision():
     assert por_uid[1].estado == EstadoAvanceEnum.AL_DIA
     assert por_uid[1].unidad_alcanzada == 2
     assert por_uid[1].comision == "M26 C1-09"
-    assert por_uid[1].actividad_actual_nombre == "Cierre U2"  # mayor timecompleted en U2
+    assert por_uid[1].actividad_actual_nombre == "Unidad 2"  # resumen de la unidad alcanzada
     assert por_uid[1].actividad_actual_desaprobada is False
 
     assert por_uid[2].estado == EstadoAvanceEnum.SIN_ACTIVIDAD
@@ -143,7 +167,11 @@ async def test_generar_persiste_via_repo():
     async def _completion(token, host, course_id, uid, client=None):
         return COMPLETION[uid]
 
+    async def _grades(token, host, course_id, uid, client=None):
+        return GRADES[uid]
+
     service.moodle.get_activities_completion.side_effect = _completion
+    service.moodle.get_grade_items.side_effect = _grades
     service.avance_repo.crear.side_effect = lambda snap: snap
 
     await service.generar(7, token="t", moodle_host="h")

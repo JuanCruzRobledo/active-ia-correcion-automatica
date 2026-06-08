@@ -1,0 +1,1 @@
+export { NotificacionesPage } from './NotificacionesPage';

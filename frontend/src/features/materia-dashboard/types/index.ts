@@ -1,11 +1,43 @@
 // Tipos de la config de dashboard por materia (unidades + vinculación)
 
+// §9.bis F — componentes evaluables dinámicos por unidad.
+export type TipoComponente = 'TP' | 'QUIZ' | 'AUTOEVALUACION' | 'CIERRE';
+export type FuenteComponente = 'SEGUIMIENTO' | 'CALIFICACION';
+
+export interface ComponenteUnidad {
+  id: number;
+  tipo: TipoComponente;
+  moodle_cmid: number;
+  fuente: FuenteComponente;
+  orden: number;
+}
+
 export interface Unidad {
   id: number;
   materia_id: number;
   numero: number;
   moodle_section_id: number;
   nombre?: string | null;
+  componentes: ComponenteUnidad[];
+}
+
+export interface MoodleActividad {
+  cmid: number;
+  nombre: string;
+  modname: string;
+  // false => sin seguimiento de finalización (conviene medirla por CALIFICACIÓN).
+  tiene_seguimiento: boolean;
+}
+
+// Un componente a guardar (sin id; el orden lo da la posición en la lista).
+export interface ComponenteInput {
+  tipo: TipoComponente;
+  moodle_cmid: number;
+  fuente: FuenteComponente;
+}
+
+export interface UnidadComponentes {
+  componentes: ComponenteInput[];
 }
 
 export interface UnidadCreate {

@@ -3,8 +3,10 @@ import { apiClient } from '@/shared/services/api-client';
 import type {
   MateriaDashboardConfig,
   MateriaDashboardConfigResponse,
+  MoodleActividad,
   MoodleSeccionesSugeridas,
   Unidad,
+  UnidadComponentes,
   UnidadCreate,
 } from '../types';
 
@@ -59,6 +61,26 @@ export const materiaDashboardService = {
     const { data } = await apiClient.put<Unidad[]>(
       `/materias/${materiaId}/unidades/sync`,
       { secciones }
+    );
+    return data;
+  },
+
+  /** Actividades de Moodle de una unidad (trackeables + evaluables), para elegir componentes. */
+  getActividadesUnidad: async (unidadId: number): Promise<MoodleActividad[]> => {
+    const { data } = await apiClient.get<MoodleActividad[]>(
+      `/unidades/${unidadId}/actividades`
+    );
+    return data;
+  },
+
+  /** Reemplaza el set de componentes (tipo + cmid + fuente) de una unidad. */
+  setComponentesUnidad: async (
+    unidadId: number,
+    payload: UnidadComponentes
+  ): Promise<Unidad> => {
+    const { data } = await apiClient.put<Unidad>(
+      `/unidades/${unidadId}/componentes`,
+      payload
     );
     return data;
   },

@@ -17,17 +17,22 @@ from app.models.enums import (
     EstadoAvanceEnum,
     EstadoCriterioEnum,
     EstadoEntregaEnum,
+    EstadoEnvioEnum,
+    FuenteComponenteEnum,
     FuenteRubricaEnum,
     MoodleSyncEstado,
     OrigenSnapshotEnum,
     RolEnum,
     TipoActividadEnum,
+    TipoComponenteEnum,
+    TipoNotificacionEnum,
     TipoRubricaEnum,
 )
 from app.models.usuario import Usuario
 from app.models.cohorte import Cohorte, Cuatrimestre
 from app.models.materia import CoordinadorMateria, Materia
 from app.models.unidad import Unidad
+from app.models.componente_unidad import ComponenteUnidad
 from app.models.comision import Comision, ComisionTutor
 from app.models.rubrica import Rubrica
 from app.models.entrega import Entrega, EntregaHistorial
@@ -35,6 +40,8 @@ from app.models.correccion import Correccion
 from app.models.actividad import Actividad
 from app.models.moodle_sync import MoodleSync
 from app.models.avance import AvanceAlumno, AvanceSnapshot, SnapshotCronConfig
+from app.models.tutor_nexo import TutorNexo
+from app.models.notificacion import EnvioEmailLog, NotificacionCronConfig
 
 __all__ = [
     # Base
@@ -54,12 +61,17 @@ __all__ = [
     "MoodleSyncEstado",
     "EstadoAvanceEnum",
     "OrigenSnapshotEnum",
+    "TipoNotificacionEnum",
+    "EstadoEnvioEnum",
+    "TipoComponenteEnum",
+    "FuenteComponenteEnum",
     # Models
     "Usuario",
     "Cohorte",
     "Cuatrimestre",
     "Materia",
     "Unidad",
+    "ComponenteUnidad",
     "CoordinadorMateria",
     "Comision",
     "ComisionTutor",
@@ -72,4 +84,7 @@ __all__ = [
     "AvanceSnapshot",
     "AvanceAlumno",
     "SnapshotCronConfig",
+    "TutorNexo",
+    "EnvioEmailLog",
+    "NotificacionCronConfig",
 ]

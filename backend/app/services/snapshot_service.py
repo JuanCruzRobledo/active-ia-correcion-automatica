@@ -23,7 +23,11 @@ from app.repositories.avance_repository import AvanceRepository
 from app.repositories.materia_repository import MateriaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.services.avance_mapper import calcular_avance_alumno
-from app.services.gestion_parser import SIN_COMISION, resolver_grupos_alumno
+from app.services.gestion_parser import (
+    SIN_COMISION,
+    SIN_REGIONAL,
+    resolver_grupos_alumno,
+)
 from app.services.moodle_service import MoodleService
 
 logger = logging.getLogger(__name__)
@@ -115,8 +119,21 @@ class SnapshotService:
             )
 
         course_id = materia.moodle_course_id
-        cabeceras_section_ids = [
-            (u.numero, u.moodle_section_id) for u in materia.unidades
+        # Config de las unidades: cada una con sus N componentes dinámicos (§9.bis F).
+        # La fuente viaja como string para que avance_mapper sea puro.
+        unidades_config = [
+            {
+                "numero": u.numero,
+                "componentes": [
+                    {
+                        "tipo": c.tipo.value,
+                        "cmid": c.moodle_cmid,
+                        "fuente": c.fuente.value,
+                    }
+                    for c in u.componentes
+                ],
+            }
+            for u in materia.unidades
         ]
 
         alumnos: list[AvanceAlumno] = []
@@ -127,10 +144,6 @@ class SnapshotService:
             max_connections=10, max_keepalive_connections=10, keepalive_expiry=30.0
         )
         async with httpx.AsyncClient(timeout=60.0, limits=limits) as client:
-            # 1 sola llamada de contenidos (cacheada) para toda la materia.
-            secciones = await self.moodle.get_course_contents(
-                token, moodle_host, course_id, client=client
-            )
             enrolled = await self.moodle.get_enrolled_users_full(
                 token, moodle_host, course_id, client=client
             )
@@ -151,15 +164,18 @@ class SnapshotService:
                     statuses = await self.moodle.get_activities_completion(
                         token, moodle_host, course_id, uid, client=client
                     )
+                    # Notas (para el estado del TP, que se mide por calificación).
+                    notas_tp = await self.moodle.get_grade_items(
+                        token, moodle_host, course_id, uid, client=client
+                    )
                 calc = calcular_avance_alumno(
                     statuses,
-                    secciones,
-                    cabeceras_section_ids,
+                    notas_tp,
+                    unidades_config,
                     unidad_actual=materia.unidad_actual,
-                    tope_section_id=materia.moodle_section_fin_id,
                 )
                 grupos = [g.get("name") for g in (u.get("groups") or []) if g.get("name")]
-                _, comision = resolver_grupos_alumno(grupos)
+                regional, comision = resolver_grupos_alumno(grupos)
                 procesados += 1
                 if on_progress is not None:
                     on_progress(procesados, total)
@@ -169,11 +185,13 @@ class SnapshotService:
                     apellido=u.get("lastname"),
                     email=u.get("email"),
                     comision=None if comision == SIN_COMISION else comision,
+                    regional=None if regional == SIN_REGIONAL else regional,
                     unidad_alcanzada=calc["unidad_alcanzada"],
                     actividad_actual_nombre=calc["actividad_actual_nombre"],
                     actividad_actual_unidad=calc["actividad_actual_unidad"],
                     actividad_actual_desaprobada=calc["actividad_actual_desaprobada"],
                     estado=calc["estado"],
+                    actividades_faltantes=calc["actividades_faltantes"],
                 )
 
             resultados = await asyncio.gather(

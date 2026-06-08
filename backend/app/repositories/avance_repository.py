@@ -51,6 +51,19 @@ class AvanceRepository:
         )
         return {estado: total for estado, total in result.all()}
 
+    async def get_alumnos_de_snapshot(self, snapshot_id: int) -> list[AvanceAlumno]:
+        """Todos los AvanceAlumno de un snapshot (para las notificaciones por email)."""
+        result = await self.db.execute(
+            select(AvanceAlumno)
+            .where(AvanceAlumno.snapshot_id == snapshot_id)
+            .order_by(
+                AvanceAlumno.comision.asc().nullslast(),
+                AvanceAlumno.apellido.asc(),
+                AvanceAlumno.nombre.asc(),
+            )
+        )
+        return list(result.scalars().all())
+
     async def get_alumnos_por_estado(
         self, snapshot_ids: list[int], estado: EstadoAvanceEnum
     ) -> list[AvanceAlumno]:

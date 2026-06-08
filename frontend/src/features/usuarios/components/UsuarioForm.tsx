@@ -27,6 +27,9 @@ const usuarioSchema = z.object({
   rol: z.enum(['ADMIN', 'COORDINADOR', 'TUTOR', 'GESTOR'], {
     message: 'Selecciona un rol válido',
   }),
+  email: z
+    .union([z.string().email('Email inválido').max(150), z.literal('')])
+    .optional(),
 });
 
 type UsuarioFormData = z.infer<typeof usuarioSchema>;
@@ -66,6 +69,7 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
       username: '',
       nombre: '',
       rol: 'TUTOR',
+      email: '',
     },
   });
 
@@ -75,6 +79,7 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
       setValue('username', usuario.username);
       setValue('nombre', usuario.nombre);
       setValue('rol', usuario.rol);
+      setValue('email', usuario.email ?? '');
     } else {
       reset();
     }
@@ -91,6 +96,7 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
 
   const onSubmit = async (data: UsuarioFormData) => {
     try {
+      const email = data.email?.trim() || null;
       if (isEditMode) {
         // Update existing user
         await updateMutation.mutateAsync({
@@ -98,12 +104,18 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
           data: {
             nombre: data.nombre,
             rol: data.rol,
+            email,
           },
         });
         onClose();
       } else {
         // Create new user
-        const response = await createMutation.mutateAsync(data);
+        const response = await createMutation.mutateAsync({
+          username: data.username,
+          nombre: data.nombre,
+          rol: data.rol,
+          email,
+        });
         setTempPassword(response.password_temporal);
         setShowPasswordModal(true);
       }
@@ -204,6 +216,17 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
           error={errors.rol?.message}
           {...register('rol')}
         />
+
+        <Input
+          label="Email (opcional)"
+          type="email"
+          placeholder="jperez@active-ia.com"
+          error={errors.email?.message}
+          {...register('email')}
+        />
+        <p className="-mt-2 text-xs text-muted-foreground">
+          Necesario para que un tutor reciba el PDF semanal de actividades faltantes.
+        </p>
 
         {!isEditMode && (
           <div className="bg-muted border border-border rounded-lg p-4">

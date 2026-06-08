@@ -17,8 +17,10 @@ from app.models import Usuario
 from app.schemas.unidad import (
     MateriaDashboardConfig,
     MateriaDashboardConfigResponse,
+    MoodleActividadItem,
     MoodleSeccionesSugeridas,
     RubricaUnidadAssign,
+    UnidadComponentesUpdate,
     UnidadCreate,
     UnidadesSyncRequest,
     UnidadResponse,
@@ -115,6 +117,34 @@ async def eliminar_unidad(
     require_admin(current_user)
     service = UnidadService(db)
     await service.eliminar_unidad(unidad_id)
+
+
+# ===================== Componentes de la unidad (dinámicos) =====================
+
+
+@router.get("/unidades/{unidad_id}/actividades", response_model=list[MoodleActividadItem])
+async def listar_actividades_unidad(
+    unidad_id: int,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[MoodleActividadItem]:
+    """Actividades de Moodle de la unidad (trackeables + evaluables), para elegir componentes. Solo admin."""
+    require_admin(current_user)
+    service = UnidadService(db)
+    return await service.listar_actividades_unidad(unidad_id, current_user)
+
+
+@router.put("/unidades/{unidad_id}/componentes", response_model=UnidadResponse)
+async def set_componentes_unidad(
+    unidad_id: int,
+    data: UnidadComponentesUpdate,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UnidadResponse:
+    """Reemplaza el set de componentes evaluables (tipo + cmid + fuente) de la unidad. Solo admin."""
+    require_admin(current_user)
+    service = UnidadService(db)
+    return await service.set_componentes_unidad(unidad_id, data)
 
 
 # ===================== Config dashboard de la Materia =====================

@@ -121,6 +121,16 @@ class Settings(BaseSettings):
     ALLOW_HARD_DELETE: bool = False
 
     # =========================================
+    # Email / Resend (notificaciones de avance)
+    # =========================================
+    # API key de Resend. Vacía => el EmailService no envía (modo no configurado).
+    RESEND_API_KEY: str = ""
+    # Remitente. En SANDBOX (sin dominio verificado) debe ser onboarding@resend.dev.
+    EMAIL_REMITENTE: str = "onboarding@resend.dev"
+    # Throttle de envío (emails/segundo) para respetar el rate limit de Resend.
+    EMAIL_RATE_POR_SEGUNDO: float = 8.0
+
+    # =========================================
     # Validators
     # =========================================
     @field_validator("CORS_ORIGINS", mode="before")

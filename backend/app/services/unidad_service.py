@@ -11,6 +11,7 @@ Ref: PLAN_DASHBOARD_GESTORES.md §5, §6.1, §8 (T3)
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.componente_unidad import ComponenteUnidad
 from app.models.unidad import Unidad
 from app.repositories.cohorte_repository import CuatrimestreRepository
 from app.repositories.materia_repository import MateriaRepository
@@ -19,14 +20,24 @@ from app.repositories.unidad_repository import UnidadRepository
 from app.schemas.unidad import (
     MateriaDashboardConfig,
     MateriaDashboardConfigResponse,
+    MoodleActividadItem,
     MoodleSeccionItem,
     MoodleSeccionesSugeridas,
+    UnidadComponentesUpdate,
     UnidadCreate,
     UnidadesSyncRequest,
     UnidadResponse,
     UnidadUpdate,
 )
-from app.services.avance_mapper import detectar_cabeceras
+
+# Tipos de actividad de Moodle "evaluables": se ofrecen en el ABM aunque NO tengan
+# seguimiento de finalización (porque pueden medirse por CALIFICACIÓN — ver E7).
+_MODNAMES_EVALUABLES = {"assign", "quiz", "feedback", "workshop", "lesson"}
+from app.services.avance_mapper import (
+    detectar_cabeceras,
+    section_id_a_num,
+    unidad_de_section_num,
+)
 from app.services.moodle_service import MoodleService
 
 
@@ -118,6 +129,81 @@ class UnidadService:
         unidad = await self._get_unidad_or_404(unidad_id)
         # delete() desvincula las rúbricas (unidad_id=NULL) antes de borrar
         await self.unidad_repo.delete(unidad)
+
+    # ===================== Componentes de la unidad (dinámicos) =====================
+
+    async def set_componentes_unidad(
+        self, unidad_id: int, data: UnidadComponentesUpdate
+    ) -> UnidadResponse:
+        """Reemplaza el set completo de componentes evaluables de la unidad. §9.bis F.
+
+        El orden de la lista define el campo `orden`. Los componentes viejos se borran
+        (cascade delete-orphan de la relación).
+        """
+        unidad = await self._get_unidad_or_404(unidad_id)
+        unidad.componentes = [
+            ComponenteUnidad(
+                tipo=c.tipo,
+                moodle_cmid=c.moodle_cmid,
+                fuente=c.fuente,
+                orden=i,
+            )
+            for i, c in enumerate(data.componentes)
+        ]
+        updated = await self.unidad_repo.update(unidad)
+        return UnidadResponse.model_validate(updated)
+
+    async def listar_actividades_unidad(
+        self, unidad_id: int, usuario
+    ) -> list[MoodleActividadItem]:
+        """Actividades de Moodle que caen en el rango de la unidad, para elegir componentes.
+
+        Incluye las que tienen seguimiento de finalización Y las evaluables sin seguimiento
+        (assign/quiz/feedback/…), porque estas últimas pueden medirse por CALIFICACIÓN (E7).
+        `tiene_seguimiento` avisa cuáles NO tienen completion (medilas por calificación).
+        """
+        unidad = await self._get_unidad_or_404(unidad_id)
+        materia = await self._get_materia_or_404(unidad.materia_id)
+        if not materia.moodle_course_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="La materia no tiene vínculo con un curso de Moodle",
+            )
+        token, host = await self._token_moodle(usuario)
+        secciones = await self.moodle.get_course_contents(
+            token, host, materia.moodle_course_id
+        )
+        sec_id_num = section_id_a_num(secciones)
+        cabeceras = [
+            (u.numero, sec_id_num[u.moodle_section_id])
+            for u in materia.unidades
+            if u.moodle_section_id in sec_id_num
+        ]
+        tope = (
+            sec_id_num.get(materia.moodle_section_fin_id)
+            if materia.moodle_section_fin_id
+            else None
+        )
+        out: list[MoodleActividadItem] = []
+        for sec in secciones:
+            u = unidad_de_section_num(sec.get("section"), cabeceras, tope_section_num=tope)
+            if u != unidad.numero:
+                continue
+            for m in sec.get("modules", []):
+                tiene_seg = (m.get("completion") or 0) != 0
+                modname = m.get("modname") or ""
+                # Mostramos las trackeables y las evaluables (aunque no tengan seguimiento).
+                if not tiene_seg and modname not in _MODNAMES_EVALUABLES:
+                    continue
+                out.append(
+                    MoodleActividadItem(
+                        cmid=m.get("id"),
+                        nombre=(m.get("name") or "").strip(),
+                        modname=modname,
+                        tiene_seguimiento=tiene_seg,
+                    )
+                )
+        return out
 
     async def sincronizar_unidades(
         self, materia_id: int, data: UnidadesSyncRequest

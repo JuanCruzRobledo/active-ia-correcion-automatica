@@ -7,6 +7,33 @@ Ref: PLAN_DASHBOARD_GESTORES.md §5, §8 (T3)
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.enums import FuenteComponenteEnum, TipoComponenteEnum
+
+
+# ===================== Componentes de la unidad (§9.bis F) =====================
+
+
+class ComponenteUnidadInput(BaseModel):
+    """Un componente evaluable a vincular: tipo (etiqueta) + cmid + fuente de verdad."""
+
+    tipo: TipoComponenteEnum
+    moodle_cmid: int = Field(..., description="cmid de la actividad de Moodle")
+    fuente: FuenteComponenteEnum = Field(
+        ..., description="SEGUIMIENTO (completion) | CALIFICACION (nota)"
+    )
+
+
+class ComponenteUnidadResponse(BaseModel):
+    """Componente evaluable serializado."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    tipo: TipoComponenteEnum
+    moodle_cmid: int
+    fuente: FuenteComponenteEnum
+    orden: int
+
 
 # ===================== Unidad =====================
 
@@ -28,7 +55,7 @@ class UnidadUpdate(BaseModel):
 
 
 class UnidadResponse(BaseModel):
-    """Unidad serializada."""
+    """Unidad serializada, con sus componentes evaluables."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -37,6 +64,26 @@ class UnidadResponse(BaseModel):
     numero: int
     moodle_section_id: int
     nombre: str | None = None
+    componentes: list[ComponenteUnidadResponse] = []
+
+
+class UnidadComponentesUpdate(BaseModel):
+    """Reemplaza el set completo de componentes evaluables de una unidad. §9.bis F."""
+
+    componentes: list[ComponenteUnidadInput] = []
+
+
+class MoodleActividadItem(BaseModel):
+    """Una actividad de Moodle candidata a componente de la unidad.
+
+    `tiene_seguimiento` False = sin seguimiento de finalización → conviene medirla
+    por CALIFICACIÓN (no por seguimiento), o no podrá detectarse como realizada (E7).
+    """
+
+    cmid: int
+    nombre: str
+    modname: str
+    tiene_seguimiento: bool = True
 
 
 # ===================== Config dashboard de la Materia =====================

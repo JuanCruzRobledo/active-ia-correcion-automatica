@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { materiaDashboardService } from '../services/materia-dashboard.service';
-import type { MateriaDashboardConfig, UnidadCreate } from '../types';
+import type { MateriaDashboardConfig, UnidadComponentes, UnidadCreate } from '../types';
 
 export const materiaDashboardKeys = {
   unidades: (materiaId: number) => ['materia-dashboard', 'unidades', materiaId] as const,
@@ -69,6 +69,27 @@ export const useSincronizarUnidades = (materiaId: number) => {
       materiaDashboardService.sincronizarUnidades(materiaId, secciones),
     onSuccess: () => {
       toast.success('Unidades guardadas');
+      qc.invalidateQueries({ queryKey: materiaDashboardKeys.unidades(materiaId) });
+    },
+  });
+};
+
+/** Actividades de Moodle de una unidad (bajo demanda, al expandir su config). */
+export const useActividadesUnidad = (unidadId: number, enabled: boolean) =>
+  useQuery({
+    queryKey: ['materia-dashboard', 'actividades-unidad', unidadId] as const,
+    queryFn: () => materiaDashboardService.getActividadesUnidad(unidadId),
+    enabled: enabled && !!unidadId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+export const useSetComponentesUnidad = (materiaId: number) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ unidadId, data }: { unidadId: number; data: UnidadComponentes }) =>
+      materiaDashboardService.setComponentesUnidad(unidadId, data),
+    onSuccess: () => {
+      toast.success('Componentes de la unidad guardados');
       qc.invalidateQueries({ queryKey: materiaDashboardKeys.unidades(materiaId) });
     },
   });

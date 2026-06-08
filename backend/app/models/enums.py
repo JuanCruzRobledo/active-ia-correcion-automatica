@@ -89,3 +89,48 @@ class OrigenSnapshotEnum(str, Enum):
 
     CRON = "CRON"  # Generado por el job diario
     MANUAL = "MANUAL"  # Disparado a mano (botón de pruebas)
+
+
+class TipoNotificacionEnum(str, Enum):
+    """Destinatario de una notificación de avance por email.
+
+    Ver PLAN_NOTIFICACIONES_EMAIL.md §1.
+    """
+
+    ALUMNO = "ALUMNO"  # tabla HTML en el cuerpo con sus materias/actividades faltantes
+    TUTOR_ACADEMICO = "TUTOR_ACADEMICO"  # PDF adjunto, por sus comisiones
+    TUTOR_NEXO = "TUTOR_NEXO"  # Excel adjunto, por su regional
+
+
+class EstadoEnvioEnum(str, Enum):
+    """Estado de un email en la cola de envío (EnvioEmailLog)."""
+
+    PENDIENTE = "PENDIENTE"  # encolado, aún no enviado
+    ENVIADO = "ENVIADO"  # aceptado por Resend (con resend_id)
+    ERROR = "ERROR"  # falló tras reintentos
+    OMITIDO = "OMITIDO"  # sin destinatario válido / sin nada que informar
+
+
+class TipoComponenteEnum(str, Enum):
+    """Tipo de un componente evaluable de una unidad.
+
+    Es SOLO una etiqueta para el reporte ("Te falta el Quiz de la Unidad 3"); la
+    LÓGICA de "realizado/deuda" la decide la FUENTE, no el tipo. Ver §9.bis F.
+    """
+
+    TP = "TP"  # trabajo práctico / entregable
+    QUIZ = "QUIZ"  # cuestionario
+    AUTOEVALUACION = "AUTOEVALUACION"  # autoevaluación
+    CIERRE = "CIERRE"  # actividad de cierre
+
+
+class FuenteComponenteEnum(str, Enum):
+    """Fuente de verdad para saber si un componente está realizado. §9.bis F.
+
+    - SEGUIMIENTO: por el completion de Moodle (state ∈ {1,2,3} = hecho).
+      OJO: requiere que la actividad tenga activado el seguimiento de finalización.
+    - CALIFICACION: por la nota (Aprobado/Desaprobado o nota numérica cargada).
+    """
+
+    SEGUIMIENTO = "SEGUIMIENTO"
+    CALIFICACION = "CALIFICACION"

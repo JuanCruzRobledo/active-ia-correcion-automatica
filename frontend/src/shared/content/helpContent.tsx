@@ -5,6 +5,67 @@ import type { ReactNode } from 'react';
  * Se consume con <HelpButton content={helpContent.<clave>} />.
  */
 export const helpContent: Record<string, ReactNode> = {
+  notificaciones: (
+    <div className="space-y-4 text-sm text-muted-foreground">
+      <p className="text-lg font-semibold text-foreground">Notificaciones por email</p>
+      <p>
+        Una vez por semana, de forma automática, se envían las actividades faltantes a tres
+        destinatarios distintos:
+      </p>
+      <ul className="ml-4 list-disc space-y-2">
+        <li><strong className="text-foreground">Alumno:</strong> una tabla en el cuerpo del email con sus materias.</li>
+        <li><strong className="text-foreground">Tutor académico:</strong> un PDF con los alumnos de sus comisiones.</li>
+        <li><strong className="text-foreground">Tutor nexo:</strong> un Excel con los alumnos de su regional.</li>
+      </ul>
+      <p>
+        El cron refresca los snapshots (con el usuario de servicio) y después envía los 3 tipos
+        en cadena. Antes de activarlo, usá <strong className="text-foreground">Enviar prueba</strong> y la{' '}
+        <strong className="text-foreground">vista previa</strong> para revisar los formatos, y{' '}
+        <strong className="text-foreground">Disparar ahora</strong> para una corrida manual de control.
+      </p>
+      <div className="mt-4 rounded-lg bg-muted/50 p-4">
+        <p className="font-medium text-warning">Ojo:</p>
+        <p className="mt-1 text-sm">
+          En modo sandbox (sin dominio verificado) Resend solo entrega a la casilla de tu cuenta.
+          Para enviar a todos, primero hay que verificar el dominio.
+        </p>
+      </div>
+    </div>
+  ),
+
+  tutoresNexo: (
+    <div className="space-y-4 text-sm text-muted-foreground">
+      <p className="text-lg font-semibold text-foreground">Tutores Nexo</p>
+      <p>
+        El tutor nexo recibe semanalmente, por email, un{' '}
+        <strong className="text-foreground">Excel</strong> con los alumnos de su{' '}
+        <strong className="text-foreground">regional</strong> y las actividades que les faltan
+        (una hoja por materia).
+      </p>
+      <ul className="ml-4 list-disc space-y-2">
+        <li>
+          <strong className="text-foreground">Regional:</strong> escribila como aparece en
+          Moodle pero <strong className="text-foreground">sin el prefijo "R-"</strong>. Ej: el
+          grupo <em>R-Mendoza</em> → cargás <em>Mendoza</em>.
+        </li>
+        <li>
+          <strong className="text-foreground">Email:</strong> casilla donde recibe el Excel.
+        </li>
+        <li>
+          <strong className="text-foreground">Activo:</strong> solo los activos reciben el envío
+          semanal.
+        </li>
+      </ul>
+      <div className="mt-4 rounded-lg bg-muted/50 p-4">
+        <p className="font-medium text-warning">Ojo:</p>
+        <p className="mt-1 text-sm">
+          La regional debe coincidir exactamente con el nombre del grupo de Moodle (sin "R-"),
+          o no se le asignará ningún alumno.
+        </p>
+      </div>
+    </div>
+  ),
+
   cohortes: (
     <div className="space-y-4 text-sm text-muted-foreground">
       <p className="text-lg font-semibold text-foreground">Cohortes</p>

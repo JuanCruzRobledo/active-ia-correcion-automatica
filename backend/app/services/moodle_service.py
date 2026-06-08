@@ -443,6 +443,48 @@ class MoodleService:
             return data.get("statuses", []) or []
         return []
 
+    async def get_grade_items(
+        self,
+        token: str,
+        moodle_host: str,
+        course_id: int,
+        user_id: int,
+        *,
+        client: "httpx.AsyncClient | None" = None,
+    ) -> dict[int, str]:
+        """Notas del alumno por actividad (gradereport_user_get_grade_items).
+
+        Devuelve {cmid: gradeformatted} — el texto tal cual se ve en Moodle
+        ("Aprobado" / "Desaprobado" / "-" …). Lo usa el estado del TP (que se mide
+        por CALIFICACIÓN, no por seguimiento). Es 1 llamada por alumno.
+        """
+        url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
+        params = {
+            "wstoken": token,
+            "wsfunction": "gradereport_user_get_grade_items",
+            "moodlewsrestformat": "json",
+            "courseid": course_id,
+            "userid": user_id,
+        }
+        data = await self._ws_get_json(
+            url, params, timeout=30.0, descripcion="obteniendo notas", client=client
+        )
+        if isinstance(data, dict) and "exception" in data:
+            if "invalidtoken" in str(data).lower():
+                raise MoodleAuthError("Token Moodle inválido")
+            raise MoodleConnectionError(
+                f"Error Moodle al obtener notas: {data.get('message', '')}"
+            )
+        usergrades = data.get("usergrades", []) if isinstance(data, dict) else []
+        if not usergrades:
+            return {}
+        items = usergrades[0].get("gradeitems", []) or []
+        return {
+            it.get("cmid"): (it.get("gradeformatted") or "")
+            for it in items
+            if it.get("cmid") is not None
+        }
+
     async def _fetch_submissions(
         self,
         token: str,
