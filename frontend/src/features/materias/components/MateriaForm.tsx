@@ -45,14 +45,19 @@ export interface MateriaFormProps {
   isOpen: boolean;
   onClose: () => void;
   materia?: MateriaDetail; // If provided, edit mode (with coordinadores)
+  /** El admin asigna coordinadores; el coordinador NO (solo edita nombre/descripción). */
+  isAdmin?: boolean;
 }
 
-export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
+export const MateriaForm = ({ isOpen, onClose, materia, isAdmin = true }: MateriaFormProps) => {
   const isEditMode = !!materia;
 
   const createMutation = useCreateMateria();
   const updateMutation = useUpdateMateria();
-  const { data: coordinadores = [], isLoading: loadingCoordinadores } = useCoordinadores();
+  // Solo el admin asigna coordinadores → solo él dispara el fetch (evita el 403/toast).
+  const { data: coordinadores = [], isLoading: loadingCoordinadores } = useCoordinadores({
+    enabled: isAdmin,
+  });
 
   const {
     register,
@@ -101,7 +106,8 @@ export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
           data: {
             nombre: data.nombre,
             descripcion: data.descripcion || undefined,
-            coordinador_ids: data.coordinador_ids,
+            // Solo el admin reasigna coordinadores (el backend lo ignora para el coordinador).
+            coordinador_ids: isAdmin ? data.coordinador_ids : undefined,
             moodle_course_id: data.moodle_course_id ?? undefined,
           },
         });
@@ -134,6 +140,9 @@ export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
           error={errors.codigo?.message}
           disabled={isEditMode} // Código cannot be changed
           helperText="Identificador único (ej: PROG1). Solo mayúsculas."
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
           {...register('codigo')}
         />
 
@@ -155,6 +164,7 @@ export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
         <Input
           label="ID de Curso en Moodle (Opcional)"
           type="number"
+          inputMode="numeric"
           placeholder="ej: 123"
           helperText="ID del curso en Moodle para vincular pendientes"
           error={errors.moodle_course_id?.message}
@@ -163,32 +173,36 @@ export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
           })}
         />
 
-        <Controller
-          name="coordinador_ids"
-          control={control}
-          render={({ field }) => (
-            <MultiSelect
-              label="Coordinadores (Opcional)"
-              placeholder="Selecciona coordinadores"
-              tooltip="Usuarios con rol COORDINADOR que pueden gestionar esta materia"
-              options={coordinadores.map((c) => ({
-                value: c.id,
-                label: c.nombre,
-              }))}
-              value={field.value || []}
-              onChange={field.onChange}
-              loading={loadingCoordinadores}
-              error={errors.coordinador_ids?.message}
-            />
-          )}
-        />
+        {/* La asignación de coordinadores es solo del admin. */}
+        {isAdmin && (
+          <Controller
+            name="coordinador_ids"
+            control={control}
+            render={({ field }) => (
+              <MultiSelect
+                label="Coordinadores (Opcional)"
+                placeholder="Selecciona coordinadores"
+                tooltip="Usuarios con rol COORDINADOR que pueden gestionar esta materia"
+                options={coordinadores.map((c) => ({
+                  value: c.id,
+                  label: c.nombre,
+                }))}
+                value={field.value || []}
+                onChange={field.onChange}
+                loading={loadingCoordinadores}
+                error={errors.coordinador_ids?.message}
+              />
+            )}
+          />
+        )}
 
-        <div className="flex justify-end gap-2 pt-4">
+        <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
           <Button
             type="button"
             variant="secondary"
             onClick={onClose}
             disabled={isSubmitting}
+            className="w-full sm:w-auto"
           >
             Cancelar
           </Button>
@@ -196,6 +210,7 @@ export const MateriaForm = ({ isOpen, onClose, materia }: MateriaFormProps) => {
             type="submit"
             disabled={isSubmitting}
             isLoading={isSubmitting}
+            className="w-full sm:w-auto"
           >
             {isEditMode ? 'Guardar cambios' : 'Crear materia'}
           </Button>

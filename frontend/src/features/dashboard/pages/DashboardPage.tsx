@@ -38,10 +38,10 @@ export function DashboardPage() {
     );
   }
 
-  // El GESTOR no tiene dashboard propio todavía (pendiente 2da corrida): lo mandamos
-  // directo a su pantalla real para no mostrar un "Rol desconocido".
+  // El GESTOR entra directo a su dashboard de avance académico (gráfico de torta
+  // + selectores). Desde ahí también tiene "Gestión" en el sidebar.
   if (user.rol === ROL.GESTOR) {
-    return <Navigate to="/gestion" replace />;
+    return <Navigate to="/avance" replace />;
   }
 
   // Show API Key warning if not configured
@@ -76,6 +76,7 @@ export function DashboardPage() {
           <Button
             variant="primary"
             size="sm"
+            className="w-full sm:w-auto min-h-[44px] sm:min-h-0"
             onClick={() => navigate('/perfil')}
           >
             Ir a Configuración

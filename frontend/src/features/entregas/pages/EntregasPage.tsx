@@ -32,7 +32,8 @@ import { Select } from '@/shared/components/ui/Select';
 import { Checkbox } from '@/shared/components/ui/Checkbox';
 import { Badge } from '@/shared/components/ui/Badge';
 import { Spinner } from '@/shared/components/ui/Spinner';
-import { HelpButton, LoadingState } from '@/shared/components/ui';
+import { HelpButton, LoadingState, ResponsiveTable, ConfirmDialog } from '@/shared/components/ui';
+import type { TableColumn } from '@/shared/components/ui';
 import { helpContent } from '@/shared/content/helpContent';
 import { EmptyState } from '@/shared/components/ui/EmptyState';
 import { Dropdown } from '@/shared/components/ui/Dropdown';
@@ -114,6 +115,28 @@ export const EntregasPage = () => {
   const [batchEntregaIds, setBatchEntregaIds] = useState<number[]>([]);
   const batchTotalCount = useRef(0);
   const batchInitialStates = useRef<Record<number, string>>({});
+
+  // Confirm dialog state (reemplazo de window.confirm/alert)
+  type ConfirmState = {
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant: 'primary' | 'destructive' | 'success';
+    onConfirm: () => void | Promise<void>;
+  };
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmState | null>(null);
+  const [isConfirmLoading, setIsConfirmLoading] = useState(false);
+
+  const handleConfirmAccept = async () => {
+    if (!confirmDialog) return;
+    setIsConfirmLoading(true);
+    try {
+      await confirmDialog.onConfirm();
+    } finally {
+      setIsConfirmLoading(false);
+      setConfirmDialog(null);
+    }
+  };
 
 
   const page = parseInt(searchParams.get('page') || '1', 10);
@@ -315,7 +338,7 @@ export const EntregasPage = () => {
     });
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = (id: number) => {
     const entrega = data?.items.find(e => e.id === id);
     const isCorregida = entrega?.estado === 'CORREGIDA';
 
@@ -323,9 +346,13 @@ export const EntregasPage = () => {
       ? '⚠️ Esta entrega ya está corregida. Al eliminarla, se perderá permanentemente la entrega y su corrección. ¿Deseas continuar?'
       : '¿Estás seguro de que deseas eliminar esta entrega? Esta acción no se puede deshacer.';
 
-    if (window.confirm(message)) {
-      await deleteMutation.mutateAsync(id);
-    }
+    setConfirmDialog({
+      title: 'Eliminar entrega',
+      message,
+      confirmLabel: 'Eliminar',
+      variant: 'destructive',
+      onConfirm: () => deleteMutation.mutateAsync(id),
+    });
   };
 
   const handleSelectAll = (checked: boolean) => {
@@ -344,7 +371,28 @@ export const EntregasPage = () => {
     }
   };
 
-  const handleCorregirSeleccionados = async () => {
+  const runCorregirMasiva = async (itemsToCorrect: EntregaListItem[]) => {
+    const ids = itemsToCorrect.map(i => i.id);
+    try {
+      const result = await corregirMasivaMutation.mutateAsync(ids);
+      setSelectedIds([]);
+      // Track batch for polling-based error/completion detection
+      setBatchEntregaIds(ids);
+      batchTotalCount.current = ids.length;
+      const initialStates: Record<number, string> = {};
+      itemsToCorrect.forEach(item => { initialStates[item.id] = item.estado; });
+      batchInitialStates.current = initialStates;
+      toast.success(
+        `${result.total_encoladas} ${result.total_encoladas === 1 ? 'corrección iniciada' : 'correcciones iniciadas'}. ` +
+        `Los estados se actualizarán automáticamente en segundo plano.`,
+        { duration: 6000 }
+      );
+    } catch {
+      // Error notification is handled by the hook's onError handler
+    }
+  };
+
+  const handleCorregirSeleccionados = () => {
     if (selectedIds.length === 0) return;
 
     // Block if a batch is already in progress
@@ -362,7 +410,7 @@ export const EntregasPage = () => {
     );
 
     if (!itemsToCorrect || itemsToCorrect.length === 0) {
-      alert('No hay entregas pendientes de corrección en la selección.');
+      toast.error('No hay entregas pendientes de corrección en la selección.');
       return;
     }
 
@@ -375,40 +423,23 @@ export const EntregasPage = () => {
       confirmMessage =
         `⚠️ Vas a corregir ${ids.length} entregas. ` +
         `Lotes grandes pueden provocar errores de límite de uso (rate limit) en la API de Gemini, ` +
-        `lo que puede interrumpir el proceso antes de completar todas las correcciones.\n\n` +
-        `Se recomienda corregir en lotes de menos de ${RPM_WARNING_THRESHOLD} entregas.\n\n` +
+        `lo que puede interrumpir el proceso antes de completar todas las correcciones. ` +
+        `Se recomienda corregir en lotes de menos de ${RPM_WARNING_THRESHOLD} entregas. ` +
         `¿Continuar de todas formas?`;
     }
 
-    if (confirm(confirmMessage)) {
-      try {
-        const result = await corregirMasivaMutation.mutateAsync(ids);
-        setSelectedIds([]);
-        // Track batch for polling-based error/completion detection
-        setBatchEntregaIds(ids);
-        batchTotalCount.current = ids.length;
-        const initialStates: Record<number, string> = {};
-        itemsToCorrect.forEach(item => { initialStates[item.id] = item.estado; });
-        batchInitialStates.current = initialStates;
-        toast.success(
-          `${result.total_encoladas} ${result.total_encoladas === 1 ? 'corrección iniciada' : 'correcciones iniciadas'}. ` +
-          `Los estados se actualizarán automáticamente en segundo plano.`,
-          { duration: 6000 }
-        );
-      } catch {
-        // Error notification is handled by the hook's onError handler
-      }
-    }
+    setConfirmDialog({
+      title: 'Corregir entregas',
+      message: confirmMessage,
+      confirmLabel: 'Corregir',
+      variant: 'primary',
+      onConfirm: () => runCorregirMasiva(itemsToCorrect),
+    });
   };
 
-  const handleArchivarSeleccionados = async (archivado: boolean) => {
-    if (selectedIds.length === 0) return;
-    const msg = archivado
-      ? `¿Archivar ${selectedIds.length} entrega(s) seleccionada(s)? No se mostrarán en la vista por defecto (solo con filtro "Todos los estados").`
-      : `¿Desarchivar ${selectedIds.length} entrega(s) seleccionada(s)? Volverán a aparecer en la vista por defecto.`;
-    if (!confirm(msg)) return;
+  const runArchivarSeleccionados = async (archivado: boolean, ids: number[]) => {
     try {
-      const result = await archivarMutation.mutateAsync({ ids: selectedIds, archivado });
+      const result = await archivarMutation.mutateAsync({ ids, archivado });
       setSelectedIds([]);
       toast.success(`${result.procesadas} entrega(s) ${archivado ? 'archivada(s)' : 'desarchivada(s)'}`);
     } catch {
@@ -416,17 +447,24 @@ export const EntregasPage = () => {
     }
   };
 
-  const handleEliminarSeleccionados = async () => {
+  const handleArchivarSeleccionados = (archivado: boolean) => {
     if (selectedIds.length === 0) return;
-    const hasCorregidas = (data?.items ?? []).some(
-      e => selectedIds.includes(e.id) && e.estado === 'CORREGIDA'
-    );
-    const message = hasCorregidas
-      ? `⚠️ La selección incluye entregas ya corregidas. Al eliminarlas, se perderán permanentemente las entregas y sus correcciones. ¿Confirmar eliminación de ${selectedIds.length} entrega(s)?`
-      : `¿Eliminar permanentemente ${selectedIds.length} entrega(s) seleccionada(s)? Esta acción no se puede deshacer.`;
-    if (!confirm(message)) return;
+    const ids = [...selectedIds];
+    const msg = archivado
+      ? `¿Archivar ${ids.length} entrega(s) seleccionada(s)? No se mostrarán en la vista por defecto (solo con filtro "Todos los estados").`
+      : `¿Desarchivar ${ids.length} entrega(s) seleccionada(s)? Volverán a aparecer en la vista por defecto.`;
+    setConfirmDialog({
+      title: archivado ? 'Archivar entregas' : 'Desarchivar entregas',
+      message: msg,
+      confirmLabel: archivado ? 'Archivar' : 'Desarchivar',
+      variant: 'primary',
+      onConfirm: () => runArchivarSeleccionados(archivado, ids),
+    });
+  };
+
+  const runEliminarSeleccionados = async (ids: number[]) => {
     try {
-      const result = await deleteMasivoMutation.mutateAsync(selectedIds);
+      const result = await deleteMasivoMutation.mutateAsync(ids);
       setSelectedIds([]);
       toast.success(`${result.procesadas} entrega(s) eliminada(s)`);
     } catch {
@@ -434,13 +472,25 @@ export const EntregasPage = () => {
     }
   };
 
-  const handleRecorregir = async (entregaId: number) => {
-    if (
-      !confirm(
-        '¿Estás seguro? Se descartará la corrección actual y se generará una nueva con la IA.'
-      )
-    )
-      return;
+  const handleEliminarSeleccionados = () => {
+    if (selectedIds.length === 0) return;
+    const ids = [...selectedIds];
+    const hasCorregidas = (data?.items ?? []).some(
+      e => ids.includes(e.id) && e.estado === 'CORREGIDA'
+    );
+    const message = hasCorregidas
+      ? `⚠️ La selección incluye entregas ya corregidas. Al eliminarlas, se perderán permanentemente las entregas y sus correcciones. ¿Confirmar eliminación de ${ids.length} entrega(s)?`
+      : `¿Eliminar permanentemente ${ids.length} entrega(s) seleccionada(s)? Esta acción no se puede deshacer.`;
+    setConfirmDialog({
+      title: 'Eliminar entregas',
+      message,
+      confirmLabel: 'Eliminar',
+      variant: 'destructive',
+      onConfirm: () => runEliminarSeleccionados(ids),
+    });
+  };
+
+  const runRecorregir = async (entregaId: number) => {
     try {
       await recorregirMutation.mutateAsync(entregaId);
       toast.success('Re-corrección iniciada exitosamente');
@@ -451,6 +501,16 @@ export const EntregasPage = () => {
     } catch {
       // Error notification is handled by the hook's onError handler
     }
+  };
+
+  const handleRecorregir = (entregaId: number) => {
+    setConfirmDialog({
+      title: 'Re-corregir entrega',
+      message: '¿Estás seguro? Se descartará la corrección actual y se generará una nueva con la IA.',
+      confirmLabel: 'Re-corregir',
+      variant: 'primary',
+      onConfirm: () => runRecorregir(entregaId),
+    });
   };
 
   const handleDescargarPDF = async (entregaId: number, alumnoNombre: string) => {
@@ -594,8 +654,8 @@ export const EntregasPage = () => {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-        <p className="text-red-600 mb-4">Error al cargar entregas</p>
-        <p className="text-sm text-gray-600 mb-6">{error.message}</p>
+        <p className="text-destructive mb-4">Error al cargar entregas</p>
+        <p className="text-sm text-muted-foreground mb-6">{error.message}</p>
         <Button onClick={() => window.location.reload()}>Reintentar</Button>
       </div>
     );
@@ -610,6 +670,154 @@ export const EntregasPage = () => {
   const allSelectedArchivados = selectedEntregas.length > 0 && selectedEntregas.every((e) => e.archivado);
   const selectedCorregidas = selectedEntregas.filter((e) => e.estado === 'CORREGIDA');
   const selectedCorregidasCount = selectedCorregidas.length;
+
+  // Acciones por fila (Dropdown). Reusado por la tabla desktop y la card mobile,
+  // asi la fuente de la logica de acciones es unica.
+  const renderAcciones = (entrega: EntregaListItem) => {
+    const isCorregida = entrega.estado === 'CORREGIDA';
+    const isPendiente = entrega.estado === 'PENDIENTE' || entrega.estado === 'SUBIDA' || entrega.estado === 'ERROR';
+
+    return (
+      <Dropdown
+        trigger={
+          <Button variant="ghost" size="sm">
+            <MoreVertical className="w-4 h-4" />
+          </Button>
+        }
+        items={[
+          // Ver Entrega - always visible
+          {
+            label: 'Ver Entrega',
+            icon: <Eye className="w-4 h-4" />,
+            onClick: () => {
+              setViewEntregaId(entrega.id);
+              setViewAlumno(entrega.alumno_nombre);
+              setViewArchivo(entrega.archivo_nombre);
+            },
+          },
+          // Actions for CORREGIDA state
+          ...(isCorregida
+            ? [
+              {
+                label: 'Ver / Editar Corrección',
+                icon: <Eye className="w-4 h-4" />,
+                onClick: () => {
+                  setModalEntregaId(entrega.id);
+                  setModalAlumno(entrega.alumno_nombre);
+                },
+              },
+              {
+                label: 'Re-corregir',
+                icon: <RefreshCw className="w-4 h-4" />,
+                onClick: () => handleRecorregir(entrega.id),
+                disabled: recorregirMutation.isPending,
+              },
+              {
+                label:
+                  downloadingPDFId === entrega.id
+                    ? 'Descargando...'
+                    : 'Descargar PDF',
+                icon: <FileText className="w-4 h-4" />,
+                onClick: () => handleDescargarPDF(entrega.id, entrega.alumno_nombre),
+                disabled: downloadingPDFId === entrega.id,
+              },
+              {
+                label: 'Subir corrección a Moodle',
+                icon: <Send className="w-4 h-4" />,
+                onClick: () => {
+                  setSubirMoodleEntregaId(entrega.id);
+                  setSubirMoodleAlumno(entrega.alumno_nombre);
+                },
+              },
+            ]
+            : []),
+          // Actions for PENDIENTE/SUBIDA/ERROR states
+          ...(isPendiente
+            ? [
+              {
+                label: 'Corregir',
+                icon: <FileCheck2 className="w-4 h-4" />,
+                onClick: () => {
+                  toast.loading('Corrección iniciada en segundo plano...', {
+                    duration: 3000,
+                  });
+                  corregirMutation.mutate(entrega.id, {
+                    onSuccess: () => {
+                      toast.success(`Corrección completada para ${entrega.alumno_nombre}`);
+                    },
+                  });
+                },
+                disabled: corregirMutation.isPending,
+              },
+            ]
+            : []),
+          // Archive / Unarchive is always available
+          {
+            label: entrega.archivado ? 'Desarchivar' : 'Archivar',
+            icon: entrega.archivado
+              ? <ArchiveRestore className="w-4 h-4" />
+              : <Archive className="w-4 h-4" />,
+            onClick: () => archivarMutation.mutate({
+              ids: [entrega.id],
+              archivado: !entrega.archivado,
+            }),
+            disabled: archivarMutation.isPending,
+          },
+          // Delete is always available
+          {
+            label: 'Eliminar',
+            icon: <Trash2 className="w-4 h-4" />,
+            onClick: () => handleDelete(entrega.id),
+            variant: 'danger',
+          },
+        ]}
+      />
+    );
+  };
+
+  // Columnas para la card-list mobile (ResponsiveTable). El render desktop se
+  // mantiene en la <table> existente para conservar el look identico.
+  const cardColumns: TableColumn<EntregaListItem>[] = [
+    {
+      key: 'alumno',
+      header: 'Alumno',
+      render: (entrega) => (
+        <span className="font-medium text-foreground break-words">{entrega.alumno_nombre}</span>
+      ),
+    },
+    {
+      key: 'archivo',
+      header: 'Archivo',
+      render: (entrega) => (
+        <span className="break-all">
+          {entrega.archivo_nombre}
+          <span className="block text-xs text-muted-foreground">
+            {formatFileSize(entrega.archivo_tamanio)}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: 'estado',
+      header: 'Estado',
+      render: (entrega) => getEstadoBadge(entrega.estado),
+    },
+    {
+      key: 'nota',
+      header: 'Nota',
+      render: (entrega) =>
+        entrega.nota !== null ? (
+          <span className="font-medium">{entrega.nota}</span>
+        ) : (
+          <span className="text-muted-foreground">-</span>
+        ),
+    },
+    {
+      key: 'fecha',
+      header: 'Fecha',
+      render: (entrega) => formatDate(entrega.created_at),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -630,14 +838,14 @@ export const EntregasPage = () => {
         </Alert>
       )}
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-gray-900">Entregas</h1><HelpButton title="Ayuda — Entregas" content={helpContent.entregas} /></div>
-          <p className="text-sm text-gray-600 mt-1">
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground sm:text-3xl">Entregas</h1><HelpButton title="Ayuda — Entregas" content={helpContent.entregas} /></div>
+          <p className="text-sm text-muted-foreground mt-1">
             Gestiona las entregas de los alumnos
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           {/* Bulk download actions - only visible if there are corrected entregas */}
           {selectedComisionId && selectedRubricaId && corregidasCount > 0 && (
             <>
@@ -647,6 +855,7 @@ export const EntregasPage = () => {
                 onClick={handleDescargarTodosPDFs}
                 disabled={isBulkAction}
                 isLoading={isBulkAction}
+                className="w-full sm:w-auto"
               >
                 <Download className="w-4 h-4" />
                 {isBulkAction ? 'Generando ZIP...' : `Todos los PDFs`}
@@ -657,6 +866,7 @@ export const EntregasPage = () => {
                 onClick={handleExportarExcel}
                 disabled={isBulkAction}
                 isLoading={isBulkAction}
+                className="w-full sm:w-auto"
               >
                 <FileSpreadsheet className="w-4 h-4" />
                 Exportar Excel
@@ -667,6 +877,7 @@ export const EntregasPage = () => {
             variant="primary"
             onClick={() => setShowUploadModal(true)}
             disabled={!selectedComisionId || !selectedRubricaId}
+            className="w-full sm:w-auto"
           >
             <FileUp className="w-4 h-4" />
             Subir Entrega
@@ -675,11 +886,11 @@ export const EntregasPage = () => {
       </div>
 
       {/* Selectors: Comisión y Rúbrica */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
+      <div className="bg-card rounded-lg border border-border p-4">
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Comisión Selector */}
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium text-foreground mb-1.5">
               Comisión
             </label>
             <Select
@@ -713,7 +924,7 @@ export const EntregasPage = () => {
 
           {/* Rúbrica Selector */}
           <div className="flex-1">
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+            <label className="block text-sm font-medium text-foreground mb-1.5">
               Rúbrica / Trabajo Práctico
             </label>
             <Select
@@ -747,12 +958,14 @@ export const EntregasPage = () => {
 
       {/* Filters and Actions */}
       {selectedComisionId && selectedRubricaId && (
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
+        <div className="bg-card rounded-lg border border-border p-4">
           <div className="flex flex-col lg:flex-row gap-4">
             {/* Search */}
             <div className="flex-1">
               <Input
                 type="text"
+                inputMode="search"
+                enterKeyHint="search"
                 placeholder="Buscar por nombre de alumno..."
                 value={inputSearch}
                 onChange={(e) => setInputSearch(e.target.value)}
@@ -776,20 +989,21 @@ export const EntregasPage = () => {
             {/* Batch Action Buttons */}
             {/* Batch in progress indicator */}
             {isBatchActive && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-info/10 border border-info/30 rounded-lg text-sm text-info">
                 <Spinner size="sm" />
                 <span>Corrección en lote en progreso...</span>
               </div>
             )}
 
             {selectedIds.length > 0 ? (
-              <div className="flex gap-2 flex-wrap">
+              <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap">
                 <Button
                   variant="primary"
                   onClick={handleCorregirSeleccionados}
                   isLoading={corregirMasivaMutation.isPending}
                   disabled={isBatchActive}
                   title={isBatchActive ? 'Esperá a que termine el lote en progreso' : undefined}
+                  className="w-full sm:w-auto"
                 >
                   <FileCheck2 className="w-4 h-4" />
                   Corregir ({selectedIds.length})
@@ -800,6 +1014,7 @@ export const EntregasPage = () => {
                     onClick={handleDescargarPDFsSeleccionados}
                     isLoading={isDownloadingSelectedPDFs}
                     disabled={isDownloadingSelectedPDFs}
+                    className="w-full sm:w-auto"
                   >
                     <Download className="w-4 h-4" />
                     Descargar PDFs ({selectedCorregidasCount})
@@ -809,6 +1024,7 @@ export const EntregasPage = () => {
                   variant="secondary"
                   onClick={() => handleArchivarSeleccionados(!allSelectedArchivados)}
                   isLoading={archivarMutation.isPending}
+                  className="w-full sm:w-auto"
                 >
                   {allSelectedArchivados
                     ? <><ArchiveRestore className="w-4 h-4" />Desarchivar ({selectedIds.length})</>
@@ -819,6 +1035,7 @@ export const EntregasPage = () => {
                   variant="destructive"
                   onClick={handleEliminarSeleccionados}
                   isLoading={deleteMasivoMutation.isPending}
+                  className="w-full sm:w-auto"
                 >
                   <Trash2 className="w-4 h-4" />
                   Eliminar ({selectedIds.length})
@@ -831,6 +1048,7 @@ export const EntregasPage = () => {
                   onClick={() => {
                     handleEstadoChange('SUBIDA');
                   }}
+                  className="w-full sm:w-auto"
                 >
                   <FileCheck2 className="w-4 h-4" />
                   Ver Subidas ({subidasCount})
@@ -840,25 +1058,27 @@ export const EntregasPage = () => {
           </div>
 
           {/* Date Range Filter */}
-          <div className="flex flex-wrap gap-2 items-center pt-1">
-            <span className="text-sm text-gray-500 whitespace-nowrap">Período:</span>
-            <input
-              type="date"
-              value={fechaDesde}
-              max={fechaHasta || undefined}
-              onChange={(e) => handleFechaDesdeChange(e.target.value)}
-              className="border border-gray-200 rounded-md px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-primary-500 focus:border-transparent"
-            />
-            <span className="text-sm text-gray-400">–</span>
-            <input
-              type="date"
-              value={fechaHasta}
-              min={fechaDesde || undefined}
-              onChange={(e) => handleFechaHastaChange(e.target.value)}
-              className="border border-gray-200 rounded-md px-3 py-1.5 text-sm text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-primary-500 focus:border-transparent"
-            />
+          <div className="flex flex-col gap-2 pt-2 sm:flex-row sm:flex-wrap sm:items-center sm:pt-1">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Período:</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={fechaDesde}
+                max={fechaHasta || undefined}
+                onChange={(e) => handleFechaDesdeChange(e.target.value)}
+                className="min-h-11 w-full border border-border rounded-md px-3 py-1.5 text-base text-foreground bg-card focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-primary-500 focus:border-transparent touch-manipulation sm:min-h-0 sm:w-auto sm:text-sm"
+              />
+              <span className="text-sm text-muted-foreground">–</span>
+              <input
+                type="date"
+                value={fechaHasta}
+                min={fechaDesde || undefined}
+                onChange={(e) => handleFechaHastaChange(e.target.value)}
+                className="min-h-11 w-full border border-border rounded-md px-3 py-1.5 text-base text-foreground bg-card focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-primary-500 focus:border-transparent touch-manipulation sm:min-h-0 sm:w-auto sm:text-sm"
+              />
+            </div>
             {(fechaDesde || fechaHasta) && (
-              <Button variant="ghost" size="sm" onClick={handleClearFechas}>
+              <Button variant="ghost" size="sm" onClick={handleClearFechas} className="w-full sm:w-auto">
                 <X className="w-3 h-3 mr-1" />
                 Limpiar fechas
               </Button>
@@ -870,7 +1090,7 @@ export const EntregasPage = () => {
       {/* Empty State when no selection */}
       {(!selectedComisionId || !selectedRubricaId) && (
         <EmptyState
-          icon={<Upload className="w-12 h-12 text-gray-400" />}
+          icon={<Upload className="w-12 h-12 text-muted-foreground" />}
           title="Selecciona una comisión y rúbrica"
           description="Para ver las entregas, primero debes seleccionar una comisión y el trabajo práctico (rúbrica) correspondiente"
         />
@@ -880,7 +1100,7 @@ export const EntregasPage = () => {
       {selectedComisionId && selectedRubricaId && (
         entregas.length === 0 ? (
           <EmptyState
-            icon={<Upload className="w-12 h-12 text-gray-400" />}
+            icon={<Upload className="w-12 h-12 text-muted-foreground" />}
             title="No hay entregas"
             description={
               searchTerm || estadoFilter !== 'TODOS'
@@ -909,10 +1129,11 @@ export const EntregasPage = () => {
         ) : (
           <>
             {/* Table */}
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+            <div className="bg-card rounded-lg border border-border overflow-hidden lg:overflow-visible">
+              {/* Desktop: tabla clasica intacta */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="min-w-full divide-y divide-border">
+                  <thead className="bg-muted">
                     <tr>
                       <th className="px-6 py-3 w-4">
                         <Checkbox
@@ -920,185 +1141,166 @@ export const EntregasPage = () => {
                           onChange={(e) => handleSelectAll(e.target.checked)}
                         />
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Alumno
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Archivo
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Estado
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Nota
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Fecha
                       </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-right text-xs font-medium text-muted-foreground uppercase tracking-wider">
                         Acciones
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {entregas.map((entrega: EntregaListItem) => {
-                      const isCorregida = entrega.estado === 'CORREGIDA';
-                      const isPendiente = entrega.estado === 'PENDIENTE' || entrega.estado === 'SUBIDA' || entrega.estado === 'ERROR';
-
-                      return (
-                        <tr key={entrega.id} className={`hover:bg-gray-50 ${entrega.archivado ? 'opacity-60 bg-gray-50' : ''}`}>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Checkbox
-                              checked={selectedIds.includes(entrega.id)}
-                              onChange={(e) => handleSelectOne(entrega.id, e.target.checked)}
-                            />
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-900">
-                                {entrega.alumno_nombre}
-                              </span>
-                              {entrega.archivado && (
-                                <Badge variant="outline">
-                                  <Archive className="w-3 h-3 mr-1" />
-                                  Archivada
-                                </Badge>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900">
-                              {entrega.archivo_nombre}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              {formatFileSize(entrega.archivo_tamanio)}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {getEstadoBadge(entrega.estado)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900">
-                              {entrega.nota !== null ? (
-                                <span className="font-medium">{entrega.nota}</span>
-                              ) : (
-                                <span className="text-gray-400">-</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {formatDate(entrega.created_at)}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <Dropdown
-                              trigger={
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                >
-                                  <MoreVertical className="w-4 h-4" />
-                                </Button>
-                              }
-                              items={[
-                                // Ver Entrega - always visible
-                                {
-                                  label: 'Ver Entrega',
-                                  icon: <Eye className="w-4 h-4" />,
-                                  onClick: () => {
-                                    setViewEntregaId(entrega.id);
-                                    setViewAlumno(entrega.alumno_nombre);
-                                    setViewArchivo(entrega.archivo_nombre);
-                                  },
-                                },
-                                // Actions for CORREGIDA state
-                                ...(isCorregida
-                                  ? [
-                                    {
-                                      label: 'Ver / Editar Corrección',
-                                      icon: <Eye className="w-4 h-4" />,
-                                      onClick: () => {
-                                        setModalEntregaId(entrega.id);
-                                        setModalAlumno(entrega.alumno_nombre);
-                                      },
-                                    },
-                                    {
-                                      label: 'Re-corregir',
-                                      icon: <RefreshCw className="w-4 h-4" />,
-                                      onClick: () => handleRecorregir(entrega.id),
-                                      disabled: recorregirMutation.isPending,
-                                    },
-                                    {
-                                      label:
-                                        downloadingPDFId === entrega.id
-                                          ? 'Descargando...'
-                                          : 'Descargar PDF',
-                                      icon: <FileText className="w-4 h-4" />,
-                                      onClick: () => handleDescargarPDF(entrega.id, entrega.alumno_nombre),
-                                      disabled: downloadingPDFId === entrega.id,
-                                    },
-                                    {
-                                      label: 'Subir corrección a Moodle',
-                                      icon: <Send className="w-4 h-4" />,
-                                      onClick: () => {
-                                        setSubirMoodleEntregaId(entrega.id);
-                                        setSubirMoodleAlumno(entrega.alumno_nombre);
-                                      },
-                                    },
-                                  ]
-                                  : []),
-                                // Actions for PENDIENTE/SUBIDA/ERROR states
-                                ...(isPendiente
-                                  ? [
-                                    {
-                                      label: 'Corregir',
-                                      icon: <FileCheck2 className="w-4 h-4" />,
-                                      onClick: () => {
-                                        toast.loading('Corrección iniciada en segundo plano...', {
-                                          duration: 3000,
-                                        });
-                                        corregirMutation.mutate(entrega.id, {
-                                          onSuccess: () => {
-                                            toast.success(`Corrección completada para ${entrega.alumno_nombre}`);
-                                          },
-                                        });
-                                      },
-                                      disabled: corregirMutation.isPending,
-                                    },
-                                  ]
-                                  : []),
-                                // Archive / Unarchive is always available
-                                {
-                                  label: entrega.archivado ? 'Desarchivar' : 'Archivar',
-                                  icon: entrega.archivado
-                                    ? <ArchiveRestore className="w-4 h-4" />
-                                    : <Archive className="w-4 h-4" />,
-                                  onClick: () => archivarMutation.mutate({
-                                    ids: [entrega.id],
-                                    archivado: !entrega.archivado,
-                                  }),
-                                  disabled: archivarMutation.isPending,
-                                },
-                                // Delete is always available
-                                {
-                                  label: 'Eliminar',
-                                  icon: <Trash2 className="w-4 h-4" />,
-                                  onClick: () => handleDelete(entrega.id),
-                                  variant: 'danger',
-                                },
-                              ]}
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
+                  <tbody className="bg-card divide-y divide-border">
+                    {entregas.map((entrega: EntregaListItem) => (
+                      <tr key={entrega.id} className={`hover:bg-muted ${entrega.archivado ? 'opacity-60 bg-muted' : ''}`}>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <Checkbox
+                            checked={selectedIds.includes(entrega.id)}
+                            onChange={(e) => handleSelectOne(entrega.id, e.target.checked)}
+                          />
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-foreground">
+                              {entrega.alumno_nombre}
+                            </span>
+                            {entrega.archivado && (
+                              <Badge variant="outline">
+                                <Archive className="w-3 h-3 mr-1" />
+                                Archivada
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="text-sm text-foreground">
+                            {entrega.archivo_nombre}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatFileSize(entrega.archivo_tamanio)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {getEstadoBadge(entrega.estado)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-foreground">
+                            {entrega.nota !== null ? (
+                              <span className="font-medium">{entrega.nota}</span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-muted-foreground">
+                          {formatDate(entrega.created_at)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          {renderAcciones(entrega)}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
 
+              {/* Mobile: card-list */}
+              <div className="lg:hidden p-3 space-y-3">
+                {/* Seleccionar todas (mobile) */}
+                <label className="flex items-center gap-2 min-h-11 px-1 text-sm text-foreground cursor-pointer touch-manipulation">
+                  <Checkbox
+                    checked={allSelected}
+                    onChange={(e) => handleSelectAll(e.target.checked)}
+                  />
+                  <span>Seleccionar todas ({entregas.length})</span>
+                </label>
+                <ResponsiveTable
+                  columns={cardColumns}
+                  data={entregas}
+                  keyExtractor={(entrega) => entrega.id}
+                  renderCard={(entrega) => (
+                    <div className={entrega.archivado ? 'opacity-70' : undefined}>
+                      <div className="flex items-start justify-between gap-2 pb-2 mb-2 border-b border-border/50">
+                        <label className="flex min-w-0 flex-1 items-start gap-2 cursor-pointer touch-manipulation">
+                          <Checkbox
+                            checked={selectedIds.includes(entrega.id)}
+                            onChange={(e) => handleSelectOne(entrega.id, e.target.checked)}
+                          />
+                          <span className="min-w-0 break-words text-sm font-medium text-foreground">
+                            {entrega.alumno_nombre}
+                          </span>
+                        </label>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {entrega.archivado && (
+                            <Badge variant="outline">
+                              <Archive className="w-3 h-3 mr-1" />
+                              Archivada
+                            </Badge>
+                          )}
+                          {renderAcciones(entrega)}
+                        </div>
+                      </div>
+                      <dl className="flex flex-col">
+                        <div className="flex justify-between gap-3 py-1.5 border-b border-border/50">
+                          <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider shrink-0">
+                            Archivo
+                          </dt>
+                          <dd className="min-w-0 break-all text-right text-sm text-foreground">
+                            {entrega.archivo_nombre}
+                            <span className="block text-xs text-muted-foreground">
+                              {formatFileSize(entrega.archivo_tamanio)}
+                            </span>
+                          </dd>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 py-1.5 border-b border-border/50">
+                          <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider shrink-0">
+                            Estado
+                          </dt>
+                          <dd className="text-right text-sm text-foreground">
+                            {getEstadoBadge(entrega.estado)}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between gap-3 py-1.5 border-b border-border/50">
+                          <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider shrink-0">
+                            Nota
+                          </dt>
+                          <dd className="text-right text-sm text-foreground">
+                            {entrega.nota !== null ? (
+                              <span className="font-medium">{entrega.nota}</span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </dd>
+                        </div>
+                        <div className="flex justify-between gap-3 py-1.5">
+                          <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wider shrink-0">
+                            Fecha
+                          </dt>
+                          <dd className="text-right text-sm text-muted-foreground">
+                            {formatDate(entrega.created_at)}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  )}
+                />
+              </div>
+
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="bg-gray-50 px-6 py-4 flex items-center justify-between border-t border-gray-200">
-                  <div className="text-sm text-gray-700">
+                <div className="bg-muted px-4 py-4 flex flex-col gap-3 border-t border-border sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                  <div className="text-sm text-foreground text-center sm:text-left">
                     Mostrando {(page - 1) * perPage + 1} -{' '}
                     {Math.min(page * perPage, data?.total || 0)} de {data?.total}{' '}
                     entregas
@@ -1109,6 +1311,7 @@ export const EntregasPage = () => {
                       size="sm"
                       disabled={page === 1}
                       onClick={() => handlePageChange(page - 1)}
+                      className="flex-1 sm:flex-none"
                     >
                       Anterior
                     </Button>
@@ -1117,6 +1320,7 @@ export const EntregasPage = () => {
                       size="sm"
                       disabled={page >= totalPages}
                       onClick={() => handlePageChange(page + 1)}
+                      className="flex-1 sm:flex-none"
                     >
                       Siguiente
                     </Button>
@@ -1180,6 +1384,22 @@ export const EntregasPage = () => {
             setSubirMoodleEntregaId(null);
             setSubirMoodleAlumno('');
           }}
+        />
+      )}
+
+      {/* Confirm Dialog (reemplazo de window.confirm/alert) */}
+      {confirmDialog && (
+        <ConfirmDialog
+          isOpen={true}
+          onClose={() => {
+            if (!isConfirmLoading) setConfirmDialog(null);
+          }}
+          onConfirm={handleConfirmAccept}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          variant={confirmDialog.variant}
+          isLoading={isConfirmLoading}
         />
       )}
     </div>

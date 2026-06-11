@@ -24,6 +24,9 @@ export type { LoadingStateProps } from './LoadingState';
 export { Modal } from './Modal';
 export type { ModalProps } from './Modal';
 
+export { ConfirmDialog } from './ConfirmDialog';
+export type { ConfirmDialogProps } from './ConfirmDialog';
+
 export { HelpButton } from './HelpButton';
 export type { HelpButtonProps } from './HelpButton';
 
@@ -32,6 +35,9 @@ export type { ProgressProps } from './Progress';
 
 export { Table } from './Table';
 export type { TableProps, TableColumn } from './Table';
+
+export { ResponsiveTable } from './ResponsiveTable';
+export type { ResponsiveTableProps } from './ResponsiveTable';
 
 export { EmptyState } from './EmptyState';
 export type { EmptyStateProps } from './EmptyState';

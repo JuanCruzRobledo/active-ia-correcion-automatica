@@ -60,6 +60,12 @@ class TipoActividadEnum(str, Enum):
     MATERIA_CREADA = "MATERIA_CREADA"
     COMISION_CREADA = "COMISION_CREADA"
     RUBRICA_CREADA = "RUBRICA_CREADA"
+    # Acciones manuales de las funciones nuevas (Dashboard de Gestores / Notificaciones).
+    COHORTE_CREADA = "COHORTE_CREADA"
+    TUTOR_NEXO_CREADO = "TUTOR_NEXO_CREADO"
+    EXAMEN_CREADO = "EXAMEN_CREADO"
+    SNAPSHOT_GENERADO = "SNAPSHOT_GENERADO"
+    NOTIFICACIONES_ENVIADAS = "NOTIFICACIONES_ENVIADAS"
 
 
 class MoodleSyncEstado(str, Enum):
@@ -68,3 +74,95 @@ class MoodleSyncEstado(str, Enum):
     PENDIENTE = "PENDIENTE"  # Aún no enviada
     ENVIADO = "ENVIADO"  # Nota + feedback publicados en Moodle
     ERROR = "ERROR"  # Falló el envío
+
+
+class EstadoAvanceEnum(str, Enum):
+    """Estado de avance de un alumno respecto a la unidad actual de la materia.
+
+    Se calcula en el snapshot del Dashboard de Gestores comparando la unidad
+    más alta completada por el alumno (unidad_alcanzada) contra materia.unidad_actual.
+    Ver PLAN_DASHBOARD_GESTORES.md §4.
+    """
+
+    AL_DIA = "AL_DIA"  # delta <= 0 (verde): alcanzó/superó la unidad actual
+    RIESGO_MEDIO = "RIESGO_MEDIO"  # delta == 1 (naranja): una unidad atrás
+    RIESGO_ALTO = "RIESGO_ALTO"  # delta >= 2 (rojo): dos o más unidades atrás
+    SIN_ACTIVIDAD = "SIN_ACTIVIDAD"  # (gris): sin ninguna actividad completada
+
+
+class OrigenSnapshotEnum(str, Enum):
+    """Origen de un snapshot de avance."""
+
+    CRON = "CRON"  # Generado por el job diario
+    MANUAL = "MANUAL"  # Disparado a mano (botón de pruebas)
+
+
+class TipoNotificacionEnum(str, Enum):
+    """Destinatario de una notificación de avance por email.
+
+    Ver PLAN_NOTIFICACIONES_EMAIL.md §1.
+    """
+
+    ALUMNO = "ALUMNO"  # tabla HTML en el cuerpo con sus materias/actividades faltantes
+    TUTOR_ACADEMICO = "TUTOR_ACADEMICO"  # PDF adjunto, por sus comisiones
+    TUTOR_NEXO = "TUTOR_NEXO"  # Excel adjunto, por su regional
+
+
+class EstadoEnvioEnum(str, Enum):
+    """Estado de un email en la cola de envío (EnvioEmailLog)."""
+
+    PENDIENTE = "PENDIENTE"  # encolado, aún no enviado
+    ENVIADO = "ENVIADO"  # aceptado por Resend (con resend_id)
+    ERROR = "ERROR"  # falló tras reintentos
+    OMITIDO = "OMITIDO"  # sin destinatario válido / sin nada que informar
+
+
+class TipoComponenteEnum(str, Enum):
+    """Tipo de un componente evaluable de una unidad.
+
+    Es SOLO una etiqueta para el reporte ("Te falta el Quiz de la Unidad 3"); la
+    LÓGICA de "realizado/deuda" la decide la FUENTE, no el tipo. Ver §9.bis F.
+    """
+
+    TP = "TP"  # trabajo práctico / entregable
+    QUIZ = "QUIZ"  # cuestionario
+    AUTOEVALUACION = "AUTOEVALUACION"  # autoevaluación
+    CIERRE = "CIERRE"  # actividad de cierre
+
+
+class FuenteComponenteEnum(str, Enum):
+    """Fuente de verdad para saber si un componente está realizado. §9.bis F.
+
+    - SEGUIMIENTO: por el completion de Moodle (state ∈ {1,2,3} = hecho).
+      OJO: requiere que la actividad tenga activado el seguimiento de finalización.
+    - CALIFICACION: por la nota (Aprobado/Desaprobado o nota numérica cargada).
+    """
+
+    SEGUIMIENTO = "SEGUIMIENTO"
+    CALIFICACION = "CALIFICACION"
+
+
+class TipoExamenEnum(str, Enum):
+    """Tipo de examen de una materia (seguimiento de evaluaciones sumativas).
+
+    A diferencia de los componentes de unidad (que miden AVANCE de contenido), los
+    exámenes son evaluaciones de aprobación. RECUPERATORIO/EXTENSION/EXTRAORDINARIA
+    se vinculan a un PARCIAL (rescatan su nota). GLOBAL va suelto.
+    """
+
+    PARCIAL = "PARCIAL"
+    RECUPERATORIO = "RECUPERATORIO"
+    EXTENSION = "EXTENSION"
+    EXTRAORDINARIA = "EXTRAORDINARIA"
+    GLOBAL = "GLOBAL"
+
+
+class ModoAprobacionEnum(str, Enum):
+    """Cómo se interpreta la nota de un examen para decidir aprobado/desaprobado.
+
+    - ESCALA: escala de texto de Moodle ("Aprobado"/"Desaprobado"). Vacío = ausente.
+    - NUMERICO: nota numérica; aprueba si nota >= nota_minima. Vacío = ausente.
+    """
+
+    ESCALA = "ESCALA"
+    NUMERICO = "NUMERICO"

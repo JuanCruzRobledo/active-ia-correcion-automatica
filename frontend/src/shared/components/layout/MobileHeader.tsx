@@ -1,61 +1,34 @@
-import { useState } from 'react';
-import { Menu, X, User } from 'lucide-react';
+import { User } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { ThemeToggle } from './ThemeToggle';
 
+/**
+ * Header compacto mobile (oculto en desktop).
+ *
+ * Ya NO es la navegación principal: eso lo resuelve la bottom tab bar (BottomNav).
+ * Solo expone identidad de marca (logo + nombre) y accesos rápidos de perfil y tema.
+ * Translúcido + safe-area top para no quedar bajo el notch / dynamic island.
+ */
 export const MobileHeader = () => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  // TODO: Get user from auth context
-  const userName = 'Administrador';
-
   return (
-    <header className="lg:hidden sticky top-0 z-50 border-b border-border bg-background">
-      <div className="flex h-16 items-center justify-between px-4">
-        {/* Menu button */}
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="rounded-lg p-2 hover:bg-muted"
-          aria-label="Toggle menu"
-        >
-          {isOpen ? (
-            <X className="h-6 w-6" />
-          ) : (
-            <Menu className="h-6 w-6" />
-          )}
-        </button>
-
-        {/* Logo & Title */}
+    <header className="sticky top-0 z-30 border-b border-border bg-background/80 pt-[env(safe-area-inset-top)] backdrop-blur-md lg:hidden">
+      <div className="flex min-h-16 items-center justify-between px-4">
         <div className="flex items-center gap-2">
-          <img 
-            src="/active-ia-logo.svg" 
-            alt="Active-IA Logo" 
-            className="h-8 w-8"
-          />
+          <img src="/active-ia-logo.svg" alt="Active-IA Logo" className="h-8 w-8" />
           <span className="text-lg font-semibold">Active-IA</span>
         </div>
 
-        {/* Avatar */}
-        <NavLink
-          to="/perfil"
-          className="rounded-full p-2 hover:bg-muted"
-          aria-label="Perfil"
-        >
-          <User className="h-6 w-6" />
-        </NavLink>
-      </div>
-
-      {/* Mobile menu */}
-      {isOpen && (
-        <div className="border-t border-border bg-background p-4">
-          <p className="mb-2 text-sm font-medium text-muted-foreground">
-            {userName}
-          </p>
-          {/* TODO: Add mobile navigation items */}
-          <p className="text-sm text-muted-foreground">
-            Navegación móvil en desarrollo
-          </p>
+        <div className="flex items-center gap-1">
+          <ThemeToggle variant="icon" className="min-h-11 min-w-11" />
+          <NavLink
+            to="/perfil"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-foreground transition-colors hover:bg-muted"
+            aria-label="Perfil"
+          >
+            <User className="h-6 w-6" />
+          </NavLink>
         </div>
-      )}
+      </div>
     </header>
   );
 };

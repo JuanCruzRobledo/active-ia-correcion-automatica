@@ -53,14 +53,14 @@ export const ResetPasswordModal = ({
     return (
       <Modal isOpen={isOpen} onClose={handleClose} title="Contraseña reseteada">
         <div className="space-y-4">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-sm text-yellow-800 mb-2">
+          <div className="bg-warning/10 border border-warning/30 rounded-lg p-4">
+            <p className="text-sm text-foreground mb-2">
               ⚠️ <strong>Importante:</strong> Guarda esta contraseña temporal. No se volverá a mostrar.
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Nueva contraseña temporal para {usuarioNombre}
             </label>
             <div className="flex gap-2">
@@ -74,8 +74,8 @@ export const ResetPasswordModal = ({
             </div>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm text-blue-800">
+          <div className="bg-info/10 border border-info/30 rounded-lg p-4">
+            <p className="text-sm text-foreground">
               El usuario deberá cambiar esta contraseña en su próximo inicio de sesión.
             </p>
           </div>
@@ -92,13 +92,13 @@ export const ResetPasswordModal = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Resetear contraseña">
       <div className="space-y-4">
-        <p className="text-gray-700">
+        <p className="text-foreground">
           ¿Estás seguro de que deseas resetear la contraseña de{' '}
           <strong>{usuarioNombre}</strong>?
         </p>
 
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <p className="text-sm text-gray-600">
+        <div className="bg-muted border border-border rounded-lg p-4">
+          <p className="text-sm text-muted-foreground">
             Se generará una nueva contraseña temporal que deberás comunicar al usuario.
           </p>
         </div>

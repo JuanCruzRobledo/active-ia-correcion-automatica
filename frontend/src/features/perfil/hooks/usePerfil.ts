@@ -88,6 +88,25 @@ export const useUpdateApiKey = () => {
 };
 
 /**
+ * Hook para setear el email de notificaciones del usuario.
+ * Invalida el perfil para refrescar el valor mostrado.
+ */
+export const useUpdateEmail = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ message: string; email: string | null }, Error, string | null>({
+    mutationFn: (email: string | null) => perfilService.updateEmail(email),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: perfilKeys.all });
+      toast.success('Email de notificaciones actualizado');
+    },
+    onError: (error) => {
+      toast.error(error.message || 'No se pudo actualizar el email');
+    },
+  });
+};
+
+/**
  * Hook para marcar/desmarcar la API key como paga (toggle manual).
  * Habilita la corrección masiva global ("Corregir todo").
  */

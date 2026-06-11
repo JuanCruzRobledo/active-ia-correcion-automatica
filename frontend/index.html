@@ -1,10 +1,38 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/active-ia-logo.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover habilita env(safe-area-inset-*) para respetar notch/home indicator.
+         NO usamos maximum-scale/user-scalable=no (rompe accesibilidad); el anti-zoom iOS se
+         logra con font-size>=16px en los inputs (ver index.css). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- theme-color sincronizada con el tema (status bar de la PWA). El ThemeToggle puede
+         actualizar dinamicamente la activa; estas dos cubren el render inicial por preferencia. -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
+    <!-- PWA capabilities -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Active-IA" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!-- <link rel="manifest"> lo inyecta vite-plugin-pwa: NO agregarlo aca. -->
     <title>Active-IA</title>
+    <script>
+      // Anti-FOUC: aplica el tema guardado (o la preferencia del SO) antes
+      // del primer pintado, para no mostrar un flash de tema incorrecto.
+      (function () {
+        try {
+          var stored = localStorage.getItem('active-ia-theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = stored === 'light' || stored === 'dark' ? stored : prefersDark ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', theme);
+        } catch (e) {
+          /* localStorage no disponible: queda el tema claro por defecto */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

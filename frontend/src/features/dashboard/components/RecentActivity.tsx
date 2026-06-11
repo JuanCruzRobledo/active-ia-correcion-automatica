@@ -24,7 +24,7 @@ interface RecentActivityProps {
 
 export function RecentActivity({ activities, isLoading = false }: RecentActivityProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
+    <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
       <h3 className="mb-4 text-lg font-semibold text-foreground">Actividad Reciente</h3>
       <div className="space-y-4">
         {isLoading ? (
@@ -38,9 +38,9 @@ export function RecentActivity({ activities, isLoading = false }: RecentActivity
         ) : (
           activities.map((activity) => (
             <div key={activity.id} className="flex items-start gap-3">
-              <div className="mt-1 h-2 w-2 rounded-full bg-accent" />
-              <div className="flex-1">
-                <p className="text-sm text-foreground">{activity.text}</p>
+              <div className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-accent" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-foreground line-clamp-3 break-words">{activity.text}</p>
                 <p className="text-xs text-muted-foreground">
                   {formatDistanceToNow(new Date(activity.timestamp), {
                     addSuffix: true,

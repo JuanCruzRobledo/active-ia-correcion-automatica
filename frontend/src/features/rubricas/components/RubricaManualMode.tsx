@@ -73,35 +73,41 @@ function SortableCriterioItem({
       className="bg-card border border-border rounded-lg mb-3"
     >
       {/* Header */}
-      <div className="flex items-center gap-2 p-3 bg-muted/30 border-b border-border">
+      <div className="flex items-center gap-1 p-2 sm:gap-2 sm:p-3 bg-muted/30 border-b border-border">
         <button
           type="button"
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-manipulation sm:min-h-0 sm:min-w-0"
+          aria-label="Reordenar criterio"
         >
           <GripVertical className="h-5 w-5" />
         </button>
 
-        <span className="font-medium text-foreground">
+        <span className="min-w-0 truncate font-medium text-foreground">
           Criterio {watch(`criterios.${index}.id`) || `C${index + 1}`}
         </span>
 
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
+        <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-2">
+          <span className="hidden text-sm text-muted-foreground sm:inline">
             Peso: {watch(`criterios.${index}.peso`) || 0}%
+          </span>
+          <span className="text-xs text-muted-foreground sm:hidden">
+            {watch(`criterios.${index}.peso`) || 0}%
           </span>
           <button
             type="button"
             onClick={() => setIsExpanded(!isExpanded)}
-            className="text-muted-foreground hover:text-foreground"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-muted-foreground hover:text-foreground touch-manipulation sm:min-h-0 sm:min-w-0"
+            aria-label={isExpanded ? 'Contraer criterio' : 'Expandir criterio'}
           >
             {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
           </button>
           <button
             type="button"
             onClick={() => remove(index)}
-            className="text-destructive hover:text-destructive/80"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-destructive hover:text-destructive/80 touch-manipulation sm:min-h-0 sm:min-w-0"
+            aria-label="Eliminar criterio"
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -121,6 +127,7 @@ function SortableCriterioItem({
             <Input
               label="Peso (%)"
               type="number"
+              inputMode="numeric"
               {...register(`criterios.${index}.peso`, { valueAsNumber: true })}
               error={criterioErrors?.peso?.message}
               placeholder="30"
@@ -230,7 +237,8 @@ function SortableCriterioItem({
                   <button
                     type="button"
                     onClick={() => removeSubcriterio(subIdx)}
-                    className="text-destructive hover:text-destructive/80 mt-6"
+                    className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-destructive hover:text-destructive/80 touch-manipulation mt-6 sm:min-h-0 sm:min-w-0"
+                    aria-label="Eliminar subcriterio"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

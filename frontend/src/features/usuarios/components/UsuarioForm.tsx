@@ -27,6 +27,9 @@ const usuarioSchema = z.object({
   rol: z.enum(['ADMIN', 'COORDINADOR', 'TUTOR', 'GESTOR'], {
     message: 'Selecciona un rol válido',
   }),
+  email: z
+    .union([z.string().email('Email inválido').max(150), z.literal('')])
+    .optional(),
 });
 
 type UsuarioFormData = z.infer<typeof usuarioSchema>;
@@ -66,6 +69,7 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
       username: '',
       nombre: '',
       rol: 'TUTOR',
+      email: '',
     },
   });
 
@@ -75,6 +79,7 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
       setValue('username', usuario.username);
       setValue('nombre', usuario.nombre);
       setValue('rol', usuario.rol);
+      setValue('email', usuario.email ?? '');
     } else {
       reset();
     }
@@ -91,6 +96,7 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
 
   const onSubmit = async (data: UsuarioFormData) => {
     try {
+      const email = data.email?.trim() || null;
       if (isEditMode) {
         // Update existing user
         await updateMutation.mutateAsync({
@@ -98,12 +104,18 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
           data: {
             nombre: data.nombre,
             rol: data.rol,
+            email,
           },
         });
         onClose();
       } else {
         // Create new user
-        const response = await createMutation.mutateAsync(data);
+        const response = await createMutation.mutateAsync({
+          username: data.username,
+          nombre: data.nombre,
+          rol: data.rol,
+          email,
+        });
         setTempPassword(response.password_temporal);
         setShowPasswordModal(true);
       }
@@ -134,14 +146,14 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
         title="Usuario creado exitosamente"
       >
         <div className="space-y-4">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <p className="text-sm text-yellow-800 mb-2">
+          <div className="bg-warning/10 border border-warning/30 rounded-lg p-4">
+            <p className="text-sm text-foreground mb-2">
               ⚠️ <strong>Importante:</strong> Guarda esta contraseña temporal. No se volverá a mostrar.
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Contraseña temporal
             </label>
             <div className="flex gap-2">
@@ -159,8 +171,8 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
             </div>
           </div>
 
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <p className="text-sm text-blue-800">
+          <div className="bg-info/10 border border-info/30 rounded-lg p-4">
+            <p className="text-sm text-foreground">
               El usuario deberá cambiar esta contraseña en su primer inicio de sesión.
             </p>
           </div>
@@ -205,9 +217,20 @@ export const UsuarioForm = ({ isOpen, onClose, usuario }: UsuarioFormProps) => {
           {...register('rol')}
         />
 
+        <Input
+          label="Email (opcional)"
+          type="email"
+          placeholder="jperez@active-ia.com"
+          error={errors.email?.message}
+          {...register('email')}
+        />
+        <p className="-mt-2 text-xs text-muted-foreground">
+          Necesario para que un tutor reciba el PDF semanal de actividades faltantes.
+        </p>
+
         {!isEditMode && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="text-sm text-gray-600">
+          <div className="bg-muted border border-border rounded-lg p-4">
+            <p className="text-sm text-muted-foreground">
               💡 Se generará automáticamente una contraseña temporal que se mostrará al crear el usuario.
             </p>
           </div>

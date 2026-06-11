@@ -11,6 +11,8 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 10.4
 import io
 from datetime import datetime
 
+from app.core.fecha import ahora_ar, fmt_fecha_ar
+
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -315,6 +317,8 @@ class ExcelService:
         # --- Hoja Resumen ---
         resumen["A1"] = f"Gestión — {materia_nombre}"
         resumen["A1"].font = Font(size=14, bold=True, color="1F4788")
+        resumen["A2"] = f"Documento generado el {fmt_fecha_ar(ahora_ar())}"
+        resumen["A2"].font = Font(italic=True, size=10)
         for col, h in enumerate([etiqueta, "Alumnos"], 1):
             c = resumen.cell(row=3, column=col, value=h)
             c.font = header_font
@@ -402,6 +406,8 @@ class ExcelService:
         # --- Hoja Resumen (primera) ---
         resumen["A1"] = f"Pendientes — {materia_nombre}"
         resumen["A1"].font = Font(size=14, bold=True, color="1F4788")
+        resumen["A2"] = f"Documento generado el {fmt_fecha_ar(ahora_ar())}"
+        resumen["A2"].font = Font(italic=True, size=10)
         resumen_headers = [etiqueta, "Tutor", "Pendientes"] if por_comision else [etiqueta, "Pendientes"]
         col_total = len(resumen_headers)  # columna donde va el conteo
         for col, h in enumerate(resumen_headers, 1):

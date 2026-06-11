@@ -119,7 +119,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             id={inputId}
             className={cn(
               // Base styles
-              'flex w-full rounded-md border bg-background px-3 py-2 text-sm',
+              // Altura táctil >=44px y text-base (16px) en mobile para evitar el
+              // auto-zoom de iOS; en sm: vuelve al look desktop actual (h-10, text-sm).
+              'flex w-full rounded-md border bg-background px-3 py-2 text-base sm:text-sm h-11 sm:h-10',
+              // touch-manipulation: mata el delay de 300ms y el doble-tap-zoom en mobile
+              'touch-manipulation',
               'transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium',
               'placeholder:text-muted-foreground',
               'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',

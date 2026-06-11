@@ -23,7 +23,7 @@ import {
 } from '../types';
 
 const SELECT_CLS =
-  'w-full max-w-md rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground';
+  'w-full max-w-md min-h-11 rounded-md border border-border bg-card px-3 py-2 text-base text-foreground sm:min-h-0 sm:text-sm';
 
 export function GestionPage() {
   const [materiaId, setMateriaId] = useState<number | null>(null);
@@ -91,16 +91,16 @@ export function GestionPage() {
   };
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center gap-3">
-        <Users className="h-7 w-7 text-accent" />
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Gestión</h1>
+    <div className="space-y-6 p-4 sm:p-6">
+      <div className="flex flex-wrap items-start gap-3">
+        <Users className="h-7 w-7 shrink-0 text-accent" />
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Gestión</h1>
           <p className="text-sm text-muted-foreground">
             Filtrá usuarios de un curso de Moodle y descargá el Excel por regional.
           </p>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto shrink-0">
           <HelpButton title="Ayuda — Gestión" content={helpContent.gestion} label="Ayuda" />
         </div>
       </div>
@@ -111,7 +111,7 @@ export function GestionPage() {
         {cursosQuery.isLoading ? (
           <LoadingState title="Cargando cursos…" />
         ) : (
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <select
               className={SELECT_CLS}
               value={materiaId ?? ''}
@@ -125,14 +125,14 @@ export function GestionPage() {
               ))}
             </select>
             {materiaId != null && (
-              <>
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                 <button
                   onClick={() => handleDescargarPendientes('trabajo')}
                   disabled={ocupado}
                   title="Entregas pendientes de corregir, una hoja por trabajo (resumen por práctico)"
                   className={botonAccionCls(descargandoPendientes === 'trabajo')}
                 >
-                  <ClipboardList className="h-4 w-4" />
+                  <ClipboardList className="h-4 w-4 shrink-0" />
                   {descargandoPendientes === 'trabajo' ? 'Generando…' : 'Pendientes por Práctico'}
                 </button>
                 <button
@@ -141,10 +141,10 @@ export function GestionPage() {
                   title="Entregas pendientes de corregir, una hoja por comisión (resumen por comisión)"
                   className={botonAccionCls(descargandoPendientes === 'comision')}
                 >
-                  <ClipboardList className="h-4 w-4" />
+                  <ClipboardList className="h-4 w-4 shrink-0" />
                   {descargandoPendientes === 'comision' ? 'Generando…' : 'Pendientes por Comisión'}
                 </button>
-              </>
+              </div>
             )}
           </div>
         )}

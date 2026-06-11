@@ -21,6 +21,8 @@ from app.schemas.perfil import (
     PerfilResponse,
     UpdateApiKeyRequest,
     UpdateApiKeyResponse,
+    UpdateEmailRequest,
+    UpdateEmailResponse,
     UpdateKeyPagaRequest,
     UpdateKeyPagaResponse,
 )
@@ -46,6 +48,23 @@ async def update_key_paga(
     return UpdateKeyPagaResponse(
         message="Preferencia actualizada", gemini_api_key_paga=data.paga
     )
+
+
+@router.patch("/email", response_model=UpdateEmailResponse)
+async def update_email(
+    data: UpdateEmailRequest,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> UpdateEmailResponse:
+    """Setea (o limpia) el email de notificaciones del usuario actual.
+
+    Es el email al que se envían las notificaciones (PDF del tutor académico). El login
+    sigue siendo por username, así que esto NO afecta el acceso. **Permisos**: cualquiera.
+    """
+    user_repo = UsuarioRepository(db)
+    current_user.email = data.email
+    await user_repo.update(current_user)
+    return UpdateEmailResponse(message="Email actualizado", email=data.email)
 
 
 @router.get("", response_model=PerfilResponse)
@@ -74,6 +93,7 @@ async def get_profile(
         id=current_user.id,
         username=current_user.username,
         nombre=current_user.nombre,
+        email=current_user.email,
         rol=current_user.rol,
         primer_login=current_user.primer_login,
         gemini_api_key_valid=current_user.gemini_api_key_valid,

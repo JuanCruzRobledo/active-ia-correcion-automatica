@@ -126,13 +126,21 @@
   border-color: oklch(var(--border));
 }
 
+/* Tap feedback nativo: mata el flash gris al tocar en mobile (web-like → app-like). */
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
 button:not(:disabled) {
   cursor: pointer;
 }
 
 body {
   margin: 0;
+  /* 100dvh contempla la barra de URL/teclado virtual en mobile; el fallback 100vh
+     queda para navegadores sin soporte de dvh. No cambia nada en desktop. */
   min-height: 100vh;
+  min-height: 100dvh;
   font-family: var(--font-sans);
   background-color: oklch(var(--background));
   color: oklch(var(--foreground));
@@ -140,6 +148,34 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* #root ocupa toda la altura disponible, sin el max-width/padding/center del
+   scaffold de Vite (movido fuera; el gobierno de ancho va a containers Tailwind). */
+#root {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Anti-zoom iOS: ningun campo < 16px en mobile (iOS hace auto-zoom si el
+   font-size del input es menor a 16px al enfocarlo). En >=sm el componente
+   puede volver a text-sm con sus propias clases (text-base sm:text-sm). */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* En punteros tactiles ocultamos la scrollbar custom de 8px (estorba y no aporta
+   en touch). Desktop (pointer fino) conserva la scrollbar minimalista de abajo. */
+@media (pointer: coarse) {
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
 }
 
 /* ===== THEME PERSONALIZACION TAILWIND v4 ===== */
@@ -207,6 +243,105 @@ body {
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+/* ===== UTILIDADES MOBILE / PWA (plan §5.2) =====
+ * Aditivas: no tocan tokens ni la paleta. Las clases base = mobile;
+ * el look desktop (lg:) no cambia porque estas utilidades solo se usan
+ * donde se aplican explicitamente o en elementos fijos (header/nav/sheets).
+ */
+
+/* --- Safe-area: padding segun env(safe-area-inset-*) (requiere viewport-fit=cover) --- */
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+@utility pl-safe {
+  padding-left: env(safe-area-inset-left);
+}
+@utility pr-safe {
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Variantes con max(): garantizan un minimo aunque el inset sea 0 (sin notch).
+   Utiles para footers de sheets / FAB / bottom-nav que necesitan aire base. */
+@utility pt-safe-4 {
+  padding-top: max(1rem, env(safe-area-inset-top));
+}
+@utility pb-safe-4 {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+/* --- Viewport dinamico ---
+ * Tailwind v4 ya expone `min-h-dvh`/`h-dvh` nativas (min-height: 100dvh).
+ * NO las redefinimos para no shadowear las built-in. El fallback 100vh para
+ * navegadores sin soporte dvh se aplica en `body`/`#root` (arriba). Donde se
+ * requiera el helper en clases, usar las utilidades nativas `min-h-dvh`/`h-dvh`. */
+
+/* --- Touch target Apple HIG: 44x44px minimo en elementos interactivos mobile --- */
+@utility touch-target {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+/* --- Scroll nativo con momentum (iOS) para modales/listas/sheets/drawers --- */
+@utility scroll-momentum {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* --- Evitar seleccion de texto en botones/FAB/nav (sensacion app-like) --- */
+@utility no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* --- Tipografia fluida: headings que no desbordan en 360px (clamp) --- */
+@utility text-h1 {
+  font-size: clamp(1.5rem, 5vw, 2.25rem);
+  line-height: 1.15;
+}
+@utility text-h2 {
+  font-size: clamp(1.25rem, 4vw, 1.875rem);
+  line-height: 1.2;
+}
+
+/* --- Animaciones mobile: bottom-sheets, drawers, backdrops --- */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Respetar prefers-reduced-motion: sin animaciones de entrada para usuarios
+   que las desactivan (accesibilidad). El estado final queda igual. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin,
+  .animate-slide-up,
+  .animate-fade-in {
+    animation: none;
   }
 }
 

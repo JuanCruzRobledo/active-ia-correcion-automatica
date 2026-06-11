@@ -363,6 +363,98 @@ def require_tutor_of_comision(user: Usuario, comision_id: int) -> Usuario:
     return user
 
 
+async def verificar_acceso_materia(
+    db: AsyncSession, usuario: Usuario, materia_id: int
+) -> None:
+    """Valida acceso a una materia consultando la DB (guard REAL, no placeholder).
+
+    - ADMIN: acceso total.
+    - COORDINADOR: sólo si está asignado a la materia (CoordinadorMateria).
+    - Cualquier otro rol: 403.
+
+    Lanza HTTPException 403 si no tiene acceso. Reemplaza al placeholder
+    `require_coordinador_of_materia` (que NO consultaba la DB).
+    """
+    if usuario.rol == RolEnum.ADMIN:
+        return
+
+    from app.models.materia import CoordinadorMateria
+
+    result = await db.execute(
+        select(CoordinadorMateria.id)
+        .where(
+            CoordinadorMateria.materia_id == materia_id,
+            CoordinadorMateria.coordinador_id == usuario.id,
+        )
+        .limit(1)
+    )
+    if result.first() is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés acceso a esta materia",
+        )
+
+
+async def verificar_acceso_unidad(
+    db: AsyncSession, usuario: Usuario, unidad_id: int
+) -> None:
+    """Resuelve la materia de una unidad y valida el acceso (ver verificar_acceso_materia)."""
+    if usuario.rol == RolEnum.ADMIN:
+        return
+
+    from app.models.unidad import Unidad
+
+    result = await db.execute(
+        select(Unidad.materia_id).where(Unidad.id == unidad_id).limit(1)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Unidad no encontrada"
+        )
+    await verificar_acceso_materia(db, usuario, row[0])
+
+
+async def verificar_acceso_examen(
+    db: AsyncSession, usuario: Usuario, examen_id: int
+) -> None:
+    """Resuelve la materia de un examen y valida el acceso (ver verificar_acceso_materia)."""
+    if usuario.rol == RolEnum.ADMIN:
+        return
+
+    from app.models.examen_materia import ExamenMateria
+
+    result = await db.execute(
+        select(ExamenMateria.materia_id).where(ExamenMateria.id == examen_id).limit(1)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Examen no encontrado"
+        )
+    await verificar_acceso_materia(db, usuario, row[0])
+
+
+async def verificar_acceso_rubrica(
+    db: AsyncSession, usuario: Usuario, rubrica_id: int
+) -> None:
+    """Resuelve la materia de una rúbrica y valida el acceso (ver verificar_acceso_materia)."""
+    if usuario.rol == RolEnum.ADMIN:
+        return
+
+    from app.models.rubrica import Rubrica
+
+    result = await db.execute(
+        select(Rubrica.materia_id).where(Rubrica.id == rubrica_id).limit(1)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Rúbrica no encontrada"
+        )
+    await verificar_acceso_materia(db, usuario, row[0])
+
+
 async def verificar_acceso_comision(
     db: AsyncSession, usuario: Usuario, comision_id: int
 ) -> None:

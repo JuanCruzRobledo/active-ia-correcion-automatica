@@ -30,10 +30,10 @@ export function ComisionCard({ comision }: ComisionCardProps) {
   };
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6 transition-colors hover:border-accent/50">
-      <div className="mb-4">
-        <h3 className="text-lg font-semibold text-foreground">{comision.nombre}</h3>
-        <p className="text-sm text-muted-foreground">{comision.comision}</p>
+    <div className="rounded-lg border border-border bg-card p-4 transition-colors hover:border-accent/50 sm:p-6">
+      <div className="mb-4 min-w-0">
+        <h3 className="text-lg font-semibold text-foreground break-words">{comision.nombre}</h3>
+        <p className="text-sm text-muted-foreground break-words">{comision.comision}</p>
       </div>
 
       <div className="mb-4 space-y-2">

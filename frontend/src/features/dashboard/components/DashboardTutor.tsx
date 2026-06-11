@@ -55,12 +55,12 @@ export function DashboardTutor() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Banner Moodle pendientes */}
       {totalEsperaMoodle > 0 && (
-        <div className="flex items-center justify-between rounded-lg border border-warning/30 bg-warning/10 px-5 py-4">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-warning" />
+        <div className="flex flex-col items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
             <p className="text-sm font-medium text-foreground">
               Tenés{' '}
               <span className="font-bold text-warning">{totalEsperaMoodle}</span>{' '}
@@ -69,7 +69,7 @@ export function DashboardTutor() {
           </div>
           <button
             onClick={() => navigate('/pendientes')}
-            className="rounded-md bg-warning px-4 py-2 text-sm font-medium text-warning-foreground hover:bg-warning/90"
+            className="w-full min-h-[44px] shrink-0 rounded-md bg-warning px-4 py-2 text-sm font-medium text-warning-foreground hover:bg-warning/90 sm:w-auto sm:min-h-0"
           >
             Ver pendientes
           </button>
@@ -81,14 +81,14 @@ export function DashboardTutor() {
 
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Dashboard - Mis Comisiones</h1><HelpButton title="Ayuda — Dashboard" content={helpContent.dashboard} /></div>
+        <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-bold text-foreground sm:text-2xl">Dashboard - Mis Comisiones</h1><HelpButton title="Ayuda — Dashboard" content={helpContent.dashboard} /></div>
         <p className="text-sm text-muted-foreground">
           Entregas pendientes y estado de correcciones
         </p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-6 sm:grid-cols-3">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-3">
         <StatCard
           title="Comisiones"
           value={dashboardData.comisiones}
@@ -115,7 +115,7 @@ export function DashboardTutor() {
       {/* Comisiones Cards */}
       <div>
         <h2 className="mb-4 text-lg font-semibold text-foreground">Mis Comisiones</h2>
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
           {dashboardData.comisiones_details.map((comision) => (
             <ComisionCard key={comision.id} comision={comision} />
           ))}

@@ -25,18 +25,21 @@ export const EmptyState = ({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center py-12 px-4',
+        'flex flex-col items-center justify-center py-8 sm:py-12 px-4',
         className
       )}
     >
-      <div className="text-6xl mb-4">{icon}</div>
-      <h3 className="text-lg font-medium text-gray-900 mb-2">{title}</h3>
+      <div className="text-5xl sm:text-6xl mb-4">{icon}</div>
+      <h3 className="text-lg font-medium text-foreground mb-2 text-center">{title}</h3>
       {description && (
-        <p className="text-sm text-gray-500 text-center max-w-md mb-6">
+        <p className="text-sm text-muted-foreground text-center max-w-md mb-6">
           {description}
         </p>
       )}
-      {action && <div>{action}</div>}
+      {/* Accion full-width en mobile (boton ocupa el ancho), auto en desktop. */}
+      {action && (
+        <div className="w-full sm:w-auto [&>*]:w-full sm:[&>*]:w-auto">{action}</div>
+      )}
     </div>
   );
 };

@@ -1,0 +1,91 @@
+# app/services/notificacion_config_service.py
+"""
+NotificacionConfigService — config (singleton id=1) del cron semanal de notificaciones.
+
+Lee/actualiza la fila desde el admin. Si se activa, exige un usuario con credenciales
+Moodle (para refrescar snapshots antes de enviar). Ref: PLAN_NOTIFICACIONES_EMAIL.md §5.5 (T8).
+"""
+
+from fastapi import HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.notificacion import NotificacionCronConfig
+from app.repositories.usuario_repository import UsuarioRepository
+from app.schemas.notificacion import NotifCronConfigResponse, NotifCronConfigUpdate
+
+_CONFIG_ID = 1
+
+
+class NotificacionConfigService:
+    """Lee/actualiza la config del cron de notificaciones (singleton)."""
+
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.usuario_repo = UsuarioRepository(db)
+
+    async def _get_or_create(self) -> NotificacionCronConfig:
+        result = await self.db.execute(
+            select(NotificacionCronConfig).where(NotificacionCronConfig.id == _CONFIG_ID)
+        )
+        config = result.scalar_one_or_none()
+        if config is None:
+            config = NotificacionCronConfig(
+                id=_CONFIG_ID, dia_semana=0, hora=7, minuto=0, activo=False
+            )
+            self.db.add(config)
+            await self.db.commit()
+            await self.db.refresh(config)
+        return config
+
+    async def get_config(self) -> NotificacionCronConfig:
+        return await self._get_or_create()
+
+    async def _to_response(self, config: NotificacionCronConfig) -> NotifCronConfigResponse:
+        nombre = None
+        if config.usuario_id:
+            usuario = await self.usuario_repo.get_by_id(config.usuario_id)
+            nombre = usuario.nombre if usuario else None
+        return NotifCronConfigResponse(
+            usuario_id=config.usuario_id,
+            usuario_nombre=nombre,
+            dia_semana=config.dia_semana,
+            hora=config.hora,
+            minuto=config.minuto,
+            activo=config.activo,
+            remitente=config.remitente,
+        )
+
+    async def obtener(self) -> NotifCronConfigResponse:
+        return await self._to_response(await self._get_or_create())
+
+    async def actualizar(self, data: NotifCronConfigUpdate) -> NotifCronConfigResponse:
+        config = await self._get_or_create()
+
+        if data.activo:
+            if not data.usuario_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Para activar el cron hay que asignar un usuario de servicio",
+                )
+            usuario = await self.usuario_repo.get_by_id(data.usuario_id)
+            if usuario is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El usuario indicado no existe",
+                )
+            if not usuario.moodle_username or not usuario.moodle_password_encrypted:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="El usuario elegido no tiene credenciales de Moodle configuradas",
+                )
+
+        config.usuario_id = data.usuario_id
+        config.dia_semana = data.dia_semana
+        config.hora = data.hora
+        config.minuto = data.minuto
+        config.activo = data.activo
+        config.remitente = data.remitente
+        await self.db.commit()
+        await self.db.refresh(config)
+        return await self._to_response(config)

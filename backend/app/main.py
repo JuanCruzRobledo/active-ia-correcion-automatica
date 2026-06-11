@@ -26,11 +26,29 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     - Cerrar conexiones al shutdown
     """
     # Startup
-    # TODO: Inicializar conexion a BD
-    # TODO: Verificar conectividad con N8N
+    import logging
+
+    from app.core.scheduler import (
+        reprogramar_desde_config,
+        reprogramar_notificaciones_desde_config,
+        shutdown_scheduler,
+        start_scheduler,
+    )
+
+    try:
+        start_scheduler()
+        await reprogramar_desde_config()
+        await reprogramar_notificaciones_desde_config()
+    except Exception:  # noqa: BLE001 — el scheduler no debe impedir el arranque de la app
+        logging.getLogger(__name__).exception("No se pudo iniciar el scheduler")
+
     yield
+
     # Shutdown
-    # TODO: Cerrar conexiones
+    try:
+        shutdown_scheduler()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def create_application() -> FastAPI:
@@ -171,6 +189,36 @@ def register_routers(app: FastAPI) -> None:
     from app.routers.gestion import router as gestion_router
 
     app.include_router(gestion_router, prefix="/api/v1")
+
+    # Cohortes/Cuatrimestres (ABM admin — Dashboard de Gestores)
+    from app.routers.cohortes import router as cohortes_router
+
+    app.include_router(cohortes_router, prefix="/api/v1")
+
+    # Unidades + config de dashboard de la materia (ABM admin — Dashboard de Gestores)
+    from app.routers.unidades import router as unidades_router
+
+    app.include_router(unidades_router, prefix="/api/v1")
+
+    # Exámenes de la materia (ABM admin — seguimiento de evaluaciones)
+    from app.routers.examenes import router as examenes_router
+
+    app.include_router(examenes_router, prefix="/api/v1")
+
+    # Dashboard de Gestores — config del cron + disparo manual de snapshots
+    from app.routers.dashboard_gestores import router as dashboard_gestores_router
+
+    app.include_router(dashboard_gestores_router, prefix="/api/v1")
+
+    # Notificaciones por email — ABM de tutores nexo (admin)
+    from app.routers.tutores_nexo import router as tutores_nexo_router
+
+    app.include_router(tutores_nexo_router, prefix="/api/v1")
+
+    # Notificaciones por email — cron-config, disparo, prueba, historial, preview (admin)
+    from app.routers.notificaciones import router as notificaciones_router
+
+    app.include_router(notificaciones_router, prefix="/api/v1")
 
     # Público (Fase 3 — PDF de devolución sin JWT, vía token firmado)
     from app.routers.public_docs import router as public_docs_router

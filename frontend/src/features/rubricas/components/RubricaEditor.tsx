@@ -444,6 +444,7 @@ export function RubricaEditor({
       isOpen={isOpen}
       onClose={handleClose}
       title={isEditing ? 'Editar Rúbrica' : 'Crear Rúbrica'}
+      fullScreen
     >
       <form
         onSubmit={(e) => {
@@ -563,7 +564,7 @@ export function RubricaEditor({
                 icon={<AlertTriangle className="h-4 w-4" />}
                 badge={
                   (watch('penalizaciones') || []).length > 0 && (
-                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-full">
+                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-warning/20 text-warning rounded-full">
                       {(watch('penalizaciones') || []).length}
                     </span>
                   )
@@ -587,7 +588,7 @@ export function RubricaEditor({
                 icon={<XCircle className="h-4 w-4" />}
                 badge={
                   (watch('condiciones_desaprobacion') || []).length > 0 && (
-                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-red-500/20 text-red-600 dark:text-red-400 rounded-full">
+                    <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-destructive/20 text-destructive rounded-full">
                       {(watch('condiciones_desaprobacion') || []).length}
                     </span>
                   )
@@ -639,9 +640,9 @@ export function RubricaEditor({
         )}
 
         {/* ── Footer ── */}
-        <div className="flex justify-between items-center gap-3 pt-4 border-t border-border">
+        <div className="flex flex-col gap-3 pt-4 border-t border-border sm:flex-row sm:items-center sm:justify-between">
           {/* Left side: Preview PDF buttons (only in manual mode) */}
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row">
             {creationMode === 'manual' && (
               <>
                 <Button
@@ -651,6 +652,7 @@ export function RubricaEditor({
                   onClick={handlePreviewPDF}
                   disabled={previewPDFMutation.isPending || !watch('titulo') || !watch('descripcion')}
                   title="Vista previa PDF completo"
+                  className="w-full sm:w-auto"
                 >
                   {previewPDFMutation.isPending ? (
                     <Spinner size="sm" />
@@ -668,6 +670,7 @@ export function RubricaEditor({
                   onClick={handlePreviewPDFResumido}
                   disabled={previewPDFResumidoMutation.isPending || !watch('titulo') || !watch('descripcion')}
                   title="Vista previa de la guía para estudiantes"
+                  className="w-full sm:w-auto"
                 >
                   {previewPDFResumidoMutation.isPending ? (
                     <Spinner size="sm" />
@@ -683,8 +686,13 @@ export function RubricaEditor({
           </div>
 
           {/* Right side: Action buttons */}
-          <div className="flex gap-3">
-            <Button type="button" variant="outline" onClick={handleClose}>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleClose}
+              className="w-full sm:w-auto"
+            >
               Cancelar
             </Button>
 
@@ -693,7 +701,7 @@ export function RubricaEditor({
                 type="button"
                 onClick={handleGenerarPDF}
                 disabled={!pdfFile || isGeneratingPDF}
-                className="min-w-[140px]"
+                className="w-full sm:w-auto sm:min-w-[140px]"
               >
                 {isGeneratingPDF ? (
                   <Spinner size="sm" />
@@ -705,7 +713,12 @@ export function RubricaEditor({
                 )}
               </Button>
             ) : creationMode === 'json' ? (
-              <Button type="button" onClick={handleLoadJSON} disabled={!jsonText.trim()}>
+              <Button
+                type="button"
+                onClick={handleLoadJSON}
+                disabled={!jsonText.trim()}
+                className="w-full sm:w-auto"
+              >
                 <Code className="h-4 w-4 mr-2" />
                 Cargar criterios
               </Button>
@@ -713,7 +726,7 @@ export function RubricaEditor({
               <Button
                 type="submit"
                 disabled={isSubmitting || sumaPesos !== 100}
-                className="min-w-[120px]"
+                className="w-full sm:w-auto sm:min-w-[120px]"
               >
                 {isSubmitting ? (
                   <Spinner size="sm" />

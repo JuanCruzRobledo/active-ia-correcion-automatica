@@ -5,11 +5,15 @@ Schemas for user profile operations.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md HU-PERF-01, HU-PERF-02
 """
 
+import re
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import RolEnum
+
+# Validación simple de email (evita la dependencia email-validator).
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class PerfilResponse(BaseModel):
@@ -22,6 +26,7 @@ class PerfilResponse(BaseModel):
     id: int
     username: str
     nombre: str
+    email: str | None = Field(None, description="Email donde el usuario recibe notificaciones")
     rol: RolEnum
     primer_login: bool
     gemini_api_key_valid: bool
@@ -71,3 +76,28 @@ class UpdateKeyPagaRequest(BaseModel):
 class UpdateKeyPagaResponse(BaseModel):
     message: str
     gemini_api_key_paga: bool
+
+
+class UpdateEmailRequest(BaseModel):
+    """Setea (o limpia) el email de notificaciones del usuario."""
+
+    email: str | None = Field(
+        None, description="Email para recibir notificaciones (vacío para quitarlo)"
+    )
+
+    @field_validator("email")
+    @classmethod
+    def _validar_email(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v:
+            return None  # permite quitar el email
+        if not _EMAIL_RE.match(v):
+            raise ValueError("Email inválido")
+        return v
+
+
+class UpdateEmailResponse(BaseModel):
+    message: str
+    email: str | None

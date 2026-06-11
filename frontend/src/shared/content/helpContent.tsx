@@ -5,6 +5,162 @@ import type { ReactNode } from 'react';
  * Se consume con <HelpButton content={helpContent.<clave>} />.
  */
 export const helpContent: Record<string, ReactNode> = {
+  notificaciones: (
+    <div className="space-y-4 text-sm text-muted-foreground">
+      <p className="text-lg font-semibold text-foreground">Notificaciones por email</p>
+      <p>
+        Una vez por semana, de forma automática, se envían las actividades faltantes a tres
+        destinatarios distintos:
+      </p>
+      <ul className="ml-4 list-disc space-y-2">
+        <li><strong className="text-foreground">Alumno:</strong> una tabla en el cuerpo del email con sus materias.</li>
+        <li><strong className="text-foreground">Tutor académico:</strong> un PDF con los alumnos de sus comisiones.</li>
+        <li><strong className="text-foreground">Tutor nexo:</strong> un Excel con los alumnos de su regional.</li>
+      </ul>
+      <p>
+        El cron refresca los snapshots (con el usuario de servicio) y después envía los 3 tipos
+        en cadena. Antes de activarlo, usá <strong className="text-foreground">Enviar prueba</strong> y la{' '}
+        <strong className="text-foreground">vista previa</strong> para revisar los formatos, y{' '}
+        <strong className="text-foreground">Disparar ahora</strong> para una corrida manual de control.
+      </p>
+      <div className="mt-4 rounded-lg bg-muted/50 p-4">
+        <p className="font-medium text-warning">Ojo:</p>
+        <p className="mt-1 text-sm">
+          En modo sandbox (sin dominio verificado) Resend solo entrega a la casilla de tu cuenta.
+          Para enviar a todos, primero hay que verificar el dominio.
+        </p>
+      </div>
+    </div>
+  ),
+
+  tutoresNexo: (
+    <div className="space-y-4 text-sm text-muted-foreground">
+      <p className="text-lg font-semibold text-foreground">Tutores Nexo</p>
+      <p>
+        El tutor nexo recibe semanalmente, por email, un{' '}
+        <strong className="text-foreground">Excel</strong> con los alumnos de su{' '}
+        <strong className="text-foreground">regional</strong> y las actividades que les faltan
+        (una hoja por materia).
+      </p>
+      <ul className="ml-4 list-disc space-y-2">
+        <li>
+          <strong className="text-foreground">Regional:</strong> escribila como aparece en
+          Moodle pero <strong className="text-foreground">sin el prefijo "R-"</strong>. Ej: el
+          grupo <em>R-Mendoza</em> → cargás <em>Mendoza</em>.
+        </li>
+        <li>
+          <strong className="text-foreground">Email:</strong> casilla donde recibe el Excel.
+        </li>
+        <li>
+          <strong className="text-foreground">Activo:</strong> solo los activos reciben el envío
+          semanal.
+        </li>
+      </ul>
+      <div className="mt-4 rounded-lg bg-muted/50 p-4">
+        <p className="font-medium text-warning">Ojo:</p>
+        <p className="mt-1 text-sm">
+          La regional debe coincidir exactamente con el nombre del grupo de Moodle (sin "R-"),
+          o no se le asignará ningún alumno.
+        </p>
+      </div>
+    </div>
+  ),
+
+  cohortes: (
+    <div className="space-y-4 text-sm text-muted-foreground">
+      <p className="text-lg font-semibold text-foreground">Cohortes</p>
+      <p>
+        Las cohortes (ej. <strong className="text-foreground">M26</strong> = marzo 2026,
+        <strong className="text-foreground"> A25</strong> = agosto 2025) agrupan a los alumnos
+        por su ingreso. Cada cohorte tiene cuatrimestres, y a cada cuatrimestre se le vinculan
+        materias. El <strong className="text-foreground">dashboard de gestores</strong> usa esta
+        estructura para sus selectores.
+      </p>
+      <ul className="ml-4 list-disc space-y-2">
+        <li><strong className="text-foreground">Nueva cohorte:</strong> definí el código (no se cambia después) y un nombre opcional.</li>
+        <li><strong className="text-foreground">Cuatrimestres:</strong> agregá del 1 al 4 con el botón "Agregar"; quitalos con la ✕.</li>
+        <li><strong className="text-foreground">Vincular materias:</strong> eso se hace desde cada materia (config de dashboard), no acá.</li>
+      </ul>
+      <div className="mt-4 rounded-lg bg-muted/50 p-4">
+        <p className="font-medium text-warning">Ojo:</p>
+        <p className="mt-1 text-sm">
+          No se puede eliminar una cohorte o un cuatrimestre que tenga materias vinculadas.
+          Primero desvinculá las materias.
+        </p>
+      </div>
+    </div>
+  ),
+
+  dashboardGestor: (
+    <div className="space-y-4 text-sm text-muted-foreground">
+      <p className="text-lg font-semibold text-foreground">Avance académico</p>
+      <p>
+        Muestra cómo vienen los alumnos respecto a la unidad que se está cursando. Elegí
+        cohorte, cuatrimestre y (opcional) una materia; el gráfico de torta refleja el estado.
+      </p>
+      <p className="font-medium text-foreground">Estados</p>
+      <ul className="ml-4 list-disc space-y-2">
+        <li><strong className="text-success">Al día:</strong> alcanzó (o superó) la unidad actual.</li>
+        <li><strong className="text-warning">Riesgo medio:</strong> una unidad atrás.</li>
+        <li><strong className="text-destructive">Riesgo alto:</strong> dos o más unidades atrás.</li>
+        <li><strong className="text-foreground">Sin actividad:</strong> no completó ninguna actividad.</li>
+      </ul>
+      <div className="mt-4 rounded-lg bg-muted/50 p-4">
+        <p className="font-medium text-warning">Tips:</p>
+        <p className="mt-1 text-sm">
+          Hacé clic en una porción para ver el detalle de esos alumnos (con su actividad actual).
+          Los datos vienen de un snapshot diario; la fecha de actualización se muestra arriba del gráfico.
+        </p>
+      </div>
+    </div>
+  ),
+
+  cronConfig: (
+    <div className="space-y-4 text-sm text-muted-foreground">
+      <p className="text-lg font-semibold text-foreground">Snapshots / Cron</p>
+      <p>
+        El dashboard de gestores lee una "foto" (snapshot) del avance de los alumnos, no
+        consulta Moodle en vivo. Esa foto se genera 1×/día con el cron, o a mano con el botón.
+      </p>
+      <ul className="ml-4 list-disc space-y-2">
+        <li><strong className="text-foreground">Usuario:</strong> de quién se usan las credenciales de Moodle para consultar. Debe tenerlas configuradas en su perfil.</li>
+        <li><strong className="text-foreground">Hora:</strong> a qué hora (Argentina) corre el cron, una vez por día.</li>
+        <li><strong className="text-foreground">Cron activo:</strong> prendelo solo cuando el usuario y las materias estén configurados.</li>
+        <li><strong className="text-foreground">Generar ahora:</strong> dispara el cálculo a mano (con tus credenciales). Puede tardar varios minutos.</li>
+      </ul>
+      <div className="mt-4 rounded-lg bg-muted/50 p-4">
+        <p className="font-medium text-warning">Ojo:</p>
+        <p className="mt-1 text-sm">
+          No se puede activar el cron sin un usuario con credenciales de Moodle. El botón
+          manual es temporal (para pruebas).
+        </p>
+      </div>
+    </div>
+  ),
+
+  materiaDashboard: (
+    <div className="space-y-4 text-sm text-muted-foreground">
+      <p className="text-lg font-semibold text-foreground">Configuración del dashboard</p>
+      <p>
+        Acá preparás una materia para que aparezca en el dashboard de gestores: la vinculás a
+        un cuatrimestre, definís en qué unidad se está cursando y mapeás sus unidades a las
+        secciones de Moodle.
+      </p>
+      <ul className="ml-4 list-disc space-y-2">
+        <li><strong className="text-foreground">Cohorte + Cuatrimestre:</strong> a qué grupo pertenece la materia.</li>
+        <li><strong className="text-foreground">Unidad actual:</strong> la unidad que se está dictando hoy (con esto se calcula el riesgo).</li>
+        <li><strong className="text-foreground">Detectar desde Moodle:</strong> trae TODAS las secciones del curso con un check cada una. Tildá las que son unidades reales (descartá "Actividades", "Práctica", etc.); el orden de arriba hacia abajo define el número de unidad. "Guardar unidades" reemplaza el set.</li>
+        <li><strong className="text-foreground">Tope:</strong> la sección donde terminan las unidades de contenido — lo posterior (parciales, integrador) no cuenta para el avance.</li>
+      </ul>
+      <div className="mt-4 rounded-lg bg-muted/50 p-4">
+        <p className="font-medium text-warning">Para que la materia aparezca en el dashboard:</p>
+        <p className="mt-1 text-sm">
+          necesita curso de Moodle vinculado, cuatrimestre, unidad actual y al menos una unidad mapeada.
+        </p>
+      </div>
+    </div>
+  ),
+
   gestion: (
     <div className="space-y-4 text-sm text-muted-foreground">
       <p className="text-lg font-semibold text-foreground">Gestión</p>

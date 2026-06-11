@@ -62,9 +62,9 @@ export function EntregarTodoButton({ totalAutomaticas }: EntregarTodoButtonProps
       <button
         onClick={handleClick}
         disabled={(open && fase === 'streaming') || totalAutomaticas === 0}
-        className="flex cursor-pointer items-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation min-h-[44px] sm:flex-none"
       >
-        <Send className="h-4 w-4" />
+        <Send className="h-4 w-4 shrink-0" />
         Entregar todo ({totalAutomaticas})
       </button>
 

@@ -10,7 +10,18 @@
  */
 
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, GraduationCap, Users, FileText, Plus } from 'lucide-react';
+import {
+  BookOpen,
+  GraduationCap,
+  Users,
+  FileText,
+  FolderOpen,
+  CalendarClock,
+  BellRing,
+  Mail,
+  PieChart,
+  BarChart3,
+} from 'lucide-react';
 import { StatCard } from './StatCard';
 import { QuickActions } from './QuickActions';
 import { RecentActivity } from './RecentActivity';
@@ -52,26 +63,16 @@ export function DashboardAdmin() {
   }
 
   const quickActions = [
-    {
-      label: 'Crear Materia',
-      icon: Plus,
-      onClick: () => navigate('/materias'),
-    },
-    {
-      label: 'Crear Usuario',
-      icon: Plus,
-      onClick: () => navigate('/usuarios'),
-    },
-    {
-      label: 'Crear Comisión',
-      icon: Plus,
-      onClick: () => navigate('/comisiones'),
-    },
-    {
-      label: 'Crear Rúbrica',
-      icon: Plus,
-      onClick: () => navigate('/rubricas'),
-    },
+    { label: 'Crear materia', icon: BookOpen, onClick: () => navigate('/materias') },
+    { label: 'Crear usuario', icon: Users, onClick: () => navigate('/usuarios') },
+    { label: 'Crear comisión', icon: FolderOpen, onClick: () => navigate('/comisiones') },
+    { label: 'Crear rúbrica', icon: FileText, onClick: () => navigate('/rubricas') },
+    { label: 'Cohortes', icon: GraduationCap, onClick: () => navigate('/cohortes') },
+    { label: 'Snapshots de avance', icon: CalendarClock, onClick: () => navigate('/snapshots') },
+    { label: 'Notificaciones', icon: BellRing, onClick: () => navigate('/notificaciones') },
+    { label: 'Tutores nexo', icon: Mail, onClick: () => navigate('/tutores-nexo') },
+    { label: 'Dashboard de avance', icon: PieChart, onClick: () => navigate('/avance') },
+    { label: 'Gestión', icon: BarChart3, onClick: () => navigate('/gestion') },
   ];
 
   // Map actividades to the format expected by RecentActivity component
@@ -83,17 +84,17 @@ export function DashboardAdmin() {
     })) ?? [];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Dashboard Administrativo</h1><HelpButton title="Ayuda — Dashboard" content={helpContent.dashboard} /></div>
+        <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-bold text-foreground sm:text-2xl">Dashboard Administrativo</h1><HelpButton title="Ayuda — Dashboard" content={helpContent.dashboard} /></div>
         <p className="text-sm text-muted-foreground">
           Vista general del sistema Active-IA
         </p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Materias"
           value={stats.materias}
@@ -125,7 +126,7 @@ export function DashboardAdmin() {
       </div>
 
       {/* Quick Actions & Recent Activity */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 lg:grid-cols-2">
         <QuickActions actions={quickActions} />
         <RecentActivity activities={recentActivities} isLoading={actividadesLoading} />
       </div>

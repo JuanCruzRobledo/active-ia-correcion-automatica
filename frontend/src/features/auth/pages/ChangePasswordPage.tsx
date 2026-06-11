@@ -76,14 +76,14 @@ export const ChangePasswordPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="min-h-dvh flex items-center justify-center bg-background pt-safe pb-safe pl-safe pr-safe px-4 py-8 overflow-y-auto scroll-momentum">
       <div className="w-full max-w-md space-y-8">
         {/* Header */}
         <div className="text-center space-y-4">
           <div className="flex justify-center">
-            <img 
-              src="/active-ia-logo.svg" 
-              alt="Active-IA Logo" 
+            <img
+              src="/active-ia-logo.svg"
+              alt="Active-IA Logo"
               className="h-20 w-20"
             />
           </div>
@@ -93,8 +93,8 @@ export const ChangePasswordPage = () => {
           </p>
         </div>
 
-        {/* Form Card */}
-        <div className="bg-card rounded-lg shadow-sm border border-border p-8">
+        {/* Form Card: edge-to-edge en mobile, card centrada en sm: */}
+        <div className="bg-card rounded-none sm:rounded-lg shadow-sm border border-border p-6 sm:p-8">
           <p className="text-sm text-muted-foreground mb-6">
             Por seguridad, debes cambiar tu contraseña provisional antes de
             continuar usando el sistema.
@@ -114,7 +114,9 @@ export const ChangePasswordPage = () => {
               error={errors.currentPassword}
               required
               autoComplete="current-password"
-              autoFocus
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
 
             <Input
@@ -128,9 +130,12 @@ export const ChangePasswordPage = () => {
               placeholder="Mínimo 8 caracteres"
               disabled={changePasswordMutation.isPending}
               error={errors.newPassword}
-              helperText="Debe tener al menos 8 caracteres, ser diferente a la actual y contener al menos un número"
+              helperText="Mínimo 8 caracteres · diferente a la actual · al menos un número"
               required
               autoComplete="new-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
 
             <Input
@@ -146,6 +151,9 @@ export const ChangePasswordPage = () => {
               error={errors.confirmPassword}
               required
               autoComplete="new-password"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
             />
 
             {changePasswordMutation.isError && (

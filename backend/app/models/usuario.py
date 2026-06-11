@@ -42,6 +42,9 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
         index=True,
     )
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Email del usuario. Lo usan las notificaciones por email (tutor académico
+    # recibe el PDF de sus comisiones). Ver PLAN_NOTIFICACIONES_EMAIL.md §4.1.
+    email: Mapped[str | None] = mapped_column(String(150), nullable=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     rol: Mapped[RolEnum] = mapped_column(
         SQLEnum(RolEnum, name="rol_enum", create_type=True),

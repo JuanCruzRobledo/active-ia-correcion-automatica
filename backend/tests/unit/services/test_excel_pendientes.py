@@ -31,6 +31,12 @@ def _pendientes():
 
 # --- por trabajo (Pendientes por Práctico) ------------------------------------
 
+def test_resumen_pendientes_muestra_fecha_de_creacion():
+    data, _ = ExcelService(AsyncMock()).exportar_pendientes(_pendientes(), "Prog I")
+    a2 = _wb(data)["Resumen"]["A2"].value
+    assert "Documento generado el" in a2
+
+
 def test_por_trabajo_columnas_con_tutor_y_email():
     data, fn = ExcelService(AsyncMock()).exportar_pendientes(_pendientes(), "Prog I", agrupar_por="trabajo")
     wb = _wb(data)

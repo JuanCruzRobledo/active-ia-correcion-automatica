@@ -212,6 +212,7 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
           <Input
             label="Año Académico"
             type="number"
+            inputMode="numeric"
             placeholder={currentYear.toString()}
             error={errors.anio?.message}
             disabled={isEditMode}
@@ -250,10 +251,11 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Configuración Moodle
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Input
               label="ID de Grupo Moodle"
               type="number"
+              inputMode="numeric"
               placeholder="ej: 4165"
               helperText="moodle_group_id"
               error={errors.moodle_group_id?.message}
@@ -273,12 +275,13 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 pt-4">
+        <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
           <Button
             type="button"
             variant="secondary"
             onClick={onClose}
             disabled={isSubmitting}
+            className="w-full sm:w-auto"
           >
             Cancelar
           </Button>
@@ -286,6 +289,7 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
             type="submit"
             disabled={isSubmitting || (!moodleOnly && isLoadingMaterias)}
             isLoading={isSubmitting}
+            className="w-full sm:w-auto"
           >
             {moodleOnly
               ? 'Guardar Moodle'

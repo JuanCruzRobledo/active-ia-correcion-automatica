@@ -8,7 +8,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Pencil, Key, Trash2, RotateCcw } from 'lucide-react';
+import { Pencil, Key, Trash2, RotateCcw, MoreVertical } from 'lucide-react';
 import { useUsuarios, useDeleteUsuario, useRestoreUsuario } from '../hooks';
 import { UsuarioForm, ResetPasswordModal } from '../components';
 import type { Usuario, UsuarioListItem } from '../types';
@@ -18,7 +18,7 @@ import {
   Input,
   Select,
   Badge,
-  Table,
+  ResponsiveTable,
   LoadingState,
   HelpButton,
   EmptyState,
@@ -28,6 +28,22 @@ import {
 } from '@/shared/components/ui';
 import { helpContent } from '@/shared/content/helpContent';
 import { formatDate } from '@/shared/utils';
+
+// Mapeo de rol -> variante/label de Badge, reutilizado en la tabla (desktop)
+// y en la tarjeta mobile.
+const rolVariants: Record<RolEnum, 'destructive' | 'info' | 'success'> = {
+  ADMIN: 'destructive',
+  COORDINADOR: 'info',
+  TUTOR: 'success',
+  GESTOR: 'info',
+};
+
+const rolLabels: Record<RolEnum, string> = {
+  ADMIN: 'Administrador',
+  COORDINADOR: 'Coordinador',
+  TUTOR: 'Tutor',
+  GESTOR: 'Gestor',
+};
 
 export const UsuariosPage = () => {
   const [inputSearch, setInputSearch] = useState('');
@@ -63,10 +79,6 @@ export const UsuariosPage = () => {
   const { data, isLoading, error } = useUsuarios(filters);
   const deleteMutation = useDeleteUsuario();
   const restoreMutation = useRestoreUsuario();
-
-  // Debug
-  console.log('UsuariosPage state:', { data, isLoading, error });
-
 
   // Modal handlers
   const handleCreate = () => {
@@ -107,6 +119,45 @@ export const UsuariosPage = () => {
     { value: 'false', label: 'Eliminados' },
   ];
 
+  // Menu de acciones reutilizado en la tabla (desktop) y en la tarjeta (mobile).
+  const renderActions = (usuario: UsuarioListItem) => (
+    <Dropdown
+      trigger={
+        <button
+          type="button"
+          aria-label="Acciones"
+          className="inline-flex items-center justify-center min-h-11 min-w-11 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted touch-manipulation"
+        >
+          <MoreVertical className="w-5 h-5" />
+        </button>
+      }
+      items={[
+        {
+          label: 'Editar',
+          onClick: () => handleEdit(usuario),
+          icon: <Pencil className="w-4 h-4" />,
+        },
+        {
+          label: 'Resetear contraseña',
+          onClick: () => handleResetPassword(usuario.id, usuario.nombre),
+          icon: <Key className="w-4 h-4" />,
+        },
+        usuario.activo
+          ? {
+            label: 'Eliminar',
+            onClick: () => deleteMutation.mutate(usuario.id),
+            icon: <Trash2 className="w-4 h-4" />,
+            variant: 'danger' as const,
+          }
+          : {
+            label: 'Restaurar',
+            onClick: () => restoreMutation.mutate(usuario.id),
+            icon: <RotateCcw className="w-4 h-4" />,
+          },
+      ]}
+    />
+  );
+
   // Table columns
   const columns: TableColumn<UsuarioListItem>[] = [
     {
@@ -114,33 +165,19 @@ export const UsuariosPage = () => {
       header: 'Nombre',
       render: (usuario) => (
         <div>
-          <div className="font-medium text-gray-900">{usuario.nombre}</div>
-          <div className="text-sm text-gray-500">@{usuario.username}</div>
+          <div className="font-medium text-foreground">{usuario.nombre}</div>
+          <div className="text-sm text-muted-foreground">@{usuario.username}</div>
         </div>
       ),
     },
     {
       key: 'rol',
       header: 'Rol',
-      render: (usuario) => {
-        const rolVariants: Record<RolEnum, 'destructive' | 'info' | 'success'> = {
-          ADMIN: 'destructive',
-          COORDINADOR: 'info',
-          TUTOR: 'success',
-          GESTOR: 'info',
-        };
-        const rolLabels: Record<RolEnum, string> = {
-          ADMIN: 'Administrador',
-          COORDINADOR: 'Coordinador',
-          TUTOR: 'Tutor',
-          GESTOR: 'Gestor',
-        };
-        return (
-          <Badge variant={rolVariants[usuario.rol]}>
-            {rolLabels[usuario.rol]}
-          </Badge>
-        );
-      },
+      render: (usuario) => (
+        <Badge variant={rolVariants[usuario.rol]}>
+          {rolLabels[usuario.rol]}
+        </Badge>
+      ),
     },
     {
       key: 'activo',
@@ -155,7 +192,7 @@ export const UsuariosPage = () => {
       key: 'created_at',
       header: 'Fecha creación',
       render: (usuario) => (
-        <span className="text-gray-500">
+        <span className="text-muted-foreground">
           {formatDate(usuario.created_at)}
         </span>
       ),
@@ -164,7 +201,7 @@ export const UsuariosPage = () => {
       key: 'last_login',
       header: 'Último acceso',
       render: (usuario) => (
-        <span className="text-gray-500">
+        <span className="text-muted-foreground">
           {usuario.last_login ? formatDate(usuario.last_login) : 'Nunca'}
         </span>
       ),
@@ -174,41 +211,46 @@ export const UsuariosPage = () => {
       header: 'Acciones',
       className: 'text-right',
       sticky: true,
-      render: (usuario) => (
-        <Dropdown
-          trigger={
-            <button className="text-gray-400 hover:text-gray-600 px-2 py-1">
-              •••
-            </button>
-          }
-          items={[
-            {
-              label: 'Editar',
-              onClick: () => handleEdit(usuario),
-              icon: <Pencil className="w-4 h-4" />,
-            },
-            {
-              label: 'Resetear contraseña',
-              onClick: () => handleResetPassword(usuario.id, usuario.nombre),
-              icon: <Key className="w-4 h-4" />,
-            },
-            usuario.activo
-              ? {
-                label: 'Eliminar',
-                onClick: () => deleteMutation.mutate(usuario.id),
-                icon: <Trash2 className="w-4 h-4" />,
-                variant: 'danger' as const,
-              }
-              : {
-                label: 'Restaurar',
-                onClick: () => restoreMutation.mutate(usuario.id),
-                icon: <RotateCcw className="w-4 h-4" />,
-              },
-          ]}
-        />
-      ),
+      render: (usuario) => renderActions(usuario),
     },
   ];
+
+  // Tarjeta mobile: nombre/rol/estado arriba, acciones a la derecha; fechas debajo.
+  const renderCard = (usuario: UsuarioListItem) => (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-medium text-foreground truncate">{usuario.nombre}</div>
+          <div className="text-sm text-muted-foreground truncate">
+            @{usuario.username}
+          </div>
+        </div>
+        <div className="shrink-0 -mr-2 -mt-2">{renderActions(usuario)}</div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={rolVariants[usuario.rol]}>{rolLabels[usuario.rol]}</Badge>
+        <Badge variant={usuario.activo ? 'success' : 'default'}>
+          {usuario.activo ? 'Activo' : 'Eliminado'}
+        </Badge>
+      </div>
+
+      <dl className="flex flex-col gap-1 text-sm">
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground">Creado</dt>
+          <dd className="text-foreground text-right">
+            {formatDate(usuario.created_at)}
+          </dd>
+        </div>
+        <div className="flex justify-between gap-3">
+          <dt className="text-muted-foreground">Último acceso</dt>
+          <dd className="text-foreground text-right">
+            {usuario.last_login ? formatDate(usuario.last_login) : 'Nunca'}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
 
   // Handle filter changes
 
@@ -238,8 +280,8 @@ export const UsuariosPage = () => {
   if (error) {
     return (
       <div className="text-center py-12">
-        <div className="text-red-600 mb-4">Error al cargar usuarios</div>
-        <p className="text-gray-500 mb-4">
+        <div className="text-destructive mb-4">Error al cargar usuarios</div>
+        <p className="text-muted-foreground mb-4">
           {error instanceof Error ? error.message : 'Error desconocido'}
         </p>
         <Button onClick={() => window.location.reload()}>Reintentar</Button>
@@ -248,28 +290,35 @@ export const UsuariosPage = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-gray-900">Usuarios</h1><HelpButton title="Ayuda — Usuarios" content={helpContent.usuarios} /></div>
-          <p className="text-sm text-gray-500 mt-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-bold text-foreground">Usuarios</h1>
+            <HelpButton title="Ayuda — Usuarios" content={helpContent.usuarios} />
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
             Gestiona los usuarios del sistema
           </p>
         </div>
-        <Button onClick={handleCreate}>
+        <Button onClick={handleCreate} className="w-full sm:w-auto">
           + Crear Usuario
         </Button>
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="bg-card rounded-lg border border-border p-4 sm:p-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <Input
             label="Buscar"
             placeholder="Buscar por nombre o username..."
             value={inputSearch}
             onChange={(e) => setInputSearch(e.target.value)}
+            inputMode="search"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
           />
           <Select
             label="Rol"
@@ -292,20 +341,24 @@ export const UsuariosPage = () => {
 
       {/* Results summary */}
       {data?.items && data.items.length > 0 && (
-        <div className="text-sm text-gray-500">
+        <div className="text-sm text-muted-foreground">
           Mostrando {data.items.length} de {data.total} usuarios
         </div>
       )}
 
-      {/* Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        {data?.items && data.items.length > 0 ? (
-          <Table
+      {/* Table (desktop) / Cards (mobile) */}
+      {data?.items && data.items.length > 0 ? (
+        // Frame de card solo en desktop: en mobile cada fila ya es su propia card.
+        <div className="lg:bg-card lg:rounded-lg lg:border lg:border-border lg:overflow-hidden">
+          <ResponsiveTable
             columns={columns}
             data={data.items}
             keyExtractor={(item) => item.id}
+            renderCard={renderCard}
           />
-        ) : (
+        </div>
+      ) : (
+        <div className="bg-card rounded-lg border border-border overflow-hidden">
           <EmptyState
             icon="👥"
             title="No hay usuarios"
@@ -330,22 +383,23 @@ export const UsuariosPage = () => {
               ) : undefined
             }
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Pagination */}
       {data && data.total > data.per_page && (
-        <div className="flex justify-center gap-2">
+        <div className="flex items-center justify-center gap-2">
           <Button
             variant="secondary"
             disabled={filters.page === 1}
             onClick={() =>
               setFilters((prev) => ({ ...prev, page: prev.page! - 1 }))
             }
+            className="flex-1 sm:flex-none min-h-11"
           >
             ← Anterior
           </Button>
-          <div className="flex items-center px-4 text-sm text-gray-600">
+          <div className="flex items-center px-2 sm:px-4 text-center text-sm text-muted-foreground shrink-0">
             Página {filters.page} de {Math.ceil(data.total / data.per_page)}
           </div>
           <Button
@@ -354,6 +408,7 @@ export const UsuariosPage = () => {
             onClick={() =>
               setFilters((prev) => ({ ...prev, page: prev.page! + 1 }))
             }
+            className="flex-1 sm:flex-none min-h-11"
           >
             Siguiente →
           </Button>

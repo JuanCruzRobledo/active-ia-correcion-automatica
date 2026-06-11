@@ -77,6 +77,12 @@ def test_resultado_vacio_solo_resumen():
     assert _wb(data).sheetnames == ["Resumen"]
 
 
+def test_resumen_muestra_fecha_de_creacion():
+    data, _ = ExcelService(AsyncMock()).exportar_gestion(_resultado(), "Prog I")
+    a2 = _wb(data)["Resumen"]["A2"].value
+    assert "Documento generado el" in a2
+
+
 # --- agrupar_por="comision" (Excel para Tutores) ------------------------------
 
 def _resultado_misma_comision():
