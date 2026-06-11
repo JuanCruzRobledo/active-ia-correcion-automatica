@@ -11,7 +11,11 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_admin, require_coordinador_or_admin
+from app.core.permissions import (
+    require_admin,
+    require_coordinador_or_admin,
+    verificar_acceso_materia,
+)
 from app.models import Usuario
 from app.models.enums import RolEnum
 from app.schemas.materia import (
@@ -90,9 +94,10 @@ async def obtener_materia(
     """
     Obtiene una materia por su ID con información de coordinadores.
 
-    Solo administradores pueden acceder a este endpoint.
+    Admin: cualquier materia. Coordinador: solo las que tiene asignadas (403 si no).
     """
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_materia(db, current_user, materia_id)
 
     service = MateriaService(db)
     return await service.obtener_materia(materia_id)
@@ -108,12 +113,16 @@ async def actualizar_materia(
     """
     Actualiza una materia existente con coordinadores opcionales.
 
-    Solo administradores pueden actualizar materias.
-    Solo se actualizan los campos proporcionados.
-    El código no puede ser modificado después de la creación.
-    Si se proveen coordinador_ids, reemplaza todas las asignaciones existentes.
+    Admin: cualquier materia. Coordinador: solo las suyas (nombre/descripción).
+    El código no se puede modificar. Un coordinador NO puede reasignar coordinadores
+    (ese campo se ignora para él); solo el admin puede.
     """
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_materia(db, current_user, materia_id)
+
+    # El coordinador no puede tocar la asignación de coordinadores de la materia.
+    if current_user.rol != RolEnum.ADMIN:
+        data.coordinador_ids = None
 
     service = MateriaService(db)
     return await service.actualizar_materia(materia_id, data)

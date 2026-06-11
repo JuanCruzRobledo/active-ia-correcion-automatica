@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_admin
+from app.core.permissions import require_admin, require_coordinador_or_admin
 from app.models import Usuario
 from app.schemas.cohorte import (
     CohorteCreate,
@@ -34,8 +34,9 @@ async def listar_cohortes(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[CohorteDetailResponse]:
-    """Lista las cohortes con sus cuatrimestres. Solo admin."""
-    require_admin(current_user)
+    """Lista las cohortes con sus cuatrimestres. Lectura: admin o coordinador (para
+    elegir el cuatrimestre al configurar su materia). Crear/editar sigue siendo admin."""
+    require_coordinador_or_admin(current_user)
     service = CohorteService(db)
     return await service.listar_cohortes(include_inactive=include_inactive)
 
@@ -49,7 +50,7 @@ async def crear_cohorte(
     """Crea una cohorte (código único). Solo admin."""
     require_admin(current_user)
     service = CohorteService(db)
-    return await service.crear_cohorte(data)
+    return await service.crear_cohorte(data, usuario_id=current_user.id)
 
 
 @router.get("/{cohorte_id}", response_model=CohorteDetailResponse)

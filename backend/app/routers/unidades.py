@@ -12,7 +12,12 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_admin
+from app.core.permissions import (
+    require_coordinador_or_admin,
+    verificar_acceso_materia,
+    verificar_acceso_rubrica,
+    verificar_acceso_unidad,
+)
 from app.models import Usuario
 from app.schemas.unidad import (
     MateriaDashboardConfig,
@@ -44,7 +49,8 @@ async def sugerir_secciones_moodle(
 
     Alimenta el ABM de unidades (auto-detección + confirmación). Solo admin.
     """
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_materia(db, current_user, materia_id)
     service = UnidadService(db)
     return await service.sugerir_secciones_moodle(materia_id, current_user)
 
@@ -59,7 +65,8 @@ async def listar_unidades(
     db: AsyncSession = Depends(get_db),
 ) -> list[UnidadResponse]:
     """Lista las unidades de una materia (ordenadas por número). Solo admin."""
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_materia(db, current_user, materia_id)
     service = UnidadService(db)
     return await service.listar_unidades(materia_id)
 
@@ -76,7 +83,8 @@ async def crear_unidad(
     db: AsyncSession = Depends(get_db),
 ) -> UnidadResponse:
     """Crea una unidad (numero y moodle_section_id únicos en la materia). Solo admin."""
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_materia(db, current_user, materia_id)
     service = UnidadService(db)
     return await service.crear_unidad(materia_id, data)
 
@@ -89,7 +97,8 @@ async def actualizar_unidad(
     db: AsyncSession = Depends(get_db),
 ) -> UnidadResponse:
     """Actualiza una unidad. Solo admin."""
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_unidad(db, current_user, unidad_id)
     service = UnidadService(db)
     return await service.actualizar_unidad(unidad_id, data)
 
@@ -102,7 +111,8 @@ async def sincronizar_unidades(
     db: AsyncSession = Depends(get_db),
 ) -> list[UnidadResponse]:
     """Reemplaza las unidades de la materia por las secciones tildadas (numeradas por orden). Solo admin."""
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_materia(db, current_user, materia_id)
     service = UnidadService(db)
     return await service.sincronizar_unidades(materia_id, data)
 
@@ -114,7 +124,8 @@ async def eliminar_unidad(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Elimina una unidad (desvincula sus rúbricas). Solo admin."""
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_unidad(db, current_user, unidad_id)
     service = UnidadService(db)
     await service.eliminar_unidad(unidad_id)
 
@@ -129,7 +140,8 @@ async def listar_actividades_unidad(
     db: AsyncSession = Depends(get_db),
 ) -> list[MoodleActividadItem]:
     """Actividades de Moodle de la unidad (trackeables + evaluables), para elegir componentes. Solo admin."""
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_unidad(db, current_user, unidad_id)
     service = UnidadService(db)
     return await service.listar_actividades_unidad(unidad_id, current_user)
 
@@ -142,7 +154,8 @@ async def set_componentes_unidad(
     db: AsyncSession = Depends(get_db),
 ) -> UnidadResponse:
     """Reemplaza el set de componentes evaluables (tipo + cmid + fuente) de la unidad. Solo admin."""
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_unidad(db, current_user, unidad_id)
     service = UnidadService(db)
     return await service.set_componentes_unidad(unidad_id, data)
 
@@ -160,7 +173,8 @@ async def get_dashboard_config(
     db: AsyncSession = Depends(get_db),
 ) -> MateriaDashboardConfigResponse:
     """Config actual de dashboard de la materia (cuatrimestre, unidad_actual, tope). Solo admin."""
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_materia(db, current_user, materia_id)
     service = UnidadService(db)
     return await service.get_config_materia(materia_id)
 
@@ -176,7 +190,8 @@ async def set_dashboard_config(
     db: AsyncSession = Depends(get_db),
 ) -> MateriaDashboardConfigResponse:
     """Setea cuatrimestre, unidad_actual y tope de la materia para el dashboard. Solo admin."""
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_materia(db, current_user, materia_id)
     service = UnidadService(db)
     return await service.set_config_materia(materia_id, data)
 
@@ -192,6 +207,7 @@ async def vincular_rubrica_unidad(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """Vincula (o desvincula con null) la unidad de una rúbrica. Solo admin."""
-    require_admin(current_user)
+    require_coordinador_or_admin(current_user)
+    await verificar_acceso_rubrica(db, current_user, rubrica_id)
     service = UnidadService(db)
     await service.vincular_rubrica_unidad(rubrica_id, data.unidad_id)

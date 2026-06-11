@@ -24,6 +24,7 @@ import {
 } from '@/shared/components/ui';
 import { helpContent } from '@/shared/content/helpContent';
 import { formatDate } from '@/shared/utils';
+import { useAuth } from '@/features/auth/hooks';
 
 interface MateriaPageFilters {
   activa: 'TODOS' | 'true' | 'false';
@@ -42,6 +43,10 @@ export const MateriasPage = () => {
   });
   const isFirstRender = useRef(true);
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // El coordinador edita/configura SUS materias pero no crea, borra ni reasigna
+  // coordinadores (eso es del admin). El backend lo refuerza (verificar_acceso_materia).
+  const isAdmin = user?.rol === 'ADMIN';
 
   // Debounce: actualiza el filtro 400ms después de que el usuario deja de escribir
   useEffect(() => {
@@ -176,18 +181,23 @@ export const MateriasPage = () => {
               onClick: () => navigate(`/materias/${materia.id}/dashboard`),
               icon: <BarChart3 className="w-4 h-4" />,
             },
-            materia.activa
-              ? {
-                label: 'Eliminar',
-                onClick: () => handleDelete(materia.id),
-                icon: <Trash2 className="w-4 h-4" />,
-                variant: 'danger' as const,
-              }
-              : {
-                label: 'Restaurar',
-                onClick: () => handleRestore(materia.id),
-                icon: <RotateCcw className="w-4 h-4" />,
-              },
+            // Borrar/restaurar es solo del admin.
+            ...(isAdmin
+              ? [
+                  materia.activa
+                    ? {
+                        label: 'Eliminar',
+                        onClick: () => handleDelete(materia.id),
+                        icon: <Trash2 className="w-4 h-4" />,
+                        variant: 'danger' as const,
+                      }
+                    : {
+                        label: 'Restaurar',
+                        onClick: () => handleRestore(materia.id),
+                        icon: <RotateCcw className="w-4 h-4" />,
+                      },
+                ]
+              : []),
           ]}
         />
       ),
@@ -229,12 +239,10 @@ export const MateriasPage = () => {
         <div>
           <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Materias</h1><HelpButton title="Ayuda — Materias" content={helpContent.materias} /></div>
           <p className="text-sm text-muted-foreground mt-1">
-            Gestión de materias y coordinadores
+            {isAdmin ? 'Gestión de materias y coordinadores' : 'Tus materias asignadas'}
           </p>
         </div>
-        <Button onClick={handleCreate}>
-          + Crear Materia
-        </Button>
+        {isAdmin && <Button onClick={handleCreate}>+ Crear Materia</Button>}
       </div>
 
       {/* Filters */}
@@ -291,11 +299,11 @@ export const MateriasPage = () => {
                 >
                   Limpiar filtros
                 </Button>
-              ) : (
+              ) : isAdmin ? (
                 <Button onClick={handleCreate}>
                   + Crear primera materia
                 </Button>
-              )
+              ) : undefined
             }
           />
         )}
@@ -333,6 +341,7 @@ export const MateriasPage = () => {
         isOpen={isFormOpen}
         onClose={handleCloseForm}
         materia={editingMateria || undefined}
+        isAdmin={isAdmin}
       />
     </div>
   );

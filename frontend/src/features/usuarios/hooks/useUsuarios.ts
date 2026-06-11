@@ -138,12 +138,15 @@ export const useResetPassword = () => {
  * Hook to fetch coordinadores (users with COORDINADOR role)
  * Useful for materia assignment forms
  */
-export const useCoordinadores = () => {
+export const useCoordinadores = (options?: { enabled?: boolean }) => {
   return useQuery({
     queryKey: [...usuariosKeys.lists(), { rol: 'COORDINADOR', per_page: 1000 }],
     queryFn: () => usuariosService.getAll({ rol: 'COORDINADOR', activo: true, per_page: 1000 }),
     staleTime: 5 * 60 * 1000, // 5 minutes
     select: (data) => data.items, // Return only the items array
+    // El endpoint de listar usuarios es solo admin; no dispararlo si no corresponde
+    // (ej. un coordinador en el form de materia → 403 + toast molesto).
+    enabled: options?.enabled ?? true,
   });
 };
 
