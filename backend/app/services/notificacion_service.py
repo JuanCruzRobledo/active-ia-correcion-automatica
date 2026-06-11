@@ -81,7 +81,13 @@ class NotificacionService:
             if snap is None:
                 continue
             alumnos = await self.avance_repo.get_alumnos_de_snapshot(snap.id)
-            out.append({"materia_id": m.id, "materia": m.nombre, "alumnos": alumnos})
+            out.append({
+                "materia_id": m.id,
+                "materia": m.nombre,
+                "etiqueta": m.etiqueta_unidad or "Unidad",
+                "unidad_actual": m.unidad_actual,
+                "alumnos": alumnos,
+            })
         return out
 
     async def _cargar_tutores(self, mapa_materia: dict[int, str]) -> list[dict]:

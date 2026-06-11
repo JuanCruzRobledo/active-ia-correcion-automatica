@@ -120,6 +120,11 @@ class AvanceAlumno(Base):
     #    "actividades": [{"cmid": int, "nombre": str, "unidad": int}, ...]}
     # NULL/None => no le falta nada en esta materia (no se reporta).
     actividades_faltantes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Resultados de exámenes (parciales/recuperatorios/etc.) al momento del snapshot, con
+    # el rescate ya aplicado (examen_mapper):
+    #   {"examenes": [{"examen_id","tipo","numero","etiqueta","resultado","rescatado"}, ...]}
+    # NULL/None => la materia no tiene exámenes configurados.
+    resultados_examenes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     snapshot: Mapped["AvanceSnapshot"] = relationship(

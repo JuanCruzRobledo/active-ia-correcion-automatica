@@ -50,6 +50,8 @@ export interface MateriaDashboardConfig {
   cuatrimestre_id: number | null;
   unidad_actual: number | null;
   moodle_section_fin_id: number | null;
+  /** Cómo se llama la progresión en los reportes: 'Unidad' (default) o 'Semana'. */
+  etiqueta_unidad: string;
 }
 
 export interface MateriaDashboardConfigResponse extends MateriaDashboardConfig {
@@ -69,4 +71,45 @@ export interface MoodleSeccionesSugeridas {
   moodle_course_id: number;
   secciones: MoodleSeccionItem[];
   cabeceras_sugeridas: UnidadCreate[];
+}
+
+// ===================== Exámenes de la materia =====================
+
+export type TipoExamen =
+  | 'PARCIAL'
+  | 'RECUPERATORIO'
+  | 'EXTENSION'
+  | 'EXTRAORDINARIA'
+  | 'GLOBAL';
+export type ModoAprobacion = 'ESCALA' | 'NUMERICO';
+
+/** Tipos cuyo resultado se rescata vinculándose a un PARCIAL. */
+export const TIPOS_RESCATE: TipoExamen[] = [
+  'RECUPERATORIO',
+  'EXTENSION',
+  'EXTRAORDINARIA',
+];
+
+export interface ExamenMateria {
+  id: number;
+  materia_id: number;
+  tipo: TipoExamen;
+  /** Número derivado por tipo (Parcial 1, 2…). */
+  numero: number;
+  /** Etiqueta visible, ej. 'Parcial 2'. */
+  etiqueta: string;
+  moodle_cmid: number;
+  modo_aprobacion: ModoAprobacion;
+  nota_minima: number | null;
+  recupera_examen_id: number | null;
+  orden: number;
+}
+
+/** Alta/edición de un examen (la numeración la asigna el backend). */
+export interface ExamenInput {
+  tipo: TipoExamen;
+  moodle_cmid: number;
+  modo_aprobacion: ModoAprobacion;
+  nota_minima: number | null;
+  recupera_examen_id: number | null;
 }

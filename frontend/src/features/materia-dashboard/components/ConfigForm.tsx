@@ -34,8 +34,14 @@ export const ConfigForm = ({ materiaId, config, cohortes, secciones }: ConfigFor
   const [topeId, setTopeId] = useState<string>(
     config.moodle_section_fin_id != null ? String(config.moodle_section_fin_id) : ''
   );
+  const [etiqueta, setEtiqueta] = useState<string>(config.etiqueta_unidad || 'Unidad');
 
   const setConfig = useSetDashboardConfig(materiaId);
+
+  const etiquetaOptions: SelectOption[] = [
+    { value: 'Unidad', label: 'Unidad (por defecto)' },
+    { value: 'Semana', label: 'Semana (cursado por semanas, ej. PYE)' },
+  ];
 
   const cohorteSel = cohortes.find((c) => String(c.id) === cohorteId);
 
@@ -70,6 +76,7 @@ export const ConfigForm = ({ materiaId, config, cohortes, secciones }: ConfigFor
       cuatrimestre_id: cuatrimestreId ? Number(cuatrimestreId) : null,
       unidad_actual: unidadActual ? Number(unidadActual) : null,
       moodle_section_fin_id: topeId ? Number(topeId) : null,
+      etiqueta_unidad: etiqueta || 'Unidad',
     });
   };
 
@@ -107,6 +114,13 @@ export const ConfigForm = ({ materiaId, config, cohortes, secciones }: ConfigFor
           options={topeOptions}
           value={topeId}
           onChange={(e) => setTopeId(e.target.value)}
+        />
+        <Select
+          label="Etiqueta de la progresión"
+          options={etiquetaOptions}
+          value={etiqueta}
+          onChange={(e) => setEtiqueta(e.target.value)}
+          helperText="Cómo se nombra en los reportes (Excel/PDF/emails): Unidad o Semana."
         />
       </div>
 

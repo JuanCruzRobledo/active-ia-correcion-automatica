@@ -2,14 +2,15 @@
 """
 SnapshotService — genera el snapshot de avance de una materia (Dashboard de Gestores).
 
-Trae participantes + contenidos + completion desde Moodle, calcula el estado de
-cada alumno (avance_mapper) y persiste un AvanceSnapshot fechado con N AvanceAlumno.
+Trae participantes + contenidos (WS) + notas y completion (2 descargas MASIVAS por
+sesión web), calcula el estado de cada alumno EN MEMORIA (avance_mapper) y persiste un
+AvanceSnapshot fechado con N AvanceAlumno.
 
-Las llamadas a Moodle van SERIALIZADAS (1 completion por alumno, ~2s) para no
-saturar Moodle — lección de Gestión. Ver PLAN_DASHBOARD_GESTORES.md §7 (T5).
+Refactor §R3 (2026-06-08): se reemplazó el loop per-alumno (1+2N requests = volteó
+Moodle) por un número CONSTANTE de requests, independiente de N alumnos. Ver
+PLAN_REFACTOR_MOODLE_BULK.md.
 """
 
-import asyncio
 import logging
 from typing import Callable
 
@@ -23,6 +24,12 @@ from app.repositories.avance_repository import AvanceRepository
 from app.repositories.materia_repository import MateriaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.services.avance_mapper import calcular_avance_alumno
+from app.services.examen_mapper import calcular_resultados_examenes
+from app.services.moodle_bulk_parser import (
+    construir_indice_nombre_cmid,
+    parsear_csv_finalizacion,
+    parsear_export_calificador,
+)
 from app.services.gestion_parser import (
     SIN_COMISION,
     SIN_REGIONAL,
@@ -64,18 +71,26 @@ class SnapshotService:
         usuario = await self.usuario_repo.get_by_id(usuario_id)
         if usuario is None:
             raise ValueError(f"Usuario {usuario_id} no encontrado")
-        token, host = await self.token_de_usuario(usuario)
+        _, host = await self.token_de_usuario(usuario)
 
         materias = await self.materia_repo.get_configuradas_dashboard()
         resultados: list[AvanceSnapshot] = []
-        for materia in materias:
-            try:
-                snap = await self.generar(
-                    materia.id, token=token, moodle_host=host, origen=origen
-                )
-                resultados.append(snap)
-            except Exception:  # noqa: BLE001 — un fallo por materia no debe frenar las demás
-                logger.exception("Snapshot falló para materia %s", materia.id)
+        # UNA sola sesión web para TODAS las materias (no re-loguear por materia).
+        sesion = self.moodle.crear_cliente_sesion()
+        try:
+            await self.moodle.login_sesion(
+                sesion, host, usuario.moodle_username, usuario.moodle_password_encrypted
+            )
+            for materia in materias:
+                try:
+                    snap = await self.generar(
+                        materia.id, usuario=usuario, origen=origen, sesion=sesion
+                    )
+                    resultados.append(snap)
+                except Exception:  # noqa: BLE001 — un fallo por materia no frena las demás
+                    logger.exception("Snapshot falló para materia %s", materia.id)
+        finally:
+            await sesion.aclose()
         logger.info(
             "Snapshots generados: %s/%s materias (origen=%s)",
             len(resultados), len(materias), origen,
@@ -92,17 +107,20 @@ class SnapshotService:
         self,
         materia_id: int,
         *,
-        token: str,
-        moodle_host: str,
+        usuario,
         origen: OrigenSnapshotEnum = OrigenSnapshotEnum.CRON,
         on_progress: Callable[[int, int], None] | None = None,
-        concurrencia: int = 4,
+        sesion: "httpx.AsyncClient | None" = None,
     ) -> AvanceSnapshot:
-        """Genera y persiste el snapshot de avance de una materia.
+        """Genera y persiste el snapshot de avance de una materia (carga MASIVA, §R3).
 
-        Requiere que la materia esté configurada: moodle_course_id + unidad_actual
-        + al menos una Unidad. El token/host de Moodle los provee el caller (botón
-        manual: usuario actual; cron: usuario de servicio — T6).
+        Le pega a Moodle un número CONSTANTE de veces (NO 1+2N): padrón + contenidos (WS)
+        + export del calificador + CSV de finalización (descargas por sesión web). Luego
+        calcula el avance de cada alumno EN MEMORIA (avance_mapper, sin tocar Moodle).
+
+        Requiere que la materia esté configurada (moodle_course_id + unidad_actual + ≥1
+        Unidad) y que `usuario` tenga credenciales de Moodle. Si se pasa `sesion` (cliente
+        ya logueado) se reusa; si no, abre y cierra una propia.
         """
         materia = await self.materia_repo.get_by_id(materia_id)
         if materia is None:
@@ -135,51 +153,80 @@ class SnapshotService:
             }
             for u in materia.unidades
         ]
+        # Config de exámenes (parciales/recuperatorios/etc.) para el seguimiento sumativo.
+        examenes_config = [
+            {
+                "id": e.id,
+                "tipo": e.tipo.value,
+                "moodle_cmid": e.moodle_cmid,
+                "modo_aprobacion": e.modo_aprobacion.value,
+                "nota_minima": e.nota_minima,
+                "recupera_examen_id": e.recupera_examen_id,
+                "orden": e.orden,
+            }
+            for e in materia.examenes
+        ]
 
-        alumnos: list[AvanceAlumno] = []
-        # UN solo cliente HTTP reusado (keep-alive) para TODAS las llamadas a Moodle de
-        # esta materia. Con cientos de alumnos, abrir una conexión TLS nueva por llamada
-        # hace que Moodle/firewall throttlee las conexiones nuevas → ConnectTimeout.
-        limits = httpx.Limits(
-            max_connections=10, max_keepalive_connections=10, keepalive_expiry=30.0
-        )
-        async with httpx.AsyncClient(timeout=60.0, limits=limits) as client:
-            enrolled = await self.moodle.get_enrolled_users_full(
-                token, moodle_host, course_id, client=client
-            )
-            students = [
-                u for u in enrolled if isinstance(u, dict) and self._es_student(u)
-            ]
+        token, host = await self.token_de_usuario(usuario)
 
-            total = len(students)
-            procesados = 0
-            # Paralelismo MODERADO: hasta `concurrencia` alumnos a la vez, acotado por el
-            # client compartido (max_connections=10). El semáforo evita saturar Moodle.
-            sem = asyncio.Semaphore(max(1, concurrencia))
-
-            async def _procesar(u: dict) -> AvanceAlumno:
-                nonlocal procesados
-                uid = u.get("id")
-                async with sem:
-                    statuses = await self.moodle.get_activities_completion(
-                        token, moodle_host, course_id, uid, client=client
-                    )
-                    # Notas (para el estado del TP, que se mide por calificación).
-                    notas_tp = await self.moodle.get_grade_items(
-                        token, moodle_host, course_id, uid, client=client
-                    )
-                calc = calcular_avance_alumno(
-                    statuses,
-                    notas_tp,
-                    unidades_config,
-                    unidad_actual=materia.unidad_actual,
+        # ── 1 login + 2 WS livianos + 2 descargas masivas (constante en N alumnos) ──
+        propia = sesion is None
+        if propia:
+            sesion = self.moodle.crear_cliente_sesion()
+        try:
+            if propia:
+                await self.moodle.login_sesion(
+                    sesion, host, usuario.moodle_username, usuario.moodle_password_encrypted
                 )
-                grupos = [g.get("name") for g in (u.get("groups") or []) if g.get("name")]
-                regional, comision = resolver_grupos_alumno(grupos)
-                procesados += 1
-                if on_progress is not None:
-                    on_progress(procesados, total)
-                return AvanceAlumno(
+            enrolled = await self.moodle.get_enrolled_users_full(
+                token, host, course_id, client=sesion
+            )
+            students = [u for u in enrolled if isinstance(u, dict) and self._es_student(u)]
+            secciones = await self.moodle.get_course_contents(
+                token, host, course_id, client=sesion
+            )
+            nombre_a_cmid = construir_indice_nombre_cmid(secciones)
+            email_a_uid = {
+                (u.get("email") or "").strip().lower(): u.get("id")
+                for u in students
+                if u.get("email")
+            }
+            # Notas (calificador) y completion (reporte de finalización), 1 descarga c/u.
+            notas_por_uid = parsear_export_calificador(
+                await self.moodle.descargar_export_calificador(sesion, host, course_id),
+                nombre_a_cmid,
+                email_a_uid,
+            )
+            completion_por_uid = parsear_csv_finalizacion(
+                await self.moodle.descargar_reporte_finalizacion_csv(sesion, host, course_id),
+                nombre_a_cmid,
+                email_a_uid,
+            )
+        finally:
+            if propia:
+                await sesion.aclose()
+
+        # ── Cálculo EN MEMORIA por alumno (cero requests a Moodle en el loop) ──
+        alumnos: list[AvanceAlumno] = []
+        total = len(students)
+        for i, u in enumerate(students, 1):
+            uid = u.get("id")
+            calc = calcular_avance_alumno(
+                completion_por_uid.get(uid, []),
+                notas_por_uid.get(uid, {}),
+                unidades_config,
+                unidad_actual=materia.unidad_actual,
+            )
+            # Resultados de exámenes (mismas notas en memoria; rescate ya aplicado).
+            examenes = (
+                calcular_resultados_examenes(notas_por_uid.get(uid, {}), examenes_config)
+                if examenes_config
+                else None
+            )
+            grupos = [g.get("name") for g in (u.get("groups") or []) if g.get("name")]
+            regional, comision = resolver_grupos_alumno(grupos)
+            alumnos.append(
+                AvanceAlumno(
                     moodle_user_id=uid,
                     nombre=u.get("firstname"),
                     apellido=u.get("lastname"),
@@ -192,16 +239,11 @@ class SnapshotService:
                     actividad_actual_desaprobada=calc["actividad_actual_desaprobada"],
                     estado=calc["estado"],
                     actividades_faltantes=calc["actividades_faltantes"],
+                    resultados_examenes={"examenes": examenes} if examenes else None,
                 )
-
-            resultados = await asyncio.gather(
-                *(_procesar(u) for u in students), return_exceptions=True
             )
-            for r in resultados:
-                if isinstance(r, AvanceAlumno):
-                    alumnos.append(r)
-                elif isinstance(r, Exception):
-                    logger.warning("Alumno falló en snapshot materia %s: %s", materia_id, r)
+            if on_progress is not None:
+                on_progress(i, total)
 
         snapshot = AvanceSnapshot(
             materia_id=materia_id,

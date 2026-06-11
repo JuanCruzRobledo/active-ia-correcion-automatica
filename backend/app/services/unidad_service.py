@@ -235,6 +235,7 @@ class UnidadService:
             cuatrimestre_id=materia.cuatrimestre_id,
             unidad_actual=materia.unidad_actual,
             moodle_section_fin_id=materia.moodle_section_fin_id,
+            etiqueta_unidad=materia.etiqueta_unidad or "Unidad",
         )
 
     async def set_config_materia(
@@ -253,6 +254,7 @@ class UnidadService:
         materia.cuatrimestre_id = data.cuatrimestre_id
         materia.unidad_actual = data.unidad_actual
         materia.moodle_section_fin_id = data.moodle_section_fin_id
+        materia.etiqueta_unidad = data.etiqueta_unidad or "Unidad"
         await self.materia_repo.update(materia)
 
         return MateriaDashboardConfigResponse(
@@ -260,6 +262,7 @@ class UnidadService:
             cuatrimestre_id=materia.cuatrimestre_id,
             unidad_actual=materia.unidad_actual,
             moodle_section_fin_id=materia.moodle_section_fin_id,
+            etiqueta_unidad=materia.etiqueta_unidad or "Unidad",
         )
 
     # ===================== Vínculo Rúbrica → Unidad =====================

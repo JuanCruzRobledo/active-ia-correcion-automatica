@@ -98,6 +98,11 @@ class MateriaDashboardConfig(BaseModel):
         None,
         description="1ª sección de Moodle que YA NO es unidad (tope; actividades posteriores no cuentan)",
     )
+    etiqueta_unidad: str = Field(
+        "Unidad",
+        max_length=20,
+        description="Cómo se llama la progresión en los reportes: 'Unidad' o 'Semana'",
+    )
 
 
 class MateriaDashboardConfigResponse(BaseModel):
@@ -107,6 +112,7 @@ class MateriaDashboardConfigResponse(BaseModel):
     cuatrimestre_id: int | None = None
     unidad_actual: int | None = None
     moodle_section_fin_id: int | None = None
+    etiqueta_unidad: str = "Unidad"
 
 
 # ===================== Vínculo Rúbrica → Unidad =====================

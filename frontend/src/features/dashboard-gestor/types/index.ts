@@ -47,4 +47,9 @@ export interface AlumnoDetalle {
   actividad_actual_unidad?: number | null;
   actividad_actual_desaprobada: boolean;
   estado: EstadoAvance;
+  /** Deudas formateadas (qué le falta) y cómo se nombra la progresión (Unidad/Semana). */
+  le_falta: string;
+  etiqueta_unidad: string;
+  /** Resultados de exámenes formateados (Parcial 1: Aprobó · …). "" si no hay. */
+  examenes: string;
 }

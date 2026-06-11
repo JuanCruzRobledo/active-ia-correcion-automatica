@@ -200,6 +200,11 @@ def register_routers(app: FastAPI) -> None:
 
     app.include_router(unidades_router, prefix="/api/v1")
 
+    # Exámenes de la materia (ABM admin — seguimiento de evaluaciones)
+    from app.routers.examenes import router as examenes_router
+
+    app.include_router(examenes_router, prefix="/api/v1")
+
     # Dashboard de Gestores — config del cron + disparo manual de snapshots
     from app.routers.dashboard_gestores import router as dashboard_gestores_router
 

@@ -20,11 +20,13 @@ from app.models.enums import (
     EstadoEnvioEnum,
     FuenteComponenteEnum,
     FuenteRubricaEnum,
+    ModoAprobacionEnum,
     MoodleSyncEstado,
     OrigenSnapshotEnum,
     RolEnum,
     TipoActividadEnum,
     TipoComponenteEnum,
+    TipoExamenEnum,
     TipoNotificacionEnum,
     TipoRubricaEnum,
 )
@@ -33,6 +35,7 @@ from app.models.cohorte import Cohorte, Cuatrimestre
 from app.models.materia import CoordinadorMateria, Materia
 from app.models.unidad import Unidad
 from app.models.componente_unidad import ComponenteUnidad
+from app.models.examen_materia import ExamenMateria
 from app.models.comision import Comision, ComisionTutor
 from app.models.rubrica import Rubrica
 from app.models.entrega import Entrega, EntregaHistorial
@@ -65,6 +68,8 @@ __all__ = [
     "EstadoEnvioEnum",
     "TipoComponenteEnum",
     "FuenteComponenteEnum",
+    "TipoExamenEnum",
+    "ModoAprobacionEnum",
     # Models
     "Usuario",
     "Cohorte",
@@ -72,6 +77,7 @@ __all__ = [
     "Materia",
     "Unidad",
     "ComponenteUnidad",
+    "ExamenMateria",
     "CoordinadorMateria",
     "Comision",
     "ComisionTutor",

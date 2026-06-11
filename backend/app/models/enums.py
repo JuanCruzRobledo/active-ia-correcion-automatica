@@ -134,3 +134,29 @@ class FuenteComponenteEnum(str, Enum):
 
     SEGUIMIENTO = "SEGUIMIENTO"
     CALIFICACION = "CALIFICACION"
+
+
+class TipoExamenEnum(str, Enum):
+    """Tipo de examen de una materia (seguimiento de evaluaciones sumativas).
+
+    A diferencia de los componentes de unidad (que miden AVANCE de contenido), los
+    exámenes son evaluaciones de aprobación. RECUPERATORIO/EXTENSION/EXTRAORDINARIA
+    se vinculan a un PARCIAL (rescatan su nota). GLOBAL va suelto.
+    """
+
+    PARCIAL = "PARCIAL"
+    RECUPERATORIO = "RECUPERATORIO"
+    EXTENSION = "EXTENSION"
+    EXTRAORDINARIA = "EXTRAORDINARIA"
+    GLOBAL = "GLOBAL"
+
+
+class ModoAprobacionEnum(str, Enum):
+    """Cómo se interpreta la nota de un examen para decidir aprobado/desaprobado.
+
+    - ESCALA: escala de texto de Moodle ("Aprobado"/"Desaprobado"). Vacío = ausente.
+    - NUMERICO: nota numérica; aprueba si nota >= nota_minima. Vacío = ausente.
+    """
+
+    ESCALA = "ESCALA"
+    NUMERICO = "NUMERICO"

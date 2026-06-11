@@ -118,12 +118,20 @@ async def test_avance_cuatrimestre_inexistente_lanza_404():
 async def test_detalle_mapea_alumnos():
     service = _make_service()
     service.cuatrimestre_repo.get_by_id.return_value = MagicMock(id=1, cohorte_id=10, numero=1)
-    service.materia_repo.get_by_id.return_value = MagicMock(id=5, nombre="P1")
-    service.avance_repo.get_ultimo_snapshot.return_value = MagicMock(id=99)
+    service.materia_repo.get_by_id.return_value = MagicMock(
+        id=5, nombre="PYE", etiqueta_unidad="Semana"
+    )
+    service.avance_repo.get_ultimo_snapshot.return_value = MagicMock(id=99, materia_id=5)
     alumno = AvanceAlumno(
+        snapshot_id=99,
         moodle_user_id=1, nombre="Ana", apellido="Gómez", email="ana@x.com",
         comision="M26 C1-09", unidad_alcanzada=2, actividad_actual_nombre="Cierre U2",
         actividad_actual_unidad=2, actividad_actual_desaprobada=False,
+        actividades_faltantes={"deudas": [{"unidad": 3, "tipo": "QUIZ", "estado": "pendiente"}]},
+        resultados_examenes={"examenes": [
+            {"etiqueta": "Parcial 1", "resultado": "aprobado", "rescatado": False},
+            {"etiqueta": "Parcial 2", "resultado": "aprobado", "rescatado": True},
+        ]},
         estado=EstadoAvanceEnum.AL_DIA,
     )
     service.avance_repo.get_alumnos_por_estado.return_value = [alumno]
@@ -133,4 +141,8 @@ async def test_detalle_mapea_alumnos():
     assert len(detalle) == 1
     assert detalle[0].nombre == "Ana"
     assert detalle[0].comision == "M26 C1-09"
-    assert detalle[0].actividad_actual_nombre == "Cierre U2"
+    # Respeta la etiqueta de la materia (PYE = "Semana") y muestra las deudas reales.
+    assert detalle[0].etiqueta_unidad == "Semana"
+    assert detalle[0].le_falta == "Semana 3: Quiz"
+    # Resultados de exámenes con rescate marcado.
+    assert detalle[0].examenes == "Parcial 1: Aprobó · Parcial 2: Aprobó (recuperado)"

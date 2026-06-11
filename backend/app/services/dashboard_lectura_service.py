@@ -19,6 +19,7 @@ from app.repositories.cohorte_repository import (
 )
 from app.repositories.materia_repository import MateriaRepository
 from app.services.dashboard_excel import construir_excel_avance
+from app.services.notificacion_render import formatear_examenes, formatear_faltantes
 from app.schemas.dashboard_gestores import (
     AlumnoDetalle,
     AvanceResponse,
@@ -159,7 +160,20 @@ class DashboardLecturaService:
         }
 
         titulo = self._titulo(cohorte, cuatrimestre, materia_id, materias)
-        contenido = construir_excel_avance(titulo, conteos, alumnos_por_estado)
+        # Etiqueta de la materia (Unidad/Semana) si el Excel es de UNA materia; si es
+        # combinado (varias materias), se usa el default "Unidad".
+        etiqueta = (
+            materias[0].etiqueta_unidad
+            if materia_id is not None and materias
+            else "Unidad"
+        )
+        # Línea de corte: unidad hasta donde se evalúa (solo si el Excel es de UNA materia).
+        unidad_actual = (
+            materias[0].unidad_actual if materia_id is not None and materias else None
+        )
+        contenido = construir_excel_avance(
+            titulo, conteos, alumnos_por_estado, etiqueta, unidad_actual
+        )
 
         codigo = cohorte.codigo if cohorte else "cohorte"
         sufijo = (
@@ -178,4 +192,15 @@ class DashboardLecturaService:
         alumnos = await self.avance_repo.get_alumnos_por_estado(
             [s.id for s in snapshots], estado
         )
-        return [AlumnoDetalle.model_validate(a) for a in alumnos]
+        # Etiqueta (Unidad/Semana) por snapshot → por alumno, para "le_falta" y los labels.
+        etiqueta_mat = {m.id: (m.etiqueta_unidad or "Unidad") for m in materias}
+        etiqueta_snap = {s.id: etiqueta_mat.get(s.materia_id, "Unidad") for s in snapshots}
+        out: list[AlumnoDetalle] = []
+        for a in alumnos:
+            etq = etiqueta_snap.get(a.snapshot_id, "Unidad")
+            d = AlumnoDetalle.model_validate(a)
+            d.etiqueta_unidad = etq
+            d.le_falta = formatear_faltantes(a.actividades_faltantes, etq)
+            d.examenes = formatear_examenes(a.resultados_examenes)
+            out.append(d)
+        return out

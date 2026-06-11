@@ -119,3 +119,8 @@ class AlumnoDetalle(BaseModel):
     actividad_actual_unidad: int | None = None
     actividad_actual_desaprobada: bool = False
     estado: EstadoAvanceEnum
+    # Deudas formateadas (qué le falta) + cómo se nombra la progresión (Unidad/Semana).
+    le_falta: str = ""
+    etiqueta_unidad: str = "Unidad"
+    # Resultados de exámenes formateados (Parcial 1: Aprobó · …). "" si no hay exámenes.
+    examenes: str = ""

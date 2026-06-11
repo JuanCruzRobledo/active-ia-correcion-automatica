@@ -32,7 +32,9 @@ export const DetalleModal = ({ cuatrimestreId, materiaId, estado, onClose }: Det
                 <th className="px-3 py-2 text-left">Alumno</th>
                 <th className="px-3 py-2 text-left">Email</th>
                 <th className="px-3 py-2 text-left">Comisión</th>
-                <th className="px-3 py-2 text-left">Actividad actual</th>
+                <th className="px-3 py-2 text-left">Alcanzó</th>
+                <th className="px-3 py-2 text-left">Le falta</th>
+                <th className="px-3 py-2 text-left">Exámenes</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -43,13 +45,15 @@ export const DetalleModal = ({ cuatrimestreId, materiaId, estado, onClose }: Det
                   </td>
                   <td className="px-3 py-2 text-muted-foreground">{a.email ?? '—'}</td>
                   <td className="px-3 py-2 text-muted-foreground">{a.comision ?? '—'}</td>
+                  <td className="px-3 py-2 text-foreground">
+                    {a.unidad_alcanzada != null
+                      ? `${a.etiqueta_unidad} ${a.unidad_alcanzada}`
+                      : '—'}
+                  </td>
                   <td className="px-3 py-2 text-muted-foreground">
-                    {a.actividad_actual_nombre ? (
+                    {a.le_falta ? (
                       <>
-                        {a.actividad_actual_nombre}
-                        {a.actividad_actual_unidad != null && (
-                          <span className="text-foreground"> · Unidad {a.actividad_actual_unidad}</span>
-                        )}
+                        {a.le_falta}
                         {a.actividad_actual_desaprobada && (
                           <span className="ml-1 rounded-full bg-destructive/15 px-2 py-0.5 text-xs text-destructive">
                             desaprobada
@@ -57,8 +61,11 @@ export const DetalleModal = ({ cuatrimestreId, materiaId, estado, onClose }: Det
                         )}
                       </>
                     ) : (
-                      '— sin actividad —'
+                      <span className="text-emerald-600 dark:text-emerald-500">al día</span>
                     )}
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">
+                    {a.examenes || '—'}
                   </td>
                 </tr>
               ))}

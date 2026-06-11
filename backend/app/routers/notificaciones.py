@@ -56,12 +56,21 @@ def _filas_muestra_alumno() -> list[dict]:
 
 
 def _materias_muestra_tutor() -> list[dict]:
-    return [{"materia": "Programación 1", "comisiones": [
-        {"comision": "M26 C1-09", "alumnos": [
-            {"apellido": "Gómez", "nombre": "Ana", "faltantes": "Falta Unidad 4 y 5"},
-            {"apellido": "Páez", "nombre": "Beto", "faltantes": "Actividad de Cierre unidad 8"},
-        ]},
-    ]}]
+    return [{
+        "materia": "Programación 1", "unidad_actual": 8, "etiqueta": "Unidad",
+        "comisiones": [{
+            "comision": "M26 C1-09",
+            "faltantes": [
+                {"apellido": "Gómez", "nombre": "Ana", "detalle": "Falta Unidad 4 y 5"},
+                {"apellido": "Páez", "nombre": "Beto", "detalle": "Actividad de Cierre unidad 8"},
+            ],
+            "examenes_columnas": ["Parcial 1", "Parcial 2", "Global 1"],
+            "examenes_filas": [
+                {"apellido": "Gómez", "nombre": "Ana", "celdas": ["Aprobó", "Desaprobó", "Ausente"]},
+                {"apellido": "Díaz", "nombre": "Carla", "celdas": ["Ausente", "Aprobó (R)", "Ausente"]},
+            ],
+        }],
+    }]
 
 
 def _materias_muestra_nexo() -> list[dict]:

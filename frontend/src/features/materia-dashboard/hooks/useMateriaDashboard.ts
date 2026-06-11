@@ -2,11 +2,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { materiaDashboardService } from '../services/materia-dashboard.service';
-import type { MateriaDashboardConfig, UnidadComponentes, UnidadCreate } from '../types';
+import type {
+  ExamenInput,
+  MateriaDashboardConfig,
+  UnidadComponentes,
+  UnidadCreate,
+} from '../types';
 
 export const materiaDashboardKeys = {
   unidades: (materiaId: number) => ['materia-dashboard', 'unidades', materiaId] as const,
   config: (materiaId: number) => ['materia-dashboard', 'config', materiaId] as const,
+  examenes: (materiaId: number) => ['materia-dashboard', 'examenes', materiaId] as const,
 };
 
 export const useUnidades = (materiaId: number) =>
@@ -91,6 +97,49 @@ export const useSetComponentesUnidad = (materiaId: number) => {
     onSuccess: () => {
       toast.success('Componentes de la unidad guardados');
       qc.invalidateQueries({ queryKey: materiaDashboardKeys.unidades(materiaId) });
+    },
+  });
+};
+
+// ===================== Exámenes de la materia =====================
+
+export const useExamenes = (materiaId: number) =>
+  useQuery({
+    queryKey: materiaDashboardKeys.examenes(materiaId),
+    queryFn: () => materiaDashboardService.getExamenes(materiaId),
+    enabled: !!materiaId,
+  });
+
+export const useCrearExamen = (materiaId: number) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: ExamenInput) =>
+      materiaDashboardService.crearExamen(materiaId, data),
+    onSuccess: () => {
+      toast.success('Examen agregado');
+      qc.invalidateQueries({ queryKey: materiaDashboardKeys.examenes(materiaId) });
+    },
+  });
+};
+
+export const useActualizarExamen = (materiaId: number) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ examenId, data }: { examenId: number; data: ExamenInput }) =>
+      materiaDashboardService.actualizarExamen(examenId, data),
+    onSuccess: () => {
+      toast.success('Examen actualizado');
+      qc.invalidateQueries({ queryKey: materiaDashboardKeys.examenes(materiaId) });
+    },
+  });
+};
+
+export const useEliminarExamen = (materiaId: number) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (examenId: number) => materiaDashboardService.eliminarExamen(examenId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: materiaDashboardKeys.examenes(materiaId) });
     },
   });
 };

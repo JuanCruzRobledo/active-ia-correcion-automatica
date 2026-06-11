@@ -11,8 +11,9 @@ los destinatarios de cada tipo. Sin I/O → fácil de testear. Reglas:
 - Tutor nexo: matchea por `regional`.
 
 Estructuras de entrada:
-- avances_por_materia: list[{"materia_id": int, "materia": str, "alumnos": [AvanceAlumno-like]}]
-  (cada alumno expone: moodle_user_id, nombre, apellido, email, comision, regional,
+- avances_por_materia: list[{"materia_id": int, "materia": str, "etiqueta": str,
+   "alumnos": [AvanceAlumno-like]}]  ("etiqueta" = "Unidad"|"Semana", default "Unidad";
+   cada alumno expone: moodle_user_id, nombre, apellido, email, comision, regional,
    actividades_faltantes).
 - tutores: list[{"email", "nombre", "comisiones": [{"materia_id","materia","grupo_code"}]}]
 - nexos: list[{"email", "nombre", "regional"}]
@@ -20,7 +21,13 @@ Estructuras de entrada:
 
 import re
 
-from app.services.notificacion_render import formatear_faltantes
+from app.services.notificacion_render import (
+    examen_para_atender,
+    formatear_examenes,
+    formatear_faltantes,
+    label_resultado_examen,
+    tiene_examen_desaprobado,
+)
 
 # Número de comisión al final del texto: "M26 C1-09" → 9, "COMI-9" → 9, "COMI -7" → 7.
 # Necesario porque el moodle_group_code de Comisión está mal cargado ("m26"); el matching
@@ -40,15 +47,22 @@ def construir_destinatarios_alumnos(avances_por_materia: list[dict]) -> list[dic
     """Un destinatario por alumno (con email) que tenga faltantes en ≥1 materia.
 
     Returns: [{"moodle_user_id", "email", "nombre",
-               "filas": [{"comision","materia","actividad"}]}]
+               "filas": [{"comision","materia","actividad","examenes"}]}]
+    Se incluye una fila si el alumno tiene faltantes O reprobó algún examen en esa materia.
     """
     por_alumno: dict[int, dict] = {}
     for mat in avances_por_materia:
         materia_nombre = mat.get("materia") or ""
+        etiqueta = mat.get("etiqueta") or "Unidad"
+        ua = mat.get("unidad_actual")
+        corte = f"{etiqueta} {ua}" if ua is not None else "—"
         for a in mat.get("alumnos", []):
-            actividad = formatear_faltantes(getattr(a, "actividades_faltantes", None))
-            if not actividad:
-                continue  # no le falta nada en esta materia
+            actividad = formatear_faltantes(getattr(a, "actividades_faltantes", None), etiqueta)
+            resultados = getattr(a, "resultados_examenes", None)
+            examenes = formatear_examenes(resultados)
+            # Reportable si le falta algo O reprobó un examen (no por ausente: ver helper).
+            if not actividad and not tiene_examen_desaprobado(resultados):
+                continue
             uid = a.moodle_user_id
             d = por_alumno.get(uid)
             if d is None:
@@ -58,9 +72,13 @@ def construir_destinatarios_alumnos(avances_por_materia: list[dict]) -> list[dic
                     "nombre": a.nombre or "",
                     "filas": [],
                 }
-            d["filas"].append(
-                {"comision": a.comision or "—", "materia": materia_nombre, "actividad": actividad}
-            )
+            d["filas"].append({
+                "comision": a.comision or "—",
+                "materia": materia_nombre,
+                "actividad": actividad,
+                "examenes": examenes,
+                "corte": corte,
+            })
     return [d for d in por_alumno.values() if d["email"] and d["filas"]]
 
 
@@ -79,10 +97,18 @@ def construir_destinatarios_tutores_academicos(
     comisiones_objetivo: si se pasa, SOLO se incluyen las comisiones cuyo
     (materia_id, numero) esté en el set (modo prueba/QA). None = todas.
 
+    El PDF tiene DOS partes por comisión:
+    - faltantes: alumnos con actividades pendientes (texto agrupado por unidad).
+    - exámenes: MATRIZ alumno × examen (una columna por parcial/global), SOLO con los
+      alumnos que tienen algo para atender (desaprobado o ausente). El rescatado queda
+      aprobado y no entra.
+
     Returns: [{"email","nombre",
-               "materias": [{"materia",
-                             "comisiones": [{"comision",
-                                             "alumnos": [{"apellido","nombre","faltantes"}]}]}]}]
+               "materias": [{"materia","unidad_actual","etiqueta",
+                 "comisiones": [{"comision",
+                                 "faltantes": [{"apellido","nombre","detalle"}],
+                                 "examenes_columnas": [str],
+                                 "examenes_filas": [{"apellido","nombre","celdas":[str]}]}]}]}]
     """
     idx = {m["materia_id"]: m for m in avances_por_materia}
     out: list[dict] = []
@@ -100,22 +126,58 @@ def construir_destinatarios_tutores_academicos(
             mat = idx.get(materia_id)
             if not mat:
                 continue
-            alumnos = [
-                {
+            etiqueta = mat.get("etiqueta") or "Unidad"
+            alumnos_com = [
+                a for a in mat.get("alumnos", []) if numero_comision(a.comision) == numero
+            ]
+
+            # --- Parte 1: faltantes (solo alumnos con deudas) ---
+            faltantes = []
+            for a in alumnos_com:
+                fmt = formatear_faltantes(getattr(a, "actividades_faltantes", None), etiqueta)
+                if fmt:
+                    faltantes.append(
+                        {"apellido": a.apellido or "", "nombre": a.nombre or "", "detalle": fmt}
+                    )
+
+            # --- Parte 2: matriz de exámenes (todos comparten las mismas columnas) ---
+            columnas: list[str] = []
+            for a in alumnos_com:
+                exs = (getattr(a, "resultados_examenes", None) or {}).get("examenes") or []
+                if exs:
+                    columnas = [e.get("etiqueta") for e in exs]
+                    break
+            examenes_filas = []
+            for a in alumnos_com:
+                resultados = getattr(a, "resultados_examenes", None)
+                if not examen_para_atender(resultados):
+                    continue  # solo desaprobados/ausentes
+                por_etq = {e.get("etiqueta"): e for e in (resultados.get("examenes") or [])}
+                examenes_filas.append({
                     "apellido": a.apellido or "",
                     "nombre": a.nombre or "",
-                    "faltantes": fmt,
-                }
-                for a in mat.get("alumnos", [])
-                if numero_comision(a.comision) == numero
-                and (fmt := formatear_faltantes(getattr(a, "actividades_faltantes", None)))
-            ]
-            if not alumnos:
+                    "celdas": [label_resultado_examen(por_etq.get(c)) for c in columnas],
+                })
+
+            if not faltantes and not examenes_filas:
                 continue
             nombre_mat = mat.get("materia") or com.get("materia") or ""
-            etiqueta = com.get("nombre") or f"Comisión {numero}"
-            entry = materias_dict.setdefault(nombre_mat, {"materia": nombre_mat, "comisiones": []})
-            entry["comisiones"].append({"comision": etiqueta, "alumnos": alumnos})
+            nombre_comision = com.get("nombre") or f"Comisión {numero}"
+            entry = materias_dict.setdefault(
+                nombre_mat,
+                {
+                    "materia": nombre_mat,
+                    "unidad_actual": mat.get("unidad_actual"),
+                    "etiqueta": mat.get("etiqueta") or "Unidad",
+                    "comisiones": [],
+                },
+            )
+            entry["comisiones"].append({
+                "comision": nombre_comision,
+                "faltantes": faltantes,
+                "examenes_columnas": columnas,
+                "examenes_filas": examenes_filas,
+            })
         materias = [m for m in materias_dict.values() if m["comisiones"]]
         if materias:
             out.append({"email": t["email"], "nombre": t.get("nombre") or "", "materias": materias})
@@ -128,8 +190,9 @@ def construir_destinatarios_tutores_nexo(
     """Un destinatario por tutor nexo (con email) con los alumnos faltantes de su regional.
 
     Returns: [{"email","nombre","regional",
-               "materias": [{"materia",
+               "materias": [{"materia","unidad_actual","etiqueta",
                              "filas": [{"comision","apellido","nombre","faltantes"}]}]}]
+    `unidad_actual`/`etiqueta` dan al nexo el contexto de en qué unidad está la materia.
     """
     out: list[dict] = []
     for n in nexos:
@@ -138,19 +201,25 @@ def construir_destinatarios_tutores_nexo(
         regional = n.get("regional")
         materias: list[dict] = []
         for mat in avances_por_materia:
+            etiqueta = mat.get("etiqueta") or "Unidad"
             filas = [
                 {
                     "comision": a.comision or "—",
                     "apellido": a.apellido or "",
                     "nombre": a.nombre or "",
-                    "faltantes": formatear_faltantes(getattr(a, "actividades_faltantes", None)),
+                    "faltantes": formatear_faltantes(getattr(a, "actividades_faltantes", None), etiqueta),
                 }
                 for a in mat.get("alumnos", [])
                 if a.regional == regional
-                and formatear_faltantes(getattr(a, "actividades_faltantes", None))
+                and formatear_faltantes(getattr(a, "actividades_faltantes", None), etiqueta)
             ]
             if filas:
-                materias.append({"materia": mat.get("materia") or "", "filas": filas})
+                materias.append({
+                    "materia": mat.get("materia") or "",
+                    "unidad_actual": mat.get("unidad_actual"),
+                    "etiqueta": mat.get("etiqueta") or "Unidad",
+                    "filas": filas,
+                })
         if materias:
             out.append(
                 {"email": n["email"], "nombre": n.get("nombre") or "", "regional": regional, "materias": materias}

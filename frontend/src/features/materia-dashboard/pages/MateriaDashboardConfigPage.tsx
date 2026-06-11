@@ -18,6 +18,7 @@ import {
   useUnidades,
 } from '../hooks/useMateriaDashboard';
 import { ConfigForm } from '../components/ConfigForm';
+import { ExamenesEditor } from '../components/ExamenesEditor';
 import { UnidadComponentesEditor } from '../components/UnidadComponentesEditor';
 
 export const MateriaDashboardConfigPage = () => {
@@ -172,7 +173,10 @@ export const MateriaDashboardConfigPage = () => {
             {(() => {
               const u = (unidades ?? []).find((x) => x.id === unidadComp);
               return u ? (
-                <UnidadComponentesEditor unidad={u} materiaId={materiaId} />
+                // key={u.id}: fuerza el REMONTE al cambiar de unidad, así el estado
+                // local del editor (rows) se re-inicializa con los componentes de ESA
+                // unidad. Sin esto, React reusa la instancia y queda el estado viejo.
+                <UnidadComponentesEditor key={u.id} unidad={u} materiaId={materiaId} />
               ) : null;
             })()}
           </div>
@@ -223,6 +227,9 @@ export const MateriaDashboardConfigPage = () => {
           </div>
         )}
       </div>
+
+      {/* Exámenes de la materia (parciales/recuperatorios/extensiones/extraordinarias/globales) */}
+      <ExamenesEditor materiaId={materiaId} />
     </div>
   );
 };

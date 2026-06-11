@@ -16,6 +16,7 @@ from app.models.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from app.models.cohorte import Cuatrimestre
     from app.models.comision import Comision
+    from app.models.examen_materia import ExamenMateria
     from app.models.rubrica import Rubrica
     from app.models.unidad import Unidad
     from app.models.usuario import Usuario
@@ -65,6 +66,15 @@ class Materia(Base, TimestampMixin):
             "el de ésta NO cuentan para el avance (parciales/integrador). NULL = sin tope."
         ),
     )
+    etiqueta_unidad: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default="Unidad",
+        comment=(
+            "Cómo se llama la progresión en esta materia para los reportes "
+            "(Excel/PDF/emails): 'Unidad' (default) o 'Semana' (ej. PYE)."
+        ),
+    )
 
     # Relationships
     cuatrimestre: Mapped["Cuatrimestre | None"] = relationship(
@@ -76,6 +86,13 @@ class Materia(Base, TimestampMixin):
         back_populates="materia",
         lazy="selectin",
         order_by="Unidad.numero",
+        cascade="all, delete-orphan",
+    )
+    examenes: Mapped[list["ExamenMateria"]] = relationship(
+        "ExamenMateria",
+        back_populates="materia",
+        lazy="selectin",
+        order_by="ExamenMateria.orden",
         cascade="all, delete-orphan",
     )
     coordinadores: Mapped[list["CoordinadorMateria"]] = relationship(

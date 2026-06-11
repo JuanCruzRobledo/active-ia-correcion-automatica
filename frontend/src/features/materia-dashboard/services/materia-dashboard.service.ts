@@ -1,6 +1,8 @@
 // Servicio de config de dashboard por materia (unidades + vinculación + auto-sugerencia)
 import { apiClient } from '@/shared/services/api-client';
 import type {
+  ExamenInput,
+  ExamenMateria,
   MateriaDashboardConfig,
   MateriaDashboardConfigResponse,
   MoodleActividad,
@@ -83,5 +85,40 @@ export const materiaDashboardService = {
       payload
     );
     return data;
+  },
+
+  // ===================== Exámenes de la materia =====================
+
+  getExamenes: async (materiaId: number): Promise<ExamenMateria[]> => {
+    const { data } = await apiClient.get<ExamenMateria[]>(
+      `/materias/${materiaId}/examenes`
+    );
+    return data;
+  },
+
+  crearExamen: async (
+    materiaId: number,
+    payload: ExamenInput
+  ): Promise<ExamenMateria> => {
+    const { data } = await apiClient.post<ExamenMateria>(
+      `/materias/${materiaId}/examenes`,
+      payload
+    );
+    return data;
+  },
+
+  actualizarExamen: async (
+    examenId: number,
+    payload: ExamenInput
+  ): Promise<ExamenMateria> => {
+    const { data } = await apiClient.put<ExamenMateria>(
+      `/examenes/${examenId}`,
+      payload
+    );
+    return data;
+  },
+
+  eliminarExamen: async (examenId: number): Promise<void> => {
+    await apiClient.delete(`/examenes/${examenId}`);
   },
 };
