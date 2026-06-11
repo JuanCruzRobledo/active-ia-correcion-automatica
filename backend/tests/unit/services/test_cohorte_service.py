@@ -6,12 +6,20 @@ de validación del service (duplicados, not-found, protección por materias vinc
 """
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 
 from app.models.cohorte import Cohorte, Cuatrimestre
+
+
+@pytest.fixture(autouse=True)
+def _mock_actividad():
+    """La auditoría (ActividadService) no es lo que testeamos acá; se mockea."""
+    with patch("app.services.cohorte_service.ActividadService") as m:
+        m.return_value.registrar_actividad = AsyncMock()
+        yield
 from app.schemas.cohorte import (
     CohorteCreate,
     CuatrimestreCreate,

@@ -5,12 +5,20 @@ Cubre: derivación de número/etiqueta por tipo, asignación de orden al alta y 
 validación del vínculo de rescate (debe ser un PARCIAL de la MISMA materia).
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 
 from app.models.enums import ModoAprobacionEnum, TipoExamenEnum
+
+
+@pytest.fixture(autouse=True)
+def _mock_actividad():
+    """La auditoría (ActividadService) no es lo que testeamos acá; se mockea."""
+    with patch("app.services.examen_service.ActividadService") as m:
+        m.return_value.registrar_actividad = AsyncMock()
+        yield
 from app.schemas.examen import (
     ExamenMateriaCreate,
     ExamenMateriaUpdate,

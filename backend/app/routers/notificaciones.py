@@ -152,6 +152,7 @@ async def disparar_corrida(
         incluir_tutores=incluir_tutores,
         incluir_nexos=incluir_nexos,
         comisiones_objetivo=objetivo,
+        manual=True,
     )
     return CorridaResumenResponse(**resumen)
 

@@ -18,7 +18,7 @@ import uuid
 import httpx
 
 from app.core.config import get_settings
-from app.models.enums import EstadoEnvioEnum, TipoNotificacionEnum
+from app.models.enums import EstadoEnvioEnum, TipoActividadEnum, TipoNotificacionEnum
 from app.models.notificacion import EnvioEmailLog
 from app.repositories.avance_repository import AvanceRepository
 from app.repositories.comision_repository import ComisionRepository
@@ -26,6 +26,7 @@ from app.repositories.materia_repository import MateriaRepository
 from app.repositories.notificacion_repository import NotificacionRepository
 from app.repositories.tutor_nexo_repository import TutorNexoRepository
 from app.repositories.usuario_repository import UsuarioRepository
+from app.services.actividad_service import ActividadService
 from app.services.email_service import EmailService
 from app.services.notificacion_config_service import NotificacionConfigService
 from app.services.notificacion_agg import (
@@ -211,6 +212,7 @@ class NotificacionService:
         incluir_tutores: bool = True,
         incluir_nexos: bool = True,
         comisiones_objetivo: set[tuple[int, int]] | None = None,
+        manual: bool = False,
     ) -> dict:
         """Corre la cadena: refresca snapshots → alumnos → tutores → nexos.
 
@@ -252,4 +254,16 @@ class NotificacionService:
                 resumen["nexos"] = await self._enviar_nexos(tanda_id, nexos, avances, client, remitente)
 
         logger.info("Corrida notificaciones %s: %s", tanda_id, resumen)
+        # Auditoría: solo las corridas MANUALES (el cron semanal no registra).
+        if manual:
+            await ActividadService(self.db).registrar_actividad(
+                tipo=TipoActividadEnum.NOTIFICACIONES_ENVIADAS,
+                descripcion=(
+                    f"Notificaciones enviadas: {resumen['alumnos']} alumnos, "
+                    f"{resumen['tutores']} tutores, {resumen['nexos']} nexos"
+                ),
+                entidad_id=0,
+                entidad_nombre=tanda_id,
+                usuario_id=usuario_id,
+            )
         return resumen

@@ -19,10 +19,11 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.avance import AvanceAlumno, AvanceSnapshot
-from app.models.enums import OrigenSnapshotEnum
+from app.models.enums import OrigenSnapshotEnum, TipoActividadEnum
 from app.repositories.avance_repository import AvanceRepository
 from app.repositories.materia_repository import MateriaRepository
 from app.repositories.usuario_repository import UsuarioRepository
+from app.services.actividad_service import ActividadService
 from app.services.avance_mapper import calcular_avance_alumno
 from app.services.examen_mapper import calcular_resultados_examenes
 from app.services.moodle_bulk_parser import (
@@ -255,4 +256,14 @@ class SnapshotService:
         logger.info(
             "Snapshot materia=%s origen=%s alumnos=%s", materia_id, origen, len(alumnos)
         )
-        return await self.avance_repo.crear(snapshot)
+        creado = await self.avance_repo.crear(snapshot)
+        # Auditoría: solo los snapshots MANUALES (el cron no registra para no hacer ruido).
+        if origen == OrigenSnapshotEnum.MANUAL:
+            await ActividadService(self.db).registrar_actividad(
+                tipo=TipoActividadEnum.SNAPSHOT_GENERADO,
+                descripcion=f"Snapshot de '{materia.nombre}' generado ({len(alumnos)} alumnos)",
+                entidad_id=creado.id,
+                entidad_nombre=materia.nombre,
+                usuario_id=getattr(usuario, "id", None),
+            )
+        return creado

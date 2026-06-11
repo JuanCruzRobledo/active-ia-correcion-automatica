@@ -37,7 +37,7 @@ async def crear_tutor_nexo(
 ) -> TutorNexoResponse:
     """Crea un tutor nexo. Solo admin."""
     require_admin(current_user)
-    return await TutorNexoService(db).crear(data)
+    return await TutorNexoService(db).crear(data, usuario_id=current_user.id)
 
 
 @router.get("/{tutor_nexo_id}", response_model=TutorNexoResponse)

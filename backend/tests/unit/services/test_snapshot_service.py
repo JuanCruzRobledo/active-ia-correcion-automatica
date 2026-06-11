@@ -10,13 +10,21 @@ cada alumno debe dar lo mismo que daba el flujo viejo (1 completion + 1 nota por
 """
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 
 from app.models.enums import EstadoAvanceEnum, OrigenSnapshotEnum
 from app.services.snapshot_service import SnapshotService
+
+
+@pytest.fixture(autouse=True)
+def _mock_actividad():
+    """La auditoría (ActividadService) del snapshot manual se mockea en los unit tests."""
+    with patch("app.services.snapshot_service.ActividadService") as m:
+        m.return_value.registrar_actividad = AsyncMock()
+        yield
 
 # course_contents: nombre de módulo → cmid (el puente para parsear ambos CSV).
 SECCIONES = [

@@ -6,6 +6,7 @@ Service del ABM de TutorNexo (solo admin). Ref: PLAN_NOTIFICACIONES_EMAIL.md §5
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.enums import TipoActividadEnum
 from app.models.tutor_nexo import TutorNexo
 from app.repositories.tutor_nexo_repository import TutorNexoRepository
 from app.schemas.tutor_nexo import (
@@ -13,6 +14,7 @@ from app.schemas.tutor_nexo import (
     TutorNexoResponse,
     TutorNexoUpdate,
 )
+from app.services.actividad_service import ActividadService
 
 
 class TutorNexoService:
@@ -36,11 +38,21 @@ class TutorNexoService:
     async def obtener(self, tutor_nexo_id: int) -> TutorNexoResponse:
         return TutorNexoResponse.model_validate(await self._get_or_404(tutor_nexo_id))
 
-    async def crear(self, data: TutorNexoCreate) -> TutorNexoResponse:
+    async def crear(
+        self, data: TutorNexoCreate, usuario_id: int | None = None
+    ) -> TutorNexoResponse:
         tn = TutorNexo(
             nombre=data.nombre, email=data.email, regional=data.regional, activo=True
         )
-        return TutorNexoResponse.model_validate(await self.repo.crear(tn))
+        creado = await self.repo.crear(tn)
+        await ActividadService(self.db).registrar_actividad(
+            tipo=TipoActividadEnum.TUTOR_NEXO_CREADO,
+            descripcion=f"Tutor nexo '{creado.nombre}' ({creado.regional}) creado",
+            entidad_id=creado.id,
+            entidad_nombre=creado.nombre,
+            usuario_id=usuario_id,
+        )
+        return TutorNexoResponse.model_validate(creado)
 
     async def actualizar(
         self, tutor_nexo_id: int, data: TutorNexoUpdate

@@ -60,6 +60,12 @@ class TipoActividadEnum(str, Enum):
     MATERIA_CREADA = "MATERIA_CREADA"
     COMISION_CREADA = "COMISION_CREADA"
     RUBRICA_CREADA = "RUBRICA_CREADA"
+    # Acciones manuales de las funciones nuevas (Dashboard de Gestores / Notificaciones).
+    COHORTE_CREADA = "COHORTE_CREADA"
+    TUTOR_NEXO_CREADO = "TUTOR_NEXO_CREADO"
+    EXAMEN_CREADO = "EXAMEN_CREADO"
+    SNAPSHOT_GENERADO = "SNAPSHOT_GENERADO"
+    NOTIFICACIONES_ENVIADAS = "NOTIFICACIONES_ENVIADAS"
 
 
 class MoodleSyncEstado(str, Enum):

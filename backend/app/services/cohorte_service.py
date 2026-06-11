@@ -10,10 +10,12 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cohorte import Cohorte, Cuatrimestre
+from app.models.enums import TipoActividadEnum
 from app.repositories.cohorte_repository import (
     CohorteRepository,
     CuatrimestreRepository,
 )
+from app.services.actividad_service import ActividadService
 from app.schemas.cohorte import (
     CohorteCreate,
     CohorteDetailResponse,
@@ -53,7 +55,9 @@ class CohorteService:
         cohorte = await self._get_cohorte_or_404(cohorte_id)
         return CohorteDetailResponse.model_validate(cohorte)
 
-    async def crear_cohorte(self, data: CohorteCreate) -> CohorteDetailResponse:
+    async def crear_cohorte(
+        self, data: CohorteCreate, usuario_id: int | None = None
+    ) -> CohorteDetailResponse:
         if await self.cohorte_repo.exists_codigo(data.codigo):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -61,6 +65,13 @@ class CohorteService:
             )
         cohorte = Cohorte(codigo=data.codigo, nombre=data.nombre, activa=True)
         created = await self.cohorte_repo.create(cohorte)
+        await ActividadService(self.db).registrar_actividad(
+            tipo=TipoActividadEnum.COHORTE_CREADA,
+            descripcion=f"Cohorte '{created.codigo}' creada",
+            entidad_id=created.id,
+            entidad_nombre=created.codigo,
+            usuario_id=usuario_id,
+        )
         # Recargar con cuatrimestres (vacíos al crear) para un response consistente
         created = await self.cohorte_repo.get_by_id(created.id)
         return CohorteDetailResponse.model_validate(created)

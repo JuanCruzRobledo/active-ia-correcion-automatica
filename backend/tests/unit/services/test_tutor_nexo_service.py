@@ -4,13 +4,21 @@ Tests del TutorNexoService (T7 — ABM admin). Repo mockeado.
 
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 
 from app.schemas.tutor_nexo import TutorNexoCreate, TutorNexoUpdate
 from app.services.tutor_nexo_service import TutorNexoService
+
+
+@pytest.fixture(autouse=True)
+def _mock_actividad():
+    """La auditoría (ActividadService) no es lo que testeamos acá; se mockea."""
+    with patch("app.services.tutor_nexo_service.ActividadService") as m:
+        m.return_value.registrar_actividad = AsyncMock()
+        yield
 
 
 def _tn(**kw):

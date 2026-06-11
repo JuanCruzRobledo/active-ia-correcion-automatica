@@ -10,10 +10,11 @@ visible por tipo reusando examen_mapper.
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import TipoExamenEnum
+from app.models.enums import TipoActividadEnum, TipoExamenEnum
 from app.models.examen_materia import ExamenMateria
 from app.repositories.examen_repository import ExamenRepository
 from app.repositories.materia_repository import MateriaRepository
+from app.services.actividad_service import ActividadService
 from app.schemas.examen import (
     TIPOS_RESCATE,
     ExamenMateriaCreate,
@@ -96,7 +97,7 @@ class ExamenService:
         return [self._a_response(e, numeros) for e in examenes]
 
     async def crear(
-        self, materia_id: int, data: ExamenMateriaCreate
+        self, materia_id: int, data: ExamenMateriaCreate, usuario_id: int | None = None
     ) -> ExamenMateriaResponse:
         await self._get_materia_or_404(materia_id)
         await self._validar_vinculo(materia_id, data.recupera_examen_id)
@@ -113,7 +114,15 @@ class ExamenService:
         creado = await self.examen_repo.create(examen)
         examenes = await self.examen_repo.get_by_materia(materia_id)
         numeros = numeros_por_tipo(self._config(examenes))
-        return self._a_response(creado, numeros)
+        resp = self._a_response(creado, numeros)
+        await ActividadService(self.db).registrar_actividad(
+            tipo=TipoActividadEnum.EXAMEN_CREADO,
+            descripcion=f"Examen '{resp.etiqueta}' creado",
+            entidad_id=creado.id,
+            entidad_nombre=resp.etiqueta,
+            usuario_id=usuario_id,
+        )
+        return resp
 
     async def actualizar(
         self, examen_id: int, data: ExamenMateriaUpdate
