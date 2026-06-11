@@ -83,14 +83,12 @@ async def disparar_snapshot_manual(
     service = SnapshotService(db)
 
     if materia_id is not None:
-        try:
-            token, host = await service.token_de_usuario(current_user)
-        except ValueError:
+        if not current_user.moodle_username or not current_user.moodle_password_encrypted:
             raise HTTPException(
                 status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=_SIN_CREDENCIALES
             )
         snap = await service.generar(
-            materia_id, token=token, moodle_host=host, origen=OrigenSnapshotEnum.MANUAL
+            materia_id, usuario=current_user, origen=OrigenSnapshotEnum.MANUAL
         )
         return [snap]
 
@@ -134,7 +132,7 @@ async def snapshot_stream(
     require_gestor_or_admin(current_user)
     service = SnapshotService(db)
     try:
-        token, host = await service.token_de_usuario(current_user)
+        _, host = await service.token_de_usuario(current_user)
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=_SIN_CREDENCIALES
@@ -150,7 +148,13 @@ async def snapshot_stream(
         queue: asyncio.Queue = asyncio.Queue()
 
         async def run():
+            # UNA sola sesión web para todas las materias del stream (no re-loguear).
+            sesion = service.moodle.crear_cliente_sesion()
             try:
+                await service.moodle.login_sesion(
+                    sesion, host,
+                    current_user.moodle_username, current_user.moodle_password_encrypted,
+                )
                 for idx, mid in enumerate(ids):
                     def on_progress(p: int, t: int, _idx: int = idx, _mid: int = mid):
                         queue.put_nowait(
@@ -166,16 +170,17 @@ async def snapshot_stream(
 
                     await service.generar(
                         mid,
-                        token=token,
-                        moodle_host=host,
+                        usuario=current_user,
                         origen=OrigenSnapshotEnum.MANUAL,
                         on_progress=on_progress,
+                        sesion=sesion,
                     )
                 queue.put_nowait({"tipo": "done", "materias": len(ids)})
             except Exception as e:  # noqa: BLE001
                 logger.exception("Snapshot stream falló")
                 queue.put_nowait({"tipo": "error", "detalle": str(e)})
             finally:
+                await sesion.aclose()
                 queue.put_nowait(None)
 
         task = asyncio.create_task(run())

@@ -15,6 +15,7 @@ Notas importantes sobre la API de Moodle:
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
@@ -23,6 +24,10 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+# User-Agent identificable: que el admin de Moodle sepa quiénes somos (no anónimo).
+# Solo ASCII: los headers HTTP no admiten acentos (httpx los rechaza con UnicodeEncodeError).
+MOODLE_USER_AGENT = "Active-IA/1.0 (integracion academica TUD)"
 
 from app.core.security import decrypt_api_key
 from app.repositories.usuario_repository import UsuarioRepository
@@ -484,6 +489,133 @@ class MoodleService:
             for it in items
             if it.get("cmid") is not None
         }
+
+    # ===================== descargas MASIVAS por sesión web (refactor §R1/R2) =====================
+    # El snapshot ya NO va alumno por alumno (1+2N requests = volteó Moodle). Baja 2 archivos
+    # compactos con TODOS los alumnos: el export del calificador (notas) y el CSV de
+    # finalización (completion). Ambos se sirven por SESIÓN web (cookie MoodleSession), no por
+    # token → login programático reusando las credenciales cifradas. Validado en spike R0.
+
+    @staticmethod
+    def crear_cliente_sesion(timeout: float = 120.0) -> "httpx.AsyncClient":
+        """Cliente httpx para el flujo de sesión web (cookies + User-Agent identificable)."""
+        return httpx.AsyncClient(
+            headers={"User-Agent": MOODLE_USER_AGENT},
+            follow_redirects=True,
+            timeout=timeout,
+        )
+
+    async def login_sesion(
+        self,
+        client: "httpx.AsyncClient",
+        moodle_host: str,
+        username: str,
+        password_encrypted: str,
+    ) -> None:
+        """Login web (POST /login/index.php) → deja la cookie MoodleSession en `client`.
+
+        Reusa las credenciales cifradas (las mismas del token WS). Lanza MoodleAuthError
+        si no se obtiene sesión.
+        """
+        password = decrypt_api_key(password_encrypted)
+        base = moodle_host.rstrip("/")
+        try:
+            r = await client.get(f"{base}/login/index.php")
+            m = re.search(r'name="logintoken"\s+value="([^"]+)"', r.text)
+            form = {"username": username, "password": password}
+            if m:
+                form["logintoken"] = m.group(1)
+            await client.post(f"{base}/login/index.php", data=form)
+        except httpx.TimeoutException as e:
+            raise MoodleConnectionError(f"Timeout en login web: {e}") from e
+        except httpx.RequestError as e:
+            raise MoodleConnectionError(f"Error de red en login web: {e}") from e
+        if not any("MoodleSession" in c for c in client.cookies.keys()):
+            raise MoodleAuthError("No se obtuvo sesión web de Moodle (login falló)")
+
+    async def descargar_export_calificador(
+        self,
+        client: "httpx.AsyncClient",
+        moodle_host: str,
+        course_id: int,
+    ) -> str:
+        """Export del calificador (notas de TODOS los alumnos) en TXT/comma → str CSV.
+
+        GET del form (extrae sesskey + itemids) → POST a export.php. Requiere `client` ya
+        logueado (login_sesion). ~282 KB para 772 alumnos en el spike R0.
+        """
+        base = moodle_host.rstrip("/")
+        idx_url = f"{base}/grade/export/txt/index.php"
+        try:
+            r = await client.get(idx_url, params={"id": course_id})
+        except httpx.RequestError as e:
+            raise MoodleConnectionError(f"Error cargando el form de export: {e}") from e
+
+        sesskey = None
+        for pat in (
+            r'name="sesskey"\s+value="([^"]+)"',
+            r'value="([^"]+)"\s+name="sesskey"',
+            r'"sesskey":"([^"]+)"',
+        ):
+            mm = re.search(pat, r.text)
+            if mm:
+                sesskey = mm.group(1)
+                break
+        itemids = re.findall(r'name="itemids\[(\d+)\]"', r.text)
+        if not sesskey or not itemids:
+            raise MoodleConnectionError(
+                "No pude leer el form de export del calificador (sesskey/itemids)"
+            )
+
+        form = {
+            "mform_isexpanded_id_gradeitems": "1",
+            "checkbox_controller1": "1",
+            "id": str(course_id),
+            "sesskey": sesskey,
+            "_qf__grade_export_form": "1",
+            "export_feedback": "0",
+            "export_onlyactive": "1",
+            "display[real]": "1",
+            "display[percentage]": "0",
+            "display[letter]": "0",
+            "decimals": "2",
+            "separator": "comma",
+            "submitbutton": "Descargar",
+        }
+        for iid in itemids:
+            form[f"itemids[{iid}]"] = "1"
+        try:
+            r = await client.post(f"{base}/grade/export/txt/export.php", data=form)
+        except httpx.RequestError as e:
+            raise MoodleConnectionError(f"Error bajando el export del calificador: {e}") from e
+        cuerpo = r.text or ""
+        if "<html" in cuerpo[:200].lower() or not cuerpo.strip():
+            raise MoodleConnectionError("El export del calificador no devolvió un CSV")
+        return cuerpo
+
+    async def descargar_reporte_finalizacion_csv(
+        self,
+        client: "httpx.AsyncClient",
+        moodle_host: str,
+        course_id: int,
+    ) -> str:
+        """CSV del reporte de finalización (completion de TODOS los alumnos) → str CSV.
+
+        GET /report/progress/index.php?course=X&format=csv. Requiere `client` logueado.
+        """
+        base = moodle_host.rstrip("/")
+        try:
+            r = await client.get(
+                f"{base}/report/progress/index.php",
+                params={"course": course_id, "format": "csv"},
+            )
+        except httpx.RequestError as e:
+            raise MoodleConnectionError(f"Error bajando el CSV de finalización: {e}") from e
+        cuerpo = r.text or ""
+        ctype = r.headers.get("content-type", "").lower()
+        if "csv" not in ctype and "<html" in cuerpo[:200].lower():
+            raise MoodleConnectionError("El reporte de finalización no devolvió un CSV")
+        return cuerpo
 
     async def _fetch_submissions(
         self,
