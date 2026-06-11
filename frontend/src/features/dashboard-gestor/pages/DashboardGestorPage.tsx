@@ -13,15 +13,9 @@ import { useArbol, useAvance, useDescargarExcel } from '../hooks/useDashboardGes
 import { EstadoPie } from '../components/EstadoPie';
 import { DetalleModal } from '../components/DetalleModal';
 import type { EstadoAvance } from '../types';
+import { formatFechaHoraArg } from '@/shared/utils/fecha';
 
-const fmtFecha = (iso: string | null) => {
-  if (!iso) return null;
-  try {
-    return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
-  } catch {
-    return iso;
-  }
-};
+const fmtFecha = (iso: string | null) => (iso ? formatFechaHoraArg(iso) : null);
 
 export const DashboardGestorPage = () => {
   const { data: arbol, isLoading: loadingArbol } = useArbol();

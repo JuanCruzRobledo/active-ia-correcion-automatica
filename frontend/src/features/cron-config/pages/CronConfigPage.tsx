@@ -8,6 +8,7 @@ import { useUsuarios } from '@/features/usuarios/hooks';
 import { CronConfigForm } from '../components/CronConfigForm';
 import { useCronConfig, useMateriasConfiguradas } from '../hooks/useCronConfig';
 import { dispararSnapshotStream } from '../services/cron-config.service';
+import { formatFechaHoraArg } from '@/shared/utils/fecha';
 
 interface Progreso {
   procesados: number;
@@ -16,14 +17,8 @@ interface Progreso {
   materiasTotal: number;
 }
 
-const fmtFecha = (iso: string | null) => {
-  if (!iso) return 'Nunca generado';
-  try {
-    return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
-  } catch {
-    return iso;
-  }
-};
+const fmtFecha = (iso: string | null) =>
+  iso ? formatFechaHoraArg(iso) : 'Nunca generado';
 
 export const CronConfigPage = () => {
   const { data: config, isLoading: loadingConfig } = useCronConfig();
