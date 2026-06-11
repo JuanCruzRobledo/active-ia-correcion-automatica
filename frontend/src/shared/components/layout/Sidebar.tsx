@@ -1,122 +1,65 @@
 import { NavLink } from 'react-router-dom';
-import {
-  Home,
-  Users,
-  BookOpen,
-  Clock,
-  FolderOpen,
-  FileText,
-  CheckSquare,
-  Send,
-  BarChart3,
-  GraduationCap,
-  CalendarClock,
-  PieChart,
-  Mail,
-  BellRing,
-  User,
-  LogOut,
-} from 'lucide-react';
+import { User, LogOut } from 'lucide-react';
 import { cn } from '@/shared/utils';
 import { useAuth, useLogout } from '@/features/auth/hooks';
 import { ThemeToggle } from './ThemeToggle';
-
-interface NavItem {
-  to: string;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  roles?: string[];
-}
-
-const navItems: NavItem[] = [
-  { to: '/dashboard', icon: Home, label: 'Dashboard' },
-  { to: '/usuarios', icon: Users, label: 'Usuarios', roles: ['ADMIN'] },
-  { to: '/materias', icon: BookOpen, label: 'Materias', roles: ['ADMIN'] },
-  { to: '/cohortes', icon: GraduationCap, label: 'Cohortes', roles: ['ADMIN'] },
-  { to: '/snapshots', icon: CalendarClock, label: 'Snapshots', roles: ['ADMIN'] },
-  { to: '/tutores-nexo', icon: Mail, label: 'Tutores Nexo', roles: ['ADMIN'] },
-  { to: '/notificaciones', icon: BellRing, label: 'Notificaciones', roles: ['ADMIN'] },
-  {
-    to: '/comisiones',
-    icon: FolderOpen,
-    label: 'Comisiones',
-    roles: ['ADMIN', 'COORDINADOR', 'TUTOR'],
-  },
-  {
-    to: '/rubricas',
-    icon: FileText,
-    label: 'Rúbricas',
-    roles: ['ADMIN', 'COORDINADOR'],
-  },
-  { to: '/entregas', icon: CheckSquare, label: 'Entregas', roles: ['TUTOR', 'ADMIN', 'COORDINADOR'] },
-  { to: '/pendientes', icon: Clock, label: 'Pendientes', roles: ['TUTOR', 'ADMIN'] },
-  { to: '/por-entregar', icon: Send, label: 'Por entregar', roles: ['TUTOR', 'ADMIN'] },
-  { to: '/avance', icon: PieChart, label: 'Avance', roles: ['GESTOR', 'ADMIN'] },
-  { to: '/gestion', icon: BarChart3, label: 'Gestión', roles: ['GESTOR', 'ADMIN'] },
-];
+import { navItemsForRole } from './navConfig';
 
 export const Sidebar = () => {
   const { user } = useAuth();
   const logoutMutation = useLogout();
 
-  // Use user data from auth or fallback to defaults
   const userRole = user?.rol || 'admin';
   const userName = user?.nombre || 'Usuario';
 
-  const filteredNavItems = navItems.filter(
-    (item) => !item.roles || item.roles.includes(userRole)
-  );
+  const filteredNavItems = navItemsForRole(userRole);
 
   return (
-    <aside className="hidden lg:flex lg:w-64 lg:flex-col bg-sidebar border-r border-sidebar-border">
+    // h-screen + flex-col: la barra ocupa el alto exacto del viewport. El <nav> es el
+    // único que crece (min-h-0 + overflow-y-auto), así nunca empuja al body ni crea el
+    // doble scroll. Compactado (py-2, gaps chicos) para que entre sin scroll en pantallas
+    // normales; si la pantalla es muy baja, scrollea SOLO el nav, no toda la página.
+    <aside className="hidden h-screen lg:flex lg:w-64 lg:flex-col bg-sidebar border-r border-sidebar-border">
       {/* Logo */}
-      <div className="flex items-center gap-2 border-b border-sidebar-border p-6">
-        <img
-          src="/active-ia-logo.svg"
-          alt="Active-IA Logo"
-          className="h-10 w-10"
-        />
-        <span className="text-lg font-semibold text-sidebar-foreground">
-          Active-IA
-        </span>
+      <div className="flex shrink-0 items-center gap-2 border-b border-sidebar-border p-4">
+        <img src="/active-ia-logo.svg" alt="Active-IA Logo" className="h-8 w-8" />
+        <span className="text-base font-semibold text-sidebar-foreground">Active-IA</span>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 p-4">
+      <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-3 py-3">
         {filteredNavItems.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
                   ? 'bg-accent text-accent-foreground'
                   : 'text-sidebar-foreground hover:bg-sidebar-accent'
               )
             }
           >
-            <item.icon className="h-5 w-5" />
-            <span>{item.label}</span>
+            <item.icon className="h-[18px] w-[18px] shrink-0" />
+            <span className="truncate">{item.label}</span>
           </NavLink>
         ))}
       </nav>
 
       {/* User footer */}
-      <div className="border-t border-sidebar-border p-4">
-        <div className="space-y-1">
+      <div className="shrink-0 border-t border-sidebar-border p-3">
+        <div className="space-y-0.5">
           <NavLink
             to="/perfil"
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 rounded-lg px-4 py-2 text-sm transition-colors',
-                isActive
-                  ? 'bg-sidebar-accent'
-                  : 'text-sidebar-foreground hover:bg-sidebar-accent'
+                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                isActive ? 'bg-sidebar-accent' : 'text-sidebar-foreground hover:bg-sidebar-accent'
               )
             }
           >
-            <User className="h-5 w-5" />
+            <User className="h-[18px] w-[18px] shrink-0" />
             <div className="flex-1 truncate">
               <p className="truncate font-medium">{userName}</p>
               <p className="truncate text-xs text-muted-foreground">
@@ -130,9 +73,9 @@ export const Sidebar = () => {
           <button
             onClick={() => logoutMutation.mutate()}
             disabled={logoutMutation.isPending}
-            className="flex w-full items-center gap-3 rounded-lg px-4 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-sidebar-accent disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <LogOut className="h-5 w-5" />
+            <LogOut className="h-[18px] w-[18px] shrink-0" />
             <span>{logoutMutation.isPending ? 'Cerrando...' : 'Cerrar sesión'}</span>
           </button>
         </div>
