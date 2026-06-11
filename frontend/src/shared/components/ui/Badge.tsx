@@ -26,6 +26,10 @@ const badgeVariants = {
 /**
  * Badge component for displaying status, labels, or categories.
  *
+ * NO interactivo: es un indicador de estado/etiqueta, no un control tactil.
+ * Para chips tappables (filtros) usar una variante Chip dedicada con hit-area
+ * >=44px; no agregar onClick a Badge.
+ *
  * @example
  * ```tsx
  * <Badge variant="success">Corregido</Badge>

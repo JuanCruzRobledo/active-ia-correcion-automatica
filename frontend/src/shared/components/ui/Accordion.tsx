@@ -113,20 +113,20 @@ export function AccordionTrigger({
       type="button"
       onClick={() => toggleItem(value)}
       className={cn(
-        'w-full flex items-center justify-between px-4 py-3',
-        'text-left font-medium transition-colors',
+        'w-full flex items-center justify-between gap-2 px-4 py-3 min-h-[44px]',
+        'text-left font-medium transition-colors touch-manipulation',
         'hover:bg-muted/50',
         className
       )}
     >
-      <div className="flex items-center gap-2 flex-1">
-        {icon && <span className="text-muted-foreground">{icon}</span>}
-        <span className="text-foreground">{children}</span>
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        {icon && <span className="text-muted-foreground shrink-0">{icon}</span>}
+        <span className="text-foreground truncate">{children}</span>
         {badge}
       </div>
       <ChevronDown
         className={cn(
-          'h-5 w-5 text-muted-foreground transition-transform duration-200',
+          'h-5 w-5 text-muted-foreground transition-transform duration-200 shrink-0',
           isOpen && 'rotate-180'
         )}
       />

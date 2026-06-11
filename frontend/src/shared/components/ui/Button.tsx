@@ -16,11 +16,13 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'success' | 'destructive' | 'outline' | 'ghost' | 'link';
 
   /**
-   * Size of the button
-   * - sm: Small (h-8, text-xs)
-   * - default: Medium (h-9, text-sm)
-   * - lg: Large (h-10, text-base)
-   * - icon: Square icon button (h-9 w-9)
+   * Size of the button.
+   * En mobile (base) los targets suben a >=44px (Apple HIG); en sm: vuelven
+   * al tamaño visual de desktop actual, sin cambiar colores ni tipografía.
+   * - sm: Small (visual h-8, text-xs; en mobile min-h 44px sin agrandar el resto)
+   * - default: Medium (h-11 sm:h-9, text-sm)
+   * - lg: Large (h-12 sm:h-10, text-base)
+   * - icon: Square icon button (h-11 w-11 sm:h-9 sm:w-9)
    */
   size?: 'sm' | 'default' | 'lg' | 'icon';
 
@@ -48,10 +50,11 @@ const buttonVariants = {
       'text-accent underline-offset-4 hover:underline focus-visible:ring-accent',
   },
   size: {
-    sm: 'h-8 px-3 text-xs',
-    default: 'h-9 px-4 text-sm',
-    lg: 'h-10 px-6 text-base',
-    icon: 'h-9 w-9 p-2',
+    // En mobile el target táctil sube a >=44px; en sm: se mantiene el look desktop.
+    sm: 'h-8 min-h-[44px] sm:min-h-0 px-3 text-xs',
+    default: 'h-11 sm:h-9 px-4 text-sm',
+    lg: 'h-12 sm:h-10 px-6 text-base',
+    icon: 'h-11 w-11 sm:h-9 sm:w-9 p-2',
   },
 };
 
@@ -92,6 +95,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(
           // Base styles
           'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium',
+          // touch-manipulation: mata el delay de 300ms y el doble-tap-zoom en mobile
+          'touch-manipulation',
           'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
           'disabled:pointer-events-none disabled:opacity-50',
           // Variant styles
