@@ -23,7 +23,7 @@ export function QuickActions({ actions }: QuickActionsProps) {
   return (
     <div className="rounded-lg border border-border bg-card p-6">
       <h3 className="mb-4 text-lg font-semibold text-foreground">Acciones Rápidas</h3>
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {actions.map((action, index) => {
           const Icon = action.icon;
           return (
@@ -33,8 +33,8 @@ export function QuickActions({ actions }: QuickActionsProps) {
               className="w-full justify-start"
               onClick={action.onClick}
             >
-              <Icon className="mr-2 h-4 w-4" />
-              {action.label}
+              <Icon className="mr-2 h-4 w-4 shrink-0" />
+              <span className="truncate">{action.label}</span>
             </Button>
           );
         })}

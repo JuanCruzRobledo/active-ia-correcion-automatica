@@ -10,7 +10,18 @@
  */
 
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, GraduationCap, Users, FileText, Plus } from 'lucide-react';
+import {
+  BookOpen,
+  GraduationCap,
+  Users,
+  FileText,
+  FolderOpen,
+  CalendarClock,
+  BellRing,
+  Mail,
+  PieChart,
+  BarChart3,
+} from 'lucide-react';
 import { StatCard } from './StatCard';
 import { QuickActions } from './QuickActions';
 import { RecentActivity } from './RecentActivity';
@@ -52,26 +63,16 @@ export function DashboardAdmin() {
   }
 
   const quickActions = [
-    {
-      label: 'Crear Materia',
-      icon: Plus,
-      onClick: () => navigate('/materias'),
-    },
-    {
-      label: 'Crear Usuario',
-      icon: Plus,
-      onClick: () => navigate('/usuarios'),
-    },
-    {
-      label: 'Crear Comisión',
-      icon: Plus,
-      onClick: () => navigate('/comisiones'),
-    },
-    {
-      label: 'Crear Rúbrica',
-      icon: Plus,
-      onClick: () => navigate('/rubricas'),
-    },
+    { label: 'Crear materia', icon: BookOpen, onClick: () => navigate('/materias') },
+    { label: 'Crear usuario', icon: Users, onClick: () => navigate('/usuarios') },
+    { label: 'Crear comisión', icon: FolderOpen, onClick: () => navigate('/comisiones') },
+    { label: 'Crear rúbrica', icon: FileText, onClick: () => navigate('/rubricas') },
+    { label: 'Cohortes', icon: GraduationCap, onClick: () => navigate('/cohortes') },
+    { label: 'Snapshots de avance', icon: CalendarClock, onClick: () => navigate('/snapshots') },
+    { label: 'Notificaciones', icon: BellRing, onClick: () => navigate('/notificaciones') },
+    { label: 'Tutores nexo', icon: Mail, onClick: () => navigate('/tutores-nexo') },
+    { label: 'Dashboard de avance', icon: PieChart, onClick: () => navigate('/avance') },
+    { label: 'Gestión', icon: BarChart3, onClick: () => navigate('/gestion') },
   ];
 
   // Map actividades to the format expected by RecentActivity component
