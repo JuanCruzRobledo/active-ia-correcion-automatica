@@ -27,6 +27,14 @@ export function CorregirTodoButton() {
     queryKey: ['progreso-global'],
     queryFn: getProgresoGlobal,
     enabled: esPaga,
+    // El conteo de SUBIDA cambia desde OTRAS pantallas (importar pendientes, subir
+    // entregas, corregir). El staleTime global de 5min haría que al volver al
+    // dashboard se sirva un conteo viejo (subidas=0) y el botón no aparezca hasta
+    // refrescar la página. Como este botón es el ÚNICO consumidor de 'progreso-global'
+    // y sólo vive en el dashboard, revalidar en cada montaje (cada visita al dashboard)
+    // mantiene el conteo fresco sin acoplar 11 mutaciones a esta query key.
+    staleTime: 0,
+    refetchOnMount: 'always',
     refetchInterval: enProceso ? 10000 : false,
   });
 
