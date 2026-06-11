@@ -11,6 +11,7 @@ export interface UserProfile {
   id: number;
   username: string;
   nombre: string;
+  email: string | null;
   rol: string;
   primer_login: boolean;
   gemini_api_key_valid: boolean;

@@ -53,6 +53,19 @@ export async function updateMoodleCredentials(
 }
 
 /**
+ * Setea (o limpia con null) el email de notificaciones del usuario actual.
+ */
+export async function updateEmail(
+  email: string | null
+): Promise<{ message: string; email: string | null }> {
+  const { data } = await apiClient.patch<{ message: string; email: string | null }>(
+    '/perfil/email',
+    { email }
+  );
+  return data;
+}
+
+/**
  * Marca/desmarca la API key como paga (toggle manual). Habilita 'Corregir todo'.
  */
 export async function updateKeyPaga(

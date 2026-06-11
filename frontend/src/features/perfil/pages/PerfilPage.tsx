@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Eye, EyeOff, Key, Info, Shield, User as UserIcon, Globe } from 'lucide-react';
+import { Eye, EyeOff, Key, Info, Shield, User as UserIcon, Globe, Mail } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { useProfile, useUpdateApiKey, useChangePassword, useUpdateKeyPaga } from '../hooks/usePerfil';
+import { useProfile, useUpdateApiKey, useChangePassword, useUpdateKeyPaga, useUpdateEmail } from '../hooks/usePerfil';
 import { updateMoodleCredentials } from '../services/perfil-service';
 import { Button } from '../../../shared/components/ui/Button';
 import { Input } from '../../../shared/components/ui/Input';
@@ -13,6 +13,7 @@ import { Modal } from '../../../shared/components/ui/Modal';
 import { Badge } from '../../../shared/components/ui/Badge';
 import { HelpButton, LoadingState } from '@/shared/components/ui';
 import { helpContent } from '@/shared/content/helpContent';
+import { formatFechaHoraArg } from '@/shared/utils/fecha';
 
 const moodleSchema = z.object({
   moodle_host: z.string().url('Ingresá una URL válida').min(1),
@@ -25,8 +26,13 @@ export const PerfilPage = () => {
   const { data: profile, isLoading } = useProfile();
   const updateApiKeyMutation = useUpdateApiKey();
   const updateKeyPagaMutation = useUpdateKeyPaga();
+  const updateEmailMutation = useUpdateEmail();
   const changePasswordMutation = useChangePassword();
   const queryClient = useQueryClient();
+
+  // Email de notificaciones (editable inline).
+  const [emailInput, setEmailInput] = useState('');
+  const [emailError, setEmailError] = useState('');
 
   const moodleForm = useForm<MoodleForm>({
     resolver: zodResolver(moodleSchema),
@@ -40,8 +46,20 @@ export const PerfilPage = () => {
         moodle_username: profile.moodle_username ?? '',
         moodle_password: '',
       });
+      setEmailInput(profile.email ?? '');
     }
   }, [profile]);
+
+  const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  const handleEmailSubmit = () => {
+    setEmailError('');
+    const limpio = emailInput.trim();
+    if (limpio && !EMAIL_RE.test(limpio)) {
+      setEmailError('Ingresá un email válido (o dejalo vacío para quitarlo).');
+      return;
+    }
+    updateEmailMutation.mutate(limpio || null);
+  };
 
   const moodleMutation = useMutation({
     mutationFn: updateMoodleCredentials,
@@ -145,16 +163,8 @@ export const PerfilPage = () => {
     );
   };
 
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'Nunca';
-    return new Date(dateString).toLocaleDateString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const formatDate = (dateString: string | null) =>
+    dateString ? formatFechaHoraArg(dateString) : 'Nunca';
 
   const getRolColor = (rol: string) => {
     switch (rol.toLowerCase()) {
@@ -240,6 +250,50 @@ export const PerfilPage = () => {
             <p className="text-base text-foreground mt-1">
               {formatDate(profile.last_login)}
             </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Email de notificaciones */}
+      <div className="rounded-lg border border-border bg-card p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <Mail className="h-5 w-5 text-muted-foreground" />
+          <h2 className="text-xl font-semibold text-foreground">Email de notificaciones</h2>
+        </div>
+
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 rounded-md bg-muted/50">
+            <Info className="h-5 w-5 text-info mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-muted-foreground">
+              Es la dirección donde vas a recibir las notificaciones (por ejemplo, el PDF con
+              las actividades faltantes de tus comisiones). No afecta tu acceso: seguís
+              entrando con tu usuario. Dejalo vacío si no querés recibir notificaciones.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1.5">
+              Correo electrónico
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+              <div className="flex-1">
+                <Input
+                  type="email"
+                  placeholder="tucorreo@ejemplo.com"
+                  value={emailInput}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmailInput(e.target.value)}
+                  className={emailError ? 'border-destructive' : ''}
+                />
+                {emailError && <p className="text-sm text-destructive mt-1.5">{emailError}</p>}
+              </div>
+              <Button
+                onClick={handleEmailSubmit}
+                disabled={updateEmailMutation.isPending || (emailInput.trim() === (profile.email ?? ''))}
+                isLoading={updateEmailMutation.isPending}
+              >
+                Guardar
+              </Button>
+            </div>
           </div>
         </div>
       </div>
