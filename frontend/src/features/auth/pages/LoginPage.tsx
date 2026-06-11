@@ -16,6 +16,11 @@ export const LoginPage = () => {
       return;
     }
 
+    // Cerrar el teclado de iOS antes de navegar: si sigue abierto cuando entra el
+    // AppLayout, el BottomNav (position:fixed) queda mal posicionado. El blur arranca
+    // el cierre del teclado mientras corre el request de login.
+    (document.activeElement as HTMLElement | null)?.blur();
+
     loginMutation.mutate({ username, password });
   };
 

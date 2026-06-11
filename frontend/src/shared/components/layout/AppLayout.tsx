@@ -1,9 +1,19 @@
+import { useEffect } from 'react';
 import { Outlet, ScrollRestoration } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { MobileHeader } from './MobileHeader';
 import { BottomNav } from './BottomNav';
 
 export const AppLayout = () => {
+  // Al loguearse se entra al shell desde /login, donde el teclado de iOS pudo dejar
+  // la ventana scrolleada. Ese scroll residual deja el BottomNav (position:fixed) mal
+  // ubicado ("se va para arriba") hasta que un gesto fuerza el reflow. Soltamos el foco
+  // y reseteamos el scroll al montar el shell para que la barra quede abajo de una.
+  useEffect(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    window.scrollTo(0, 0);
+  }, []);
+
   return (
     // h-[100dvh]: la barra de URL móvil rompe `h-screen`; dvh sigue al viewport visible.
     <div className="flex h-[100dvh] bg-background">
