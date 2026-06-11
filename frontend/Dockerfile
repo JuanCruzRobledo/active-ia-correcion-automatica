@@ -18,8 +18,9 @@ RUN npm ci
 # Copiar código fuente
 COPY . .
 
-# Build args para variables de entorno de build
-ARG VITE_API_URL=http://localhost:5000/api/v1
+# Build args para variables de entorno de build.
+# Relativa por defecto: la app pega a /api/v1 (mismo origen) y Nginx proxea al backend.
+ARG VITE_API_URL=/api/v1
 ENV VITE_API_URL=$VITE_API_URL
 
 # Compilar aplicación para producción

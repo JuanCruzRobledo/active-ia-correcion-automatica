@@ -103,7 +103,9 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000/api/v1}
+        # Relativa: la app pega a /api/v1 (mismo origen) y Nginx proxea al backend.
+        # Asi funciona en localhost, en la red local y detras de un tunel HTTPS, sin CORS.
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
     container_name: active-ia-frontend
     restart: unless-stopped
     ports:

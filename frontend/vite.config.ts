@@ -69,4 +69,16 @@ export default defineConfig({
       '@': '/src',
     },
   },
+  server: {
+    // host:true → el dev server escucha en 0.0.0.0 (accesible desde la red local).
+    host: true,
+    // En dev la app pega a /api (relativo); Vite lo proxea al backend (puerto 5000
+    // del host, segun docker-compose). Asi dev y prod usan la misma URL relativa.
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+    },
+  },
 })
