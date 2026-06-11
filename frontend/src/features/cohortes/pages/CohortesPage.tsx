@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { GraduationCap, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { GraduationCap, MoreVertical, Pencil, Plus, Trash2, X } from 'lucide-react';
 import {
   Badge,
   Button,
+  ConfirmDialog,
+  Dropdown,
   EmptyState,
   HelpButton,
   LoadingState,
@@ -25,6 +27,7 @@ export const CohortesPage = () => {
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editing, setEditing] = useState<Cohorte | null>(null);
+  const [toDelete, setToDelete] = useState<Cohorte | null>(null);
 
   const handleCreate = () => {
     setEditing(null);
@@ -36,10 +39,11 @@ export const CohortesPage = () => {
     setIsFormOpen(true);
   };
 
-  const handleDeleteCohorte = (cohorte: Cohorte) => {
-    if (window.confirm(`¿Eliminar la cohorte ${cohorte.codigo}?`)) {
-      deleteCohorte.mutate(cohorte.id);
-    }
+  const handleConfirmDelete = () => {
+    if (!toDelete) return;
+    deleteCohorte.mutate(toDelete.id, {
+      onSuccess: () => setToDelete(null),
+    });
   };
 
   const handleAddCuatrimestre = (cohorte: Cohorte) => {
@@ -61,19 +65,19 @@ export const CohortesPage = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-foreground">Cohortes</h1>
+            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Cohortes</h1>
             <HelpButton title="Ayuda — Cohortes" content={helpContent.cohortes} />
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             Cohortes y cuatrimestres para el dashboard de gestores
           </p>
         </div>
-        <Button onClick={handleCreate}>
+        <Button onClick={handleCreate} className="w-full sm:w-auto">
           <Plus className="h-4 w-4" /> Nueva cohorte
         </Button>
       </div>
@@ -95,16 +99,16 @@ export const CohortesPage = () => {
             return (
               <div
                 key={cohorte.id}
-                className="rounded-lg border border-border bg-card p-6"
+                className="rounded-lg border border-border bg-card p-4 sm:p-6"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-accent/10">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
                       <GraduationCap className="h-5 w-5 text-accent" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-lg font-semibold text-foreground">
+                        <span className="truncate text-lg font-semibold text-foreground">
                           {cohorte.codigo}
                         </span>
                         <Badge variant={cohorte.activa ? 'success' : 'default'}>
@@ -112,26 +116,34 @@ export const CohortesPage = () => {
                         </Badge>
                       </div>
                       {cohorte.nombre && (
-                        <p className="text-sm text-muted-foreground">{cohorte.nombre}</p>
+                        <p className="truncate text-sm text-muted-foreground">{cohorte.nombre}</p>
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => handleEdit(cohorte)}
-                      className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      aria-label="Editar cohorte"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteCohorte(cohorte)}
-                      className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                      aria-label="Eliminar cohorte"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+                  <Dropdown
+                    align="right"
+                    trigger={
+                      <span
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:h-9 sm:w-9"
+                        aria-label="Acciones de la cohorte"
+                      >
+                        <MoreVertical className="h-5 w-5" />
+                      </span>
+                    }
+                    items={[
+                      {
+                        label: 'Editar',
+                        icon: <Pencil className="h-4 w-4" />,
+                        onClick: () => handleEdit(cohorte),
+                      },
+                      {
+                        label: 'Eliminar',
+                        icon: <Trash2 className="h-4 w-4" />,
+                        variant: 'danger',
+                        onClick: () => setToDelete(cohorte),
+                      },
+                    ]}
+                  />
                 </div>
 
                 {/* Cuatrimestres */}
@@ -146,12 +158,12 @@ export const CohortesPage = () => {
                     {cohorte.cuatrimestres.map((cuatri) => (
                       <span
                         key={cuatri.id}
-                        className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-sm text-foreground"
+                        className="inline-flex items-center gap-1 rounded-full bg-muted py-1 pl-3 pr-1 text-sm text-foreground"
                       >
                         Cuatrimestre {cuatri.numero}
                         <button
                           onClick={() => deleteCuatrimestre.mutate(cuatri.id)}
-                          className="text-muted-foreground transition-colors hover:text-destructive"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive touch-manipulation"
                           aria-label={`Quitar cuatrimestre ${cuatri.numero}`}
                         >
                           <X className="h-3.5 w-3.5" />
@@ -162,7 +174,7 @@ export const CohortesPage = () => {
                       <button
                         onClick={() => handleAddCuatrimestre(cohorte)}
                         disabled={addCuatrimestre.isPending}
-                        className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1 text-sm text-muted-foreground transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+                        className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-accent hover:text-accent disabled:opacity-50 touch-manipulation"
                       >
                         <Plus className="h-3.5 w-3.5" /> Agregar
                       </button>
@@ -178,6 +190,21 @@ export const CohortesPage = () => {
       {isFormOpen && (
         <CohorteFormModal onClose={() => setIsFormOpen(false)} cohorte={editing} />
       )}
+
+      <ConfirmDialog
+        isOpen={!!toDelete}
+        onClose={() => setToDelete(null)}
+        onConfirm={handleConfirmDelete}
+        title="Eliminar cohorte"
+        message={
+          toDelete
+            ? `¿Seguro que querés eliminar la cohorte ${toDelete.codigo}? Esta acción no se puede deshacer.`
+            : ''
+        }
+        confirmLabel="Eliminar"
+        variant="destructive"
+        isLoading={deleteCohorte.isPending}
+      />
     </div>
   );
 };

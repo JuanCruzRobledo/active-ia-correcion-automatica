@@ -109,55 +109,73 @@ export const UnidadComponentesEditor = ({ unidad, materiaId }: Props) => {
       {rows.map((r) => {
         const aviso = r.fuente === 'SEGUIMIENTO' && sinSeguimiento(r.cmid);
         return (
-          <div key={r.key} className="space-y-1">
-            <div className="flex flex-wrap items-end gap-2">
+          // Cada fila en su propia card: en mobile los campos se apilan (no se aprietan
+          // en una fila horizontal); en sm+ vuelven a una grilla en línea como en desktop.
+          <div
+            key={r.key}
+            className="space-y-1 rounded-lg border border-border bg-background/40 p-3 sm:border-0 sm:bg-transparent sm:p-0"
+          >
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[8rem_12rem_1fr_auto] sm:items-end">
               <Select
                 label="Tipo"
                 options={TIPO_OPTIONS}
                 value={r.tipo}
                 onChange={(e) => updateRow(r.key, { tipo: e.target.value as TipoComponente })}
-                wrapperClassName="w-36"
+                wrapperClassName="w-full"
               />
               <Select
                 label="Fuente"
                 options={FUENTE_OPTIONS}
                 value={r.fuente}
                 onChange={(e) => updateRow(r.key, { fuente: e.target.value as FuenteComponente })}
-                wrapperClassName="w-48"
+                wrapperClassName="w-full"
               />
               <Select
                 label="Actividad de Moodle"
                 options={actividadOptions}
                 value={r.cmid}
                 onChange={(e) => updateRow(r.key, { cmid: e.target.value })}
-                wrapperClassName="min-w-[16rem] flex-1"
+                wrapperClassName="w-full"
               />
               <button
                 type="button"
                 onClick={() => removeRow(r.key)}
-                className="mb-1 rounded-md p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                className="flex min-h-11 w-full items-center justify-center gap-1 rounded-md border border-border px-2 text-sm text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive touch-manipulation sm:mb-px sm:w-11 sm:border-0 sm:px-0"
                 aria-label="Quitar componente"
               >
                 <Trash2 className="h-4 w-4" />
+                <span className="sm:hidden">Quitar</span>
               </button>
             </div>
             {aviso && (
-              <p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Esta actividad no tiene seguimiento de finalización: medila por{' '}
-                <strong>Calificación</strong> o no se detectará como realizada.
+              <p className="flex items-start gap-1 text-xs text-amber-600 dark:text-amber-500">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Esta actividad no tiene seguimiento de finalización: medila por{' '}
+                  <strong>Calificación</strong> o no se detectará como realizada.
+                </span>
               </p>
             )}
           </div>
         );
       })}
 
-      <div className="flex items-center justify-between pt-1">
-        <Button size="sm" variant="outline" onClick={addRow}>
+      <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={addRow}
+          className="w-full sm:w-auto"
+        >
           <Plus className="mr-1 h-4 w-4" />
           Agregar componente
         </Button>
-        <Button size="sm" onClick={guardar} isLoading={setComp.isPending}>
+        <Button
+          size="sm"
+          onClick={guardar}
+          isLoading={setComp.isPending}
+          className="w-full sm:w-auto"
+        >
           Guardar componentes
         </Button>
       </div>

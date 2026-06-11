@@ -180,16 +180,16 @@ export const PerfilPage = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
-        <div className="flex items-center gap-2"><h1 className="text-3xl font-bold text-foreground">Mi Perfil</h1><HelpButton title="Ayuda — Mi Perfil" content={helpContent.perfil} /></div>
+        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground sm:text-3xl">Mi Perfil</h1><HelpButton title="Ayuda — Mi Perfil" content={helpContent.perfil} /></div>
         <p className="text-sm text-muted-foreground">
           Configuración de cuenta y API Key
         </p>
       </div>
 
       {/* Información del Usuario */}
-      <div className="rounded-lg border border-border bg-card p-6">
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
         <div className="flex items-center gap-3 mb-6">
           <UserIcon className="h-5 w-5 text-muted-foreground" />
           <h2 className="text-xl font-semibold text-foreground">
@@ -255,7 +255,7 @@ export const PerfilPage = () => {
       </div>
 
       {/* Email de notificaciones */}
-      <div className="rounded-lg border border-border bg-card p-6">
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
         <div className="flex items-center gap-3 mb-6">
           <Mail className="h-5 w-5 text-muted-foreground" />
           <h2 className="text-xl font-semibold text-foreground">Email de notificaciones</h2>
@@ -279,6 +279,11 @@ export const PerfilPage = () => {
               <div className="flex-1">
                 <Input
                   type="email"
+                  inputMode="email"
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   placeholder="tucorreo@ejemplo.com"
                   value={emailInput}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmailInput(e.target.value)}
@@ -290,6 +295,7 @@ export const PerfilPage = () => {
                 onClick={handleEmailSubmit}
                 disabled={updateEmailMutation.isPending || (emailInput.trim() === (profile.email ?? ''))}
                 isLoading={updateEmailMutation.isPending}
+                className="w-full sm:w-auto"
               >
                 Guardar
               </Button>
@@ -299,7 +305,7 @@ export const PerfilPage = () => {
       </div>
 
       {/* Configuración de API Key */}
-      <div className="rounded-lg border border-border bg-card p-6">
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
         <div className="flex items-center gap-3 mb-6">
           <Key className="h-5 w-5 text-muted-foreground" />
           <h2 className="text-xl font-semibold text-foreground">
@@ -327,17 +333,17 @@ export const PerfilPage = () => {
             </div>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <label className="text-sm font-medium text-foreground">
                 Estado de la API Key
               </label>
-              <div className="flex items-center gap-2 mt-1">
+              <div className="flex flex-wrap items-center gap-2 mt-1">
                 {profile.gemini_api_key_valid ? (
                   <>
                     <Badge variant="success">Configurada</Badge>
                     {profile.gemini_api_key_last_4 && (
-                      <span className="text-sm text-muted-foreground">
+                      <span className="text-sm text-muted-foreground break-all">
                         ****{profile.gemini_api_key_last_4}
                       </span>
                     )}
@@ -351,6 +357,7 @@ export const PerfilPage = () => {
             <Button
               variant={profile.gemini_api_key_valid ? 'secondary' : 'primary'}
               onClick={() => setShowApiKeyModal(true)}
+              className="w-full sm:w-auto"
             >
               {profile.gemini_api_key_valid ? 'Cambiar' : 'Configurar'}
             </Button>
@@ -359,7 +366,7 @@ export const PerfilPage = () => {
           {/* Toggle: API key paga (habilita corrección masiva global) */}
           {profile.gemini_api_key_valid && (
             <div className="mt-4 flex items-start justify-between gap-3 rounded-md border border-border bg-muted/20 px-4 py-3">
-              <div>
+              <div className="min-w-0">
                 <label className="text-sm font-medium text-foreground">
                   API key con facturación habilitada (paga)
                 </label>
@@ -382,7 +389,7 @@ export const PerfilPage = () => {
       </div>
 
       {/* Configuración Moodle */}
-      <div className="rounded-lg border border-border bg-card p-6">
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
         <div className="flex items-center gap-3 mb-6">
           <Globe className="h-5 w-5 text-muted-foreground" />
           <h2 className="text-xl font-semibold text-foreground">Configuración Moodle</h2>
@@ -407,6 +414,11 @@ export const PerfilPage = () => {
               </label>
               <Input
                 type="url"
+                inputMode="url"
+                autoComplete="url"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="https://moodle.ejemplo.com"
                 {...moodleForm.register('moodle_host')}
                 className={moodleForm.formState.errors.moodle_host ? 'border-destructive' : ''}
@@ -424,6 +436,10 @@ export const PerfilPage = () => {
               </label>
               <Input
                 type="text"
+                autoComplete="username"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="usuario@moodle"
                 {...moodleForm.register('moodle_username')}
                 className={moodleForm.formState.errors.moodle_username ? 'border-destructive' : ''}
@@ -441,6 +457,10 @@ export const PerfilPage = () => {
               </label>
               <Input
                 type="password"
+                autoComplete="current-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="••••••••"
                 {...moodleForm.register('moodle_password')}
                 className={moodleForm.formState.errors.moodle_password ? 'border-destructive' : ''}
@@ -457,6 +477,7 @@ export const PerfilPage = () => {
                 type="submit"
                 disabled={moodleMutation.isPending}
                 isLoading={moodleMutation.isPending}
+                className="w-full sm:w-auto"
               >
                 {moodleMutation.isPending ? 'Guardando...' : 'Guardar credenciales'}
               </Button>
@@ -466,14 +487,14 @@ export const PerfilPage = () => {
       </div>
 
       {/* Seguridad */}
-      <div className="rounded-lg border border-border bg-card p-6">
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
         <div className="flex items-center gap-3 mb-6">
           <Shield className="h-5 w-5 text-muted-foreground" />
           <h2 className="text-xl font-semibold text-foreground">Seguridad</h2>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <label className="text-sm font-medium text-foreground">
               Contraseña
             </label>
@@ -483,7 +504,11 @@ export const PerfilPage = () => {
             </p>
           </div>
 
-          <Button variant="secondary" onClick={() => setShowPasswordModal(true)}>
+          <Button
+            variant="secondary"
+            onClick={() => setShowPasswordModal(true)}
+            className="w-full sm:w-auto"
+          >
             Cambiar contraseña
           </Button>
         </div>
@@ -511,22 +536,27 @@ export const PerfilPage = () => {
             <div className="relative">
               <Input
                 type={showApiKey ? 'text' : 'password'}
+                autoComplete="off"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="Ingresá tu API Key"
                 value={apiKey}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setApiKey(e.target.value)
                 }
-                className={apiKeyError ? 'border-destructive' : ''}
+                className={apiKeyError ? 'border-destructive pr-11' : 'pr-11'}
               />
               <button
                 type="button"
                 onClick={() => setShowApiKey(!showApiKey)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label={showApiKey ? 'Ocultar API Key' : 'Mostrar API Key'}
+                className="absolute right-1 top-1/2 inline-flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground touch-manipulation sm:min-h-0 sm:min-w-0 sm:right-3"
               >
                 {showApiKey ? (
-                  <EyeOff className="h-4 w-4" />
+                  <EyeOff className="h-5 w-5 sm:h-4 sm:w-4" />
                 ) : (
-                  <Eye className="h-4 w-4" />
+                  <Eye className="h-5 w-5 sm:h-4 sm:w-4" />
                 )}
               </button>
             </div>
@@ -542,7 +572,7 @@ export const PerfilPage = () => {
             </p>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
             <Button
               variant="ghost"
               onClick={() => {
@@ -551,6 +581,7 @@ export const PerfilPage = () => {
                 setApiKeyError('');
               }}
               disabled={updateApiKeyMutation.isPending}
+              className="w-full sm:w-auto"
             >
               Cancelar
             </Button>
@@ -558,6 +589,7 @@ export const PerfilPage = () => {
               onClick={handleApiKeySubmit}
               disabled={!apiKey || updateApiKeyMutation.isPending}
               isLoading={updateApiKeyMutation.isPending}
+              className="w-full sm:w-auto"
             >
               {updateApiKeyMutation.isPending ? 'Validando...' : 'Guardar'}
             </Button>
@@ -585,21 +617,27 @@ export const PerfilPage = () => {
             <div className="relative">
               <Input
                 type={showCurrentPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="••••••••"
                 value={currentPassword}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setCurrentPassword(e.target.value)
                 }
+                className="pr-11"
               />
               <button
                 type="button"
                 onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label={showCurrentPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                className="absolute right-1 top-1/2 inline-flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground touch-manipulation sm:min-h-0 sm:min-w-0 sm:right-3"
               >
                 {showCurrentPassword ? (
-                  <EyeOff className="h-4 w-4" />
+                  <EyeOff className="h-5 w-5 sm:h-4 sm:w-4" />
                 ) : (
-                  <Eye className="h-4 w-4" />
+                  <Eye className="h-5 w-5 sm:h-4 sm:w-4" />
                 )}
               </button>
             </div>
@@ -612,22 +650,27 @@ export const PerfilPage = () => {
             <div className="relative">
               <Input
                 type={showNewPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="••••••••"
                 value={newPassword}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setNewPassword(e.target.value)
                 }
-                className={passwordError ? 'border-destructive' : ''}
+                className={passwordError ? 'border-destructive pr-11' : 'pr-11'}
               />
               <button
                 type="button"
                 onClick={() => setShowNewPassword(!showNewPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label={showNewPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                className="absolute right-1 top-1/2 inline-flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground touch-manipulation sm:min-h-0 sm:min-w-0 sm:right-3"
               >
                 {showNewPassword ? (
-                  <EyeOff className="h-4 w-4" />
+                  <EyeOff className="h-5 w-5 sm:h-4 sm:w-4" />
                 ) : (
-                  <Eye className="h-4 w-4" />
+                  <Eye className="h-5 w-5 sm:h-4 sm:w-4" />
                 )}
               </button>
             </div>
@@ -640,22 +683,27 @@ export const PerfilPage = () => {
             <div className="relative">
               <Input
                 type={showConfirmPassword ? 'text' : 'password'}
+                autoComplete="new-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="••••••••"
                 value={confirmPassword}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                   setConfirmPassword(e.target.value)
                 }
-                className={passwordError ? 'border-destructive' : ''}
+                className={passwordError ? 'border-destructive pr-11' : 'pr-11'}
               />
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                aria-label={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                className="absolute right-1 top-1/2 inline-flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground touch-manipulation sm:min-h-0 sm:min-w-0 sm:right-3"
               >
                 {showConfirmPassword ? (
-                  <EyeOff className="h-4 w-4" />
+                  <EyeOff className="h-5 w-5 sm:h-4 sm:w-4" />
                 ) : (
-                  <Eye className="h-4 w-4" />
+                  <Eye className="h-5 w-5 sm:h-4 sm:w-4" />
                 )}
               </button>
             </div>
@@ -672,7 +720,7 @@ export const PerfilPage = () => {
             </p>
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
             <Button
               variant="ghost"
               onClick={() => {
@@ -683,6 +731,7 @@ export const PerfilPage = () => {
                 setPasswordError('');
               }}
               disabled={changePasswordMutation.isPending}
+              className="w-full sm:w-auto"
             >
               Cancelar
             </Button>
@@ -695,6 +744,7 @@ export const PerfilPage = () => {
                 changePasswordMutation.isPending
               }
               isLoading={changePasswordMutation.isPending}
+              className="w-full sm:w-auto"
             >
               {changePasswordMutation.isPending
                 ? 'Cambiando...'

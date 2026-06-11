@@ -81,13 +81,13 @@ export const ConfigForm = ({ materiaId, config, cohortes, secciones }: ConfigFor
   };
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
+    <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
       <h2 className="text-lg font-semibold text-foreground">Vinculación y unidad actual</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         Asigná la materia a un cuatrimestre y definí en qué unidad se está cursando.
       </p>
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
+      <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <Select
           label="Cohorte"
           options={cohorteOptions}
@@ -104,6 +104,8 @@ export const ConfigForm = ({ materiaId, config, cohortes, secciones }: ConfigFor
         <Input
           label="Unidad actual"
           type="number"
+          inputMode="numeric"
+          pattern="[0-9]*"
           min={1}
           placeholder="Ej: 5"
           value={unidadActual}
@@ -125,7 +127,11 @@ export const ConfigForm = ({ materiaId, config, cohortes, secciones }: ConfigFor
       </div>
 
       <div className="mt-4 flex justify-end">
-        <Button onClick={handleGuardar} isLoading={setConfig.isPending}>
+        <Button
+          onClick={handleGuardar}
+          isLoading={setConfig.isPending}
+          className="w-full sm:w-auto"
+        >
           Guardar configuración
         </Button>
       </div>

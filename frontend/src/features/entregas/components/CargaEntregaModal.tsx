@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import toast from 'react-hot-toast';
 import { useCreateEntrega, useCreateEntregaMasiva } from '../hooks';
 import { Modal } from '@/shared/components/ui/Modal';
 import { Button } from '@/shared/components/ui/Button';
@@ -203,7 +204,7 @@ function UploadResultView({
 
       {/* Footer */}
       <div className="flex justify-end pt-4 border-t">
-        <Button onClick={onClose} variant="primary">
+        <Button onClick={onClose} variant="primary" className="w-full sm:w-auto">
           Cerrar
         </Button>
       </div>
@@ -314,7 +315,7 @@ function CargaEntregaForm({
   const onSubmit = async (data: IndividualFormData | MasivoFormData) => {
     // Validate custom extensions when PERSONALIZADO is selected
     if (data.modo_consolidacion === 'PERSONALIZADO' && extensionesPersonalizadas.length === 0) {
-      alert('Debes agregar al menos una extensión personalizada.');
+      toast.error('Debes agregar al menos una extensión personalizada.');
       return;
     }
 
@@ -539,8 +540,8 @@ function CargaEntregaForm({
       )}
 
       {/* Footer */}
-      <div className="flex justify-end gap-3 pt-4 border-t">
-        <Button type="button" variant="secondary" onClick={onClose}>
+      <div className="flex flex-col-reverse gap-2 pt-4 border-t sm:flex-row sm:justify-end sm:gap-3">
+        <Button type="button" variant="secondary" onClick={onClose} className="w-full sm:w-auto">
           Cancelar
         </Button>
         <Button
@@ -548,6 +549,7 @@ function CargaEntregaForm({
           variant="primary"
           isLoading={createMutation.isPending || createMasivaMutation.isPending}
           disabled={!selectedFile}
+          className="w-full sm:w-auto"
         >
           {mode === 'individual' ? 'Subir Entrega' : 'Subir Lote'}
         </Button>

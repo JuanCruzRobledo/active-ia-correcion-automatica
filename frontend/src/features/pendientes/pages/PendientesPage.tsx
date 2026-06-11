@@ -29,14 +29,14 @@ export function PendientesPage() {
 
   if (error) {
     return (
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Pendientes Moodle</h1><HelpButton title="Ayuda — Pendientes" content={helpContent.pendientes} /></div>
+      <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground sm:text-3xl">Pendientes Moodle</h1><HelpButton title="Ayuda — Pendientes" content={helpContent.pendientes} /></div>
           {!is424 && (
             <button
               onClick={refresh}
               disabled={isRefreshing}
-              className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Actualizando…' : 'Actualizar'}
@@ -60,7 +60,7 @@ export function PendientesPage() {
           {is424 ? (
             <button
               onClick={() => navigate('/perfil')}
-              className="cursor-pointer rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+              className="min-h-11 w-full cursor-pointer rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 sm:w-auto"
             >
               Ir a mi perfil
             </button>
@@ -68,7 +68,7 @@ export function PendientesPage() {
             <button
               onClick={refresh}
               disabled={isRefreshing}
-              className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
               {isRefreshing ? 'Actualizando…' : 'Reintentar'}
@@ -89,24 +89,26 @@ export function PendientesPage() {
     : materias;
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Pendientes Moodle</h1><HelpButton title="Ayuda — Pendientes" content={helpContent.pendientes} /></div>
+    <div className="space-y-4 p-4 sm:space-y-6 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground sm:text-3xl">Pendientes Moodle</h1><HelpButton title="Ayuda — Pendientes" content={helpContent.pendientes} /></div>
         <div className="flex items-center gap-2">
           {totalEspera > 0 && (
             <ImportarButton
               scope="tutor"
               label="Importar todo"
               modalTitle="Importar todas mis pendientes"
+              fullWidth
             />
           )}
           <button
             onClick={refresh}
             disabled={isRefreshing}
-            className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Actualizar"
+            className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            {isRefreshing ? 'Actualizando…' : 'Actualizar'}
+            <span className="hidden sm:inline">{isRefreshing ? 'Actualizando…' : 'Actualizar'}</span>
           </button>
         </div>
       </div>
@@ -135,23 +137,23 @@ export function PendientesPage() {
         />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="inline-flex w-full rounded-full bg-muted p-1 sm:w-auto">
         <button
           onClick={() => setShowUrgentOnly(false)}
-          className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+          className={`min-h-11 flex-1 cursor-pointer rounded-full px-4 py-1.5 text-sm font-medium transition-colors sm:flex-none ${
             !showUrgentOnly
               ? 'bg-primary text-primary-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              : 'text-muted-foreground hover:bg-muted/80'
           }`}
         >
           Todos
         </button>
         <button
           onClick={() => setShowUrgentOnly(true)}
-          className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+          className={`min-h-11 flex-1 cursor-pointer rounded-full px-4 py-1.5 text-sm font-medium transition-colors sm:flex-none ${
             showUrgentOnly
               ? 'bg-destructive text-destructive-foreground'
-              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              : 'text-muted-foreground hover:bg-muted/80'
           }`}
         >
           Solo con pendientes

@@ -14,6 +14,8 @@ interface ImportarButtonProps {
   label: string;
   modalTitle: string;
   size?: 'sm' | 'md';
+  /** Ocupa el ancho disponible en mobile (`flex-1 sm:flex-none`). */
+  fullWidth?: boolean;
 }
 
 type Fase = 'idle' | 'streaming' | 'done' | 'error';
@@ -26,6 +28,7 @@ export function ImportarButton({
   label,
   modalTitle,
   size = 'md',
+  fullWidth = false,
 }: ImportarButtonProps) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -75,10 +78,11 @@ export function ImportarButton({
     setErrorMsg(null);
   };
 
+  const widthClasses = fullWidth ? 'flex-1 sm:flex-none' : '';
   const btnClasses =
     size === 'sm'
-      ? 'flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/80 disabled:opacity-50'
-      : 'flex cursor-pointer items-center gap-2 rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-50';
+      ? `flex min-h-11 cursor-pointer items-center justify-center gap-1 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation sm:min-h-0 ${widthClasses}`
+      : `flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/80 disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation sm:min-h-0 ${widthClasses}`;
 
   const pct = progreso && progreso.total > 0
     ? Math.round((progreso.procesadas / progreso.total) * 100)

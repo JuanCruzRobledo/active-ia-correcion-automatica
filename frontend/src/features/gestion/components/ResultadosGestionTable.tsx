@@ -1,9 +1,41 @@
+import { ResponsiveTable, type TableColumn } from '@/shared/components/ui';
 import type { AlumnoGestion } from '../types';
 
 interface Props {
   items: AlumnoGestion[];
   total: number;
 }
+
+function EstatusBadge({ suspendido }: { suspendido: boolean }) {
+  return (
+    <span
+      className={
+        suspendido
+          ? 'rounded-full bg-warning/10 px-2 py-0.5 text-xs text-warning'
+          : 'rounded-full bg-success/10 px-2 py-0.5 text-xs text-success'
+      }
+    >
+      {suspendido ? 'Inactivo' : 'Activo'}
+    </span>
+  );
+}
+
+const COLUMNS: TableColumn<AlumnoGestion>[] = [
+  { key: 'nombre', header: 'Nombre', render: (a) => a.nombre },
+  { key: 'apellido', header: 'Apellido', render: (a) => a.apellido },
+  {
+    key: 'email',
+    header: 'Email',
+    render: (a) => <span className="break-all text-muted-foreground">{a.email}</span>,
+  },
+  { key: 'comision', header: 'Comisión', render: (a) => a.comision },
+  { key: 'inactividad', header: 'Inactividad', render: (a) => a.tiempo_inactividad },
+  {
+    key: 'estatus',
+    header: 'Estatus',
+    render: (a) => <EstatusBadge suspendido={a.suspendido} />,
+  },
+];
 
 export function ResultadosGestionTable({ items, total }: Props) {
   // Agrupar por regional (los items ya vienen ordenados por regional→comisión).
@@ -24,47 +56,19 @@ export function ResultadosGestionTable({ items, total }: Props) {
 
       {[...grupos.entries()].map(([regional, alumnos]) => (
         <div key={regional} className="overflow-hidden rounded-lg border border-border">
-          <div className="flex items-center justify-between bg-muted/40 px-4 py-2">
-            <h3 className="font-semibold text-foreground">{regional}</h3>
-            <span className="text-sm text-muted-foreground">
+          <div className="flex items-center justify-between gap-2 bg-muted/40 px-4 py-2">
+            <h3 className="min-w-0 break-words font-semibold text-foreground">{regional}</h3>
+            <span className="shrink-0 text-sm text-muted-foreground">
               {alumnos.length} alumno(s)
             </span>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-muted-foreground">
-                  <th className="px-4 py-2 font-medium">Nombre</th>
-                  <th className="px-4 py-2 font-medium">Apellido</th>
-                  <th className="px-4 py-2 font-medium">Email</th>
-                  <th className="px-4 py-2 font-medium">Comisión</th>
-                  <th className="px-4 py-2 font-medium">Inactividad</th>
-                  <th className="px-4 py-2 font-medium">Estatus</th>
-                </tr>
-              </thead>
-              <tbody>
-                {alumnos.map((a, i) => (
-                  <tr key={`${a.email}-${i}`} className="border-b border-border last:border-0">
-                    <td className="px-4 py-2 text-foreground">{a.nombre}</td>
-                    <td className="px-4 py-2 text-foreground">{a.apellido}</td>
-                    <td className="px-4 py-2 text-muted-foreground">{a.email}</td>
-                    <td className="px-4 py-2 text-foreground">{a.comision}</td>
-                    <td className="px-4 py-2 text-foreground">{a.tiempo_inactividad}</td>
-                    <td className="px-4 py-2">
-                      <span
-                        className={
-                          a.suspendido
-                            ? 'rounded-full bg-warning/10 px-2 py-0.5 text-xs text-warning'
-                            : 'rounded-full bg-success/10 px-2 py-0.5 text-xs text-success'
-                        }
-                      >
-                        {a.suspendido ? 'Inactivo' : 'Activo'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* En lg: tabla clásica (look idéntico); en mobile: cards apiladas. */}
+          <div className="p-3 lg:p-0">
+            <ResponsiveTable
+              columns={COLUMNS}
+              data={alumnos}
+              keyExtractor={(a) => `${a.email}-${a.comision}-${a.tiempo_inactividad}`}
+            />
           </div>
         </div>
       ))}

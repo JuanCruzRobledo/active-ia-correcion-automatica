@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
-import { Button, Input, Select } from '@/shared/components/ui';
-import type { SelectOption } from '@/shared/components/ui';
+import { Button, Input, ResponsiveTable, Select } from '@/shared/components/ui';
+import type { SelectOption, TableColumn } from '@/shared/components/ui';
 import {
   useActualizarExamen,
   useCrearExamen,
@@ -114,8 +114,62 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
   const etiquetaDe = (id: number | null) =>
     id == null ? null : (examenes ?? []).find((e) => e.id === id)?.etiqueta ?? `#${id}`;
 
+  // Columnas de la tabla de exámenes (desktop). En mobile, ResponsiveTable las
+  // apila como cards; la columna de acciones (sticky) cae al pie de la card.
+  const examenColumns: TableColumn<ExamenMateria>[] = [
+    {
+      key: 'etiqueta',
+      header: 'Examen',
+      render: (e) => <span className="font-medium text-foreground">{e.etiqueta}</span>,
+    },
+    {
+      key: 'cmid',
+      header: 'cmid',
+      render: (e) => <span className="text-muted-foreground">#{e.moodle_cmid}</span>,
+    },
+    {
+      key: 'aprobacion',
+      header: 'Aprobación',
+      render: (e) => (
+        <span className="text-muted-foreground">
+          {e.modo_aprobacion === 'NUMERICO' ? `Nota ≥ ${e.nota_minima}` : 'Escala'}
+        </span>
+      ),
+    },
+    {
+      key: 'recupera',
+      header: 'Recupera',
+      render: (e) => (
+        <span className="text-muted-foreground">{etiquetaDe(e.recupera_examen_id) ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'acciones',
+      header: '',
+      sticky: true,
+      render: (e) => (
+        <div className="flex items-center justify-end gap-1">
+          <button
+            onClick={() => cargarParaEditar(e)}
+            className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground touch-manipulation"
+            aria-label="Editar examen"
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => eliminar.mutate(e.id)}
+            className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive touch-manipulation"
+            aria-label="Eliminar examen"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      ),
+    },
+  ];
+
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
+    <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
       <div>
         <h2 className="text-lg font-semibold text-foreground">Exámenes de la materia</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -134,50 +188,12 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
           Todavía no cargaste exámenes en esta materia.
         </p>
       ) : (
-        <div className="mt-4 overflow-hidden rounded-lg border border-border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 text-left">Examen</th>
-                <th className="px-4 py-2 text-left">cmid</th>
-                <th className="px-4 py-2 text-left">Aprobación</th>
-                <th className="px-4 py-2 text-left">Recupera</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {(examenes ?? []).map((e) => (
-                <tr key={e.id}>
-                  <td className="px-4 py-2 font-medium text-foreground">{e.etiqueta}</td>
-                  <td className="px-4 py-2 text-muted-foreground">#{e.moodle_cmid}</td>
-                  <td className="px-4 py-2 text-muted-foreground">
-                    {e.modo_aprobacion === 'NUMERICO'
-                      ? `Nota ≥ ${e.nota_minima}`
-                      : 'Escala'}
-                  </td>
-                  <td className="px-4 py-2 text-muted-foreground">
-                    {etiquetaDe(e.recupera_examen_id) ?? '—'}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <button
-                      onClick={() => cargarParaEditar(e)}
-                      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      aria-label="Editar examen"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => eliminar.mutate(e.id)}
-                      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                      aria-label="Eliminar examen"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-4">
+          <ResponsiveTable
+            columns={examenColumns}
+            data={examenes ?? []}
+            keyExtractor={(e) => e.id}
+          />
         </div>
       )}
 
@@ -197,38 +213,41 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
           )}
         </div>
 
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Select
             label="Tipo"
             options={TIPO_OPTIONS}
             value={form.tipo}
             onChange={(ev) => set({ tipo: ev.target.value as TipoExamen })}
-            wrapperClassName="w-44"
+            wrapperClassName="w-full"
           />
           <Input
             label="ID de la tarea (cmid)"
             type="number"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={form.cmid}
             onChange={(ev) => set({ cmid: ev.target.value })}
             placeholder="17459"
-            wrapperClassName="w-40"
+            wrapperClassName="w-full"
           />
           <Select
             label="Aprobación"
             options={MODO_OPTIONS}
             value={form.modo}
             onChange={(ev) => set({ modo: ev.target.value as ModoAprobacion })}
-            wrapperClassName="w-64"
+            wrapperClassName="w-full sm:col-span-2 lg:col-span-1"
           />
           {form.modo === 'NUMERICO' && (
             <Input
               label="Nota mínima"
               type="number"
+              inputMode="decimal"
               step="0.01"
               value={form.notaMinima}
               onChange={(ev) => set({ notaMinima: ev.target.value })}
               placeholder="6"
-              wrapperClassName="w-32"
+              wrapperClassName="w-full"
             />
           )}
           {rescate && (
@@ -237,7 +256,7 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
               options={parcialOptions}
               value={form.recupera}
               onChange={(ev) => set({ recupera: ev.target.value })}
-              wrapperClassName="min-w-[16rem] flex-1"
+              wrapperClassName="w-full sm:col-span-2"
             />
           )}
         </div>
@@ -254,6 +273,7 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
             onClick={guardar}
             disabled={!valido}
             isLoading={crear.isPending || actualizar.isPending}
+            className="w-full sm:w-auto"
           >
             <Plus className="mr-1 h-4 w-4" />
             {editId != null ? 'Guardar cambios' : 'Agregar examen'}

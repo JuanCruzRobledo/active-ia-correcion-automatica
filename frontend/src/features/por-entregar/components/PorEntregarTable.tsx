@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Send, AlertCircle, Pencil } from 'lucide-react';
 import { SubirMoodleModal } from '@/features/entregas/components/SubirMoodleModal';
+import { ResponsiveTable, type TableColumn } from '@/shared/components/ui';
 import type { CorreccionPorEntrega } from '../types';
 
 interface PorEntregarTableProps {
@@ -18,8 +19,88 @@ function agruparPorMateria(items: CorreccionPorEntrega[]) {
   return Array.from(grupos.values());
 }
 
+/** Chip de error: visible (no en title=) para que se lea también en touch. */
+function ErrorChip({ mensaje }: { mensaje: string | null }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] text-destructive">
+      <AlertCircle className="h-3 w-3 shrink-0" />
+      {mensaje ?? 'Falló el último intento'}
+    </span>
+  );
+}
+
+/** Chip "requiere comentario": visible (no en title=) para touch. */
+function ComentarioChip() {
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] text-warning">
+      <Pencil className="h-3 w-3 shrink-0" />
+      requiere comentario
+    </span>
+  );
+}
+
 export function PorEntregarTable({ items }: PorEntregarTableProps) {
   const grupos = agruparPorMateria(items);
+  // Modal de subida a Moodle: una sola fuente de verdad a nivel componente,
+  // montada fuera de la tabla/cards (antes vivía en un <tr><td colSpan>).
+  const [activo, setActivo] = useState<CorreccionPorEntrega | null>(null);
+
+  const columns: TableColumn<CorreccionPorEntrega>[] = [
+    {
+      key: 'alumno',
+      header: 'Alumno',
+      render: (item) => (
+        <div className="flex flex-col gap-1">
+          <span className="font-medium text-foreground">{item.alumno_nombre}</span>
+          {item.estado_ultimo_intento === 'error' && (
+            <ErrorChip mensaje={item.mensaje_error} />
+          )}
+        </div>
+      ),
+    },
+    {
+      key: 'comision',
+      header: 'Comisión',
+      render: (item) => (
+        <span className="text-muted-foreground">{item.comision_nombre}</span>
+      ),
+    },
+    {
+      key: 'trabajo',
+      header: 'Trabajo',
+      render: (item) => (
+        <span className="text-muted-foreground">{item.rubrica_titulo}</span>
+      ),
+    },
+    {
+      key: 'nota',
+      header: 'Nota',
+      render: (item) => (
+        <div className="flex flex-col gap-1">
+          <span className="font-semibold text-foreground">{item.etiqueta_nota}</span>
+          {item.requiere_comentario_tutor && <ComentarioChip />}
+        </div>
+      ),
+    },
+    {
+      key: 'accion',
+      header: 'Acción',
+      sticky: true,
+      className: 'text-right',
+      render: (item) => (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setActivo(item);
+          }}
+          className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/80 touch-manipulation min-h-[44px] sm:min-h-0"
+        >
+          <Send className="h-3 w-3" />
+          Subir
+        </button>
+      ),
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -28,83 +109,65 @@ export function PorEntregarTable({ items }: PorEntregarTableProps) {
           <div className="bg-muted/40 px-4 py-2 text-sm font-semibold text-foreground">
             {grupo.nombre}
           </div>
-          <table className="w-full text-sm">
-            <thead className="border-b border-border text-xs text-muted-foreground">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium">Alumno</th>
-                <th className="px-4 py-2 text-left font-medium">Comisión</th>
-                <th className="px-4 py-2 text-left font-medium">Trabajo</th>
-                <th className="px-4 py-2 text-left font-medium">Nota</th>
-                <th className="px-4 py-2 text-right font-medium">Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {grupo.items.map((item) => (
-                <PorEntregarRow key={item.correccion_id} item={item} />
-              ))}
-            </tbody>
-          </table>
+          <div className="p-3 lg:p-0">
+            <ResponsiveTable
+              columns={columns}
+              data={grupo.items}
+              keyExtractor={(item) => item.correccion_id}
+              renderCard={(item) => (
+                <PorEntregarCard item={item} onSubir={() => setActivo(item)} />
+              )}
+            />
+          </div>
         </div>
       ))}
+
+      {activo && (
+        <SubirMoodleModal
+          entregaId={activo.entrega_id}
+          alumno={activo.alumno_nombre}
+          isOpen={!!activo}
+          onClose={() => setActivo(null)}
+        />
+      )}
     </div>
   );
 }
 
-function PorEntregarRow({ item }: { item: CorreccionPorEntrega }) {
-  const [open, setOpen] = useState(false);
-
+/** Tarjeta mobile de una corrección por entregar. */
+function PorEntregarCard({
+  item,
+  onSubir,
+}: {
+  item: CorreccionPorEntrega;
+  onSubir: () => void;
+}) {
   return (
-    <>
-      <tr className="border-b border-border last:border-0 hover:bg-muted/20">
-        <td className="px-4 py-2 font-medium text-foreground">
-          {item.alumno_nombre}
-          {item.estado_ultimo_intento === 'error' && (
-            <span
-              className="ml-2 inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] text-destructive"
-              title={item.mensaje_error ?? 'Falló el último intento'}
-            >
-              <AlertCircle className="h-3 w-3" />
-              Falló el último intento
-            </span>
-          )}
-        </td>
-        <td className="px-4 py-2 text-muted-foreground">{item.comision_nombre}</td>
-        <td className="px-4 py-2 text-muted-foreground">{item.rubrica_titulo}</td>
-        <td className="px-4 py-2">
-          <span className="font-semibold text-foreground">{item.etiqueta_nota}</span>
-          {item.requiere_comentario_tutor && (
-            <span
-              className="ml-2 inline-flex items-center gap-1 text-[11px] text-warning"
-              title="Requiere que escribas un comentario antes de enviar"
-            >
-              <Pencil className="h-3 w-3" />
-              requiere comentario
-            </span>
-          )}
-        </td>
-        <td className="px-4 py-2 text-right">
-          <button
-            onClick={() => setOpen(true)}
-            className="inline-flex cursor-pointer items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/80"
-          >
-            <Send className="h-3 w-3" />
-            Subir
-          </button>
-        </td>
-      </tr>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <span className="font-medium text-foreground">{item.alumno_nombre}</span>
+        <span className="text-xs text-muted-foreground">
+          {item.comision_nombre} · {item.rubrica_titulo}
+        </span>
+      </div>
 
-      {open && (
-        <tr>
-          <td colSpan={5} className="p-0">
-            <SubirMoodleModal
-              entregaId={item.entrega_id}
-              alumno={item.alumno_nombre}
-              isOpen={open}
-              onClose={() => setOpen(false)}
-            />
-          </td>
-        </tr>
-      )}
-    </>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded-md bg-muted px-2 py-0.5 text-sm font-semibold text-foreground">
+          {item.etiqueta_nota}
+        </span>
+        {item.requiere_comentario_tutor && <ComentarioChip />}
+        {item.estado_ultimo_intento === 'error' && (
+          <ErrorChip mensaje={item.mensaje_error} />
+        )}
+      </div>
+
+      <button
+        onClick={onSubir}
+        className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-md bg-accent px-3 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/80 touch-manipulation min-h-[44px]"
+      >
+        <Send className="h-4 w-4" />
+        Subir
+      </button>
+    </div>
   );
 }

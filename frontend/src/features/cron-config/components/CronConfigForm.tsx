@@ -47,7 +47,7 @@ export const CronConfigForm = ({ config, usuarios }: CronConfigFormProps) => {
   };
 
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
+    <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
       <h2 className="text-lg font-semibold text-foreground">Programación del cron</h2>
       <p className="mt-1 text-sm text-muted-foreground">
         El cron corre 1×/día (hora de Argentina) y usa las credenciales de Moodle del
@@ -72,6 +72,8 @@ export const CronConfigForm = ({ config, usuarios }: CronConfigFormProps) => {
         <Input
           label="Minuto"
           type="number"
+          inputMode="numeric"
+          pattern="[0-9]*"
           min={0}
           max={59}
           value={minuto}
@@ -87,7 +89,7 @@ export const CronConfigForm = ({ config, usuarios }: CronConfigFormProps) => {
       </div>
 
       <div className="mt-4 flex justify-end">
-        <Button onClick={handleGuardar} isLoading={setConfig.isPending}>
+        <Button onClick={handleGuardar} isLoading={setConfig.isPending} className="w-full sm:w-auto">
           Guardar
         </Button>
       </div>

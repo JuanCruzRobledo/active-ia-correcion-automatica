@@ -25,7 +25,7 @@ interface CorrectionsProgressProps {
 
 export function CorrectionsProgress({ progress }: CorrectionsProgressProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-6">
+    <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
       <h2 className="mb-4 text-lg font-semibold text-foreground">
         Estado de Correcciones por Comisión
       </h2>
@@ -41,9 +41,9 @@ export function CorrectionsProgress({ progress }: CorrectionsProgressProps) {
 
             return (
               <div key={item.id} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground break-words">
                       {item.comision} ({item.tutor})
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -70,7 +70,7 @@ export function CorrectionsProgress({ progress }: CorrectionsProgressProps) {
                       )}
                     </p>
                   </div>
-                  <span className="text-sm font-medium text-foreground">
+                  <span className="shrink-0 text-sm font-medium text-foreground">
                     {item.completed}/{item.total} ({percentage}%)
                   </span>
                 </div>

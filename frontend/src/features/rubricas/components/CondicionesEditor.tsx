@@ -58,6 +58,7 @@ export function CondicionesEditor({
                         <Input
                           label="Nota Máxima"
                           type="number"
+                          inputMode="numeric"
                           min={0}
                           max={100}
                           {...register(`condiciones_desaprobacion.${index}.nota_maxima`, {
@@ -93,8 +94,9 @@ export function CondicionesEditor({
                   <button
                     type="button"
                     onClick={() => remove(index)}
-                    className="text-destructive hover:text-destructive/80 mt-6"
+                    className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-destructive hover:text-destructive/80 touch-manipulation mt-6 sm:min-h-0 sm:min-w-0"
                     title="Eliminar condición"
+                    aria-label="Eliminar condición"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

@@ -27,7 +27,7 @@ export const EstadoPie = ({ conteos, onSlice }: EstadoPieProps) => {
 
   if (data.length === 0) {
     return (
-      <div className="flex h-[320px] items-center justify-center text-sm text-muted-foreground">
+      <div className="flex h-60 items-center justify-center text-sm text-muted-foreground sm:h-[320px]">
         No hay alumnos para esta selección.
       </div>
     );
@@ -35,41 +35,46 @@ export const EstadoPie = ({ conteos, onSlice }: EstadoPieProps) => {
 
   return (
     <div>
-      <ResponsiveContainer width="100%" height={300}>
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            nameKey="label"
-            innerRadius={70}
-            outerRadius={120}
-            paddingAngle={2}
-            onClick={(_, index) => onSlice(data[index].estado)}
-          >
-            {data.map((d) => (
-              <Cell key={d.estado} fill={colors[d.estado]} cursor="pointer" />
-            ))}
-          </Pie>
-          <Tooltip
-            formatter={(value, name) => [`${value} alumno(s)`, name]}
-            contentStyle={{
-              background: 'oklch(var(--popover))',
-              border: '1px solid oklch(var(--border))',
-              borderRadius: 8,
-              color: 'oklch(var(--popover-foreground))',
-            }}
-            itemStyle={{ color: 'oklch(var(--popover-foreground))' }}
-          />
-        </PieChart>
-      </ResponsiveContainer>
+      {/* Alto y radios responsive: en mobile más compacto y en porcentaje para
+          que la torta sea legible en pantallas chicas; en sm: el look actual. */}
+      <div className="h-60 sm:h-[300px]">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="label"
+              innerRadius="55%"
+              outerRadius="80%"
+              paddingAngle={2}
+              onClick={(_, index) => onSlice(data[index].estado)}
+            >
+              {data.map((d) => (
+                <Cell key={d.estado} fill={colors[d.estado]} cursor="pointer" />
+              ))}
+            </Pie>
+            <Tooltip
+              formatter={(value, name) => [`${value} alumno(s)`, name]}
+              contentStyle={{
+                background: 'oklch(var(--popover))',
+                border: '1px solid oklch(var(--border))',
+                borderRadius: 8,
+                color: 'oklch(var(--popover-foreground))',
+              }}
+              itemStyle={{ color: 'oklch(var(--popover-foreground))' }}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
 
-      {/* Leyenda con el conteo por estado (clickeable, igual que la torta) */}
-      <div className="mt-3 flex flex-wrap justify-center gap-x-6 gap-y-2">
+      {/* Leyenda con el conteo por estado (clickeable, igual que la torta).
+          En mobile es el medio principal de interacción → targets táctiles. */}
+      <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 sm:gap-x-6 sm:gap-y-2">
         {data.map((d) => (
           <button
             key={d.estado}
             onClick={() => onSlice(d.estado)}
-            className="flex items-center gap-2 text-sm transition-opacity hover:opacity-80"
+            className="flex min-h-11 items-center gap-2 px-2 py-1.5 text-sm transition-opacity hover:opacity-80 touch-manipulation sm:min-h-0 sm:px-0 sm:py-0"
           >
             <span
               className="h-3 w-3 shrink-0 rounded-sm"

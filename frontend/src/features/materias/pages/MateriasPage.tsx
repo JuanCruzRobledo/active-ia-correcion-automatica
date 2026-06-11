@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BarChart3, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { BarChart3, Pencil, Trash2, RotateCcw, MoreVertical } from 'lucide-react';
 import {
   useMaterias,
   useDeleteMateria,
@@ -14,11 +14,12 @@ import {
   Input,
   Select,
   Badge,
-  Table,
+  ResponsiveTable,
   LoadingState,
   HelpButton,
   EmptyState,
   Dropdown,
+  ConfirmDialog,
   type TableColumn,
   type SelectOption,
 } from '@/shared/components/ui';
@@ -63,6 +64,8 @@ export const MateriasPage = () => {
   // Modal state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  // Confirmación de borrado (reemplaza window.confirm)
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   // Derive API-compatible filters from page state
   const apiFilters: MateriasFilters = {
@@ -93,10 +96,10 @@ export const MateriasPage = () => {
     setEditingId(null);
   };
 
-  const handleDelete = async (id: number) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar esta materia?')) {
-      await deleteMutation.mutateAsync(id);
-    }
+  const handleConfirmDelete = async () => {
+    if (deletingId === null) return;
+    await deleteMutation.mutateAsync(deletingId);
+    setDeletingId(null);
   };
 
   const handleRestore = async (id: number) => {
@@ -109,6 +112,50 @@ export const MateriasPage = () => {
     { value: 'true', label: 'Activas' },
     { value: 'false', label: 'Inactivas' },
   ];
+
+  // Menú de acciones (reutilizado en columna desktop y en card mobile)
+  const renderActions = (materia: MateriaListItem) => (
+    <Dropdown
+      trigger={
+        <button
+          type="button"
+          aria-label="Acciones"
+          className="inline-flex items-center justify-center min-h-11 min-w-11 -mr-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted touch-manipulation"
+        >
+          <MoreVertical className="w-5 h-5" />
+        </button>
+      }
+      items={[
+        {
+          label: 'Editar',
+          onClick: () => handleEdit(materia.id),
+          icon: <Pencil className="w-4 h-4" />,
+        },
+        {
+          label: 'Config. dashboard',
+          onClick: () => navigate(`/materias/${materia.id}/dashboard`),
+          icon: <BarChart3 className="w-4 h-4" />,
+        },
+        // Borrar/restaurar es solo del admin.
+        ...(isAdmin
+          ? [
+              materia.activa
+                ? {
+                    label: 'Eliminar',
+                    onClick: () => setDeletingId(materia.id),
+                    icon: <Trash2 className="w-4 h-4" />,
+                    variant: 'danger' as const,
+                  }
+                : {
+                    label: 'Restaurar',
+                    onClick: () => handleRestore(materia.id),
+                    icon: <RotateCcw className="w-4 h-4" />,
+                  },
+            ]
+          : []),
+      ]}
+    />
+  );
 
   // Table columns
   const columns: TableColumn<MateriaListItem>[] = [
@@ -163,46 +210,39 @@ export const MateriasPage = () => {
       header: 'Acciones',
       className: 'text-right',
       sticky: true,
-      render: (materia) => (
-        <Dropdown
-          trigger={
-            <button className="text-muted-foreground hover:text-foreground px-2 py-1">
-              •••
-            </button>
-          }
-          items={[
-            {
-              label: 'Editar',
-              onClick: () => handleEdit(materia.id),
-              icon: <Pencil className="w-4 h-4" />,
-            },
-            {
-              label: 'Config. dashboard',
-              onClick: () => navigate(`/materias/${materia.id}/dashboard`),
-              icon: <BarChart3 className="w-4 h-4" />,
-            },
-            // Borrar/restaurar es solo del admin.
-            ...(isAdmin
-              ? [
-                  materia.activa
-                    ? {
-                        label: 'Eliminar',
-                        onClick: () => handleDelete(materia.id),
-                        icon: <Trash2 className="w-4 h-4" />,
-                        variant: 'danger' as const,
-                      }
-                    : {
-                        label: 'Restaurar',
-                        onClick: () => handleRestore(materia.id),
-                        icon: <RotateCcw className="w-4 h-4" />,
-                      },
-                ]
-              : []),
-          ]}
-        />
-      ),
+      render: (materia) => renderActions(materia),
     },
   ];
+
+  // Card mobile: codigo/nombre destacados + chips de coordinadores/comisiones +
+  // estado + acciones. Mantiene la misma info que la tabla desktop.
+  const renderCard = (materia: MateriaListItem) => (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="font-medium text-foreground break-words">
+            {materia.codigo}
+          </div>
+          <div className="text-sm text-muted-foreground break-words">
+            {materia.nombre}
+          </div>
+        </div>
+        <div className="shrink-0">{renderActions(materia)}</div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={materia.activa ? 'success' : 'default'}>
+          {materia.activa ? 'Activa' : 'Inactiva'}
+        </Badge>
+        <span className="text-xs text-muted-foreground">
+          {materia.num_coordinadores} coordinadores · {materia.num_comisiones}{' '}
+          comisiones
+        </span>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        Creada el {formatDate(materia.created_at)}
+      </div>
+    </div>
+  );
 
   // Handle filter changes
 
@@ -233,16 +273,20 @@ export const MateriasPage = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Materias</h1><HelpButton title="Ayuda — Materias" content={helpContent.materias} /></div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2"><h1 className="text-2xl sm:text-3xl font-bold text-foreground">Materias</h1><HelpButton title="Ayuda — Materias" content={helpContent.materias} /></div>
           <p className="text-sm text-muted-foreground mt-1">
             {isAdmin ? 'Gestión de materias y coordinadores' : 'Tus materias asignadas'}
           </p>
         </div>
-        {isAdmin && <Button onClick={handleCreate}>+ Crear Materia</Button>}
+        {isAdmin && (
+          <Button onClick={handleCreate} className="w-full sm:w-auto">
+            + Crear Materia
+          </Button>
+        )}
       </div>
 
       {/* Filters */}
@@ -253,6 +297,11 @@ export const MateriasPage = () => {
             placeholder="Buscar por código o nombre..."
             value={inputSearch}
             onChange={(e) => setInputSearch(e.target.value)}
+            inputMode="search"
+            enterKeyHint="search"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
           />
           <Select
             label="Estado"
@@ -270,15 +319,20 @@ export const MateriasPage = () => {
         </div>
       )}
 
-      {/* Table */}
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
-        {data?.items && data.items.length > 0 ? (
-          <Table
+      {/* Table (desktop) / Cards (mobile) */}
+      {data?.items && data.items.length > 0 ? (
+        // En desktop la tabla va dentro del card-wrapper; en mobile las cards
+        // ya traen su propio borde/bg (lo provee ResponsiveTable).
+        <div className="lg:bg-card lg:rounded-lg lg:border lg:border-border lg:overflow-hidden">
+          <ResponsiveTable
             columns={columns}
             data={data.items}
             keyExtractor={(item) => item.id}
+            renderCard={renderCard}
           />
-        ) : (
+        </div>
+      ) : (
+        <div className="bg-card rounded-lg border border-border overflow-hidden">
           <EmptyState
             icon="📚"
             title="No hay materias"
@@ -306,22 +360,23 @@ export const MateriasPage = () => {
               ) : undefined
             }
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Pagination */}
       {data && data.total > data.per_page && (
-        <div className="flex justify-center gap-2">
+        <div className="flex items-center justify-center gap-2">
           <Button
             variant="secondary"
             disabled={filters.page === 1}
             onClick={() =>
               setFilters((prev) => ({ ...prev, page: prev.page - 1 }))
             }
+            className="flex-1 sm:flex-none"
           >
             ← Anterior
           </Button>
-          <div className="flex items-center px-4 text-sm text-muted-foreground">
+          <div className="flex shrink-0 items-center px-2 text-center text-sm text-muted-foreground">
             Página {filters.page} de {Math.ceil(data.total / data.per_page)}
           </div>
           <Button
@@ -330,6 +385,7 @@ export const MateriasPage = () => {
             onClick={() =>
               setFilters((prev) => ({ ...prev, page: prev.page + 1 }))
             }
+            className="flex-1 sm:flex-none"
           >
             Siguiente →
           </Button>
@@ -342,6 +398,18 @@ export const MateriasPage = () => {
         onClose={handleCloseForm}
         materia={editingMateria || undefined}
         isAdmin={isAdmin}
+      />
+
+      {/* Confirmación de borrado (reemplaza window.confirm) */}
+      <ConfirmDialog
+        isOpen={deletingId !== null}
+        onClose={() => setDeletingId(null)}
+        onConfirm={handleConfirmDelete}
+        title="Eliminar materia"
+        message="¿Estás seguro de que deseas eliminar esta materia?"
+        confirmLabel="Eliminar"
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
       />
     </div>
   );

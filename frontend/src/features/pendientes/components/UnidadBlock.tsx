@@ -21,20 +21,20 @@ export function UnidadBlock({ unidad, showUrgentOnly }: UnidadBlockProps) {
     <div className="rounded-md border border-border">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-muted/50"
+        className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50"
       >
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           {open ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
           )}
-          <div>
-            <span className="text-sm font-medium text-foreground">{unidad.titulo}</span>
-            <span className="ml-2 text-xs text-muted-foreground">{unidad.subtitulo}</span>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-sm font-medium text-foreground">{unidad.titulo}</span>
+            <span className="truncate text-xs text-muted-foreground">{unidad.subtitulo}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-wrap justify-end gap-1">
           {unidad.espera > 0 && (
             <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
               {unidad.espera} pendientes

@@ -19,7 +19,7 @@ function toggle(arr: string[], val: string): string[] {
 }
 
 const SELECT_CLS =
-  'w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground';
+  'w-full min-h-11 rounded-md border border-border bg-card px-3 py-2 text-base text-foreground sm:min-h-0 sm:text-sm';
 const LABEL_CLS = 'mb-1 block text-sm font-medium text-muted-foreground';
 
 export function FiltrosGestionForm({
@@ -91,6 +91,7 @@ export function FiltrosGestionForm({
             <div className="mt-2 flex items-center gap-2">
               <input
                 type="number"
+                inputMode="numeric"
                 min={0}
                 placeholder="desde (días)"
                 className={SELECT_CLS}
@@ -101,9 +102,10 @@ export function FiltrosGestionForm({
                   })
                 }
               />
-              <span className="text-muted-foreground">a</span>
+              <span className="shrink-0 text-muted-foreground">a</span>
               <input
                 type="number"
+                inputMode="numeric"
                 min={0}
                 placeholder="hasta (días)"
                 className={SELECT_CLS}
@@ -134,9 +136,9 @@ export function FiltrosGestionForm({
         />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <button onClick={onConsultar} disabled={bloqueado} className={botonAccionCls(consultando)}>
-          <Search className="h-4 w-4" />
+          <Search className="h-4 w-4 shrink-0" />
           {consultando ? 'Consultando…' : 'Consultar'}
         </button>
         <button
@@ -144,7 +146,7 @@ export function FiltrosGestionForm({
           disabled={bloqueado}
           className={botonAccionCls(descargando === 'regional')}
         >
-          <Download className="h-4 w-4" />
+          <Download className="h-4 w-4 shrink-0" />
           {descargando === 'regional' ? 'Generando…' : 'Excel para Nexos'}
         </button>
         <button
@@ -152,7 +154,7 @@ export function FiltrosGestionForm({
           disabled={bloqueado}
           className={botonAccionCls(descargando === 'comision')}
         >
-          <Download className="h-4 w-4" />
+          <Download className="h-4 w-4 shrink-0" />
           {descargando === 'comision' ? 'Generando…' : 'Excel para Tutores'}
         </button>
       </div>
@@ -176,21 +178,22 @@ function MultiSelect({ titulo, opciones, seleccionadas, onToggle }: MultiSelectP
           <span className="ml-1 text-xs text-accent">({seleccionadas.length})</span>
         )}
       </label>
-      <div className="max-h-40 space-y-1 overflow-auto rounded-md border border-border bg-card p-2">
+      <div className="max-h-48 space-y-1 overflow-auto rounded-md border border-border bg-card p-2 sm:max-h-40">
         {opciones.length === 0 && (
           <p className="px-1 text-xs text-muted-foreground">Sin opciones</p>
         )}
         {opciones.map((op) => (
           <label
             key={op}
-            className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm text-foreground hover:bg-muted"
+            className="flex min-h-11 cursor-pointer items-center gap-2 rounded px-1 py-2 text-sm text-foreground hover:bg-muted sm:min-h-0 sm:py-0.5"
           >
             <input
               type="checkbox"
+              className="h-4 w-4 shrink-0"
               checked={seleccionadas.includes(op)}
               onChange={() => onToggle(op)}
             />
-            {op}
+            <span className="min-w-0 break-words">{op}</span>
           </label>
         ))}
       </div>

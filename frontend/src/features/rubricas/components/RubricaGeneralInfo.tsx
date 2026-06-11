@@ -65,6 +65,7 @@ export function RubricaGeneralInfo({
         <Input
           label="Número"
           type="number"
+          inputMode="numeric"
           min={1}
           max={999}
           {...register('numero', { valueAsNumber: true })}
@@ -75,6 +76,7 @@ export function RubricaGeneralInfo({
         <Input
           label="Año"
           type="number"
+          inputMode="numeric"
           min={2020}
           max={2100}
           {...register('anio', { valueAsNumber: true })}
@@ -122,6 +124,7 @@ export function RubricaGeneralInfo({
           <Input
             label="ID de Asignación en Moodle (cmid)"
             type="number"
+            inputMode="numeric"
             placeholder="ej: 11237"
             helperText="ID del assignment de Moodle vinculado a esta rúbrica"
             error={errors.moodle_assign_id?.message as string}

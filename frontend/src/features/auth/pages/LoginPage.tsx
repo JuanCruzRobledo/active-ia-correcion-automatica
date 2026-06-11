@@ -20,14 +20,14 @@ export const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+    <div className="min-h-dvh flex items-center justify-center bg-background pt-safe pb-safe pl-safe pr-safe px-4 py-8 overflow-y-auto scroll-momentum">
       <div className="w-full max-w-md space-y-8">
         {/* Header */}
         <div className="text-center space-y-4">
           <div className="flex justify-center">
-            <img 
-              src="/active-ia-logo.svg" 
-              alt="Active-IA Logo" 
+            <img
+              src="/active-ia-logo.svg"
+              alt="Active-IA Logo"
               className="h-20 w-20"
             />
           </div>
@@ -37,8 +37,8 @@ export const LoginPage = () => {
           </p>
         </div>
 
-        {/* Form Card */}
-        <div className="bg-card rounded-lg shadow-sm border border-border p-8">
+        {/* Form Card: edge-to-edge en mobile, card centrada en sm: */}
+        <div className="bg-card rounded-none sm:rounded-lg shadow-sm border border-border p-6 sm:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-4">
               {/* Username Input */}
@@ -51,7 +51,10 @@ export const LoginPage = () => {
                 disabled={loginMutation.isPending}
                 required
                 autoComplete="username"
-                autoFocus
+                inputMode="text"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
               />
 
               {/* Password Input */}
@@ -64,6 +67,9 @@ export const LoginPage = () => {
                 disabled={loginMutation.isPending}
                 required
                 autoComplete="current-password"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
               />
             </div>
 

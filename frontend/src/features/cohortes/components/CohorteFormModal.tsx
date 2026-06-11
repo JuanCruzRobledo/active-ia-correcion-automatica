@@ -41,11 +41,16 @@ export const CohorteFormModal = ({ onClose, cohorte }: CohorteFormModalProps) =>
       title={isEdit ? `Editar cohorte ${cohorte?.codigo}` : 'Nueva cohorte'}
       size="md"
       footer={
-        <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose} disabled={isPending}>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button
+            variant="secondary"
+            onClick={onClose}
+            disabled={isPending}
+            className="w-full sm:w-auto"
+          >
             Cancelar
           </Button>
-          <Button onClick={handleSubmit} isLoading={isPending}>
+          <Button onClick={handleSubmit} isLoading={isPending} className="w-full sm:w-auto">
             {isEdit ? 'Guardar' : 'Crear'}
           </Button>
         </div>
@@ -59,6 +64,9 @@ export const CohorteFormModal = ({ onClose, cohorte }: CohorteFormModalProps) =>
             value={codigo}
             onChange={(e) => setCodigo(e.target.value.toUpperCase())}
             maxLength={10}
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
           />
         )}
         <Input

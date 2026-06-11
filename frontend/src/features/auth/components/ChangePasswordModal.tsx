@@ -96,7 +96,9 @@ export const ChangePasswordModal = ({ isOpen }: ChangePasswordModalProps) => {
             error={errors.currentPassword}
             required
             autoComplete="current-password"
-            autoFocus
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
           />
 
           <Input
@@ -113,6 +115,9 @@ export const ChangePasswordModal = ({ isOpen }: ChangePasswordModalProps) => {
             helperText="La contraseña debe tener al menos 8 caracteres y ser diferente a la actual"
             required
             autoComplete="new-password"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
           />
 
           <Input
@@ -128,6 +133,9 @@ export const ChangePasswordModal = ({ isOpen }: ChangePasswordModalProps) => {
             error={errors.confirmPassword}
             required
             autoComplete="new-password"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
           />
 
           {changePasswordMutation.isError && (
@@ -142,6 +150,7 @@ export const ChangePasswordModal = ({ isOpen }: ChangePasswordModalProps) => {
             <Button
               type="submit"
               variant="primary"
+              className="w-full sm:w-auto"
               disabled={changePasswordMutation.isPending}
               isLoading={changePasswordMutation.isPending}
             >

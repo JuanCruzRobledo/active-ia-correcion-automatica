@@ -8,6 +8,7 @@
  */
 
 import { useState } from 'react';
+import toast from 'react-hot-toast';
 import { FileText, MoreVertical, Pencil, Copy, Trash2, RotateCcw, Download, FileDown } from 'lucide-react';
 import {
   useRubricas,
@@ -24,11 +25,13 @@ import {
   Input,
   Select,
   Badge,
-  Table,
+  ResponsiveTable,
   LoadingState,
   HelpButton,
   EmptyState,
   Dropdown,
+  ConfirmDialog,
+  Modal,
   type TableColumn,
   type SelectOption,
 } from '@/shared/components/ui';
@@ -87,6 +90,14 @@ export const RubricasPage = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
 
+  // Confirmación de borrado (reemplaza window.confirm)
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+
+  // Duplicado a otro año (reemplaza window.prompt)
+  const [duplicateTargetId, setDuplicateTargetId] = useState<number | null>(null);
+  const [duplicateAnio, setDuplicateAnio] = useState('');
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
+
   // Queries
   const { data, isLoading, error } = useRubricas(filters);
   const { data: materiasData, isLoading: materiasLoading } = useMaterias({ page: 1, per_page: 100 });
@@ -119,33 +130,40 @@ export const RubricasPage = () => {
     setEditingId(null);
   };
 
-  const handleDelete = async (id: number) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar esta rúbrica?')) {
-      await deleteMutation.mutateAsync(id);
-    }
+  const handleConfirmDelete = async () => {
+    if (deleteTargetId === null) return;
+    await deleteMutation.mutateAsync(deleteTargetId);
+    setDeleteTargetId(null);
   };
 
   const handleRestore = async (id: number) => {
     await restoreMutation.mutateAsync(id);
   };
 
-  const handleDuplicate = async (id: number) => {
-    const nuevoAnio = prompt('¿A qué año deseas duplicar la rúbrica?', String(currentYear + 1));
-    if (!nuevoAnio) return;
+  const handleOpenDuplicate = (id: number) => {
+    setDuplicateTargetId(id);
+    setDuplicateAnio(String(currentYear + 1));
+    setDuplicateError(null);
+  };
 
-    const anio = parseInt(nuevoAnio);
+  const handleConfirmDuplicate = async () => {
+    if (duplicateTargetId === null) return;
+
+    const anio = parseInt(duplicateAnio);
     if (isNaN(anio) || anio < 2020 || anio > 2100) {
-      alert('Año inválido. Debe estar entre 2020 y 2100.');
+      setDuplicateError('Año inválido. Debe estar entre 2020 y 2100.');
       return;
     }
 
     try {
       await duplicarMutation.mutateAsync({
-        id,
+        id: duplicateTargetId,
         data: { nuevo_anio: anio },
       });
+      setDuplicateTargetId(null);
     } catch (error) {
       console.error('Error duplicando rúbrica:', error);
+      setDuplicateError('No se pudo duplicar la rúbrica. Intenta nuevamente.');
     }
   };
 
@@ -156,7 +174,7 @@ export const RubricasPage = () => {
       await downloadPDFMutation.mutateAsync({ id: rubrica.id, filename });
     } catch (error) {
       console.error('Error descargando PDF:', error);
-      alert('Error al descargar el PDF. Por favor, intenta nuevamente.');
+      toast.error('Error al descargar el PDF. Por favor, intenta nuevamente.');
     }
   };
 
@@ -167,7 +185,7 @@ export const RubricasPage = () => {
       await downloadPDFResumidoMutation.mutateAsync({ id: rubrica.id, filename });
     } catch (error) {
       console.error('Error descargando guía para estudiantes:', error);
-      alert('Error al descargar la guía para estudiantes. Por favor, intenta nuevamente.');
+      toast.error('Error al descargar la guía para estudiantes. Por favor, intenta nuevamente.');
     }
   };
 
@@ -302,7 +320,7 @@ export const RubricasPage = () => {
             },
             {
               label: 'Duplicar a otro año',
-              onClick: () => handleDuplicate(rubrica.id),
+              onClick: () => handleOpenDuplicate(rubrica.id),
               icon: <Copy className="w-4 h-4" />,
             },
             {
@@ -318,7 +336,7 @@ export const RubricasPage = () => {
             rubrica.activa
               ? {
                 label: 'Eliminar',
-                onClick: () => handleDelete(rubrica.id),
+                onClick: () => setDeleteTargetId(rubrica.id),
                 icon: <Trash2 className="w-4 h-4" />,
                 variant: 'danger' as const,
               }
@@ -350,17 +368,17 @@ export const RubricasPage = () => {
   const totalPages = data ? Math.ceil(data.total / data.per_page) : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Rúbricas</h1><HelpButton title="Ayuda — Rúbricas" content={helpContent.rubricas} /></div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground sm:text-3xl">Rúbricas</h1><HelpButton title="Ayuda — Rúbricas" content={helpContent.rubricas} /></div>
           <p className="text-sm text-muted-foreground mt-1">
             Gestión de criterios de evaluación
           </p>
         </div>
         {!sinMateriasAsignadas && (
-          <Button onClick={handleOpenCreate}>
+          <Button onClick={handleOpenCreate} className="w-full sm:w-auto">
             + Crear Rúbrica
           </Button>
         )}
@@ -405,6 +423,7 @@ export const RubricasPage = () => {
             <Input
               label="Año"
               type="number"
+              inputMode="numeric"
               placeholder={String(currentYear)}
               value={filters.anio?.toString() || ''}
               onChange={(e) => {
@@ -439,15 +458,75 @@ export const RubricasPage = () => {
         </div>
       )}
 
-      {/* Table */}
-      <div className="bg-card rounded-lg border border-border overflow-hidden">
-        {rubricas.length > 0 ? (
-          <Table
+      {/* Table (desktop) / Cards (mobile) */}
+      {rubricas.length > 0 ? (
+        <div className="bg-card rounded-lg border border-border overflow-hidden lg:p-0">
+          <ResponsiveTable
             columns={columns}
             data={rubricas}
             keyExtractor={(rubrica) => rubrica.id}
+            cardClassName="p-3 sm:p-4"
+            renderCard={(rubrica) => (
+              <div className="flex flex-col gap-3">
+                {/* Materia + acciones */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-1/10">
+                      <FileText className="h-4 w-4 text-accent-1" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate font-medium text-foreground">
+                        {rubrica.materia_codigo}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {rubrica.materia_nombre}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="shrink-0">
+                    {columns.find((c) => c.key === 'actions')?.render?.(rubrica)}
+                  </div>
+                </div>
+
+                {/* Título */}
+                <div>
+                  <div className="font-medium text-foreground break-words">{rubrica.titulo}</div>
+                  <div className="text-xs text-muted-foreground">
+                    #{rubrica.numero} - {rubrica.anio}
+                  </div>
+                </div>
+
+                {/* Badges */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={TIPO_COLORS[rubrica.tipo]}>{TIPO_LABELS[rubrica.tipo]}</Badge>
+                  <Badge variant={rubrica.activa ? 'success' : 'default'}>
+                    {rubrica.activa ? 'Activa' : 'Inactiva'}
+                  </Badge>
+                </div>
+
+                {/* Stats */}
+                <dl className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                  <div className="flex items-center gap-1.5">
+                    <dt className="text-muted-foreground">Criterios:</dt>
+                    <dd className="text-foreground">
+                      {rubrica.num_criterios} ({rubrica.puntaje_maximo} pts máx.)
+                    </dd>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <dt className="text-muted-foreground">Entregas:</dt>
+                    <dd className="text-foreground">{rubrica.num_entregas}</dd>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <dt className="text-muted-foreground">Creada:</dt>
+                    <dd className="text-foreground">{formatDate(rubrica.created_at)}</dd>
+                  </div>
+                </dl>
+              </div>
+            )}
           />
-        ) : (
+        </div>
+      ) : (
+        <div className="bg-card rounded-lg border border-border overflow-hidden">
           <EmptyState
             icon={<FileText className="h-12 w-12 text-muted-foreground" />}
             title={sinMateriasAsignadas ? 'Sin materias asignadas' : 'No hay rúbricas'}
@@ -460,33 +539,35 @@ export const RubricasPage = () => {
             }
             action={
               sinMateriasAsignadas ? undefined : (
-                <Button onClick={handleOpenCreate}>
+                <Button onClick={handleOpenCreate} className="w-full sm:w-auto">
                   + Crear primera rúbrica
                 </Button>
               )
             }
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
-        <div className="flex justify-center gap-2">
+        <div className="flex items-center justify-center gap-2">
           <Button
             variant="secondary"
             disabled={filters.page === 1}
+            className="flex-1 sm:flex-none"
             onClick={() =>
               setFilters((f) => ({ ...f, page: Math.max(1, f.page! - 1) }))
             }
           >
             ← Anterior
           </Button>
-          <div className="flex items-center px-4 text-sm text-muted-foreground">
+          <div className="flex items-center px-2 text-center text-sm text-muted-foreground sm:px-4">
             Página {filters.page} de {totalPages}
           </div>
           <Button
             variant="secondary"
             disabled={filters.page === totalPages}
+            className="flex-1 sm:flex-none"
             onClick={() =>
               setFilters((f) => ({
                 ...f,
@@ -505,6 +586,65 @@ export const RubricasPage = () => {
         onClose={handleCloseForm}
         rubrica={editingRubrica}
       />
+
+      {/* Confirmación de borrado */}
+      <ConfirmDialog
+        isOpen={deleteTargetId !== null}
+        onClose={() => setDeleteTargetId(null)}
+        onConfirm={handleConfirmDelete}
+        title="Eliminar rúbrica"
+        message="¿Estás seguro de que deseas eliminar esta rúbrica? Esta acción la marcará como inactiva."
+        confirmLabel="Eliminar"
+        variant="destructive"
+        isLoading={deleteMutation.isPending}
+      />
+
+      {/* Duplicar a otro año */}
+      <Modal
+        isOpen={duplicateTargetId !== null}
+        onClose={() => setDuplicateTargetId(null)}
+        title="Duplicar rúbrica"
+        size="md"
+        footer={
+          <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setDuplicateTargetId(null)}
+              disabled={duplicarMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmDuplicate}
+              isLoading={duplicarMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              Duplicar
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Se creará una copia de la rúbrica para el año indicado.
+          </p>
+          <Input
+            label="Año destino"
+            type="number"
+            inputMode="numeric"
+            min={2020}
+            max={2100}
+            value={duplicateAnio}
+            onChange={(e) => {
+              setDuplicateAnio(e.target.value);
+              setDuplicateError(null);
+            }}
+            error={duplicateError ?? undefined}
+            placeholder={String(currentYear + 1)}
+          />
+        </div>
+      </Modal>
     </div>
   );
 };

@@ -17,14 +17,14 @@ export function PorEntregarPage() {
 
   if (error) {
     return (
-      <div className="space-y-6 p-6">
-        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Por entregar</h1><HelpButton title="Ayuda — Por entregar" content={helpContent.porEntregar} /></div>
+      <div className="space-y-6 p-4 sm:p-6">
+        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground sm:text-3xl">Por entregar</h1><HelpButton title="Ayuda — Por entregar" content={helpContent.porEntregar} /></div>
         <div className="flex flex-col items-center gap-4 rounded-lg border border-border bg-card p-8 text-center">
           <AlertTriangle className="h-10 w-10 text-warning" />
           <p className="font-semibold text-foreground">No se pudo cargar la lista</p>
           <button
             onClick={() => refetch()}
-            className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+            className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted touch-manipulation min-h-[44px]"
           >
             <RefreshCw className="h-4 w-4" />
             Reintentar
@@ -41,10 +41,10 @@ export function PorEntregarPage() {
   const noVinculadas = data?.no_vinculadas ?? 0;
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 p-4 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Por entregar</h1><HelpButton title="Ayuda — Por entregar" content={helpContent.porEntregar} /></div>
+          <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground sm:text-3xl">Por entregar</h1><HelpButton title="Ayuda — Por entregar" content={helpContent.porEntregar} /></div>
           <p className="text-sm text-muted-foreground">
             Correcciones hechas en Active-IA que todavía no subiste a Moodle.
           </p>
@@ -54,10 +54,10 @@ export function PorEntregarPage() {
           <button
             onClick={() => refetch()}
             disabled={isFetching}
-            className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50 touch-manipulation min-h-[44px] sm:flex-none"
           >
             <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-            {isFetching ? 'Actualizando…' : 'Actualizar'}
+            <span className="hidden sm:inline">{isFetching ? 'Actualizando…' : 'Actualizar'}</span>
           </button>
         </div>
       </div>
@@ -105,7 +105,7 @@ export function PorEntregarPage() {
           </p>
           <button
             onClick={() => navigate('/pendientes')}
-            className="mt-4 cursor-pointer rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
+            className="mt-4 w-full cursor-pointer rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted touch-manipulation min-h-[44px] sm:w-auto"
           >
             Ver pendientes por corregir
           </button>

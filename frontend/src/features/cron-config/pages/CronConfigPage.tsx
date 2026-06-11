@@ -94,11 +94,11 @@ export const CronConfigPage = () => {
       : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-4 sm:p-6">
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-foreground">Snapshots del dashboard</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Snapshots del dashboard</h1>
           <HelpButton title="Ayuda — Snapshots / Cron" content={helpContent.cronConfig} />
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -111,9 +111,9 @@ export const CronConfigPage = () => {
       {config && <CronConfigForm config={config} usuarios={usuariosData?.items ?? []} />}
 
       {/* Generación manual por materia */}
-      <div className="rounded-lg border border-border bg-card p-6">
-        <div className="flex items-center justify-between">
-          <div>
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <h2 className="text-lg font-semibold text-foreground">Generar snapshots ahora</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Elegí qué materias recalcular (con tus credenciales de Moodle). Cada una muestra
@@ -124,7 +124,7 @@ export const CronConfigPage = () => {
             <button
               onClick={toggleTodas}
               disabled={running}
-              className="text-sm text-accent transition-colors hover:underline disabled:opacity-50"
+              className="min-h-11 w-full shrink-0 rounded-lg border border-border px-4 text-sm text-accent transition-colors hover:bg-muted/50 disabled:opacity-50 sm:w-auto sm:min-h-0 sm:border-0 sm:px-0 sm:hover:bg-transparent sm:hover:underline"
             >
               {todasSeleccionadas ? 'Quitar todas' : 'Seleccionar todas'}
             </button>
@@ -145,20 +145,20 @@ export const CronConfigPage = () => {
             (materias ?? []).map((m) => (
               <label
                 key={m.materia_id}
-                className="flex cursor-pointer items-center justify-between rounded-lg border border-border px-4 py-3 transition-colors hover:bg-muted/50"
+                className="flex min-h-11 cursor-pointer flex-col gap-1 rounded-lg border border-border px-4 py-3 transition-colors hover:bg-muted/50 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex min-w-0 items-center gap-3">
                   <Checkbox
                     checked={seleccionadas.includes(m.materia_id)}
                     onChange={() => toggle(m.materia_id)}
                     disabled={running}
                   />
-                  <div>
+                  <div className="min-w-0">
                     <span className="font-medium text-foreground">{m.codigo}</span>
                     <span className="text-muted-foreground"> · {m.nombre}</span>
                   </div>
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="pl-8 text-xs text-muted-foreground sm:shrink-0 sm:pl-0 sm:text-right">
                   Último: {fmtFecha(m.ultimo_snapshot)}
                   {m.total_alumnos != null && ` · ${m.total_alumnos} alumnos`}
                 </span>
@@ -173,6 +173,7 @@ export const CronConfigPage = () => {
             onClick={handleGenerar}
             isLoading={running}
             disabled={running || seleccionadas.length === 0}
+            className="w-full sm:w-auto"
           >
             <Play className="h-4 w-4" /> Generar seleccionadas ({seleccionadas.length})
           </Button>
@@ -181,11 +182,11 @@ export const CronConfigPage = () => {
         {/* Barra de progreso */}
         {running && progreso && (
           <div className="mt-4">
-            <div className="mb-1 flex justify-between text-sm text-muted-foreground">
-              <span>
+            <div className="mb-1 flex flex-wrap justify-between gap-x-2 gap-y-0.5 text-sm text-muted-foreground">
+              <span className="shrink-0">
                 Materia {progreso.materiaIdx}/{progreso.materiasTotal}
               </span>
-              <span>
+              <span className="shrink-0">
                 {progreso.procesados}/{progreso.total} alumnos ({pct}%)
               </span>
             </div>

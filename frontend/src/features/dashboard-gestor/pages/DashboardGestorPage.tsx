@@ -60,10 +60,10 @@ export const DashboardGestorPage = () => {
   if (loadingArbol) return <LoadingState title="Cargando dashboard…" />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-2">
-        <h1 className="text-2xl font-bold text-foreground">Avance académico</h1>
+      <div className="flex flex-wrap items-center gap-2">
+        <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Avance académico</h1>
         <HelpButton title="Ayuda — Avance académico" content={helpContent.dashboardGestor} />
       </div>
 
@@ -77,7 +77,7 @@ export const DashboardGestorPage = () => {
       </div>
 
       {/* Gráfico */}
-      <div className="rounded-lg border border-border bg-card p-6">
+      <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
         {cuatrimestreId == null ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
             Elegí una cohorte y un cuatrimestre para ver el avance.
@@ -88,9 +88,11 @@ export const DashboardGestorPage = () => {
           </div>
         ) : avance ? (
           <>
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold text-foreground">{avance.titulo}</h2>
-              <div className="flex items-center gap-3">
+            <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <h2 className="min-w-0 break-words text-lg font-semibold text-foreground">
+                {avance.titulo}
+              </h2>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                 <span className="text-sm text-muted-foreground">
                   {avance.total} alumno(s)
                   {avance.generado_en && ` · actualizado ${fmtFecha(avance.generado_en)}`}
@@ -99,6 +101,7 @@ export const DashboardGestorPage = () => {
                   <Button
                     variant="secondary"
                     size="sm"
+                    className="w-full sm:w-auto"
                     isLoading={descargarExcel.isPending}
                     onClick={() =>
                       descargarExcel.mutate({ cuatrimestreId, materiaId })

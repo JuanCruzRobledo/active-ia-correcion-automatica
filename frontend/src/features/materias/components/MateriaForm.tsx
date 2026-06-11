@@ -140,6 +140,9 @@ export const MateriaForm = ({ isOpen, onClose, materia, isAdmin = true }: Materi
           error={errors.codigo?.message}
           disabled={isEditMode} // Código cannot be changed
           helperText="Identificador único (ej: PROG1). Solo mayúsculas."
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
           {...register('codigo')}
         />
 
@@ -161,6 +164,7 @@ export const MateriaForm = ({ isOpen, onClose, materia, isAdmin = true }: Materi
         <Input
           label="ID de Curso en Moodle (Opcional)"
           type="number"
+          inputMode="numeric"
           placeholder="ej: 123"
           helperText="ID del curso en Moodle para vincular pendientes"
           error={errors.moodle_course_id?.message}
@@ -192,12 +196,13 @@ export const MateriaForm = ({ isOpen, onClose, materia, isAdmin = true }: Materi
           />
         )}
 
-        <div className="flex justify-end gap-2 pt-4">
+        <div className="flex flex-col-reverse gap-2 pt-4 sm:flex-row sm:justify-end">
           <Button
             type="button"
             variant="secondary"
             onClick={onClose}
             disabled={isSubmitting}
+            className="w-full sm:w-auto"
           >
             Cancelar
           </Button>
@@ -205,6 +210,7 @@ export const MateriaForm = ({ isOpen, onClose, materia, isAdmin = true }: Materi
             type="submit"
             disabled={isSubmitting}
             isLoading={isSubmitting}
+            className="w-full sm:w-auto"
           >
             {isEditMode ? 'Guardar cambios' : 'Crear materia'}
           </Button>

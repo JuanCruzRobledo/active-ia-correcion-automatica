@@ -45,17 +45,17 @@ export function DashboardCoordinador() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 sm:space-y-8">
       {/* Header */}
       <div>
-        <div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-foreground">Dashboard - Mis Materias</h1><HelpButton title="Ayuda — Dashboard" content={helpContent.dashboard} /></div>
+        <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-bold text-foreground sm:text-2xl">Dashboard - Mis Materias</h1><HelpButton title="Ayuda — Dashboard" content={helpContent.dashboard} /></div>
         <p className="text-sm text-muted-foreground">
           Estado de correcciones y comisiones asignadas
         </p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid gap-6 sm:grid-cols-3">
+      <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-3">
         <StatCard
           title="Comisiones"
           value={dashboardData.comisiones}

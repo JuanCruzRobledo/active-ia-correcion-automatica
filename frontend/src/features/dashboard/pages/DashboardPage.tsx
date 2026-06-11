@@ -76,6 +76,7 @@ export function DashboardPage() {
           <Button
             variant="primary"
             size="sm"
+            className="w-full sm:w-auto min-h-[44px] sm:min-h-0"
             onClick={() => navigate('/perfil')}
           >
             Ir a Configuración

@@ -61,19 +61,19 @@ export function StatCard({
   return (
     <div
       className={cn(
-        'rounded-lg border p-6 transition-colors',
+        'rounded-lg border p-4 transition-colors sm:p-6',
         variantStyles[variant]
       )}
     >
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 space-y-1">
           <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="text-3xl font-bold text-foreground">{value}</p>
+          <p className="text-2xl font-bold text-foreground sm:text-3xl">{value}</p>
           <p className="text-xs text-muted-foreground">{subtitle}</p>
         </div>
         <div
           className={cn(
-            'rounded-full bg-muted/50 p-3',
+            'shrink-0 rounded-full bg-muted/50 p-3',
             iconVariantStyles[variant]
           )}
         >

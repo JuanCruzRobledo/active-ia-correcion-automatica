@@ -40,7 +40,8 @@ export function RubricaPDFMode({ pdfFile, setPdfFile, isError }: Props) {
           <button
             type="button"
             onClick={() => setPdfFile(null)}
-            className="text-muted-foreground hover:text-destructive"
+            className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-muted-foreground hover:text-destructive touch-manipulation sm:min-h-0 sm:min-w-0"
+            aria-label="Quitar PDF"
           >
             <Trash2 className="h-4 w-4" />
           </button>

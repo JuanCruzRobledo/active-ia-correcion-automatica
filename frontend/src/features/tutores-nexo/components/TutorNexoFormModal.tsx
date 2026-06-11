@@ -70,6 +70,11 @@ export const TutorNexoFormModal = ({ onClose, tutorNexo }: TutorNexoFormModalPro
         <Input
           label="Email"
           type="email"
+          inputMode="email"
+          autoCapitalize="none"
+          autoComplete="email"
+          autoCorrect="off"
+          spellCheck={false}
           placeholder="nexo.mendoza@active-ia.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
@@ -83,7 +88,7 @@ export const TutorNexoFormModal = ({ onClose, tutorNexo }: TutorNexoFormModalPro
           maxLength={120}
         />
         {isEdit && (
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-foreground">
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 py-2 text-sm text-foreground touch-manipulation">
             <Checkbox checked={activo} onChange={() => setActivo((v) => !v)} />
             Activo (recibe el Excel semanal)
           </label>
