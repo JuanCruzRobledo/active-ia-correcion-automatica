@@ -37,8 +37,12 @@ export const useHistorialNotif = () =>
 export const useDispararCorrida = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (opts: { refrescar: boolean; incluirAlumnos: boolean; comisiones: string[] }) =>
-      notificacionesService.dispararCorrida(opts),
+    mutationFn: (opts: {
+      refrescar: boolean;
+      incluirAlumnos: boolean;
+      incluirNexos: boolean;
+      comisiones: string[];
+    }) => notificacionesService.dispararCorrida(opts),
     onSuccess: (r) => {
       toast.success(
         `Corrida lista: ${r.alumnos} alumnos · ${r.tutores} tutores · ${r.nexos} nexos`

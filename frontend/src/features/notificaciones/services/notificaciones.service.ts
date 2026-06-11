@@ -26,11 +26,13 @@ export const notificacionesService = {
   dispararCorrida: async (opts: {
     refrescar: boolean;
     incluirAlumnos: boolean;
+    incluirNexos: boolean;
     comisiones: string[];
   }): Promise<CorridaResumen> => {
     const params = new URLSearchParams();
     params.set('refrescar', String(opts.refrescar));
     params.set('incluir_alumnos', String(opts.incluirAlumnos));
+    params.set('incluir_nexos', String(opts.incluirNexos));
     opts.comisiones.forEach((c) => params.append('comisiones', c));
     const { data } = await apiClient.post<CorridaResumen>(
       `/notificaciones/disparar?${params.toString()}`

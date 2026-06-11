@@ -20,15 +20,9 @@ import {
 } from '../hooks/useNotificaciones';
 import { abrirPreview } from '../services/notificaciones.service';
 import type { CorridaResumen, EstadoEnvio } from '../types';
+import { formatFechaHoraArg } from '@/shared/utils/fecha';
 
-const fmtFecha = (iso: string | null) => {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' });
-  } catch {
-    return iso;
-  }
-};
+const fmtFecha = (iso: string | null) => formatFechaHoraArg(iso);
 
 const TIPO_LABEL: Record<string, string> = {
   ALUMNO: 'Alumno',
@@ -54,6 +48,8 @@ export const NotificacionesPage = () => {
   const [refrescar, setRefrescar] = useState(false);
   // Fase de prueba: por defecto NO se manda a alumnos y solo a las comisiones objetivo.
   const [incluirAlumnos, setIncluirAlumnos] = useState(false);
+  // Tutores nexo: por defecto SÍ se notifican (comportamiento actual); se puede desmarcar.
+  const [incluirNexos, setIncluirNexos] = useState(true);
   const [comisionesText, setComisionesText] = useState('7:1, 7:2, 7:3, 9:7');
   const [resumen, setResumen] = useState<CorridaResumen | null>(null);
 
@@ -62,7 +58,7 @@ export const NotificacionesPage = () => {
       .split(',')
       .map((c) => c.trim())
       .filter(Boolean);
-    const r = await disparar.mutateAsync({ refrescar, incluirAlumnos, comisiones });
+    const r = await disparar.mutateAsync({ refrescar, incluirAlumnos, incluirNexos, comisiones });
     setResumen(r);
   };
 
@@ -160,6 +156,13 @@ export const NotificacionesPage = () => {
               onChange={(e) => setIncluirAlumnos(e.target.checked)}
             />
             Incluir alumnos (⚠️ desmarcado = NO se manda a alumnos)
+          </label>
+          <label className="mt-3 flex cursor-pointer items-center gap-2 text-sm text-foreground">
+            <Checkbox
+              checked={incluirNexos}
+              onChange={(e) => setIncluirNexos(e.target.checked)}
+            />
+            Notificar a los tutores nexo (Excel por regional)
           </label>
           <div className="mt-3">
             <Input
