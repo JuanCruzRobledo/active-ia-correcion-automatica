@@ -10,8 +10,10 @@ evaluables DINÁMICOS configurados a mano en el ABM. Cada componente es:
 
 La lógica depende de la FUENTE, no del tipo:
   - CALIFICACION (por nota, como el TP en E7): realizado/alcance si la nota es
-    "aprobado" o "desaprobado" (entregó y se calificó). DEUDA si ≠ aprobado
-    ("desaprobado" o "no entregado" según haya nota).
+    "aprobado" o "desaprobado" (entregó y se calificó). DEUDA "desaprobado" si la
+    nota es desaprobada. Si NO hay nota todavía, se cruza con finalización: si Moodle
+    marca la entrega como finalizada → el alumno entregó y el tutor aún no corrigió
+    (cuenta para el alcance, NO es deuda); si no → "no entregado" (deuda).
   - SEGUIMIENTO (por completion de Moodle): realizado/alcance si state ∈ {1,2,3}.
     DEUDA ("pendiente") si state 0 o ausente.
   - unidad ALCANZADA = la más alta con ≥1 de sus componentes realizado.
@@ -172,10 +174,17 @@ def _evaluar_componente(
         return False, None
     if comp.get("fuente") == FUENTE_CALIFICACION:
         est = estado_tp(notas_tp.get(cmid))
-        realizado = est in ("aprobado", "desaprobado")  # entregó y se calificó
         if est == "aprobado":
-            return realizado, None
-        return realizado, "desaprobado" if est == "desaprobado" else "no entregado"
+            return True, None
+        if est == "desaprobado":
+            return True, "desaprobado"  # entregó y se calificó: cuenta y debe
+        # Sin nota: el calificador NO distingue "no entregó" de "entregó y el tutor no
+        # corrigió". Se cruza con finalización: si Moodle marca la entrega como finalizada,
+        # el alumno SÍ entregó (pendiente de corrección) → cuenta para el alcance y NO es
+        # deuda (no es culpa del alumno). Si no, asumimos que no entregó → deuda.
+        if estados.get(cmid) in ESTADOS_REALIZADOS:
+            return True, None
+        return False, "no entregado"
     # SEGUIMIENTO (default): por completion de Moodle.
     if estados.get(cmid) in ESTADOS_REALIZADOS:
         return True, None

@@ -152,6 +152,31 @@ def test_quiz_por_calificacion_sin_nota_es_deuda():
     assert deudas == [{"unidad": 1, "tipo": "QUIZ", "estado": "no entregado"}]
 
 
+def test_calificacion_entregado_sin_corregir_no_es_deuda():
+    # Sin nota (tutor no corrigió) PERO finalización marca la entrega → entregó: NO deuda.
+    deudas = _deudas(
+        [{"cmid": 11, "state": 1}], notas={}, unidad_actual=1, cfg=[_u(1, _cal("TP", 11))]
+    )
+    assert deudas == []
+
+
+def test_calificacion_entregado_sin_corregir_cuenta_para_alcance():
+    # El alumno hizo su parte: la unidad cuenta como alcanzada aunque falte la nota.
+    alcanzada, deudas = calcular_deudas_y_alcance(
+        [{"cmid": 11, "state": 2}], {}, [_u(1, _cal("TP", 11))], unidad_actual=1
+    )
+    assert alcanzada == 1
+    assert deudas == []
+
+
+def test_calificacion_sin_nota_y_sin_finalizacion_sigue_siendo_deuda():
+    # Sin nota Y sin marca de finalización → asumimos que no entregó: deuda.
+    deudas = _deudas(
+        [{"cmid": 11, "state": 0}], notas={}, unidad_actual=1, cfg=[_u(1, _cal("TP", 11))]
+    )
+    assert deudas == [{"unidad": 1, "tipo": "TP", "estado": "no entregado"}]
+
+
 # ---- fuente SEGUIMIENTO ----
 
 
