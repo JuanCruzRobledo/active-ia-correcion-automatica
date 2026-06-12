@@ -7,9 +7,8 @@ import {
   ConfirmDialog,
   HelpButton,
   LoadingState,
-  ResponsiveTable,
 } from '@/shared/components/ui';
-import type { TableColumn } from '@/shared/components/ui';
+import { cn } from '@/shared/utils/cn';
 import { helpContent } from '@/shared/content/helpContent';
 import { useMateria } from '@/features/materias/hooks';
 import { useCohortes } from '@/features/cohortes/hooks/useCohortes';
@@ -77,60 +76,6 @@ export const MateriaDashboardConfigPage = () => {
     sincronizar.mutate(payload);
   };
 
-  // Columnas de la tabla de unidades guardadas (desktop). En mobile, ResponsiveTable
-  // las apila como cards. La columna de acciones es sticky a la derecha en desktop y
-  // pasa al pie de la card en mobile.
-  const unidadColumns: TableColumn<Unidad>[] = [
-    {
-      key: 'unidad',
-      header: 'Unidad',
-      render: (u) => (
-        <span className="font-medium text-foreground">Unidad {u.numero}</span>
-      ),
-    },
-    {
-      key: 'seccion',
-      header: 'Sección Moodle',
-      render: (u) => (
-        <span className="text-muted-foreground">#{u.moodle_section_id}</span>
-      ),
-    },
-    {
-      key: 'nombre',
-      header: 'Nombre',
-      render: (u) => <span className="text-muted-foreground">{u.nombre ?? '—'}</span>,
-    },
-    {
-      key: 'acciones',
-      header: '',
-      sticky: true,
-      render: (u) => {
-        const comps = u.componentes?.length ?? 0;
-        return (
-          <div className="flex items-center justify-end gap-1">
-            <span className="mr-1 text-xs text-muted-foreground">
-              {comps} {comps === 1 ? 'componente' : 'componentes'}
-            </span>
-            <button
-              onClick={() => setUnidadComp(unidadComp === u.id ? null : u.id)}
-              className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground touch-manipulation"
-              aria-label="Configurar componentes"
-            >
-              <SlidersHorizontal className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setUnidadAEliminar(u)}
-              className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive touch-manipulation"
-              aria-label="Eliminar unidad"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
-          </div>
-        );
-      },
-    },
-  ];
-
   if (loadingConfig || loadingUnidades) {
     return <LoadingState title="Cargando configuración…" />;
   }
@@ -184,29 +129,62 @@ export const MateriaDashboardConfigPage = () => {
           </Button>
         </div>
 
-        {/* Unidades guardadas */}
+        {/* Unidades guardadas: lista de cards. El editor de componentes se abre INLINE
+            justo debajo de la unidad elegida (no al final de toda la lista). */}
         {(unidades ?? []).length > 0 && (
-          <div className="mt-4">
-            <ResponsiveTable
-              columns={unidadColumns}
-              data={unidades ?? []}
-              keyExtractor={(u) => u.id}
-            />
-          </div>
-        )}
+          <div className="mt-4 flex flex-col gap-2">
+            {(unidades ?? []).map((u) => {
+              const abierto = unidadComp === u.id;
+              const comps = u.componentes?.length ?? 0;
+              return (
+                <div key={u.id} className="rounded-lg border border-border bg-card">
+                  <div className="flex items-center justify-between gap-3 p-3 sm:p-4">
+                    <div className="min-w-0">
+                      <span className="font-medium text-foreground">Unidad {u.numero}</span>
+                      <span className="ml-2 text-sm text-muted-foreground">
+                        <span className="text-muted-foreground/70">#{u.moodle_section_id}</span>
+                        {u.nombre ? ` · ${u.nombre}` : ''}
+                      </span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <span className="mr-1 hidden text-xs text-muted-foreground sm:inline">
+                        {comps} {comps === 1 ? 'componente' : 'componentes'}
+                      </span>
+                      {/* active:scale-90 = feedback de pulsación; cuando está abierto el
+                          botón queda resaltado para señalar QUÉ unidad se está editando. */}
+                      <button
+                        onClick={() => setUnidadComp(abierto ? null : u.id)}
+                        aria-expanded={abierto}
+                        aria-label="Configurar componentes"
+                        className={cn(
+                          'flex h-11 w-11 items-center justify-center rounded-md transition duration-150 active:scale-90 touch-manipulation',
+                          abierto
+                            ? 'bg-accent/15 text-accent'
+                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        )}
+                      >
+                        <SlidersHorizontal className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setUnidadAEliminar(u)}
+                        aria-label="Eliminar unidad"
+                        className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition duration-150 active:scale-90 hover:bg-destructive/10 hover:text-destructive touch-manipulation"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
 
-        {/* Editor de componentes (TP/autoeval/cierre) de la unidad expandida */}
-        {unidadComp != null && (
-          <div className="mt-3">
-            {(() => {
-              const u = (unidades ?? []).find((x) => x.id === unidadComp);
-              return u ? (
-                // key={u.id}: fuerza el REMONTE al cambiar de unidad, así el estado
-                // local del editor (rows) se re-inicializa con los componentes de ESA
-                // unidad. Sin esto, React reusa la instancia y queda el estado viejo.
-                <UnidadComponentesEditor key={u.id} unidad={u} materiaId={materiaId} />
-              ) : null;
-            })()}
+                  {abierto && (
+                    <div className="border-t border-border p-3 animate-in fade-in-0 slide-in-from-top-1 duration-200 sm:p-4">
+                      {/* key={u.id}: el editor se remonta por unidad → su estado local
+                          (rows) arranca con los componentes de ESTA unidad. */}
+                      <UnidadComponentesEditor key={u.id} unidad={u} materiaId={materiaId} />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
