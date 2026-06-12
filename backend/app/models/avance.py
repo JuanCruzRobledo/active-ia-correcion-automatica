@@ -55,6 +55,19 @@ class AvanceSnapshot(Base):
         nullable=True,
         comment="Valor de materia.unidad_actual CONGELADO al momento del snapshot",
     )
+    # Umbrales de riesgo CONGELADOS al momento del snapshot (como unidad_actual), para que
+    # el histórico sea reproducible aunque luego se reconfiguren en la materia. Nullable por
+    # los snapshots viejos previos a esta columna (se interpretan con los defaults 1/2).
+    riesgo_medio_desde: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="materia.riesgo_medio_desde CONGELADO al momento del snapshot",
+    )
+    riesgo_alto_desde: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        comment="materia.riesgo_alto_desde CONGELADO al momento del snapshot",
+    )
     origen: Mapped[OrigenSnapshotEnum] = mapped_column(
         SQLEnum(OrigenSnapshotEnum, name="origensnapshotenum", create_type=True),
         default=OrigenSnapshotEnum.CRON,

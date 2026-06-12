@@ -90,11 +90,13 @@ def _usuario():
     )
 
 
-def _comp(tipo, cmid, fuente):
+def _comp(tipo, cmid, fuente, *, modo="ESCALA", nota_minima=None):
     return SimpleNamespace(
         tipo=SimpleNamespace(value=tipo),
         moodle_cmid=cmid,
         fuente=SimpleNamespace(value=fuente),
+        modo_aprobacion=SimpleNamespace(value=modo),
+        nota_minima=nota_minima,
     )
 
 
@@ -116,6 +118,8 @@ def _materia_configurada(examenes=None):
         moodle_course_id=38,
         unidad_actual=2,
         moodle_section_fin_id=None,
+        riesgo_medio_desde=1,
+        riesgo_alto_desde=2,
         unidades=[
             MagicMock(numero=1, componentes=[_comp("TP", 11, "CALIFICACION")]),
             MagicMock(
@@ -173,6 +177,9 @@ async def test_generar_arma_snapshot_con_estados_y_comision():
     # Solo los 2 students (el profesor se ignora)
     assert snapshot.total_alumnos == 2
     assert snapshot.unidad_actual == 2
+    # Los umbrales de riesgo quedan CONGELADOS en el snapshot (histórico reproducible).
+    assert snapshot.riesgo_medio_desde == 1
+    assert snapshot.riesgo_alto_desde == 2
     assert snapshot.origen == OrigenSnapshotEnum.MANUAL
 
     por_uid = {a.moodle_user_id: a for a in snapshot.alumnos}

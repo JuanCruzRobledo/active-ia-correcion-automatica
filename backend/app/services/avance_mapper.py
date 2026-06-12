@@ -30,6 +30,9 @@ para el cálculo (los cmids son explícitos); quedan para el ABM (auto-sugerenci
 import re
 
 from app.models.enums import EstadoAvanceEnum
+# Reusamos el parseo de nota numérica es-AR (coma decimal) del mapper de exámenes:
+# es una utilidad pura sin I/O, así no duplicamos la conversión "7,5" → 7.5.
+from app.services.examen_mapper import parsear_nota_numerica
 
 # Cabecera de unidad: "1- Tema", "Unidad 1: Tema", etc. (solo para el ABM).
 _CABECERA_RE = re.compile(r"^\s*(?:unidad\s+)?(\d+)\s*[-:.]", re.IGNORECASE)
@@ -120,16 +123,29 @@ def nombre_por_cmid(secciones: list[dict]) -> dict[int, str]:
 
 
 def clasificar_estado(
-    unidad_alcanzada_val: int | None, unidad_actual: int
+    unidad_alcanzada_val: int | None,
+    unidad_actual: int,
+    *,
+    riesgo_medio_desde: int = 1,
+    riesgo_alto_desde: int = 2,
 ) -> EstadoAvanceEnum:
-    """delta = unidad_actual − unidad_alcanzada: <=0 AL_DIA · 1 RIESGO_MEDIO · >=2 RIESGO_ALTO.
-    Sin unidad alcanzada (None) → SIN_ACTIVIDAD."""
+    """Clasifica el atraso de un alumno contra DOS umbrales configurables por materia.
+
+    delta = unidad_actual − unidad_alcanzada (de cuántas unidades/semanas está atrás):
+      - delta < riesgo_medio_desde                       → AL_DIA
+      - riesgo_medio_desde <= delta < riesgo_alto_desde  → RIESGO_MEDIO
+      - delta >= riesgo_alto_desde                       → RIESGO_ALTO
+
+    Los umbrales se expresan en "unidades de atraso". Defaults (1, 2) = regla histórica
+    (1 atrás = medio, 2+ = alto), así las materias por unidad no cambian. Una materia por
+    semanas (ej. Estadística, 13 semanas) puede aflojar a 3 y 5: 1-2 semanas atrás siguen
+    "al día". Sin unidad alcanzada (None) → SIN_ACTIVIDAD."""
     if unidad_alcanzada_val is None:
         return EstadoAvanceEnum.SIN_ACTIVIDAD
     delta = unidad_actual - unidad_alcanzada_val
-    if delta <= 0:
+    if delta < riesgo_medio_desde:
         return EstadoAvanceEnum.AL_DIA
-    if delta == 1:
+    if delta < riesgo_alto_desde:
         return EstadoAvanceEnum.RIESGO_MEDIO
     return EstadoAvanceEnum.RIESGO_ALTO
 
@@ -142,16 +158,33 @@ def _estado_por_cmid(completion_statuses: list[dict]) -> dict[int, int]:
     }
 
 
-def estado_tp(nota_formateada: str | None) -> str:
-    """Interpreta el texto de la calificación → 'aprobado' | 'desaprobado' | 'sin_nota'.
+def estado_tp(
+    nota_formateada: str | None,
+    *,
+    modo: str = "ESCALA",
+    nota_minima: float | None = None,
+) -> str:
+    """Interpreta la calificación de un componente → 'aprobado' | 'desaprobado' | 'sin_nota'.
 
-    Por CALIFICACIÓN (no por seguimiento), leyendo el gradereport de Moodle:
-      - vacío o "-": sin calificar todavía → 'sin_nota'.
-      - contiene "desaprob": 'desaprobado'.
-      - cualquier otra nota presente (escala "Aprobado" O nota NUMÉRICA, ej. "7,00"):
-        'aprobado'. Regla "tiene nota = realizado" (decisión §9.bis F): no distinguimos
-        umbral en notas numéricas; basta con que haya nota.
+    Dos modos (configurables por componente, gemelo de examen_mapper.interpretar_resultado):
+
+    - ESCALA (default, comportamiento histórico §9.bis F): mira solo el TEXTO.
+        · vacío o "-" → 'sin_nota'.
+        · contiene "desaprob" → 'desaprobado'.
+        · cualquier otra nota presente (escala "Aprobado" o número) → 'aprobado'.
+          "Tiene nota = realizado": no se distingue umbral.
+    - NUMERICO: compara el VALOR contra `nota_minima` (en la escala de Moodle, ej. 6 ó 60).
+        · sin nota numérica válida ("-", vacío, texto) → 'sin_nota'.
+        · valor >= nota_minima → 'aprobado'; si no → 'desaprobado'.
+          Sin nota_minima el mínimo es 0 (cualquier número aprueba).
     """
+    if modo == "NUMERICO":
+        valor = parsear_nota_numerica(nota_formateada)
+        if valor is None:
+            return "sin_nota"  # "-", vacío o texto no numérico: aún no calificado
+        minimo = nota_minima if nota_minima is not None else 0.0
+        return "aprobado" if valor >= minimo else "desaprobado"
+    # ESCALA (default).
     t = (nota_formateada or "").strip().lower()
     if not t or t == "-":
         return "sin_nota"
@@ -173,7 +206,11 @@ def _evaluar_componente(
     if cmid is None:
         return False, None
     if comp.get("fuente") == FUENTE_CALIFICACION:
-        est = estado_tp(notas_tp.get(cmid))
+        est = estado_tp(
+            notas_tp.get(cmid),
+            modo=comp.get("modo") or "ESCALA",
+            nota_minima=comp.get("nota_minima"),
+        )
         if est == "aprobado":
             return True, None
         if est == "desaprobado":
@@ -246,17 +283,26 @@ def calcular_avance_alumno(
     unidades_config: list[dict],
     *,
     unidad_actual: int,
+    riesgo_medio_desde: int = 1,
+    riesgo_alto_desde: int = 2,
 ) -> dict:
-    """Avance de UN alumno según los 3 componentes configurados por unidad.
+    """Avance de UN alumno según los componentes configurados por unidad.
 
     - TP por calificación (notas_tp: {cmid → texto}); autoeval/cierre por completion_statuses.
+    - riesgo_medio_desde / riesgo_alto_desde: umbrales de atraso de la materia (ver
+      clasificar_estado). Defaults (1, 2) = regla histórica.
     Returns dict {unidad_alcanzada, actividad_actual_nombre, actividad_actual_unidad,
     actividad_actual_desaprobada, estado, actividades_faltantes}.
     """
     alcanzada, deudas = calcular_deudas_y_alcance(
         completion_statuses, notas_tp, unidades_config, unidad_actual=unidad_actual
     )
-    estado = clasificar_estado(alcanzada, unidad_actual)
+    estado = clasificar_estado(
+        alcanzada,
+        unidad_actual,
+        riesgo_medio_desde=riesgo_medio_desde,
+        riesgo_alto_desde=riesgo_alto_desde,
+    )
 
     # ¿Algún componente por CALIFICACIÓN de la unidad alcanzada quedó desaprobado?
     # (para la columna del dashboard).
@@ -265,7 +311,12 @@ def calcular_avance_alumno(
         cfg = next((u for u in unidades_config if u.get("numero") == alcanzada), None)
         for comp in (cfg or {}).get("componentes", []):
             if comp.get("fuente") == FUENTE_CALIFICACION and (
-                estado_tp(notas_tp.get(comp.get("cmid"))) == "desaprobado"
+                estado_tp(
+                    notas_tp.get(comp.get("cmid")),
+                    modo=comp.get("modo") or "ESCALA",
+                    nota_minima=comp.get("nota_minima"),
+                )
+                == "desaprobado"
             ):
                 actividad_desaprobada = True
                 break

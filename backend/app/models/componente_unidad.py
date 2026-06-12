@@ -15,11 +15,15 @@ sin cierre) se modela simplemente con los componentes que tenga, sin casos espec
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum as SQLEnum, ForeignKey, Integer
+from sqlalchemy import Enum as SQLEnum, Float, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
-from app.models.enums import FuenteComponenteEnum, TipoComponenteEnum
+from app.models.enums import (
+    FuenteComponenteEnum,
+    ModoAprobacionEnum,
+    TipoComponenteEnum,
+)
 
 if TYPE_CHECKING:
     from app.models.unidad import Unidad
@@ -47,6 +51,20 @@ class ComponenteUnidad(Base, TimestampMixin):
         SQLEnum(FuenteComponenteEnum, name="fuentecomponenteenum", create_type=True),
         nullable=False,
         comment="SEGUIMIENTO (completion) | CALIFICACION (nota)",
+    )
+    # Solo aplican cuando fuente=CALIFICACION. Reutilizan el enum modoaprobacionenum ya
+    # creado por la migración de exámenes (create_type=False → no se recrea el tipo PG).
+    modo_aprobacion: Mapped[ModoAprobacionEnum] = mapped_column(
+        SQLEnum(ModoAprobacionEnum, name="modoaprobacionenum", create_type=False),
+        nullable=False,
+        default=ModoAprobacionEnum.ESCALA,
+        server_default=ModoAprobacionEnum.ESCALA.value,
+        comment="ESCALA (Aprobado/Desaprobado) | NUMERICO (nota >= nota_minima). Solo CALIFICACION",
+    )
+    nota_minima: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Nota mínima para aprobar si modo_aprobacion=NUMERICO (escala de Moodle, ej. 6 o 60)",
     )
     orden: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0",

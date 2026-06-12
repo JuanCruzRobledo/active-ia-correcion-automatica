@@ -9,6 +9,10 @@ export interface ComponenteUnidad {
   tipo: TipoComponente;
   moodle_cmid: number;
   fuente: FuenteComponente;
+  /** Cómo se interpreta la nota si fuente=CALIFICACION: ESCALA o NUMERICO. */
+  modo_aprobacion: ModoAprobacion;
+  /** Nota mínima para aprobar si modo_aprobacion=NUMERICO (escala de Moodle). */
+  nota_minima: number | null;
   orden: number;
 }
 
@@ -34,6 +38,8 @@ export interface ComponenteInput {
   tipo: TipoComponente;
   moodle_cmid: number;
   fuente: FuenteComponente;
+  modo_aprobacion: ModoAprobacion;
+  nota_minima: number | null;
 }
 
 export interface UnidadComponentes {
@@ -52,6 +58,10 @@ export interface MateriaDashboardConfig {
   moodle_section_fin_id: number | null;
   /** Cómo se llama la progresión en los reportes: 'Unidad' (default) o 'Semana'. */
   etiqueta_unidad: string;
+  /** Atraso (en unidades/semanas) desde el cual el alumno entra en riesgo medio. */
+  riesgo_medio_desde: number;
+  /** Atraso desde el cual entra en riesgo alto (debe ser > riesgo_medio_desde). */
+  riesgo_alto_desde: number;
 }
 
 export interface MateriaDashboardConfigResponse extends MateriaDashboardConfig {

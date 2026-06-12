@@ -71,7 +71,36 @@ def test_unidad_de_section_num():
     ],
 )
 def test_clasificar_estado(alcanzada, actual, esperado):
+    """Defaults (medio_desde=1, alto_desde=2) = regla histórica por unidad."""
     assert clasificar_estado(alcanzada, actual) == esperado
+
+
+@pytest.mark.parametrize(
+    "alcanzada,actual,medio,alto,esperado",
+    [
+        # Estadística: 13 semanas; riesgo medio desde 3 de atraso, alto desde 5.
+        (None, 13, 3, 5, EstadoAvanceEnum.SIN_ACTIVIDAD),
+        (14, 13, 3, 5, EstadoAvanceEnum.AL_DIA),        # delta -1 (adelantado)
+        (13, 13, 3, 5, EstadoAvanceEnum.AL_DIA),        # delta 0
+        (12, 13, 3, 5, EstadoAvanceEnum.AL_DIA),        # delta 1 (tolerado)
+        (11, 13, 3, 5, EstadoAvanceEnum.AL_DIA),        # delta 2 (tolerado)
+        (10, 13, 3, 5, EstadoAvanceEnum.RIESGO_MEDIO),  # delta 3 (entra medio)
+        (9, 13, 3, 5, EstadoAvanceEnum.RIESGO_MEDIO),   # delta 4
+        (8, 13, 3, 5, EstadoAvanceEnum.RIESGO_ALTO),    # delta 5 (entra alto)
+        (5, 13, 3, 5, EstadoAvanceEnum.RIESGO_ALTO),    # delta 8
+        # Umbrales contiguos (medio=2, alto=3): no hay "tolerancia extra".
+        (3, 5, 2, 3, EstadoAvanceEnum.RIESGO_MEDIO),    # delta 2
+        (2, 5, 2, 3, EstadoAvanceEnum.RIESGO_ALTO),     # delta 3
+    ],
+)
+def test_clasificar_estado_umbrales_custom(alcanzada, actual, medio, alto, esperado):
+    """Umbrales configurables por materia (riesgo_medio_desde / riesgo_alto_desde)."""
+    assert (
+        clasificar_estado(
+            alcanzada, actual, riesgo_medio_desde=medio, riesgo_alto_desde=alto
+        )
+        == esperado
+    )
 
 
 # ===================== estado_tp (calificación → estado) =====================
@@ -92,7 +121,34 @@ def test_clasificar_estado(alcanzada, actual, esperado):
     ],
 )
 def test_estado_tp(nota, esperado):
+    """Modo ESCALA (default): 'tiene nota = aprobado' salvo que el texto diga desaprobado."""
     assert estado_tp(nota) == esperado
+
+
+@pytest.mark.parametrize(
+    "nota,minima,esperado",
+    [
+        # Estadística: quiz numérico, aprueba con >= 6.
+        ("6,00", 6.0, "aprobado"),      # justo en el umbral
+        ("6", 6.0, "aprobado"),
+        ("8,5", 6.0, "aprobado"),
+        ("10", 6.0, "aprobado"),
+        ("5,99", 6.0, "desaprobado"),   # apenas por debajo
+        ("4", 6.0, "desaprobado"),      # el caso del usuario: 4 NO es aprobado
+        ("0,00", 6.0, "desaprobado"),   # un 0 numérico SÍ desaprueba (≠ modo ESCALA)
+        ("-", 6.0, "sin_nota"),         # sin calificar todavía
+        ("", 6.0, "sin_nota"),
+        (None, 6.0, "sin_nota"),
+        # Sin nota_minima explícita el mínimo es 0 → cualquier número aprueba.
+        ("0", None, "aprobado"),
+        # Escala 0-100 (TP que se sube por IA): mínima 60.
+        ("60,00", 60.0, "aprobado"),
+        ("59", 60.0, "desaprobado"),
+    ],
+)
+def test_estado_tp_numerico(nota, minima, esperado):
+    """Modo NUMERICO: compara el valor de la nota contra nota_minima (escala de Moodle)."""
+    assert estado_tp(nota, modo="NUMERICO", nota_minima=minima) == esperado
 
 
 # ===================== cálculo por componentes dinámicos =====================
