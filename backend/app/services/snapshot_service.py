@@ -148,6 +148,9 @@ class SnapshotService:
                         "tipo": c.tipo.value,
                         "cmid": c.moodle_cmid,
                         "fuente": c.fuente.value,
+                        # Modo de calificación + umbral (solo se usan si fuente=CALIFICACION).
+                        "modo": c.modo_aprobacion.value,
+                        "nota_minima": c.nota_minima,
                     }
                     for c in u.componentes
                 ],
@@ -217,6 +220,8 @@ class SnapshotService:
                 notas_por_uid.get(uid, {}),
                 unidades_config,
                 unidad_actual=materia.unidad_actual,
+                riesgo_medio_desde=materia.riesgo_medio_desde,
+                riesgo_alto_desde=materia.riesgo_alto_desde,
             )
             # Resultados de exámenes (mismas notas en memoria; rescate ya aplicado).
             examenes = (
@@ -249,6 +254,8 @@ class SnapshotService:
         snapshot = AvanceSnapshot(
             materia_id=materia_id,
             unidad_actual=materia.unidad_actual,
+            riesgo_medio_desde=materia.riesgo_medio_desde,
+            riesgo_alto_desde=materia.riesgo_alto_desde,
             origen=origen,
             total_alumnos=len(alumnos),
         )

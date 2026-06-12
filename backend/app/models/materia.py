@@ -75,6 +75,24 @@ class Materia(Base, TimestampMixin):
             "(Excel/PDF/emails): 'Unidad' (default) o 'Semana' (ej. PYE)."
         ),
     )
+    # Umbrales de riesgo configurables por materia (en "unidades/semanas de atraso").
+    # delta = unidad_actual − unidad_alcanzada. delta < medio → AL_DIA; medio <= delta <
+    # alto → RIESGO_MEDIO; delta >= alto → RIESGO_ALTO. Defaults (1, 2) = regla histórica;
+    # una materia por semanas (Estadística, 13 semanas) puede aflojar a 3 y 5.
+    riesgo_medio_desde: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+        comment="Atraso (delta) a partir del cual el alumno entra en RIESGO_MEDIO",
+    )
+    riesgo_alto_desde: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=2,
+        server_default="2",
+        comment="Atraso (delta) a partir del cual el alumno entra en RIESGO_ALTO (> medio)",
+    )
 
     # Relationships
     cuatrimestre: Mapped["Cuatrimestre | None"] = relationship(

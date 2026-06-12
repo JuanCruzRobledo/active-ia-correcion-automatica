@@ -1,12 +1,17 @@
 import { useState } from 'react';
 import { AlertTriangle, Plus, Trash2 } from 'lucide-react';
-import { Button, Select } from '@/shared/components/ui';
+import { Button, Input, Select } from '@/shared/components/ui';
 import type { SelectOption } from '@/shared/components/ui';
 import {
   useActividadesUnidad,
   useSetComponentesUnidad,
 } from '../hooks/useMateriaDashboard';
-import type { FuenteComponente, TipoComponente, Unidad } from '../types';
+import type {
+  FuenteComponente,
+  ModoAprobacion,
+  TipoComponente,
+  Unidad,
+} from '../types';
 
 interface Props {
   unidad: Unidad;
@@ -18,6 +23,9 @@ interface Row {
   tipo: TipoComponente;
   fuente: FuenteComponente;
   cmid: string;
+  // Solo aplican cuando fuente=CALIFICACION.
+  modo: ModoAprobacion;
+  notaMinima: string;
 }
 
 const TIPO_OPTIONS: SelectOption[] = [
@@ -30,6 +38,11 @@ const TIPO_OPTIONS: SelectOption[] = [
 const FUENTE_OPTIONS: SelectOption[] = [
   { value: 'SEGUIMIENTO', label: 'Seguimiento (completó)' },
   { value: 'CALIFICACION', label: 'Calificación (nota)' },
+];
+
+const MODO_OPTIONS: SelectOption[] = [
+  { value: 'ESCALA', label: 'Escala (Aprobado/Desaprobado)' },
+  { value: 'NUMERICO', label: 'Numérica (nota mínima)' },
 ];
 
 // Contador local para keys estables de filas nuevas (no son ids de servidor).
@@ -52,6 +65,8 @@ export const UnidadComponentesEditor = ({ unidad, materiaId }: Props) => {
       tipo: c.tipo,
       fuente: c.fuente,
       cmid: String(c.moodle_cmid),
+      modo: c.modo_aprobacion ?? 'ESCALA',
+      notaMinima: c.nota_minima != null ? String(c.nota_minima) : '',
     }))
   );
 
@@ -80,13 +95,33 @@ export const UnidadComponentesEditor = ({ unidad, materiaId }: Props) => {
   const updateRow = (key: number, patch: Partial<Row>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const addRow = () =>
-    setRows((rs) => [...rs, { key: nextKey(), tipo: 'QUIZ', fuente: 'SEGUIMIENTO', cmid: '' }]);
+    setRows((rs) => [
+      ...rs,
+      { key: nextKey(), tipo: 'QUIZ', fuente: 'SEGUIMIENTO', cmid: '', modo: 'ESCALA', notaMinima: '' },
+    ]);
   const removeRow = (key: number) => setRows((rs) => rs.filter((r) => r.key !== key));
 
+  // Un componente por calificación NUMÉRICA necesita su nota mínima (igual que el backend).
+  const numericoSinNota = rows.some(
+    (r) =>
+      r.cmid && r.fuente === 'CALIFICACION' && r.modo === 'NUMERICO' && r.notaMinima === ''
+  );
+
   const guardar = () => {
+    if (numericoSinNota) return;
     const componentes = rows
       .filter((r) => r.cmid)
-      .map((r) => ({ tipo: r.tipo, fuente: r.fuente, moodle_cmid: Number(r.cmid) }));
+      .map((r) => {
+        const esCalificacion = r.fuente === 'CALIFICACION';
+        const esNumerico = esCalificacion && r.modo === 'NUMERICO';
+        return {
+          tipo: r.tipo,
+          fuente: r.fuente,
+          moodle_cmid: Number(r.cmid),
+          modo_aprobacion: esCalificacion ? r.modo : ('ESCALA' as ModoAprobacion),
+          nota_minima: esNumerico && r.notaMinima !== '' ? Number(r.notaMinima) : null,
+        };
+      });
     setComp.mutate({ unidadId: unidad.id, data: { componentes } });
   };
 
@@ -147,6 +182,29 @@ export const UnidadComponentesEditor = ({ unidad, materiaId }: Props) => {
                 <span className="sm:hidden">Quitar</span>
               </button>
             </div>
+            {r.fuente === 'CALIFICACION' && (
+              <div className="grid grid-cols-1 gap-2 pt-1 sm:grid-cols-[16rem_10rem] sm:items-end">
+                <Select
+                  label="Modo de nota"
+                  options={MODO_OPTIONS}
+                  value={r.modo}
+                  onChange={(e) => updateRow(r.key, { modo: e.target.value as ModoAprobacion })}
+                  wrapperClassName="w-full"
+                />
+                {r.modo === 'NUMERICO' && (
+                  <Input
+                    label="Nota mínima"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step="0.01"
+                    placeholder="Ej: 6"
+                    value={r.notaMinima}
+                    onChange={(e) => updateRow(r.key, { notaMinima: e.target.value })}
+                  />
+                )}
+              </div>
+            )}
             {aviso && (
               <p className="flex items-start gap-1 text-xs text-amber-600 dark:text-amber-500">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -159,6 +217,16 @@ export const UnidadComponentesEditor = ({ unidad, materiaId }: Props) => {
           </div>
         );
       })}
+
+      {numericoSinNota && (
+        <p className="flex items-start gap-1 text-xs text-destructive">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            Hay un componente por calificación <strong>numérica</strong> sin nota mínima:
+            completala (ej. 6) o cambialo a <strong>Escala</strong> para poder guardar.
+          </span>
+        </p>
+      )}
 
       <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
         <Button
@@ -174,6 +242,7 @@ export const UnidadComponentesEditor = ({ unidad, materiaId }: Props) => {
           size="sm"
           onClick={guardar}
           isLoading={setComp.isPending}
+          disabled={numericoSinNota}
           className="w-full sm:w-auto"
         >
           Guardar componentes

@@ -12,6 +12,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.componente_unidad import ComponenteUnidad
+from app.models.enums import ModoAprobacionEnum
 from app.models.unidad import Unidad
 from app.repositories.cohorte_repository import CuatrimestreRepository
 from app.repositories.materia_repository import MateriaRepository
@@ -146,6 +147,13 @@ class UnidadService:
                 tipo=c.tipo,
                 moodle_cmid=c.moodle_cmid,
                 fuente=c.fuente,
+                modo_aprobacion=c.modo_aprobacion,
+                # La nota mínima solo tiene sentido en NUMERICO; en ESCALA se descarta.
+                nota_minima=(
+                    c.nota_minima
+                    if c.modo_aprobacion == ModoAprobacionEnum.NUMERICO
+                    else None
+                ),
                 orden=i,
             )
             for i, c in enumerate(data.componentes)
@@ -228,15 +236,22 @@ class UnidadService:
 
     # ===================== Config dashboard de la Materia =====================
 
-    async def get_config_materia(self, materia_id: int) -> MateriaDashboardConfigResponse:
-        materia = await self._get_materia_or_404(materia_id)
+    @staticmethod
+    def _config_response(materia) -> MateriaDashboardConfigResponse:
+        """Serializa la config de dashboard de una materia (única fuente de verdad)."""
         return MateriaDashboardConfigResponse(
             materia_id=materia.id,
             cuatrimestre_id=materia.cuatrimestre_id,
             unidad_actual=materia.unidad_actual,
             moodle_section_fin_id=materia.moodle_section_fin_id,
             etiqueta_unidad=materia.etiqueta_unidad or "Unidad",
+            riesgo_medio_desde=materia.riesgo_medio_desde,
+            riesgo_alto_desde=materia.riesgo_alto_desde,
         )
+
+    async def get_config_materia(self, materia_id: int) -> MateriaDashboardConfigResponse:
+        materia = await self._get_materia_or_404(materia_id)
+        return self._config_response(materia)
 
     async def set_config_materia(
         self, materia_id: int, data: MateriaDashboardConfig
@@ -255,15 +270,11 @@ class UnidadService:
         materia.unidad_actual = data.unidad_actual
         materia.moodle_section_fin_id = data.moodle_section_fin_id
         materia.etiqueta_unidad = data.etiqueta_unidad or "Unidad"
+        materia.riesgo_medio_desde = data.riesgo_medio_desde
+        materia.riesgo_alto_desde = data.riesgo_alto_desde
         await self.materia_repo.update(materia)
 
-        return MateriaDashboardConfigResponse(
-            materia_id=materia.id,
-            cuatrimestre_id=materia.cuatrimestre_id,
-            unidad_actual=materia.unidad_actual,
-            moodle_section_fin_id=materia.moodle_section_fin_id,
-            etiqueta_unidad=materia.etiqueta_unidad or "Unidad",
-        )
+        return self._config_response(materia)
 
     # ===================== Vínculo Rúbrica → Unidad =====================
 

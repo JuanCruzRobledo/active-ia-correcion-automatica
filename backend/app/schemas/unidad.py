@@ -5,22 +5,52 @@ Pydantic schemas for Unidad y configuración de dashboard de la Materia.
 Ref: PLAN_DASHBOARD_GESTORES.md §5, §8 (T3)
 """
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.enums import FuenteComponenteEnum, TipoComponenteEnum
+from app.models.enums import (
+    FuenteComponenteEnum,
+    ModoAprobacionEnum,
+    TipoComponenteEnum,
+)
 
 
 # ===================== Componentes de la unidad (§9.bis F) =====================
 
 
 class ComponenteUnidadInput(BaseModel):
-    """Un componente evaluable a vincular: tipo (etiqueta) + cmid + fuente de verdad."""
+    """Un componente evaluable a vincular: tipo (etiqueta) + cmid + fuente de verdad.
+
+    Si fuente=CALIFICACION se puede elegir cómo se interpreta la nota (modo_aprobacion):
+    ESCALA (Aprobado/Desaprobado) o NUMERICO (nota >= nota_minima). NUMERICO exige nota_minima.
+    """
 
     tipo: TipoComponenteEnum
     moodle_cmid: int = Field(..., description="cmid de la actividad de Moodle")
     fuente: FuenteComponenteEnum = Field(
         ..., description="SEGUIMIENTO (completion) | CALIFICACION (nota)"
     )
+    modo_aprobacion: ModoAprobacionEnum = Field(
+        ModoAprobacionEnum.ESCALA,
+        description="ESCALA | NUMERICO (solo aplica si fuente=CALIFICACION)",
+    )
+    nota_minima: float | None = Field(
+        None,
+        ge=0,
+        description="Nota mínima para aprobar si modo_aprobacion=NUMERICO (escala de Moodle)",
+    )
+
+    @model_validator(mode="after")
+    def _validar_nota_minima(self) -> "ComponenteUnidadInput":
+        """En modo NUMERICO la nota mínima es obligatoria (sin umbral no se puede decidir)."""
+        if (
+            self.fuente == FuenteComponenteEnum.CALIFICACION
+            and self.modo_aprobacion == ModoAprobacionEnum.NUMERICO
+            and self.nota_minima is None
+        ):
+            raise ValueError(
+                "Un componente por calificación NUMERICO requiere una nota mínima"
+            )
+        return self
 
 
 class ComponenteUnidadResponse(BaseModel):
@@ -32,6 +62,8 @@ class ComponenteUnidadResponse(BaseModel):
     tipo: TipoComponenteEnum
     moodle_cmid: int
     fuente: FuenteComponenteEnum
+    modo_aprobacion: ModoAprobacionEnum
+    nota_minima: float | None = None
     orden: int
 
 
@@ -103,6 +135,26 @@ class MateriaDashboardConfig(BaseModel):
         max_length=20,
         description="Cómo se llama la progresión en los reportes: 'Unidad' o 'Semana'",
     )
+    riesgo_medio_desde: int = Field(
+        1,
+        ge=1,
+        description="Atraso (en unidades/semanas) a partir del cual el alumno entra en riesgo medio",
+    )
+    riesgo_alto_desde: int = Field(
+        2,
+        ge=2,
+        description="Atraso a partir del cual entra en riesgo alto (debe ser > riesgo_medio_desde)",
+    )
+
+    @model_validator(mode="after")
+    def _validar_umbrales(self) -> "MateriaDashboardConfig":
+        """El umbral de riesgo alto debe ser estrictamente mayor que el de riesgo medio:
+        si fueran iguales no existiría la franja de riesgo medio."""
+        if self.riesgo_alto_desde <= self.riesgo_medio_desde:
+            raise ValueError(
+                "El umbral de riesgo alto debe ser mayor que el de riesgo medio"
+            )
+        return self
 
 
 class MateriaDashboardConfigResponse(BaseModel):
@@ -113,6 +165,8 @@ class MateriaDashboardConfigResponse(BaseModel):
     unidad_actual: int | None = None
     moodle_section_fin_id: int | None = None
     etiqueta_unidad: str = "Unidad"
+    riesgo_medio_desde: int = 1
+    riesgo_alto_desde: int = 2
 
 
 # ===================== Vínculo Rúbrica → Unidad =====================

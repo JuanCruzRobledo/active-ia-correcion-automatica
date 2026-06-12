@@ -35,8 +35,28 @@ export const ConfigForm = ({ materiaId, config, cohortes, secciones }: ConfigFor
     config.moodle_section_fin_id != null ? String(config.moodle_section_fin_id) : ''
   );
   const [etiqueta, setEtiqueta] = useState<string>(config.etiqueta_unidad || 'Unidad');
+  const [riesgoMedio, setRiesgoMedio] = useState<string>(
+    config.riesgo_medio_desde != null ? String(config.riesgo_medio_desde) : '1'
+  );
+  const [riesgoAlto, setRiesgoAlto] = useState<string>(
+    config.riesgo_alto_desde != null ? String(config.riesgo_alto_desde) : '2'
+  );
 
   const setConfig = useSetDashboardConfig(materiaId);
+
+  // Plural de la etiqueta para los textos de ayuda ("unidades" / "semanas" de atraso).
+  const plural = etiqueta === 'Semana' ? 'semanas' : 'unidades';
+
+  // El umbral de riesgo alto debe ser mayor que el de riesgo medio (igual que el backend),
+  // si no la franja de riesgo medio desaparece. Bloqueamos el guardado y avisamos.
+  const medioNum = Number(riesgoMedio);
+  const altoNum = Number(riesgoAlto);
+  const umbralesInvalidos =
+    !riesgoMedio ||
+    !riesgoAlto ||
+    medioNum < 1 ||
+    altoNum < 1 ||
+    altoNum <= medioNum;
 
   const etiquetaOptions: SelectOption[] = [
     { value: 'Unidad', label: 'Unidad (por defecto)' },
@@ -72,11 +92,14 @@ export const ConfigForm = ({ materiaId, config, cohortes, secciones }: ConfigFor
   };
 
   const handleGuardar = () => {
+    if (umbralesInvalidos) return;
     setConfig.mutate({
       cuatrimestre_id: cuatrimestreId ? Number(cuatrimestreId) : null,
       unidad_actual: unidadActual ? Number(unidadActual) : null,
       moodle_section_fin_id: topeId ? Number(topeId) : null,
       etiqueta_unidad: etiqueta || 'Unidad',
+      riesgo_medio_desde: medioNum,
+      riesgo_alto_desde: altoNum,
     });
   };
 
@@ -126,10 +149,55 @@ export const ConfigForm = ({ materiaId, config, cohortes, secciones }: ConfigFor
         />
       </div>
 
+      {/* Umbrales de riesgo configurables por materia (atraso en unidades/semanas). */}
+      <div className="mt-6 border-t border-border pt-4">
+        <h3 className="text-base font-semibold text-foreground">Umbrales de riesgo</h3>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Definí a partir de cuántas {plural} de atraso (respecto de la {etiqueta.toLowerCase()}{' '}
+          actual) un alumno entra en cada nivel. Una materia por {plural} (ej. Estadística, 13
+          semanas) suele tolerar más atraso que una por unidades.
+        </p>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <Input
+            label={`Riesgo medio desde (${plural} de atraso)`}
+            type="number"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            min={1}
+            placeholder="Ej: 1"
+            value={riesgoMedio}
+            onChange={(e) => setRiesgoMedio(e.target.value)}
+          />
+          <Input
+            label={`Riesgo alto desde (${plural} de atraso)`}
+            type="number"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            min={1}
+            placeholder="Ej: 2"
+            value={riesgoAlto}
+            onChange={(e) => setRiesgoAlto(e.target.value)}
+          />
+        </div>
+
+        {umbralesInvalidos ? (
+          <p className="mt-2 text-sm text-destructive">
+            El umbral de riesgo alto debe ser mayor que el de riesgo medio (y ambos ≥ 1).
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Al día: hasta {Math.max(0, medioNum - 1)} de atraso · Riesgo medio: {medioNum}
+            {altoNum - 1 > medioNum ? `–${altoNum - 1}` : ''} · Riesgo alto: {altoNum} o más.
+          </p>
+        )}
+      </div>
+
       <div className="mt-4 flex justify-end">
         <Button
           onClick={handleGuardar}
           isLoading={setConfig.isPending}
+          disabled={umbralesInvalidos}
           className="w-full sm:w-auto"
         >
           Guardar configuración
