@@ -6,13 +6,16 @@ Este directorio contiene la infraestructura para crear una **imagen Docker perso
 
 ## 📋 ¿Qué incluye esta imagen?
 
-La imagen preconfigurada de N8N viene con **3 workflows** listos para usar:
+La imagen preconfigurada de N8N expone **4 webhooks** listos para usar:
 
-| Workflow | Endpoint | Función |
-|----------|----------|---------|
-| **Corrección Automática** | `/webhook/corregir` | Evalúa código del alumno usando Gemini y retorna nota + feedback |
-| **Generación de Rúbrica** | `/webhook/generar-rubrica` | Extrae criterios desde PDF de consigna usando Gemini |
-| **Health Check** | `/webhook/health` | Verifica que N8N y Gemini están operativos |
+| Endpoint | Función |
+|----------|---------|
+| `/webhook/corregir` | Evalúa código del alumno usando Gemini y retorna nota + feedback |
+| `/webhook/corregir-pdf` | Corrige entregas en PDF con Gemini |
+| `/webhook/generar-rubrica` | Extrae criterios desde PDF de consigna usando Gemini |
+| `/webhook/health` | Verifica que N8N y Gemini están operativos |
+
+> **🧠 Importante (arquitectura real):** los 4 webhooks viven dentro de **UN solo workflow** llamado **"Correcion Automatica"** (no son 4 workflows separados). La **fuente de verdad es la data baked dentro de la imagen** (`/home/node/.n8n`), no la carpeta `workflows/` — esos `.json` son exports de referencia y pueden quedar desactualizados.
 
 ---
 
@@ -393,17 +396,25 @@ N8N_WEBHOOK_HEALTH=http://n8n:5678/webhook/health
 
 ## 🔄 Actualizar Workflows
 
-Si necesitas modificar los workflows:
+> ⚠️ **Para ACTUALIZAR no sirven los PASO 1-6 de arriba** (esos crean la imagen desde cero con la imagen vacía `n8nio/n8n` → te quedás SIN flujos). Para actualizar hay que partir de **tu imagen existente**, que ya tiene los workflows.
+>
+> 🪟 **Y en Windows NO uses bind-mount de `data/`** (rompe los webhooks por SQLite WAL → 404).
 
-1. Repite PASO 1-5 (levantar N8N, editar, detener)
-2. Re-buildea con un nuevo tag:
+**El flujo correcto de actualización está documentado en [`MAINTENANCE.md`](./MAINTENANCE.md).** En resumen:
+
+1. Levantá n8n desde **tu imagen actual** con storage interno (sin `-v`):
    ```bash
-   ./build-image.sh
-   # Tag: v1.1
+   docker run -d --name n8n-edit -p 5678:5678 \
+     -e N8N_USER_MANAGEMENT_DISABLED=true -e N8N_BASIC_AUTH_ACTIVE=false \
+     juancruzrobledo/n8n-active-ia:latest
    ```
-3. Actualiza `docker-compose.yml`:
-   ```yaml
-   image: tuusuario/n8n-active-ia:v1.1
+2. Editá el workflow en http://localhost:5678, **Save** + dejalo activo.
+3. Extraé la data y reconstruí:
+   ```bash
+   docker stop n8n-edit
+   rm -rf data && mkdir data && docker cp n8n-edit:/home/node/.n8n/. ./data/
+   docker build -t juancruzrobledo/n8n-active-ia:latest -f Dockerfile.preconfigured .
+   docker push juancruzrobledo/n8n-active-ia:latest
    ```
 
 ---

@@ -4,82 +4,96 @@ Este documento detalla cómo actualizar workflows, modificar configuración o re
 
 ---
 
+## 🧠 Antes de empezar: cómo está armada esta imagen
+
+Dos cosas que tenés que entender o vas a perder tiempo (nosotros lo perdimos):
+
+1. **La fuente de verdad es la data baked DENTRO de la propia imagen** (`/home/node/.n8n`), NO la carpeta `workflows/`. Los `.json` de `workflows/` son exports de referencia y pueden estar desactualizados respecto a lo que corre en producción.
+2. **Toda la corrección vive en UN solo workflow** ("Correcion Automatica") que contiene los 4 webhooks adentro: `/webhook/corregir`, `/webhook/corregir-pdf`, `/webhook/generar-rubrica`, `/webhook/health`. No son 4 workflows separados.
+
+> ### 🪟 CRÍTICO en Windows — NO uses bind-mount de `data/`
+> El flujo viejo de esta guía montaba `-v ./data:/home/node/.n8n`. **Eso está ROTO en Windows + Docker Desktop.** SQLite en modo WAL sobre el filesystem de Windows (capa 9p/virtiofs) **rompe el registro de los webhooks de producción**: el workflow figura como activo pero los webhooks devuelven **404**.
+> Comprobado con la misma data y versión: con bind-mount → 404; con la data baked (sin mount) → 200.
+> **En Windows: editá con almacenamiento INTERNO del contenedor y extraé la data con `docker cp`** (FASE 1 abajo).
+
+---
+
 ## 🔄 Flujo de Trabajo para Actualizar Workflows
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  FASE 1: Edición Local                                      │
-│  1. Preparar permisos (Windows)                             │
-│  2. Levantar N8N en modo config                             │
-│  3. Editar workflows en http://localhost:5678               │
-│  4. Detener N8N (cambios guardados en data/)                │
+│  FASE 1: Edición Local (Windows-safe, SIN bind-mount)       │
+│  1. Levantar N8N desde TU imagen actual (storage interno)   │
+│  2. Editar el workflow en http://localhost:5678 + Guardar   │
+│  3. Extraer la data: docker cp -> ./data                    │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  FASE 2: Build & Push                                       │
-│  5. Ejecutar ./build-image.sh                               │
-│  6. Pushear a Docker Hub                                    │
+│  4. (opcional) Backup local de la imagen actual             │
+│  5. docker build -f Dockerfile.preconfigured                │
+│  6. Probar la imagen NUEVA (webhooks 200) y pushear         │
 └─────────────────────────────────────────────────────────────┘
                           ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  FASE 3: Despliegue                                         │
-│  7. docker-compose pull n8n                                 │
-│  8. docker-compose up -d n8n                                │
+│  7. docker-compose pull n8n (o "force pull" en EasyPanel)   │
+│  8. docker-compose up -d --force-recreate n8n               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+> **Git Bash en Windows:** corré `export MSYS_NO_PATHCONV=1` al inicio para que no convierta las rutas de contenedor (`/home/node/...`, `/tmp/...`) al pasarlas a `docker cp`/`docker exec`.
+
 ---
 
-## FASE 1: Edición Local
+## FASE 1: Edición Local (Windows-safe)
 
-### 1. Preparar Permisos (Solo Windows)
+### 1. Levantar N8N desde TU imagen actual (storage interno)
 
-**Contexto:** En Windows, al detener contenedores, los archivos de base de datos a veces quedan bloqueados o con permisos de _root_, lo que impide que N8N arranque de nuevo.
+Para **actualizar** hay que partir de la imagen que YA tiene tus workflows, no de la imagen vacía. Sin bind-mount: el contenedor usa su almacenamiento interno (donde todo funciona bien).
 
-**Solución:** Ejecuta este comando en PowerShell (estando en la carpeta `n8n/`) para asignar los permisos correctos al usuario `node` (ID 1000).
+```bash
+# Asegurate de no tener una instancia previa
+docker rm -f n8n-edit
 
-```powershell
-docker run --rm -v "${PWD}/data:/data" alpine chown -R 1000:1000 /data
+# Levantar TU imagen actual (no n8nio/n8n vacío) — storage interno, sin -v
+docker run -d \
+  --name n8n-edit \
+  -p 5678:5678 \
+  -e N8N_USER_MANAGEMENT_DISABLED=true \
+  -e N8N_BASIC_AUTH_ACTIVE=false \
+  -e N8N_SECURE_COOKIE=false \
+  juancruzrobledo/n8n-active-ia:latest
 ```
 
-### 2. Levantar N8N en Modo Configuración
+> `N8N_USER_MANAGEMENT_DISABLED=true` evita la pantalla de "creá tu cuenta de owner" que la imagen base n8n 2.x muestra por defecto.
 
-Ejecuta el contenedor N8N montando tu carpeta local `data/`.
+### 2. Realizar Cambios
 
-```powershell
-# Asegúrate de no tener una instancia previa
-docker rm -f n8n-config
-
-# Iniciar contenedor sin autenticación para editar
-docker run -d `
-  --name n8n-config `
-  -p 5678:5678 `
-  -e N8N_BASIC_AUTH_ACTIVE=false `
-  -v "${PWD}/data:/home/node/.n8n" `
-  n8nio/n8n:latest
-```
-
-### 3. Realizar Cambios
-
-Accede a: http://localhost:5678
+Accede a: http://localhost:5678 → vas a ver tu workflow **"Correcion Automatica"** ya cargado y activo.
 
 **Cambios típicos:**
-- Editar nodos de workflows existentes
+- Editar nodos del workflow existente
 - Ajustar timeouts
 - Modificar prompts de Gemini
-- Agregar nuevos workflows
 - Cambiar configuración de webhooks
 
-**⚠️ Importante:** Todo lo que hagas se está guardando en tu carpeta local `data/`.
+**Por cada cambio:** **Save** (esperá el "Saved") y dejá el workflow **ACTIVO** (toggle verde). Si lo dejás inactivo, sus webhooks no se registran.
 
-### 4. Finalizar Edición
+### 3. Extraer la data y finalizar
 
-Una vez terminados los cambios, detén y elimina el contenedor para liberar la base de datos y permitir que la imagen se construya correctamente.
+Detené el contenedor (n8n hace checkpoint del WAL al apagar) y extraé la data al host con `docker cp`:
 
-```powershell
-docker stop n8n-config
-docker rm n8n-config
+```bash
+# Frenar para un checkpoint limpio de SQLite
+docker stop n8n-edit
+
+# Extraer la data baked -> ./data (lo que el Dockerfile va a copiar)
+rm -rf data && mkdir -p data
+docker cp n8n-edit:/home/node/.n8n/. ./data/
 ```
+
+Ahora `./data` tiene tus cambios y está lista para el build.
 
 ---
 
@@ -106,36 +120,58 @@ Sigue las instrucciones del script:
 
 Esto actualizará la imagen en Docker Hub.
 
-### Opción B: Comandos Manuales
-
-Si prefieres construir manualmente:
+### Opción B: Comandos Manuales (recomendado en Windows)
 
 ```bash
-# Build
-docker build -t tuusuario/n8n-active-ia:v1.1 -f Dockerfile.preconfigured .
+export MSYS_NO_PATHCONV=1   # Git Bash en Windows
 
-# Push
-docker push tuusuario/n8n-active-ia:v1.1
+# 0) Backup local de la imagen actual (red de seguridad para rollback)
+docker tag juancruzrobledo/n8n-active-ia:latest juancruzrobledo/n8n-active-ia:backup-pre-update
 
-# También actualizar tag 'latest'
-docker tag tuusuario/n8n-active-ia:v1.1 tuusuario/n8n-active-ia:latest
-docker push tuusuario/n8n-active-ia:latest
+# 1) Build (la data viene de FASE 1, ya está en ./data)
+docker build -t juancruzrobledo/n8n-active-ia:latest -f Dockerfile.preconfigured .
+
+# 2) PROBAR la imagen NUEVA antes de pushear (data baked, SIN mount)
+docker rm -f n8n-test 2>/dev/null
+docker run -d --name n8n-test -p 5680:5678 \
+  -e N8N_USER_MANAGEMENT_DISABLED=true -e N8N_BASIC_AUTH_ACTIVE=false -e N8N_SECURE_COOKIE=false \
+  juancruzrobledo/n8n-active-ia:latest
+# esperá ~15s y verificá que los 4 webhooks den 200:
+for p in corregir corregir-pdf generar-rubrica health; do
+  curl -s -o /dev/null -w "/webhook/$p -> %{http_code}\n" -X POST http://localhost:5680/webhook/$p -H "Content-Type: application/json" -d '{}'
+done
+docker rm -f n8n-test
+
+# 3) Recién si dieron 200, pushear
+docker push juancruzrobledo/n8n-active-ia:latest
 ```
+
+> **Rollback:** si la nueva falla, `docker tag juancruzrobledo/n8n-active-ia:backup-pre-update juancruzrobledo/n8n-active-ia:latest && docker push juancruzrobledo/n8n-active-ia:latest`.
+
+> **Nota sobre `build-image.sh`:** la Opción A sirve, pero su flujo asume que vos poblaste `./data` con bind-mount (FASE 1 vieja). En Windows usá la Opción B, que parte de la `./data` extraída con `docker cp`.
 
 ---
 
 ## FASE 3: Despliegue
+
+> **⚠️ `:latest` es un tag MUTABLE.** El destino (`:latest`) es correcto, pero el deploy tiene que **bajar** la imagen nueva, no usar la cacheada. Forzá el pull (`docker-compose pull`, o en **EasyPanel**: "Force rebuild" / "Pull latest image", o pull policy `always`).
+>
+> **Confirmar que corre la nueva** comparando digests:
+> ```bash
+> docker inspect juancruzrobledo/n8n-active-ia:latest --format '{{index .RepoDigests 0}}'
+> ```
+> El digest tiene que coincidir con el que reportó tu último `docker push`.
 
 ### En Desarrollo Local
 
 Si tienes el proyecto corriendo localmente:
 
 ```powershell
-# 1. Descargar la versión más reciente
+# 1. Descargar la versión más reciente (forzado)
 docker-compose pull n8n
 
 # 2. Recrear el contenedor con la nueva imagen
-docker-compose up -d n8n
+docker-compose up -d --force-recreate n8n
 
 # 3. Verificar que levantó correctamente
 docker-compose logs -f n8n
@@ -278,13 +314,19 @@ docker run --rm -v "${PWD}/data:/data" alpine chown -R 1000:1000 /data
 docker-compose up -d --force-recreate n8n
 ```
 
+### Webhooks dan 404 aunque el workflow figura "Activated" (Windows)
+
+**Causa:** Estás corriendo n8n con **bind-mount de `data/`** en Windows. SQLite (modo WAL) sobre el filesystem de Windows rompe el registro de webhooks de producción. El log dice "Activated workflow" pero igual responde 404.
+
+**Solución:** No uses bind-mount en Windows. Seguí la **FASE 1 (Windows-safe)**: storage interno + `docker cp`. La imagen baked (sin mount) registra los webhooks bien.
+
 ### Webhooks no responden después de actualizar
 
-**Causa:** Workflows desactivados o cambio en paths.
+**Causa:** Workflows desactivados, cambio en paths, o el deploy levantó la imagen vieja cacheada (`:latest` mutable).
 
 **Solución:**
-1. Acceder a http://localhost:5678 (en dev)
-2. Verificar que workflows tengan toggle verde (activados)
+1. Acceder a http://localhost:5678 (en dev) y verificar toggle verde (activado)
+2. Confirmar que el deploy bajó la imagen nueva (comparar digest, ver FASE 3)
 3. Revisar logs: `docker-compose logs -f n8n`
 
 ---
