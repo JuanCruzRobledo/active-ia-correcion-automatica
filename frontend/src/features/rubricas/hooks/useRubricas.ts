@@ -76,11 +76,12 @@ export const useUpdateRubrica = () => {
     onSuccess: (updatedRubrica) => {
       // Invalidate lists
       queryClient.invalidateQueries({ queryKey: rubricasKeys.lists() });
-      // Update the specific rubrica in cache
-      queryClient.setQueryData(
-        rubricasKeys.detail(updatedRubrica.id),
-        updatedRubrica
-      );
+      // Invalidate the detail so it refetches the full RubricaDetailResponse
+      // (the update endpoint returns RubricaResponse, which lacks `materia` and
+      // `num_entregas`; setting it directly would leave a partial detail in cache).
+      queryClient.invalidateQueries({
+        queryKey: rubricasKeys.detail(updatedRubrica.id),
+      });
     },
   });
 };
