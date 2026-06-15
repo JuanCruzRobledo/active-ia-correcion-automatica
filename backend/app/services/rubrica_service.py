@@ -346,6 +346,8 @@ class RubricaService:
             archivo_original=rubrica.archivo_original,
             activa=rubrica.activa,
             moodle_assign_id=rubrica.moodle_assign_id,
+            modo_consolidacion=rubrica.modo_consolidacion,
+            extensiones_personalizadas=rubrica.extensiones_personalizadas,
             created_at=rubrica.created_at,
             updated_at=rubrica.updated_at,
             materia=materia_info,
