@@ -370,3 +370,112 @@ async def test_save_grade_exception_de_moodle_lanza_error(service):
                 token="t", moodle_host="https://m", assignment_instance_id=478,
                 moodle_user_id=101, grade=1.0, feedback_comment="x",
             )
+
+
+# =========================================================================
+# get_submissions_count — conteo de pendientes
+# Regresión "pendiente fantasma": confiar en el gradingstatus de Moodle, no en
+# una comparación de timestamps que se dispara cuando la entrega se toca DESPUÉS
+# de la nota aunque Moodle la siga dando por calificada.
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_count_graded_con_nota_real_no_es_espera_aunque_entrega_posterior(service):
+    """Caso real prod (uid 955): Aprobado (escala índice 2.0) el 23/4, entrega tocada el 13/6.
+
+    sub_tm > grade_tm PERO Moodle dice gradingstatus=graded → NO debe contar espera.
+    """
+    payload = _submissions_payload([
+        {"userid": 955, "status": "submitted", "gradingstatus": "graded",
+         "timemodified": 1781358175, "attemptnumber": 0, "plugins": []},
+    ])
+    grades_full = {955: {"timemodified": 1776970908, "grade": "2.00000"}}
+    with patch.object(service, "_fetch_submissions", AsyncMock(return_value=payload)), \
+         patch.object(service, "get_grades_full", AsyncMock(return_value=grades_full)), \
+         patch.object(service, "_fetch_grades_map", AsyncMock(return_value={955: 1776970908})):
+        counts = await service.get_submissions_count(
+            token="t", moodle_host="https://m", assignment_instance_id=611,
+            group_member_ids={955},
+        )
+
+    assert counts["espera"] == 0
+    assert counts["corregidos"] == 1
+    assert counts["sinEntrega"] == 0
+
+
+@pytest.mark.asyncio
+async def test_count_sin_calificar_es_espera(service):
+    payload = _submissions_payload([
+        {"userid": 101, "status": "submitted", "gradingstatus": "notgraded",
+         "timemodified": 100, "attemptnumber": 0, "plugins": []},
+    ])
+    with patch.object(service, "_fetch_submissions", AsyncMock(return_value=payload)), \
+         patch.object(service, "get_grades_full", AsyncMock(return_value={})), \
+         patch.object(service, "_fetch_grades_map", AsyncMock(return_value={})):
+        counts = await service.get_submissions_count(
+            token="t", moodle_host="https://m", assignment_instance_id=1,
+            group_member_ids={101},
+        )
+
+    assert counts["espera"] == 1
+    assert counts["corregidos"] == 0
+
+
+@pytest.mark.asyncio
+async def test_count_graded_orden_normal_es_corregido(service):
+    payload = _submissions_payload([
+        {"userid": 102, "status": "submitted", "gradingstatus": "graded",
+         "timemodified": 100, "attemptnumber": 0, "plugins": []},
+    ])
+    grades_full = {102: {"timemodified": 200, "grade": "1.00000"}}
+    with patch.object(service, "_fetch_submissions", AsyncMock(return_value=payload)), \
+         patch.object(service, "get_grades_full", AsyncMock(return_value=grades_full)), \
+         patch.object(service, "_fetch_grades_map", AsyncMock(return_value={102: 200})):
+        counts = await service.get_submissions_count(
+            token="t", moodle_host="https://m", assignment_instance_id=1,
+            group_member_ids={102},
+        )
+
+    assert counts["corregidos"] == 1
+    assert counts["espera"] == 0
+
+
+@pytest.mark.asyncio
+async def test_count_reentrega_genuina_moodle_notgraded_es_espera(service):
+    """Re-entrega real: Moodle marca el intento actual como notgraded → se sigue contando espera."""
+    payload = _submissions_payload([
+        {"userid": 103, "status": "submitted", "gradingstatus": "notgraded",
+         "timemodified": 300, "attemptnumber": 1, "plugins": []},
+    ])
+    # Nota vieja real de un intento anterior, pero el intento actual está sin calificar.
+    grades_full = {103: {"timemodified": 200, "grade": "2.00000"}}
+    with patch.object(service, "_fetch_submissions", AsyncMock(return_value=payload)), \
+         patch.object(service, "get_grades_full", AsyncMock(return_value=grades_full)), \
+         patch.object(service, "_fetch_grades_map", AsyncMock(return_value={103: 200})):
+        counts = await service.get_submissions_count(
+            token="t", moodle_host="https://m", assignment_instance_id=1,
+            group_member_ids={103},
+        )
+
+    assert counts["espera"] == 1
+
+
+@pytest.mark.asyncio
+async def test_count_nota_placeholder_menos_uno_es_espera(service):
+    """grade=-1 es el placeholder de Moodle al entregar (sin nota real) → espera, no corregido."""
+    payload = _submissions_payload([
+        {"userid": 104, "status": "submitted", "gradingstatus": "graded",
+         "timemodified": 100, "attemptnumber": 0, "plugins": []},
+    ])
+    grades_full = {104: {"timemodified": 100, "grade": "-1.00000"}}
+    with patch.object(service, "_fetch_submissions", AsyncMock(return_value=payload)), \
+         patch.object(service, "get_grades_full", AsyncMock(return_value=grades_full)), \
+         patch.object(service, "_fetch_grades_map", AsyncMock(return_value={104: 100})):
+        counts = await service.get_submissions_count(
+            token="t", moodle_host="https://m", assignment_instance_id=1,
+            group_member_ids={104},
+        )
+
+    assert counts["espera"] == 1
+    assert counts["corregidos"] == 0
