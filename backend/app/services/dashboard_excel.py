@@ -13,17 +13,19 @@ PLAN_DASHBOARD_GESTORES.md.
 import io
 
 from openpyxl import Workbook
-from openpyxl.chart import DoughnutChart, Reference
-from openpyxl.chart.label import DataLabelList
-from openpyxl.chart.series import DataPoint
+from openpyxl.chart import Reference
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from app.core.fecha import ahora_ar, fmt_fecha_ar
 from app.models.avance import AvanceAlumno
 from app.models.enums import EstadoAvanceEnum
 from app.services import excel_estilos as xl
-from app.services.notificacion_render import formatear_examenes, formatear_faltantes
+from app.services.notificacion_render import (
+    formatear_examenes,
+    formatear_faltantes,
+    subtitulo_documento,
+    titulo_con_corte,
+)
 
 _LABEL: dict[EstadoAvanceEnum, str] = {
     EstadoAvanceEnum.AL_DIA: "Al día",
@@ -58,13 +60,15 @@ def _autoancho(ws, anchos: list[int]) -> None:
         ws.column_dimensions[get_column_letter(i)].width = ancho
 
 
-def _hoja_resumen(ws, titulo, conteos, etiqueta, unidad_actual) -> None:
-    """Hoja Resumen: banda de título + tabla por estado (chips de color) + dona."""
-    info = f"Documento generado el {fmt_fecha_ar(ahora_ar())}"
-    if unidad_actual is not None:
-        info += f" · Corte: hasta {etiqueta} {unidad_actual}"
+def _hoja_resumen(ws, titulo, conteos, etiqueta, unidad_actual, corte_examen) -> None:
+    """Hoja Resumen: banda de título (con corte al lado) + tabla por estado + dona."""
     # ncols=7 para que la banda y el gráfico tengan aire a la derecha de la tabla.
-    xl.banda_titulo(ws, titulo, 7, subtitulo=info)
+    xl.banda_titulo(
+        ws,
+        titulo_con_corte(titulo, etiqueta, unidad_actual, corte_examen),
+        7,
+        subtitulo=subtitulo_documento(),
+    )
 
     # Tabla por estado (header en R4; un chip de color por estado).
     xl.celda_header(ws, 4, 1, "Estado")
@@ -90,24 +94,12 @@ def _hoja_resumen(ws, titulo, conteos, etiqueta, unidad_actual) -> None:
     tval.alignment = xl.CENTER
 
     # Gráfico de DONA con porcentajes + leyenda, coloreado por estado.
-    chart = DoughnutChart()
-    chart.title = "Distribución por estado"
-    chart.height = 8.5
-    chart.width = 13
-    chart.holeSize = 55
-    data = Reference(ws, min_col=2, min_row=4, max_row=ultima)  # incluye header
-    labels = Reference(ws, min_col=1, min_row=primera, max_row=ultima)
-    chart.add_data(data, titles_from_data=True)
-    chart.set_categories(labels)
-    if chart.series:
-        serie = chart.series[0]
-        for i, estado in enumerate(_ORDEN):
-            punto = DataPoint(idx=i)
-            punto.graphicalProperties.solidFill = _COLOR[estado]
-            serie.data_points.append(punto)
-    chart.dataLabels = DataLabelList()
-    chart.dataLabels.showPercent = True
-    ws.add_chart(chart, "D4")
+    xl.grafico_dona(
+        ws, "D4", "Distribución por estado",
+        cat_ref=Reference(ws, min_col=1, min_row=primera, max_row=ultima),
+        data_ref=Reference(ws, min_col=2, min_row=4, max_row=ultima),  # incluye header
+        colores=[_COLOR[e] for e in _ORDEN],
+    )
 
     _autoancho(ws, [16, 10])
     ws.freeze_panes = "A3"
@@ -149,17 +141,18 @@ def construir_excel_avance(
     alumnos_por_estado: dict[EstadoAvanceEnum, list[AvanceAlumno]],
     etiqueta: str = "Unidad",
     unidad_actual: int | None = None,
+    corte_examen: str | None = None,
 ) -> bytes:
     """Arma el .xlsx de avance (Resumen + 4 hojas de desglose). Devuelve los bytes.
 
     `etiqueta` ("Unidad"|"Semana") nombra la progresión en los headers y en la columna
-    'Le falta' (deudas del alumno, ej. "Semana 8: Quiz, TP"). `unidad_actual` es la unidad
-    hasta donde se evalúa el avance (línea de corte del informe).
+    'Le falta' (deudas del alumno, ej. "Semana 8: Quiz, TP"). `unidad_actual` + `corte_examen`
+    forman la línea de "Tareas requeridas" del informe (ej. "Unidad 8, Parcial 2").
     """
     wb = Workbook()
     ws = wb.active
     ws.title = "Resumen"
-    _hoja_resumen(ws, titulo, conteos, etiqueta, unidad_actual)
+    _hoja_resumen(ws, titulo, conteos, etiqueta, unidad_actual, corte_examen)
     for estado in _ORDEN:
         _hoja_estado(wb, estado, alumnos_por_estado.get(estado, []), etiqueta)
 

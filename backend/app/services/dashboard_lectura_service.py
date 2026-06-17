@@ -19,6 +19,7 @@ from app.repositories.cohorte_repository import (
 )
 from app.repositories.materia_repository import MateriaRepository
 from app.services.dashboard_excel import construir_excel_avance
+from app.services.examen_mapper import examen_corte
 from app.services.notificacion_render import formatear_examenes, formatear_faltantes
 from app.schemas.dashboard_gestores import (
     AlumnoDetalle,
@@ -167,12 +168,17 @@ class DashboardLecturaService:
             if materia_id is not None and materias
             else "Unidad"
         )
-        # Línea de corte: unidad hasta donde se evalúa (solo si el Excel es de UNA materia).
-        unidad_actual = (
-            materias[0].unidad_actual if materia_id is not None and materias else None
-        )
+        # Línea de corte: unidad + examen más alto (solo si el Excel es de UNA materia).
+        unidad_actual = None
+        corte_examen = None
+        if materia_id is not None and materias:
+            unidad_actual = materias[0].unidad_actual
+            corte_examen = examen_corte([
+                {"id": e.id, "tipo": e.tipo.value, "orden": e.orden}
+                for e in (materias[0].examenes or [])
+            ])
         contenido = construir_excel_avance(
-            titulo, conteos, alumnos_por_estado, etiqueta, unidad_actual
+            titulo, conteos, alumnos_por_estado, etiqueta, unidad_actual, corte_examen
         )
 
         codigo = cohorte.codigo if cohorte else "cohorte"
