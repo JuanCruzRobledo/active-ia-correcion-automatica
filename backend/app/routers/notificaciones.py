@@ -222,8 +222,8 @@ async def preview(
     if tipo == "alumno":
         return HTMLResponse(construir_html_alumno("Alumno de prueba", _filas_muestra_alumno()))
     if tipo == "tutor":
-        # Tutor académico: Excel agrupado por comisión.
-        xlsx = construir_excel_avance(_materias_muestra_tutor(), agrupar="comision")
+        # Tutor académico: 2 hojas por materia (por unidad + por comisión).
+        xlsx = construir_excel_avance(_materias_muestra_tutor(), agrupar="ambos")
         return StreamingResponse(
             io.BytesIO(xlsx), media_type=_XLSX,
             headers={"Content-Disposition": 'attachment; filename="preview_tutor.xlsx"'},

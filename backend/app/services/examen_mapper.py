@@ -95,6 +95,28 @@ def numeros_por_tipo(examenes: list[dict]) -> dict[int, int]:
     return numeros
 
 
+# Jerarquía del "corte": Global manda sobre los parciales; entre el mismo tipo, mayor número.
+_PRIORIDAD_CORTE = {"PARCIAL": 1, "GLOBAL": 2}
+
+
+def examen_corte(examenes: list[dict] | None) -> str | None:
+    """Etiqueta del examen MÁS ALTO (corte): Global > Parcial de mayor número.
+
+    examenes: [{"id", "tipo", "orden"}] (tal como vienen del modelo ExamenMateria; el
+    número/etiqueta se derivan). Recuperatorios/extensiones no son corte. None si no hay
+    parciales ni globales.
+    """
+    principales = [e for e in (examenes or []) if e.get("tipo") in _PRIORIDAD_CORTE]
+    if not principales:
+        return None
+    numeros = numeros_por_tipo(examenes or [])
+    top = max(
+        principales,
+        key=lambda e: (_PRIORIDAD_CORTE[e["tipo"]], numeros.get(e.get("id"), 1)),
+    )
+    return etiqueta_examen(top["tipo"], numeros.get(top.get("id"), 1))
+
+
 def calcular_resultados_examenes(
     notas_uid: dict[int, str], examenes_config: list[dict]
 ) -> list[dict]:

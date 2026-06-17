@@ -163,15 +163,16 @@ def test_tutor_sin_alumnos_con_faltantes_se_omite():
     assert construir_destinatarios_tutores_academicos(tutores, avances) == []
 
 
-def test_tutor_academico_solo_alumnos_con_deudas():
-    # El académico solo lista alumnos con deudas; un alumno al día (sin deudas) no entra.
+def test_tutor_academico_incluye_todos_los_de_la_comision():
+    # El agg pasa TODOS los alumnos de la comisión (para la torta por estado); el Excel
+    # filtra el listado. La materia se incluye porque ALGUIEN debe (Ana).
     avances = [{"materia_id": 1, "materia": "Prog 1", "alumnos": [
         _al(10, "Ana", "Gómez", "ana@x.com", "M26 C1-09", "Mendoza", _u([4])),
         _al(11, "Beto", "Páez", "beto@x.com", "M26 C1-09", "Mendoza", None),  # al día
     ]}]
     tutores = [_tutor("juan@x.com", [_comi(1, 9)])]
     alumnos = construir_destinatarios_tutores_academicos(tutores, avances)[0]["materias"][0]["alumnos"]
-    assert [a["apellido"] for a in alumnos] == ["Gómez"]
+    assert {a["apellido"] for a in alumnos} == {"Gómez", "Páez"}
 
 
 def test_tutor_comision_sin_numero_se_omite():

@@ -10,9 +10,24 @@ import pytest
 
 from app.services.examen_mapper import (
     calcular_resultados_examenes,
+    examen_corte,
     interpretar_resultado,
     parsear_nota_numerica,
 )
+
+
+def test_examen_corte_mas_alto():
+    # Recibe el formato del modelo: {id, tipo, orden}; el número/etiqueta se derivan.
+    assert examen_corte([]) is None
+    assert examen_corte(None) is None
+    p12 = [
+        {"id": 1, "tipo": "PARCIAL", "orden": 0},
+        {"id": 2, "tipo": "PARCIAL", "orden": 1},
+    ]
+    assert examen_corte(p12) == "Parcial 2"  # parcial de mayor número
+    assert examen_corte(p12 + [{"id": 3, "tipo": "GLOBAL", "orden": 2}]) == "Global 1"
+    # Recuperatorios/extensiones no son corte.
+    assert examen_corte([{"id": 9, "tipo": "RECUPERATORIO", "orden": 0}]) is None
 
 
 # ===================== parseo de nota numérica (es-AR) =====================

@@ -35,6 +35,7 @@ from app.services.notificacion_agg import (
     construir_destinatarios_tutores_nexo,
     numero_comision,
 )
+from app.services.examen_mapper import examen_corte
 from app.services.notificacion_render import (
     construir_excel_avance,
     construir_html_alumno,
@@ -81,11 +82,16 @@ class NotificacionService:
             if snap is None:
                 continue
             alumnos = await self.avance_repo.get_alumnos_de_snapshot(snap.id)
+            corte_examen = examen_corte([
+                {"id": e.id, "tipo": e.tipo.value, "orden": e.orden}
+                for e in (m.examenes or [])
+            ])
             out.append({
                 "materia_id": m.id,
                 "materia": m.nombre,
                 "etiqueta": m.etiqueta_unidad or "Unidad",
                 "unidad_actual": m.unidad_actual,
+                "corte_examen": corte_examen,
                 "alumnos": alumnos,
             })
         return out
@@ -159,8 +165,8 @@ class NotificacionService:
                 tanda_id, TipoNotificacionEnum.TUTOR_ACADEMICO, d["email"],
                 d["email"], "Avance de tus comisiones — Active-IA",
             )
-            # Excel agrupado POR COMISIÓN (1 hoja por materia del tutor).
-            xlsx = construir_excel_avance(d["materias"], agrupar="comision")
+            # 2 hojas por materia: por unidad (formato nexo) + por comisión.
+            xlsx = construir_excel_avance(d["materias"], agrupar="ambos")
             html = _cuerpo_adjunto(
                 d["nombre"], "Adjuntamos el avance de actividades de tus comisiones."
             )
