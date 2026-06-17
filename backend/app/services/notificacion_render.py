@@ -3,11 +3,11 @@
 Render de los adjuntos/cuerpos de las notificaciones (PLAN_NOTIFICACIONES_EMAIL.md §5.1).
 
 Funciones PURAS (reciben datos ya resueltos, devuelven str/bytes):
-- formatear_faltantes: JSONB {modo, unidades, actividades} → texto legible.
-- construir_pdf_tutor_academico: PDF (reportlab), 1 página por materia.
-- construir_excel_tutor_nexo: Excel (openpyxl), 1 hoja por materia.
+- formatear_faltantes: JSONB de deudas → texto legible.
+- construir_excel_avance: Excel (openpyxl) con el formato de análisis por materia,
+  agrupado por unidad/semana (tutor nexo) o por comisión (tutor académico).
 
-El HTML del alumno se arma en T5 (también acá), reutilizando formatear_faltantes.
+El HTML del alumno se arma acá también, reutilizando formatear_faltantes.
 """
 
 import io
@@ -15,20 +15,9 @@ import re
 
 from app.core.fecha import ahora_ar, fmt_fecha_ar
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import (
-    PageBreak,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
+
+from app.services import excel_estilos as xl
 
 
 # ===================== texto =====================
@@ -141,115 +130,18 @@ def label_resultado_examen(e: dict | None) -> str:
     return label
 
 
-# ===================== PDF (tutor académico) =====================
+# ===================== helpers de texto (escape HTML) =====================
 
 
 def _escape(text: str) -> str:
-    """Escapa &, <, > para que reportlab no los tome como markup."""
+    """Escapa &, <, > para no inyectar markup en el HTML del email."""
     if not text:
         return ""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def construir_pdf_tutor_academico(tutor_nombre: str, materias: list[dict]) -> bytes:
-    """PDF de actividades faltantes para un tutor académico.
+# ===================== helpers de Excel (compartidos) =====================
 
-    materias: [{"materia": str,
-                "comisiones": [{"comision": str,
-                                "faltantes": [{"apellido","nombre","detalle"}],
-                                "examenes_columnas": [str],
-                                "examenes_filas": [{"apellido","nombre","celdas":[str]}]}]}]
-    1 página por materia (PageBreak). Por comisión: tabla de actividades faltantes +
-    MATRIZ de exámenes (alumno × examen) con los alumnos que tienen algo para atender.
-    """
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer, pagesize=letter,
-        rightMargin=0.6 * inch, leftMargin=0.6 * inch,
-        topMargin=0.6 * inch, bottomMargin=0.6 * inch,
-    )
-    estilos = getSampleStyleSheet()
-    h_materia = ParagraphStyle("hMateria", parent=estilos["Heading1"], fontSize=15, spaceAfter=6)
-    h_comision = ParagraphStyle("hComision", parent=estilos["Heading2"], fontSize=12, spaceBefore=10, spaceAfter=4)
-    h_examenes = ParagraphStyle("hExamenes", parent=estilos["Heading3"], fontSize=10, spaceBefore=8, spaceAfter=3)
-    normal = estilos["BodyText"]
-
-    story: list = [
-        Paragraph("Actividades faltantes de tus alumnos", estilos["Title"]),
-        Paragraph(f"Tutor: {_escape(tutor_nombre)}", normal),
-        Paragraph(f"Documento generado el {fmt_fecha_ar(ahora_ar())}", normal),
-        Spacer(1, 10),
-    ]
-
-    if not materias:
-        story.append(Paragraph("No hay alumnos con actividades pendientes.", normal))
-
-    for idx, mat in enumerate(materias):
-        if idx > 0:
-            story.append(PageBreak())
-        story.append(Paragraph(_escape(mat.get("materia") or "Materia"), h_materia))
-        # Línea de corte: hasta qué unidad/semana se evalúa el avance de esta materia.
-        ua = mat.get("unidad_actual")
-        if ua is not None:
-            etq = mat.get("etiqueta") or "Unidad"
-            story.append(Paragraph(f"Corte: hasta {_escape(f'{etq} {ua}')}", normal))
-
-        estilo_tabla = TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 9),
-            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#BBBBBB")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F2F6FA")]),
-        ])
-        for com in mat.get("comisiones", []):
-            story.append(Paragraph(f"Comisión {_escape(com.get('comision') or '—')}", h_comision))
-
-            # Parte 1: actividades faltantes (solo alumnos con deudas).
-            faltantes = com.get("faltantes", [])
-            if faltantes:
-                story.append(Paragraph("Actividades faltantes", h_examenes))
-                filas = [["Alumno", "Actividades faltantes"]]
-                for al in faltantes:
-                    alumno = f"{al.get('apellido','')}, {al.get('nombre','')}".strip(", ")
-                    filas.append([
-                        Paragraph(_escape(alumno), normal),
-                        Paragraph(_escape(al.get("detalle") or "—"), normal),
-                    ])
-                tabla = Table(filas, colWidths=[2.6 * inch, 4.4 * inch], repeatRows=1)
-                tabla.setStyle(estilo_tabla)
-                story.append(tabla)
-
-            # Parte 2: MATRIZ de exámenes (alumno × examen), solo desaprobados/ausentes.
-            columnas = com.get("examenes_columnas", [])
-            exfilas = com.get("examenes_filas", [])
-            if exfilas and columnas:
-                story.append(Paragraph("Exámenes (a atender)", h_examenes))
-                filas = [["Alumno", *columnas]]
-                for al in exfilas:
-                    alumno = f"{al.get('apellido','')}, {al.get('nombre','')}".strip(", ")
-                    filas.append([
-                        Paragraph(_escape(alumno), normal),
-                        *[Paragraph(_escape(c), normal) for c in al.get("celdas", [])],
-                    ])
-                # Anchos dinámicos: 2.2" para el alumno, el resto repartido entre exámenes.
-                ancho_examen = (7.0 - 2.2) / len(columnas)
-                colWidths = [2.2 * inch] + [ancho_examen * inch] * len(columnas)
-                tabla = Table(filas, colWidths=colWidths, repeatRows=1)
-                tabla.setStyle(estilo_tabla)
-                story.append(tabla)
-
-    doc.build(story)
-    pdf = buffer.getvalue()
-    buffer.close()
-    return pdf
-
-
-# ===================== Excel (tutor nexo) =====================
-
-_HEADERS_NEXO = ["Comisión", "Alumno", "Actividades faltantes"]
-_FILL_HEADER = PatternFill("solid", fgColor="1F4E78")
 _INVALIDOS_HOJA = re.compile(r"[:\\/?*\[\]]")
 
 
@@ -266,59 +158,151 @@ def _safe_sheet_name(nombre: str, usados: set[str]) -> str:
     return nombre_final
 
 
-def construir_excel_tutor_nexo(regional: str, materias: list[dict]) -> bytes:
-    """Excel de avance de una regional para el tutor nexo. 1 hoja por materia.
+# ===================== Excel de avance (formato análisis por regional/materia) =====================
+# El diseño (paleta, bordes, banding, barras) vive en excel_estilos (xl), compartido con
+# el Excel del Dashboard de Gestores para que los tres reportes se vean idénticos.
 
-    materias: [{"materia": str, "unidad_actual": int|None, "etiqueta": str,
-                "filas": [{"comision","apellido","nombre","faltantes"}]}]
-    Cada hoja muestra en qué unidad/semana está la materia (contexto que el nexo no tiene).
+
+def _nombre_alumno(a: dict) -> str:
+    """'APELLIDO, NOMBRE' (como en el análisis de referencia)."""
+    return f"{a.get('apellido', '')}, {a.get('nombre', '')}".strip(", ")
+
+
+def _tipos_de_deudas(deudas: list[dict]) -> str:
+    """Tipos de un conjunto de deudas (de UNA unidad) → 'TP, Autoevaluación, Quiz (desaprobado)'."""
+    partes = []
+    for d in deudas:
+        tipo = _LABEL_DEUDA.get(d.get("tipo"), d.get("tipo") or "?")
+        if d.get("estado") == "desaprobado":
+            tipo += " (desaprobado)"
+        partes.append(tipo)
+    return ", ".join(partes)
+
+
+def _agrupar_avance(alumnos: list[dict], por_unidad: bool) -> list[tuple]:
+    """Agrupa los alumnos con deudas. Devuelve [(clave_raw, [alumnos])] ordenado.
+
+    - por_unidad: clave = número de unidad; un alumno aparece en CADA unidad donde debe.
+    - por comisión: clave = comisión; un alumno aparece una vez (con todas sus deudas).
     """
-    wb = Workbook()
-    wb.remove(wb.active)  # arrancamos sin la hoja por defecto
-    usados: set[str] = set()
+    grupos: dict = {}
+    if por_unidad:
+        for a in alumnos:
+            for u in sorted({d.get("unidad") for d in a.get("deudas", []) if d.get("unidad") is not None}):
+                grupos.setdefault(u, []).append(a)
+    else:
+        for a in alumnos:
+            grupos.setdefault(a.get("comision") or "—", []).append(a)
+    return sorted(grupos.items(), key=lambda kv: kv[0])
 
+
+def _hoja_avance(wb: Workbook, mat: dict, usados: set[str], por_unidad: bool) -> None:
+    """Arma la hoja de UNA materia con el formato de referencia (resumen + listado)."""
+    etiqueta = mat.get("etiqueta") or "Unidad"
+    nombre_mat = mat.get("materia") or "Materia"
+    ws = wb.create_sheet(_safe_sheet_name(nombre_mat, usados))
+    ncols = 3 if por_unidad else 2
+    # Solo alumnos con al menos una deuda (los que están al día no se listan).
+    alumnos = [a for a in mat.get("alumnos", []) if a.get("deudas")]
+    grupos = _agrupar_avance(alumnos, por_unidad)
+
+    # --- Título (R1, banda) + fecha de creación (R2) ---
+    xl.banda_titulo(
+        ws, nombre_mat, 4, subtitulo=f"Documento generado el {fmt_fecha_ar(ahora_ar())}"
+    )
+
+    # --- Resumen (R4 header, R5..) ---
+    fila = 4
+    xl.celda_header(ws, fila, 1, etiqueta if por_unidad else "Comisión")
+    xl.celda_header(ws, fila, 2, "Alumnos que deben")
+    fila += 1
+    for i, (clave, miembros) in enumerate(grupos):
+        clave_txt = f"{etiqueta} {clave}" if por_unidad else str(clave)
+        xl.fila_datos(ws, fila, [clave_txt, len(miembros)], zebra=bool(i % 2), center_cols=(2,))
+        fila += 1
+
+    # --- Listado detallado ---
+    fila += 1
+    ws.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=4)
+    titulo = (
+        f"LISTADO DE ALUMNOS POR {etiqueta.upper()} (por comisión y alfabético)"
+        if por_unidad
+        else "LISTADO DE ALUMNOS POR COMISIÓN (alfabético)"
+    )
+    ws.cell(fila, 1, titulo).font = xl.FONT_SECCION
+    fila += 2
+
+    for clave, miembros in grupos:
+        plural = "alumno" if len(miembros) == 1 else "alumnos"
+        encabezado = (
+            f"{etiqueta} {clave}  ({len(miembros)} {plural})"
+            if por_unidad
+            else f"Comisión {clave}  ({len(miembros)} {plural})"
+        )
+        xl.barra_bloque(ws, fila, encabezado, ncols)
+        fila += 1
+
+        if por_unidad:
+            xl.celda_header(ws, fila, 1, "Comisión")
+            xl.celda_header(ws, fila, 2, "Alumno")
+            xl.celda_header(ws, fila, 3, "Pendiente")
+            fila += 1
+            ordenados = sorted(
+                miembros,
+                key=lambda x: (x.get("comision") or "", x.get("apellido") or "", x.get("nombre") or ""),
+            )
+            for i, a in enumerate(ordenados):
+                deudas_u = [d for d in a.get("deudas", []) if d.get("unidad") == clave]
+                desaprob = any(d.get("estado") == "desaprobado" for d in deudas_u)
+                xl.fila_datos(
+                    ws, fila, [a.get("comision") or "—", _nombre_alumno(a), _tipos_de_deudas(deudas_u)],
+                    zebra=bool(i % 2), center_cols=(1,), resaltar_col=3 if desaprob else None,
+                )
+                fila += 1
+        else:
+            xl.celda_header(ws, fila, 1, "Alumno")
+            xl.celda_header(ws, fila, 2, "Pendiente")
+            fila += 1
+            ordenados = sorted(miembros, key=lambda x: (x.get("apellido") or "", x.get("nombre") or ""))
+            for i, a in enumerate(ordenados):
+                pendiente = formatear_faltantes({"deudas": a.get("deudas", [])}, etiqueta)
+                desaprob = any(d.get("estado") == "desaprobado" for d in a.get("deudas", []))
+                xl.fila_datos(
+                    ws, fila, [_nombre_alumno(a), pendiente],
+                    zebra=bool(i % 2), resaltar_col=2 if desaprob else None,
+                )
+                fila += 1
+        fila += 1  # fila vacía entre bloques
+
+    # Título visible al scrollear; anchos prolijos.
+    ws.freeze_panes = "A3"
+    anchos = (20, 40, 46, 3) if por_unidad else (40, 66, 3, 3)
+    for i, ancho in enumerate(anchos, 1):
+        ws.column_dimensions[get_column_letter(i)].width = ancho
+
+
+def construir_excel_avance(materias: list[dict], *, agrupar: str = "unidad") -> bytes:
+    """Excel de avance con el formato del análisis por regional/materia (1 hoja por materia).
+
+    materias: [{"materia": str, "etiqueta": str, "alumnos": [
+        {"comision": str, "apellido": str, "nombre": str,
+         "deudas": [{"unidad": int, "tipo": str, "estado": str}, ...]}]}]
+    agrupar:
+      - "unidad" (tutor nexo): resumen y listado por unidad/semana; columnas Comisión|Alumno|Pendiente.
+        El Pendiente de cada bloque son las deudas de ESA unidad.
+      - "comision" (tutor académico): resumen y listado por comisión; columnas Alumno|Pendiente.
+        El Pendiente trae todas las unidades del alumno (formatear_faltantes).
+    Solo se listan alumnos con ≥1 deuda. Respeta la etiqueta (Unidad/Semana) de la materia.
+    """
+    por_unidad = agrupar == "unidad"
+    wb = Workbook()
+    wb.remove(wb.active)
+    usados: set[str] = set()
     if not materias:
         ws = wb.create_sheet(_safe_sheet_name("Sin datos", usados))
-        ws["A1"] = f"Regional {regional}: sin alumnos con pendientes"
-
+        ws["A1"] = "Sin alumnos con pendientes"
     for mat in materias:
-        ws = wb.create_sheet(_safe_sheet_name(mat.get("materia") or "Materia", usados))
-        ws["A1"] = f"Regional {regional} — {mat.get('materia') or ''}".strip(" —")
-        ws["A1"].font = Font(bold=True, size=13)
-
-        # Línea de corte: hasta qué unidad/semana se evalúa (contexto que el nexo no tiene).
-        etq = mat.get("etiqueta") or "Unidad"
-        ua = mat.get("unidad_actual")
-        ws["A2"] = f"Corte: hasta {etq} {ua}" if ua is not None else "Corte: —"
-        ws["A2"].font = Font(italic=True, size=11)
-        # Fecha de creación del documento (horario Argentina).
-        ws["A3"] = f"Documento generado el {fmt_fecha_ar(ahora_ar())}"
-        ws["A3"].font = Font(italic=True, size=10)
-
-        # Header en la fila 4
-        for col, header in enumerate(_HEADERS_NEXO, 1):
-            celda = ws.cell(4, col, header)
-            celda.font = Font(bold=True, color="FFFFFF")
-            celda.fill = _FILL_HEADER
-
-        fila = 5
-        # ordenado por comisión y luego apellido
-        for f in sorted(
-            mat.get("filas", []),
-            key=lambda r: (r.get("comision") or "", r.get("apellido") or ""),
-        ):
-            alumno = f"{f.get('apellido','')}, {f.get('nombre','')}".strip(", ")
-            ws.cell(fila, 1, f.get("comision") or "—")
-            ws.cell(fila, 2, alumno)
-            ws.cell(fila, 3, f.get("faltantes") or "—")
-            fila += 1
-
-        ws.freeze_panes = "A5"
-        for i, ancho in enumerate((18, 32, 50), 1):
-            ws.column_dimensions[get_column_letter(i)].width = ancho
-        for celda in ws[4]:
-            celda.alignment = Alignment(horizontal="left")
-
+        _hoja_avance(wb, mat, usados, por_unidad)
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()

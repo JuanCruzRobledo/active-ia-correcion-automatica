@@ -22,12 +22,25 @@ Estructuras de entrada:
 import re
 
 from app.services.notificacion_render import (
-    examen_para_atender,
     formatear_examenes,
     formatear_faltantes,
-    label_resultado_examen,
     tiene_examen_desaprobado,
 )
+
+
+def _deudas_de(a) -> list[dict]:
+    """Deudas crudas de un alumno (JSONB actividades_faltantes.deudas) → [] si no tiene."""
+    return (getattr(a, "actividades_faltantes", None) or {}).get("deudas") or []
+
+
+def _alumno_avance(a) -> dict:
+    """Proyección de un AvanceAlumno para el Excel de avance (deudas crudas)."""
+    return {
+        "comision": a.comision or "—",
+        "apellido": a.apellido or "",
+        "nombre": a.nombre or "",
+        "deudas": _deudas_de(a),
+    }
 
 # Número de comisión al final del texto: "M26 C1-09" → 9, "COMI-9" → 9, "COMI -7" → 7.
 # Necesario porque el moodle_group_code de Comisión está mal cargado ("m26"); el matching
@@ -87,7 +100,7 @@ def construir_destinatarios_tutores_academicos(
     avances_por_materia: list[dict],
     comisiones_objetivo: set[tuple[int, int]] | None = None,
 ) -> list[dict]:
-    """Un destinatario por tutor (con email) con alumnos faltantes en SUS comisiones.
+    """Un destinatario por tutor (con email) con los alumnos con deudas de SUS comisiones.
 
     El matching alumno↔comisión es por (materia_id, número de comisión): el alumno
     "M26 C1-09" pertenece a la comisión "COMI-9" de su materia (el moodle_group_code
@@ -97,18 +110,12 @@ def construir_destinatarios_tutores_academicos(
     comisiones_objetivo: si se pasa, SOLO se incluyen las comisiones cuyo
     (materia_id, numero) esté en el set (modo prueba/QA). None = todas.
 
-    El PDF tiene DOS partes por comisión:
-    - faltantes: alumnos con actividades pendientes (texto agrupado por unidad).
-    - exámenes: MATRIZ alumno × examen (una columna por parcial/global), SOLO con los
-      alumnos que tienen algo para atender (desaprobado o ausente). El rescatado queda
-      aprobado y no entra.
+    El Excel del académico agrupa los alumnos POR COMISIÓN (el render arma los bloques);
+    acá solo se proyectan los alumnos con deudas crudas, agrupados por materia.
 
     Returns: [{"email","nombre",
-               "materias": [{"materia","unidad_actual","etiqueta",
-                 "comisiones": [{"comision",
-                                 "faltantes": [{"apellido","nombre","detalle"}],
-                                 "examenes_columnas": [str],
-                                 "examenes_filas": [{"apellido","nombre","celdas":[str]}]}]}]}]
+               "materias": [{"materia","etiqueta","unidad_actual",
+                 "alumnos": [{"comision","apellido","nombre","deudas":[...]}]}]}]
     """
     idx = {m["materia_id"]: m for m in avances_por_materia}
     out: list[dict] = []
@@ -126,59 +133,23 @@ def construir_destinatarios_tutores_academicos(
             mat = idx.get(materia_id)
             if not mat:
                 continue
-            etiqueta = mat.get("etiqueta") or "Unidad"
-            alumnos_com = [
-                a for a in mat.get("alumnos", []) if numero_comision(a.comision) == numero
-            ]
-
-            # --- Parte 1: faltantes (solo alumnos con deudas) ---
-            faltantes = []
-            for a in alumnos_com:
-                fmt = formatear_faltantes(getattr(a, "actividades_faltantes", None), etiqueta)
-                if fmt:
-                    faltantes.append(
-                        {"apellido": a.apellido or "", "nombre": a.nombre or "", "detalle": fmt}
-                    )
-
-            # --- Parte 2: matriz de exámenes (todos comparten las mismas columnas) ---
-            columnas: list[str] = []
-            for a in alumnos_com:
-                exs = (getattr(a, "resultados_examenes", None) or {}).get("examenes") or []
-                if exs:
-                    columnas = [e.get("etiqueta") for e in exs]
-                    break
-            examenes_filas = []
-            for a in alumnos_com:
-                resultados = getattr(a, "resultados_examenes", None)
-                if not examen_para_atender(resultados):
-                    continue  # solo desaprobados/ausentes
-                por_etq = {e.get("etiqueta"): e for e in (resultados.get("examenes") or [])}
-                examenes_filas.append({
-                    "apellido": a.apellido or "",
-                    "nombre": a.nombre or "",
-                    "celdas": [label_resultado_examen(por_etq.get(c)) for c in columnas],
-                })
-
-            if not faltantes and not examenes_filas:
-                continue
             nombre_mat = mat.get("materia") or com.get("materia") or ""
-            nombre_comision = com.get("nombre") or f"Comisión {numero}"
-            entry = materias_dict.setdefault(
-                nombre_mat,
-                {
-                    "materia": nombre_mat,
-                    "unidad_actual": mat.get("unidad_actual"),
-                    "etiqueta": mat.get("etiqueta") or "Unidad",
-                    "comisiones": [],
-                },
-            )
-            entry["comisiones"].append({
-                "comision": nombre_comision,
-                "faltantes": faltantes,
-                "examenes_columnas": columnas,
-                "examenes_filas": examenes_filas,
-            })
-        materias = [m for m in materias_dict.values() if m["comisiones"]]
+            for a in mat.get("alumnos", []):
+                if numero_comision(a.comision) != numero:
+                    continue
+                if not _deudas_de(a):
+                    continue
+                entry = materias_dict.setdefault(
+                    nombre_mat,
+                    {
+                        "materia": nombre_mat,
+                        "etiqueta": mat.get("etiqueta") or "Unidad",
+                        "unidad_actual": mat.get("unidad_actual"),
+                        "alumnos": [],
+                    },
+                )
+                entry["alumnos"].append(_alumno_avance(a))
+        materias = [m for m in materias_dict.values() if m["alumnos"]]
         if materias:
             out.append({"email": t["email"], "nombre": t.get("nombre") or "", "materias": materias})
     return out
@@ -187,12 +158,14 @@ def construir_destinatarios_tutores_academicos(
 def construir_destinatarios_tutores_nexo(
     nexos: list[dict], avances_por_materia: list[dict]
 ) -> list[dict]:
-    """Un destinatario por tutor nexo (con email) con los alumnos faltantes de su regional.
+    """Un destinatario por tutor nexo (con email) con los alumnos con deudas de su regional.
+
+    El Excel del nexo agrupa por unidad/semana (el render arma los bloques); acá solo se
+    proyectan los alumnos de la regional con deudas crudas, por materia.
 
     Returns: [{"email","nombre","regional",
-               "materias": [{"materia","unidad_actual","etiqueta",
-                             "filas": [{"comision","apellido","nombre","faltantes"}]}]}]
-    `unidad_actual`/`etiqueta` dan al nexo el contexto de en qué unidad está la materia.
+               "materias": [{"materia","etiqueta","unidad_actual",
+                             "alumnos": [{"comision","apellido","nombre","deudas":[...]}]}]}]
     """
     out: list[dict] = []
     for n in nexos:
@@ -201,24 +174,17 @@ def construir_destinatarios_tutores_nexo(
         regional = n.get("regional")
         materias: list[dict] = []
         for mat in avances_por_materia:
-            etiqueta = mat.get("etiqueta") or "Unidad"
-            filas = [
-                {
-                    "comision": a.comision or "—",
-                    "apellido": a.apellido or "",
-                    "nombre": a.nombre or "",
-                    "faltantes": formatear_faltantes(getattr(a, "actividades_faltantes", None), etiqueta),
-                }
+            alumnos = [
+                _alumno_avance(a)
                 for a in mat.get("alumnos", [])
-                if a.regional == regional
-                and formatear_faltantes(getattr(a, "actividades_faltantes", None), etiqueta)
+                if a.regional == regional and _deudas_de(a)
             ]
-            if filas:
+            if alumnos:
                 materias.append({
                     "materia": mat.get("materia") or "",
-                    "unidad_actual": mat.get("unidad_actual"),
                     "etiqueta": mat.get("etiqueta") or "Unidad",
-                    "filas": filas,
+                    "unidad_actual": mat.get("unidad_actual"),
+                    "alumnos": alumnos,
                 })
         if materias:
             out.append(

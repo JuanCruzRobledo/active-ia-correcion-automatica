@@ -142,10 +142,11 @@ def test_tutor_academico_solo_ve_sus_comisiones():
     tutores = [_tutor("juan@x.com", [_comi(1, 9)])]
     dests = construir_destinatarios_tutores_academicos(tutores, avances)
     assert len(dests) == 1
-    comision = dests[0]["materias"][0]["comisiones"][0]
-    assert comision["comision"] == "COMI-9"
-    # Beto (comisión 10) NO aparece en los faltantes de la comisión 9.
-    assert [a["apellido"] for a in comision["faltantes"]] == ["Gómez"]
+    alumnos = dests[0]["materias"][0]["alumnos"]
+    # Solo la comisión 9 (Ana); Beto (comisión 10) NO aparece.
+    assert [a["apellido"] for a in alumnos] == ["Gómez"]
+    assert alumnos[0]["comision"] == "M26 C1-09"
+    assert alumnos[0]["deudas"]  # deudas crudas presentes
 
 
 def test_tutor_sin_email_se_omite():
@@ -162,34 +163,15 @@ def test_tutor_sin_alumnos_con_faltantes_se_omite():
     assert construir_destinatarios_tutores_academicos(tutores, avances) == []
 
 
-def _ex2(r1, r2, e1="Parcial 1", e2="Parcial 2"):
-    """Resultados con DOS exámenes (para la matriz)."""
-    return {"examenes": [
-        {"etiqueta": e1, "resultado": r1, "rescatado": False},
-        {"etiqueta": e2, "resultado": r2, "rescatado": False},
-    ]}
-
-
-def test_tutor_matriz_examenes_solo_desaprobados_y_ausentes():
-    # Ana reprobó P2 (entra), Beto aprobó todo (NO entra), Carla ausente en P1 (entra).
+def test_tutor_academico_solo_alumnos_con_deudas():
+    # El académico solo lista alumnos con deudas; un alumno al día (sin deudas) no entra.
     avances = [{"materia_id": 1, "materia": "Prog 1", "alumnos": [
-        _al(10, "Ana", "Gómez", "ana@x.com", "M26 C1-09", "Mendoza", None,
-            examenes=_ex2("aprobado", "desaprobado")),
-        _al(11, "Beto", "Páez", "beto@x.com", "M26 C1-09", "Mendoza", None,
-            examenes=_ex2("aprobado", "aprobado")),
-        _al(12, "Carla", "Díaz", "carla@x.com", "M26 C1-09", "Mendoza", None,
-            examenes=_ex2("ausente", "aprobado")),
+        _al(10, "Ana", "Gómez", "ana@x.com", "M26 C1-09", "Mendoza", _u([4])),
+        _al(11, "Beto", "Páez", "beto@x.com", "M26 C1-09", "Mendoza", None),  # al día
     ]}]
     tutores = [_tutor("juan@x.com", [_comi(1, 9)])]
-    com = construir_destinatarios_tutores_academicos(tutores, avances)[0]["materias"][0]["comisiones"][0]
-
-    assert com["faltantes"] == []  # nadie debe actividades
-    assert com["examenes_columnas"] == ["Parcial 1", "Parcial 2"]
-    apellidos = [f["apellido"] for f in com["examenes_filas"]]
-    assert apellidos == ["Gómez", "Díaz"]  # Beto (todo aprobado) NO aparece
-    # Ana: aprobó P1, reprobó P2 → celdas en orden de columnas.
-    ana = next(f for f in com["examenes_filas"] if f["apellido"] == "Gómez")
-    assert ana["celdas"] == ["Aprobó", "Desaprobó"]
+    alumnos = construir_destinatarios_tutores_academicos(tutores, avances)[0]["materias"][0]["alumnos"]
+    assert [a["apellido"] for a in alumnos] == ["Gómez"]
 
 
 def test_tutor_comision_sin_numero_se_omite():
@@ -211,8 +193,8 @@ def test_tutor_filtro_comisiones_objetivo():
     dests = construir_destinatarios_tutores_academicos(
         tutores, avances, comisiones_objetivo={(1, 9)}
     )
-    comisiones = dests[0]["materias"][0]["comisiones"]
-    assert [c["comision"] for c in comisiones] == ["COMI-9"]  # solo la objetivo
+    alumnos = dests[0]["materias"][0]["alumnos"]
+    assert [a["comision"] for a in alumnos] == ["M26 C1-09"]  # solo la objetivo (comisión 9)
 
 
 # ===================== tutor nexo =====================
@@ -235,7 +217,7 @@ def test_nexo_agrupa_su_regional_por_materia():
     assert {m["materia"] for m in d["materias"]} == {"Prog 1", "Org Emp"}
     # En Prog 1 solo está la alumna de Mendoza (Beto de Córdoba queda afuera)
     prog1 = next(m for m in d["materias"] if m["materia"] == "Prog 1")
-    assert [f["apellido"] for f in prog1["filas"]] == ["Gómez"]
+    assert [a["apellido"] for a in prog1["alumnos"]] == ["Gómez"]
 
 
 def test_nexo_materia_lleva_unidad_actual_y_etiqueta():

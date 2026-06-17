@@ -36,9 +36,8 @@ from app.schemas.notificacion import (
 from app.services.email_service import EmailService
 from app.services.notificacion_config_service import NotificacionConfigService
 from app.services.notificacion_render import (
-    construir_excel_tutor_nexo,
+    construir_excel_avance,
     construir_html_alumno,
-    construir_pdf_tutor_academico,
 )
 from app.services.notificacion_service import NotificacionService
 
@@ -57,26 +56,32 @@ def _filas_muestra_alumno() -> list[dict]:
 
 def _materias_muestra_tutor() -> list[dict]:
     return [{
-        "materia": "Programación 1", "unidad_actual": 8, "etiqueta": "Unidad",
-        "comisiones": [{
-            "comision": "M26 C1-09",
-            "faltantes": [
-                {"apellido": "Gómez", "nombre": "Ana", "detalle": "Falta Unidad 4 y 5"},
-                {"apellido": "Páez", "nombre": "Beto", "detalle": "Actividad de Cierre unidad 8"},
-            ],
-            "examenes_columnas": ["Parcial 1", "Parcial 2", "Global 1"],
-            "examenes_filas": [
-                {"apellido": "Gómez", "nombre": "Ana", "celdas": ["Aprobó", "Desaprobó", "Ausente"]},
-                {"apellido": "Díaz", "nombre": "Carla", "celdas": ["Ausente", "Aprobó (R)", "Ausente"]},
-            ],
-        }],
+        "materia": "Programación 1", "etiqueta": "Unidad",
+        "alumnos": [
+            {"comision": "M26 C1-09", "apellido": "Gómez", "nombre": "Ana", "deudas": [
+                {"unidad": 4, "tipo": "TP", "estado": "no entregado"},
+                {"unidad": 5, "tipo": "CIERRE", "estado": "pendiente"},
+            ]},
+            {"comision": "M26 C1-10", "apellido": "Díaz", "nombre": "Carla", "deudas": [
+                {"unidad": 3, "tipo": "QUIZ", "estado": "desaprobado"},
+            ]},
+        ],
     }]
 
 
 def _materias_muestra_nexo() -> list[dict]:
-    return [{"materia": "Programación 1", "filas": [
-        {"comision": "M26 C1-09", "apellido": "Gómez", "nombre": "Ana", "faltantes": "Falta Unidad 4 y 5"},
-    ]}]
+    return [{
+        "materia": "Programación 1", "etiqueta": "Unidad",
+        "alumnos": [
+            {"comision": "M26 C1-09", "apellido": "Gómez", "nombre": "Ana", "deudas": [
+                {"unidad": 4, "tipo": "TP", "estado": "no entregado"},
+                {"unidad": 5, "tipo": "CIERRE", "estado": "pendiente"},
+            ]},
+            {"comision": "M26 C1-01", "apellido": "Ruiz", "nombre": "Eva", "deudas": [
+                {"unidad": 2, "tipo": "AUTOEVALUACION", "estado": "pendiente"},
+            ]},
+        ],
+    }]
 
 
 # ===================== cron-config =====================
@@ -211,21 +216,23 @@ async def preview(
     tipo: str,
     current_user: Usuario = Depends(get_current_user),
 ):
-    """Devuelve una muestra del formato sin enviar nada: alumno=HTML, tutor=PDF, nexo=Excel."""
+    """Devuelve una muestra del formato sin enviar nada: alumno=HTML, tutor/nexo=Excel."""
     require_admin(current_user)
+    _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     if tipo == "alumno":
         return HTMLResponse(construir_html_alumno("Alumno de prueba", _filas_muestra_alumno()))
     if tipo == "tutor":
-        pdf = construir_pdf_tutor_academico("Tutor de prueba", _materias_muestra_tutor())
+        # Tutor académico: Excel agrupado por comisión.
+        xlsx = construir_excel_avance(_materias_muestra_tutor(), agrupar="comision")
         return StreamingResponse(
-            io.BytesIO(pdf), media_type="application/pdf",
-            headers={"Content-Disposition": 'inline; filename="preview_tutor.pdf"'},
+            io.BytesIO(xlsx), media_type=_XLSX,
+            headers={"Content-Disposition": 'attachment; filename="preview_tutor.xlsx"'},
         )
     if tipo == "nexo":
-        xlsx = construir_excel_tutor_nexo("Mendoza", _materias_muestra_nexo())
+        # Tutor nexo: Excel agrupado por unidad/semana.
+        xlsx = construir_excel_avance(_materias_muestra_nexo(), agrupar="unidad")
         return StreamingResponse(
-            io.BytesIO(xlsx),
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            io.BytesIO(xlsx), media_type=_XLSX,
             headers={"Content-Disposition": 'attachment; filename="preview_nexo.xlsx"'},
         )
     raise HTTPException(

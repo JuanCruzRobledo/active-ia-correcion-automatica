@@ -1,9 +1,8 @@
 """
 Tests de notificacion_render (T4 — adjuntos de las notificaciones).
 
-- formatear_faltantes: lógica PURA texto (UNIDADES vs ACTIVIDADES) → TDD fino.
-- construir_pdf_tutor_academico / construir_excel_tutor_nexo: devuelven bytes;
-  se verifica estructura (PDF magic; n.º de hojas del Excel == n.º de materias).
+- formatear_faltantes: lógica PURA texto → TDD fino.
+- construir_excel_avance: devuelve bytes; se verifica estructura (hojas, resumen, bloques).
 """
 
 import io
@@ -12,15 +11,112 @@ import pytest
 from openpyxl import load_workbook
 
 from app.services.notificacion_render import (
-    construir_excel_tutor_nexo,
+    construir_excel_avance,
     construir_html_alumno,
-    construir_pdf_tutor_academico,
     examen_para_atender,
     formatear_examenes,
     formatear_faltantes,
     label_resultado_examen,
     tiene_examen_desaprobado,
 )
+
+
+# ===================== construir_excel_avance (formato de referencia) =====================
+
+
+def _al(comision, apellido, nombre, deudas):
+    return {"comision": comision, "apellido": apellido, "nombre": nombre, "deudas": deudas}
+
+
+MATERIAS_AVANCE = [
+    {
+        "materia": "Programación 1",
+        "etiqueta": "Unidad",
+        "alumnos": [
+            _al("M26 C1-01", "FERREIRA", "HERNAN", [
+                {"unidad": 3, "tipo": "TP", "estado": "no entregado"},
+                {"unidad": 3, "tipo": "AUTOEVALUACION", "estado": "pendiente"},
+                {"unidad": 4, "tipo": "TP", "estado": "desaprobado"},
+            ]),
+            _al("M26 C1-02", "REYNOSO", "MARIA", [
+                {"unidad": 3, "tipo": "QUIZ", "estado": "pendiente"},
+            ]),
+            _al("M26 C1-03", "ARIAS", "NICOLAS", []),  # sin deudas → NO aparece
+        ],
+    },
+]
+
+
+def _todos_los_valores(ws):
+    return [str(c.value) for row in ws.iter_rows() for c in row if c.value is not None]
+
+
+def test_excel_avance_una_hoja_por_materia():
+    wb = load_workbook(io.BytesIO(construir_excel_avance(MATERIAS_AVANCE, agrupar="unidad")))
+    assert wb.sheetnames == ["Programación 1"]
+    assert wb["Programación 1"]["A1"].value == "Programación 1"
+
+
+def test_excel_avance_resumen_por_unidad_cuenta_deudores():
+    wb = load_workbook(io.BytesIO(construir_excel_avance(MATERIAS_AVANCE, agrupar="unidad")))
+    ws = wb["Programación 1"]
+    assert ws["A4"].value == "Unidad"
+    assert ws["B4"].value == "Alumnos que deben"
+    resumen = {}
+    for r in range(5, 9):
+        k = ws.cell(r, 1).value
+        if k and str(k).startswith("Unidad"):
+            resumen[k] = ws.cell(r, 2).value
+    assert resumen.get("Unidad 3") == 2  # Ferreira + Reynoso
+    assert resumen.get("Unidad 4") == 1  # solo Ferreira
+
+
+def test_excel_avance_listado_bloques_por_unidad_y_pendiente_de_esa_unidad():
+    wb = load_workbook(io.BytesIO(construir_excel_avance(MATERIAS_AVANCE, agrupar="unidad")))
+    vals = _todos_los_valores(wb["Programación 1"])
+    # Encabezado de bloque por unidad con conteo.
+    assert any("Unidad 3" in v and "2 alumnos" in v for v in vals)
+    assert any("Unidad 4" in v and "1 alumno" in v for v in vals)
+    # Header del listado y columnas.
+    assert any("LISTADO DE ALUMNOS POR UNIDAD" in v for v in vals)
+    assert "Comisión" in vals and "Alumno" in vals and "Pendiente" in vals
+    # En el bloque Unidad 3, Ferreira muestra solo lo de la U3 (TP, Autoevaluación), NO el TP de U4.
+    assert any(v == "TP, Autoevaluación" for v in vals)
+    assert any(v == "TP (desaprobado)" for v in vals)  # bloque Unidad 4
+
+
+def test_excel_avance_alumno_sin_deudas_no_aparece():
+    wb = load_workbook(io.BytesIO(construir_excel_avance(MATERIAS_AVANCE, agrupar="unidad")))
+    vals = _todos_los_valores(wb["Programación 1"])
+    assert not any("ARIAS" in v for v in vals)
+
+
+def test_excel_avance_respeta_etiqueta_semana():
+    materias = [{"materia": "PYE", "etiqueta": "Semana", "alumnos": [
+        _al("A25 C2-01", "ALBARRACIN", "TAMARA", [{"unidad": 1, "tipo": "QUIZ", "estado": "pendiente"}]),
+    ]}]
+    wb = load_workbook(io.BytesIO(construir_excel_avance(materias, agrupar="unidad")))
+    ws = wb["PYE"]
+    assert ws["A4"].value == "Semana"
+    vals = _todos_los_valores(ws)
+    assert any("Semana 1" in v for v in vals)
+    assert any("LISTADO DE ALUMNOS POR SEMANA" in v for v in vals)
+
+
+def test_excel_avance_modo_comision_bloque_por_comision():
+    wb = load_workbook(io.BytesIO(construir_excel_avance(MATERIAS_AVANCE, agrupar="comision")))
+    ws = wb["Programación 1"]
+    assert ws["A4"].value == "Comisión"
+    vals = _todos_los_valores(ws)
+    # Un bloque por comisión.
+    assert any("M26 C1-01" in v and "1 alumno" in v for v in vals)
+    # En modo comisión el Pendiente del alumno trae TODAS sus unidades juntas.
+    assert any("Unidad 3" in v and "Unidad 4" in v for v in vals)
+
+
+def test_excel_avance_sin_materias_no_rompe():
+    wb = load_workbook(io.BytesIO(construir_excel_avance([], agrupar="unidad")))
+    assert len(wb.sheetnames) == 1
 
 
 def test_examen_para_atender_incluye_desaprobado_y_ausente():
@@ -126,120 +222,11 @@ def test_formatear_quiz_y_quiz_desaprobado():
     assert formatear_faltantes(f) == "Unidad 2: Quiz, Quiz (desaprobado)"
 
 
-# ===================== construir_pdf_tutor_academico =====================
-
-def _comi_pdf(comision, faltantes=None, columnas=None, filas=None):
-    return {
-        "comision": comision,
-        "faltantes": faltantes or [],
-        "examenes_columnas": columnas or [],
-        "examenes_filas": filas or [],
-    }
-
-
-MATERIAS_PDF = [
-    {
-        "materia": "Programación 1",
-        "comisiones": [
-            _comi_pdf("M26 C1-09", faltantes=[
-                {"apellido": "Gómez", "nombre": "Ana", "detalle": "Falta Unidad 4 y 5"},
-                {"apellido": "Páez", "nombre": "Beto", "detalle": "Actividad de cierre unidad 8"},
-            ]),
-            _comi_pdf("M26 C1-10", faltantes=[
-                {"apellido": "Díaz", "nombre": "Carla", "detalle": "Falta Unidad 3"},
-            ]),
-        ],
-    },
-    {
-        "materia": "Programación 2",
-        "comisiones": [
-            _comi_pdf("M26 C2-01", faltantes=[
-                {"apellido": "Ruiz", "nombre": "Eva", "detalle": "Falta Unidad 2"},
-            ]),
-        ],
-    },
-]
-
-
-def test_pdf_tutor_academico_devuelve_pdf_valido():
-    data = construir_pdf_tutor_academico("Juan Tutor", MATERIAS_PDF)
-    assert isinstance(data, bytes)
-    assert data[:5] == b"%PDF-"
-    assert len(data) > 800  # contenido real, no un PDF vacío
-
-
-def test_pdf_tutor_academico_sin_materias_no_rompe():
-    data = construir_pdf_tutor_academico("Juan Tutor", [])
-    assert data[:5] == b"%PDF-"
-
-
-# ===================== construir_excel_tutor_nexo =====================
-
-MATERIAS_XLSX = [
-    {
-        "materia": "Programación 1",
-        "filas": [
-            {"comision": "M26 C1-09", "apellido": "Gómez", "nombre": "Ana", "faltantes": "Falta Unidad 4 y 5"},
-            {"comision": "M26 C1-10", "apellido": "Díaz", "nombre": "Carla", "faltantes": "Falta Unidad 3"},
-        ],
-    },
-    {
-        "materia": "Organización Empresarial",
-        "filas": [
-            {"comision": "M26 C1-01", "apellido": "Ruiz", "nombre": "Eva", "faltantes": "Falta Unidad 2"},
-        ],
-    },
-]
-
-
-def test_excel_tutor_nexo_una_hoja_por_materia():
-    data = construir_excel_tutor_nexo("Mendoza", MATERIAS_XLSX)
-    wb = load_workbook(io.BytesIO(data))
-    assert len(wb.sheetnames) == 2  # una hoja por materia
-
-
-def test_excel_tutor_nexo_muestra_corte_y_fecha_creacion():
-    materias = [
-        {"materia": "Prog 1", "unidad_actual": 8, "etiqueta": "Unidad", "filas": [
-            {"comision": "M26 C1-09", "apellido": "Gómez", "nombre": "Ana", "faltantes": "Falta Unidad 4"},
-        ]},
-        {"materia": "PYE", "unidad_actual": 4, "etiqueta": "Semana", "filas": [
-            {"comision": "M26 C1-01", "apellido": "Ruiz", "nombre": "Eva", "faltantes": "Falta Semana 2"},
-        ]},
-    ]
-    wb = load_workbook(io.BytesIO(construir_excel_tutor_nexo("Mendoza", materias)))
-    # Línea de corte (hasta qué unidad/semana se evalúa) + fecha de creación.
-    assert wb["Prog 1"]["A2"].value == "Corte: hasta Unidad 8"
-    assert wb["PYE"]["A2"].value == "Corte: hasta Semana 4"
-    assert "Documento generado el" in wb["Prog 1"]["A3"].value
-    # El header quedó en la fila 4 y los datos en la 5.
-    assert wb["Prog 1"]["A4"].value == "Comisión"
-
-
-def test_excel_tutor_nexo_unidad_actual_none_muestra_guion():
-    materias = [{"materia": "Prog 1", "unidad_actual": None, "etiqueta": "Unidad", "filas": [
-        {"comision": "C1", "apellido": "G", "nombre": "A", "faltantes": "x"},
+def test_excel_avance_nombres_de_hoja_se_sanitizan_a_31_chars():
+    materias = [{"materia": "X" * 50, "etiqueta": "Unidad", "alumnos": [
+        _al("C1", "G", "A", [{"unidad": 1, "tipo": "TP", "estado": "pendiente"}]),
     ]}]
-    wb = load_workbook(io.BytesIO(construir_excel_tutor_nexo("Mendoza", materias)))
-    assert wb["Prog 1"]["A2"].value == "Corte: —"
-
-
-def test_excel_tutor_nexo_header_y_filas():
-    data = construir_excel_tutor_nexo("Mendoza", MATERIAS_XLSX)
-    wb = load_workbook(io.BytesIO(data))
-    ws = wb[wb.sheetnames[0]]
-    # Título en fila 1; corte en 2; fecha de creación en 3; header en fila 4.
-    headers = [c.value for c in ws[4]]
-    assert "Comisión" in headers and "Alumno" in headers and "Actividades faltantes" in headers
-    # Las 2 filas de la materia 1 están presentes (busca un apellido)
-    valores = [cell.value for row in ws.iter_rows() for cell in row]
-    assert any(v and "Gómez" in str(v) for v in valores)
-
-
-def test_excel_nombres_de_hoja_se_sanitizan_a_31_chars():
-    materias = [{"materia": "X" * 50, "filas": []}]
-    data = construir_excel_tutor_nexo("Mendoza", materias)
-    wb = load_workbook(io.BytesIO(data))
+    wb = load_workbook(io.BytesIO(construir_excel_avance(materias, agrupar="unidad")))
     assert all(len(name) <= 31 for name in wb.sheetnames)
 
 
@@ -310,20 +297,3 @@ def test_html_alumno_incluye_columna_examenes():
     ])
     assert "Exámenes" in html  # header de la columna
     assert "Parcial 1: Desaprobó" in html  # valor de la fila
-
-
-def test_pdf_tutor_academico_con_matriz_examenes_genera_apartado():
-    materias = [{
-        "materia": "Programación 1",
-        "comisiones": [_comi_pdf(
-            "M26 C1-09",
-            columnas=["Parcial 1", "Parcial 2", "Global 1"],
-            filas=[
-                {"apellido": "Gómez", "nombre": "Ana",
-                 "celdas": ["Aprobó", "Desaprobó", "Ausente"]},
-            ],
-        )],
-    }]
-    data = construir_pdf_tutor_academico("Juan Tutor", materias)
-    assert data[:5] == b"%PDF-"
-    assert len(data) > 800  # la matriz de exámenes se renderizó
