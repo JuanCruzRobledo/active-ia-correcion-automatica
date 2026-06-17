@@ -7,6 +7,9 @@ reportes (avance de tutor nexo/académico y dashboard de gestores) se ven idént
 un cambio de estilo se hace en un solo lugar.
 """
 
+from openpyxl.chart import DoughnutChart, Reference
+from openpyxl.chart.label import DataLabelList
+from openpyxl.chart.series import DataPoint
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 # ===================== paleta =====================
@@ -27,6 +30,22 @@ FILL_DESAPROB = PatternFill("solid", fgColor="FCE4E4")  # celda con desaprobado
 
 CENTER = Alignment(horizontal="center", vertical="center")
 LEFT = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+# Estado de avance (clave = EstadoAvanceEnum.value) → etiqueta y color del gráfico.
+# Compartido por el Excel de avance (tutores) y el de gestores.
+ESTADO_ORDEN = ["AL_DIA", "RIESGO_MEDIO", "RIESGO_ALTO", "SIN_ACTIVIDAD"]
+ESTADO_LABEL = {
+    "AL_DIA": "Al día",
+    "RIESGO_MEDIO": "Riesgo medio",
+    "RIESGO_ALTO": "Riesgo alto",
+    "SIN_ACTIVIDAD": "Sin actividad",
+}
+ESTADO_COLOR = {
+    "AL_DIA": "16A34A",       # verde
+    "RIESGO_MEDIO": "D97706",  # naranja
+    "RIESGO_ALTO": "DC2626",   # rojo
+    "SIN_ACTIVIDAD": "6B7280",  # gris
+}
 
 FONT_TITULO = Font(bold=True, size=16, color=AZUL_TITULO)
 FONT_SUBTITULO = Font(italic=True, size=10, color=GRIS_FECHA)
@@ -71,6 +90,59 @@ def barra_bloque(ws, fila: int, texto: str, ncols: int) -> None:
     c.font = FONT_BLOQUE
     c.alignment = Alignment(horizontal="left", vertical="center")
     ws.row_dimensions[fila].height = 20
+
+
+def grafico_dona(ws, anchor: str, titulo: str, *, cat_ref, data_ref, colores: list[str]) -> None:
+    """Gráfico de DONA con porcentajes + leyenda, coloreado punto a punto.
+
+    cat_ref/data_ref: Reference de openpyxl (categorías y datos, este último con header).
+    colores: hex (sin #) en el mismo orden que las categorías.
+    """
+    ch = DoughnutChart()
+    ch.title = titulo
+    ch.height = 7.5
+    ch.width = 11
+    ch.holeSize = 55
+    ch.add_data(data_ref, titles_from_data=True)
+    ch.set_categories(cat_ref)
+    if ch.series:
+        serie = ch.series[0]
+        for i, color in enumerate(colores):
+            punto = DataPoint(idx=i)
+            punto.graphicalProperties.solidFill = color
+            serie.data_points.append(punto)
+    ch.dataLabels = DataLabelList()
+    ch.dataLabels.showPercent = True
+    ws.add_chart(ch, anchor)
+
+
+def tabla_torta_estado(ws, conteos: dict, *, col: int = 4, fila_header: int = 4, anchor: str = "G4") -> None:
+    """Tabla 'Estado | Alumnos' con chips de color + torta de dona al lado.
+
+    conteos: {estado_value: n} (claves = EstadoAvanceEnum.value). Se dibujan los 4 estados
+    en el orden canónico (los ausentes cuentan 0). La tabla ocupa las columnas (col, col+1)
+    desde fila_header; la dona se ancla en `anchor`.
+    """
+    c0, c1 = col, col + 1
+    celda_header(ws, fila_header, c0, "Estado")
+    celda_header(ws, fila_header, c1, "Alumnos")
+    fila = fila_header + 1
+    for estado in ESTADO_ORDEN:
+        chip = ws.cell(fila, c0, ESTADO_LABEL[estado])
+        chip.fill = PatternFill("solid", fgColor=ESTADO_COLOR[estado])
+        chip.font = Font(bold=True, color="FFFFFF")
+        chip.border = BORDER
+        cnt = ws.cell(fila, c1, conteos.get(estado, 0))
+        cnt.alignment = CENTER
+        cnt.border = BORDER
+        fila += 1
+    ultima = fila - 1
+    grafico_dona(
+        ws, anchor, "Distribución por estado",
+        cat_ref=Reference(ws, min_col=c0, min_row=fila_header + 1, max_row=ultima),
+        data_ref=Reference(ws, min_col=c1, min_row=fila_header, max_row=ultima),
+        colores=[ESTADO_COLOR[e] for e in ESTADO_ORDEN],
+    )
 
 
 def fila_datos(

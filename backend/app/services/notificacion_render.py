@@ -106,6 +106,44 @@ def tiene_examen_desaprobado(resultados: dict | None) -> bool:
     )
 
 
+def texto_tareas_requeridas(etiqueta: str, unidad_actual: int | None, corte_examen: str | None) -> str:
+    """'Tareas requeridas: Unidad 8, Parcial 2' (o '' si no hay corte)."""
+    partes: list[str] = []
+    if unidad_actual is not None:
+        partes.append(f"{etiqueta} {unidad_actual}")
+    if corte_examen:
+        partes.append(corte_examen)
+    return f"Tareas requeridas: {', '.join(partes)}" if partes else ""
+
+
+def titulo_con_corte(
+    nombre: str, etiqueta: str = "Unidad", unidad_actual: int | None = None,
+    corte_examen: str | None = None,
+) -> str:
+    """Título de la hoja con el corte al lado, mismo peso: 'Materia — Tareas requeridas: ...'."""
+    tr = texto_tareas_requeridas(etiqueta, unidad_actual, corte_examen)
+    return f"{nombre}  —  {tr}" if tr else nombre
+
+
+def subtitulo_documento() -> str:
+    """Metadata chica bajo el título: 'Documento generado el {fecha}'."""
+    return f"Documento generado el {fmt_fecha_ar(ahora_ar())}"
+
+
+def examenes_pendientes(resultados: dict | None) -> list[str]:
+    """Etiquetas de los exámenes que el alumno DEBE atender (desaprobado o ausente).
+
+    El rescatado ya quedó 'aprobado' (no entra). Ej: ['Parcial 1', 'Parcial 2'].
+    """
+    if not resultados:
+        return []
+    return [
+        e.get("etiqueta")
+        for e in (resultados.get("examenes") or [])
+        if e.get("resultado") in ("desaprobado", "ausente") and e.get("etiqueta")
+    ]
+
+
 def examen_para_atender(resultados: dict | None) -> bool:
     """True si algún examen quedó DESAPROBADO o AUSENTE (con rescate ya aplicado).
 
@@ -196,22 +234,51 @@ def _agrupar_avance(alumnos: list[dict], por_unidad: bool) -> list[tuple]:
     return sorted(grupos.items(), key=lambda kv: kv[0])
 
 
-def _hoja_avance(wb: Workbook, mat: dict, usados: set[str], por_unidad: bool) -> None:
-    """Arma la hoja de UNA materia con el formato de referencia (resumen + listado)."""
+def _hoja_avance(
+    wb: Workbook, mat: dict, usados: set[str], por_unidad: bool, *, prefijo: str = ""
+) -> None:
+    """Arma la hoja de UNA materia con el formato de referencia (resumen + listado).
+
+    `prefijo`: se antepone al nombre de la PESTAÑA (no al título) para distinguir las dos
+    hojas de una misma materia cuando se generan ambas vistas (académico).
+    """
     etiqueta = mat.get("etiqueta") or "Unidad"
     nombre_mat = mat.get("materia") or "Materia"
-    ws = wb.create_sheet(_safe_sheet_name(nombre_mat, usados))
-    ncols = 3 if por_unidad else 2
-    # Solo alumnos con al menos una deuda (los que están al día no se listan).
-    alumnos = [a for a in mat.get("alumnos", []) if a.get("deudas")]
-    grupos = _agrupar_avance(alumnos, por_unidad)
+    ws = wb.create_sheet(_safe_sheet_name(f"{prefijo}{nombre_mat}", usados))
 
-    # --- Título (R1, banda) + fecha de creación (R2) ---
+    todos = mat.get("alumnos", [])
+    # Al listado van los que deben actividades O tienen parciales para atender.
+    deudores = [a for a in todos if a.get("deudas") or a.get("examenes")]
+    con_examen = [a for a in todos if a.get("examenes")]
+    # Vista por unidad: agrupar por unidad a los que deben actividades (los de solo-examen
+    # van al bloque "Exámenes"). Vista por comisión: agrupar TODOS los deudores por comisión.
+    if por_unidad:
+        grupos = _agrupar_avance([a for a in deudores if a.get("deudas")], True)
+    else:
+        grupos = _agrupar_avance(deudores, False)
+
+    def _plural(n: int) -> str:
+        return f"{n} alumno" if n == 1 else f"{n} alumnos"
+
+    def _bloque(fila: int, encabezado: str, headers: list[str]) -> int:
+        """Barra de bloque + headers de columna. Devuelve la fila de la 1ª fila de datos."""
+        xl.barra_bloque(ws, fila, encabezado, len(headers))
+        for col, h in enumerate(headers, 1):
+            xl.celda_header(ws, fila + 1, col, h)
+        return fila + 2
+
+    def _orden_comision(x):
+        return (x.get("comision") or "", x.get("apellido") or "", x.get("nombre") or "")
+
+    # --- Título con el corte al lado (R1) + fecha (R2) ---
     xl.banda_titulo(
-        ws, nombre_mat, 4, subtitulo=f"Documento generado el {fmt_fecha_ar(ahora_ar())}"
+        ws,
+        titulo_con_corte(nombre_mat, etiqueta, mat.get("unidad_actual"), mat.get("corte_examen")),
+        7,
+        subtitulo=subtitulo_documento(),
     )
 
-    # --- Resumen (R4 header, R5..) ---
+    # --- Resumen de deudas (A-B): por unidad/comisión (+ fila Exámenes en vista por unidad) ---
     fila = 4
     xl.celda_header(ws, fila, 1, etiqueta if por_unidad else "Comisión")
     xl.celda_header(ws, fila, 2, "Alumnos que deben")
@@ -220,9 +287,20 @@ def _hoja_avance(wb: Workbook, mat: dict, usados: set[str], por_unidad: bool) ->
         clave_txt = f"{etiqueta} {clave}" if por_unidad else str(clave)
         xl.fila_datos(ws, fila, [clave_txt, len(miembros)], zebra=bool(i % 2), center_cols=(2,))
         fila += 1
+    if por_unidad and con_examen:
+        xl.fila_datos(ws, fila, ["Exámenes", len(con_examen)], zebra=bool(len(grupos) % 2), center_cols=(2,))
+        fila += 1
 
-    # --- Listado detallado ---
-    fila += 1
+    # --- Tabla + torta por estado (D-E / G4), con TODOS los alumnos (incluye al día) ---
+    conteo_estado: dict = {}
+    for a in todos:
+        est = a.get("estado")
+        if est:
+            conteo_estado[est] = conteo_estado.get(est, 0) + 1
+    xl.tabla_torta_estado(ws, conteo_estado)
+
+    # --- Listado detallado (debajo de las tablas y la torta) ---
+    fila = max(fila, 10) + 1
     ws.merge_cells(start_row=fila, start_column=1, end_row=fila, end_column=4)
     titulo = (
         f"LISTADO DE ALUMNOS POR {etiqueta.upper()} (por comisión y alfabético)"
@@ -232,26 +310,11 @@ def _hoja_avance(wb: Workbook, mat: dict, usados: set[str], por_unidad: bool) ->
     ws.cell(fila, 1, titulo).font = xl.FONT_SECCION
     fila += 2
 
-    for clave, miembros in grupos:
-        plural = "alumno" if len(miembros) == 1 else "alumnos"
-        encabezado = (
-            f"{etiqueta} {clave}  ({len(miembros)} {plural})"
-            if por_unidad
-            else f"Comisión {clave}  ({len(miembros)} {plural})"
-        )
-        xl.barra_bloque(ws, fila, encabezado, ncols)
-        fila += 1
-
-        if por_unidad:
-            xl.celda_header(ws, fila, 1, "Comisión")
-            xl.celda_header(ws, fila, 2, "Alumno")
-            xl.celda_header(ws, fila, 3, "Pendiente")
-            fila += 1
-            ordenados = sorted(
-                miembros,
-                key=lambda x: (x.get("comision") or "", x.get("apellido") or "", x.get("nombre") or ""),
-            )
-            for i, a in enumerate(ordenados):
+    if por_unidad:
+        for clave, miembros in grupos:
+            fila = _bloque(fila, f"{etiqueta} {clave}  ({_plural(len(miembros))})",
+                           ["Comisión", "Alumno", "Pendiente"])
+            for i, a in enumerate(sorted(miembros, key=_orden_comision)):
                 deudas_u = [d for d in a.get("deudas", []) if d.get("unidad") == clave]
                 desaprob = any(d.get("estado") == "desaprobado" for d in deudas_u)
                 xl.fila_datos(
@@ -259,42 +322,66 @@ def _hoja_avance(wb: Workbook, mat: dict, usados: set[str], por_unidad: bool) ->
                     zebra=bool(i % 2), center_cols=(1,), resaltar_col=3 if desaprob else None,
                 )
                 fila += 1
-        else:
-            xl.celda_header(ws, fila, 1, "Alumno")
-            xl.celda_header(ws, fila, 2, "Pendiente")
             fila += 1
-            ordenados = sorted(miembros, key=lambda x: (x.get("apellido") or "", x.get("nombre") or ""))
-            for i, a in enumerate(ordenados):
+        # Parciales "como otra unidad": bloque Exámenes con los alumnos que deben parciales.
+        if con_examen:
+            fila = _bloque(fila, f"Exámenes  ({_plural(len(con_examen))})",
+                           ["Comisión", "Alumno", "Parciales"])
+            for i, a in enumerate(sorted(con_examen, key=_orden_comision)):
+                xl.fila_datos(
+                    ws, fila, [a.get("comision") or "—", _nombre_alumno(a), ", ".join(a.get("examenes", []))],
+                    zebra=bool(i % 2), center_cols=(1,),
+                )
+                fila += 1
+            fila += 1
+        anchos = (20, 40, 46, 16, 10)
+    else:
+        for clave, miembros in grupos:
+            fila = _bloque(fila, f"Comisión {clave}  ({_plural(len(miembros))})",
+                           ["Alumno", "Pendiente", "Exámenes"])
+            for i, a in enumerate(sorted(miembros, key=lambda x: (x.get("apellido") or "", x.get("nombre") or ""))):
                 pendiente = formatear_faltantes({"deudas": a.get("deudas", [])}, etiqueta)
                 desaprob = any(d.get("estado") == "desaprobado" for d in a.get("deudas", []))
                 xl.fila_datos(
-                    ws, fila, [_nombre_alumno(a), pendiente],
+                    ws, fila, [_nombre_alumno(a), pendiente, ", ".join(a.get("examenes", []))],
                     zebra=bool(i % 2), resaltar_col=2 if desaprob else None,
                 )
                 fila += 1
-        fila += 1  # fila vacía entre bloques
+            fila += 1
+        anchos = (40, 50, 30, 16, 10)
 
-    # Título visible al scrollear; anchos prolijos.
     ws.freeze_panes = "A3"
-    anchos = (20, 40, 46, 3) if por_unidad else (40, 66, 3, 3)
     for i, ancho in enumerate(anchos, 1):
         ws.column_dimensions[get_column_letter(i)].width = ancho
 
 
+# Pasos (por_unidad) y prefijo de pestaña según el modo de agrupación.
+_PREFIJO_UNIDAD = "Por unidad — "
+_PREFIJO_COMISION = "Por comisión — "
+_PASOS_AGRUPAR: dict[str, list[bool]] = {
+    "unidad": [True],
+    "comision": [False],
+    "ambos": [True, False],  # 2 hojas por materia (académico): unidad + comisión
+}
+
+
 def construir_excel_avance(materias: list[dict], *, agrupar: str = "unidad") -> bytes:
-    """Excel de avance con el formato del análisis por regional/materia (1 hoja por materia).
+    """Excel de avance con el formato del análisis por materia.
 
     materias: [{"materia": str, "etiqueta": str, "alumnos": [
         {"comision": str, "apellido": str, "nombre": str,
          "deudas": [{"unidad": int, "tipo": str, "estado": str}, ...]}]}]
     agrupar:
-      - "unidad" (tutor nexo): resumen y listado por unidad/semana; columnas Comisión|Alumno|Pendiente.
+      - "unidad" (tutor nexo): 1 hoja/materia por unidad/semana; columnas Comisión|Alumno|Pendiente.
         El Pendiente de cada bloque son las deudas de ESA unidad.
-      - "comision" (tutor académico): resumen y listado por comisión; columnas Alumno|Pendiente.
+      - "comision" (vista por comisión): 1 hoja/materia por comisión; columnas Alumno|Pendiente.
         El Pendiente trae todas las unidades del alumno (formatear_faltantes).
+      - "ambos" (tutor académico): 2 hojas/materia — primero por unidad (formato nexo) y luego
+        por comisión —, con la pestaña prefijada para distinguirlas.
     Solo se listan alumnos con ≥1 deuda. Respeta la etiqueta (Unidad/Semana) de la materia.
     """
-    por_unidad = agrupar == "unidad"
+    pasos = _PASOS_AGRUPAR.get(agrupar, [True])
+    dos_vistas = len(pasos) > 1
     wb = Workbook()
     wb.remove(wb.active)
     usados: set[str] = set()
@@ -302,7 +389,12 @@ def construir_excel_avance(materias: list[dict], *, agrupar: str = "unidad") -> 
         ws = wb.create_sheet(_safe_sheet_name("Sin datos", usados))
         ws["A1"] = "Sin alumnos con pendientes"
     for mat in materias:
-        _hoja_avance(wb, mat, usados, por_unidad)
+        for por_unidad in pasos:
+            # Solo se prefija la pestaña cuando hay DOS vistas de la misma materia.
+            prefijo = ""
+            if dos_vistas:
+                prefijo = _PREFIJO_UNIDAD if por_unidad else _PREFIJO_COMISION
+            _hoja_avance(wb, mat, usados, por_unidad, prefijo=prefijo)
     buffer = io.BytesIO()
     wb.save(buffer)
     return buffer.getvalue()

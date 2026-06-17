@@ -17,15 +17,30 @@ from app.services.notificacion_render import (
     formatear_examenes,
     formatear_faltantes,
     label_resultado_examen,
+    subtitulo_documento,
     tiene_examen_desaprobado,
+    titulo_con_corte,
 )
+
+
+def test_subtitulo_documento_solo_fecha():
+    assert subtitulo_documento().startswith("Documento generado el")
+
+
+def test_titulo_con_corte():
+    assert titulo_con_corte("Prog 1", "Unidad", 8, "Parcial 2") == "Prog 1  —  Tareas requeridas: Unidad 8, Parcial 2"
+    assert titulo_con_corte("PYE", "Semana", 13, None) == "PYE  —  Tareas requeridas: Semana 13"
+    assert titulo_con_corte("Prog 1", "Unidad", None, None) == "Prog 1"  # sin corte → solo el nombre
 
 
 # ===================== construir_excel_avance (formato de referencia) =====================
 
 
-def _al(comision, apellido, nombre, deudas):
-    return {"comision": comision, "apellido": apellido, "nombre": nombre, "deudas": deudas}
+def _al(comision, apellido, nombre, deudas, *, estado="RIESGO_ALTO", examenes=None):
+    return {
+        "comision": comision, "apellido": apellido, "nombre": nombre,
+        "deudas": deudas, "estado": estado, "examenes": examenes or [],
+    }
 
 
 MATERIAS_AVANCE = [
@@ -112,6 +127,54 @@ def test_excel_avance_modo_comision_bloque_por_comision():
     assert any("M26 C1-01" in v and "1 alumno" in v for v in vals)
     # En modo comisión el Pendiente del alumno trae TODAS sus unidades juntas.
     assert any("Unidad 3" in v and "Unidad 4" in v for v in vals)
+
+
+def test_excel_avance_modo_ambos_dos_hojas_por_materia():
+    # Académico: 1 materia → 2 hojas (por unidad + por comisión), pestañas prefijadas.
+    wb = load_workbook(io.BytesIO(construir_excel_avance(MATERIAS_AVANCE, agrupar="ambos")))
+    assert len(wb.sheetnames) == 2
+    por_u = next((wb[n] for n in wb.sheetnames if n.startswith("Por unidad")), None)
+    por_c = next((wb[n] for n in wb.sheetnames if n.startswith("Por comisión")), None)
+    assert por_u is not None and por_c is not None
+    # La hoja por unidad tiene el header de resumen "Unidad"; la de comisión, "Comisión".
+    assert por_u["A4"].value == "Unidad"
+    assert por_c["A4"].value == "Comisión"
+
+
+def test_excel_avance_bloque_examenes_y_tabla_estado():
+    materias = [{"materia": "Prog 1", "etiqueta": "Unidad", "alumnos": [
+        _al("M26 C1-01", "GOMEZ", "Ana", [{"unidad": 3, "tipo": "TP", "estado": "no entregado"}]),
+        # Solo debe un parcial (al día en actividades): entra al bloque Exámenes igual.
+        _al("M26 C1-02", "DIAZ", "Beto", [], estado="AL_DIA", examenes=["Parcial 1"]),
+        # Al día y sin nada que deber: cuenta en la torta, NO en el listado.
+        _al("M26 C1-03", "RUIZ", "Eva", [], estado="AL_DIA"),
+    ]}]
+    wb = load_workbook(io.BytesIO(construir_excel_avance(materias, agrupar="unidad")))
+    vals = _todos_los_valores(wb["Prog 1"])
+    assert any("Exámenes" in v for v in vals)        # bloque/fila de exámenes
+    assert any("Parcial 1" in v for v in vals)
+    assert any("DIAZ" in v for v in vals)            # aparece por el parcial
+    assert "Estado" in vals                          # tabla por estado (alimenta la torta)
+    assert not any("RUIZ" in v for v in vals)        # al día sin deudas → no en el listado
+
+
+def test_excel_avance_academico_por_comision_columna_examenes():
+    materias = [{"materia": "Prog 1", "etiqueta": "Unidad", "alumnos": [
+        _al("M26 C1-02", "DIAZ", "Beto", [], estado="RIESGO_ALTO", examenes=["Parcial 1", "Parcial 2"]),
+    ]}]
+    wb = load_workbook(io.BytesIO(construir_excel_avance(materias, agrupar="comision")))
+    vals = _todos_los_valores(wb["Prog 1"])
+    assert "Exámenes" in vals                         # header de columna
+    assert any("Parcial 1, Parcial 2" in v for v in vals)
+
+
+def test_excel_avance_corte_en_titulo():
+    materias = [{"materia": "Prog 1", "etiqueta": "Unidad", "unidad_actual": 8, "corte_examen": "Parcial 2",
+                 "alumnos": [_al("C1", "G", "A", [{"unidad": 3, "tipo": "TP", "estado": "pendiente"}])]}]
+    wb = load_workbook(io.BytesIO(construir_excel_avance(materias, agrupar="unidad")))
+    ws = wb["Prog 1"]
+    assert "Tareas requeridas: Unidad 8, Parcial 2" in ws["A1"].value  # corte al lado del nombre
+    assert ws["A2"].value.startswith("Documento generado el")        # fecha como metadata
 
 
 def test_excel_avance_sin_materias_no_rompe():

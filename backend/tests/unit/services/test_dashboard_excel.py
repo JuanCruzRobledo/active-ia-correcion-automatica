@@ -80,15 +80,16 @@ def test_columna_examenes():
 
 def test_resumen_muestra_fecha_creacion_y_corte():
     alumnos = {e: [] for e in EstadoAvanceEnum}
-    data = construir_excel_avance("Test", {}, alumnos, "Semana", 8)
-    a2 = load_workbook(io.BytesIO(data))["Resumen"]["A2"].value
-    assert "Documento generado el" in a2
-    assert "Corte: hasta Semana 8" in a2
+    data = construir_excel_avance("Test", {}, alumnos, "Semana", 8, "Parcial 2")
+    resumen = load_workbook(io.BytesIO(data))["Resumen"]
+    # El corte va en el título (A1, mismo peso); la fecha como metadata (A2).
+    assert "Tareas requeridas: Semana 8, Parcial 2" in resumen["A1"].value
+    assert "Documento generado el" in resumen["A2"].value
 
 
 def test_resumen_sin_unidad_actual_solo_fecha():
     alumnos = {e: [] for e in EstadoAvanceEnum}
     data = construir_excel_avance("Test", {}, alumnos, "Unidad", None)
-    a2 = load_workbook(io.BytesIO(data))["Resumen"]["A2"].value
-    assert "Documento generado el" in a2
-    assert "Corte" not in a2
+    resumen = load_workbook(io.BytesIO(data))["Resumen"]
+    assert "Tareas requeridas" not in resumen["A1"].value
+    assert "Documento generado el" in resumen["A2"].value

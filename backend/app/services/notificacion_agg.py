@@ -22,6 +22,7 @@ Estructuras de entrada:
 import re
 
 from app.services.notificacion_render import (
+    examenes_pendientes,
     formatear_examenes,
     formatear_faltantes,
     tiene_examen_desaprobado,
@@ -33,13 +34,24 @@ def _deudas_de(a) -> list[dict]:
     return (getattr(a, "actividades_faltantes", None) or {}).get("deudas") or []
 
 
+def _debe_algo(a) -> bool:
+    """True si el alumno debe actividades O tiene un examen para atender (desaprob/ausente)."""
+    return bool(_deudas_de(a) or examenes_pendientes(getattr(a, "resultados_examenes", None)))
+
+
 def _alumno_avance(a) -> dict:
-    """Proyección de un AvanceAlumno para el Excel de avance (deudas crudas)."""
+    """Proyección de un AvanceAlumno para el Excel de avance.
+
+    Incluye estado (para la torta), deudas crudas y exámenes pendientes (etiquetas).
+    """
+    estado = getattr(a, "estado", None)
     return {
         "comision": a.comision or "—",
         "apellido": a.apellido or "",
         "nombre": a.nombre or "",
+        "estado": getattr(estado, "value", estado),
         "deudas": _deudas_de(a),
+        "examenes": examenes_pendientes(getattr(a, "resultados_examenes", None)),
     }
 
 # Número de comisión al final del texto: "M26 C1-09" → 9, "COMI-9" → 9, "COMI -7" → 7.
@@ -134,10 +146,10 @@ def construir_destinatarios_tutores_academicos(
             if not mat:
                 continue
             nombre_mat = mat.get("materia") or com.get("materia") or ""
+            # Pasa TODOS los alumnos de la comisión (la torta cuenta también los "al día");
+            # el listado del Excel filtra a los que deben.
             for a in mat.get("alumnos", []):
                 if numero_comision(a.comision) != numero:
-                    continue
-                if not _deudas_de(a):
                     continue
                 entry = materias_dict.setdefault(
                     nombre_mat,
@@ -145,11 +157,16 @@ def construir_destinatarios_tutores_academicos(
                         "materia": nombre_mat,
                         "etiqueta": mat.get("etiqueta") or "Unidad",
                         "unidad_actual": mat.get("unidad_actual"),
+                        "corte_examen": mat.get("corte_examen"),
                         "alumnos": [],
                     },
                 )
                 entry["alumnos"].append(_alumno_avance(a))
-        materias = [m for m in materias_dict.values() if m["alumnos"]]
+        # Solo se incluye una materia si ALGÚN alumno tiene algo para reportar.
+        materias = [
+            m for m in materias_dict.values()
+            if any(al["deudas"] or al["examenes"] for al in m["alumnos"])
+        ]
         if materias:
             out.append({"email": t["email"], "nombre": t.get("nombre") or "", "materias": materias})
     return out
@@ -174,17 +191,16 @@ def construir_destinatarios_tutores_nexo(
         regional = n.get("regional")
         materias: list[dict] = []
         for mat in avances_por_materia:
-            alumnos = [
-                _alumno_avance(a)
-                for a in mat.get("alumnos", [])
-                if a.regional == regional and _deudas_de(a)
-            ]
-            if alumnos:
+            # TODOS los alumnos de la regional (la torta cuenta también los "al día");
+            # el listado del Excel filtra a los que deben.
+            alumnos_reg = [a for a in mat.get("alumnos", []) if a.regional == regional]
+            if any(_debe_algo(a) for a in alumnos_reg):
                 materias.append({
                     "materia": mat.get("materia") or "",
                     "etiqueta": mat.get("etiqueta") or "Unidad",
                     "unidad_actual": mat.get("unidad_actual"),
-                    "alumnos": alumnos,
+                    "corte_examen": mat.get("corte_examen"),
+                    "alumnos": [_alumno_avance(a) for a in alumnos_reg],
                 })
         if materias:
             out.append(
