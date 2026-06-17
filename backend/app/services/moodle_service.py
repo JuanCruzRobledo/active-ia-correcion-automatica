@@ -213,6 +213,10 @@ class MoodleService:
 
         mod_assign_get_submissions no acepta groupid en esta versión de Moodle,
         así que filtramos client-side usando core_enrol_get_enrolled_users.
+
+        Pedimos `onlyactive=1`: un alumno con la matriculación suspendida NO aparece
+        en el calificador del assignment en Moodle, así que tampoco debe contar como
+        pendiente acá (si no, reaparece como "pendiente fantasma").
         """
         if group_id in self._group_members:
             return self._group_members[group_id]
@@ -225,6 +229,8 @@ class MoodleService:
             "courseid": course_id,
             "options[0][name]": "groupid",
             "options[0][value]": group_id,
+            "options[1][name]": "onlyactive",
+            "options[1][value]": 1,
         }
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:

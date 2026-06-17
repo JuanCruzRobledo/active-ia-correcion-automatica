@@ -111,3 +111,26 @@ async def test_with_status_marca_suspendidos_por_diferencia(service):
 
     estado = {u["id"]: u["suspendido"] for u in users}
     assert estado == {1: False, 2: True, 3: False}
+
+
+# =========================================================================
+# _get_group_member_ids — debe contar SOLO matriculaciones activas
+# (un alumno suspendido no aparece en el calificador de Moodle, así que
+#  tampoco debe contar como pendiente en /pendientes)
+# =========================================================================
+
+
+@pytest.mark.asyncio
+async def test_group_member_ids_pide_solo_activos(service):
+    captured = {}
+    payload = [{"id": 101, "roles": [{"shortname": "student"}]}]
+    with patch("httpx.AsyncClient", return_value=_mock_get(captured, payload)):
+        ids = await service._get_group_member_ids("t", "https://m", 44, 4190)
+
+    assert ids == {101}
+    p = captured["params"]
+    # options[0] = groupid (ya existía); debe sumarse onlyactive=1
+    opts = {p[f"options[{i}][name]"]: str(p[f"options[{i}][value]"])
+            for i in range(5) if f"options[{i}][name]" in p}
+    assert opts.get("groupid") == "4190"
+    assert opts.get("onlyactive") == "1", f"falta onlyactive=1; opciones enviadas: {opts}"
