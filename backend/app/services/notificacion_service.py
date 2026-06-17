@@ -36,9 +36,8 @@ from app.services.notificacion_agg import (
     numero_comision,
 )
 from app.services.notificacion_render import (
-    construir_excel_tutor_nexo,
+    construir_excel_avance,
     construir_html_alumno,
-    construir_pdf_tutor_academico,
 )
 from app.services.snapshot_service import SnapshotService
 
@@ -160,14 +159,17 @@ class NotificacionService:
                 tanda_id, TipoNotificacionEnum.TUTOR_ACADEMICO, d["email"],
                 d["email"], "Avance de tus comisiones — Active-IA",
             )
-            pdf = construir_pdf_tutor_academico(d["nombre"], d["materias"])
+            # Excel agrupado POR COMISIÓN (1 hoja por materia del tutor).
+            xlsx = construir_excel_avance(d["materias"], agrupar="comision")
             html = _cuerpo_adjunto(
-                d["nombre"], "Adjuntamos el detalle de actividades faltantes de tus alumnos."
+                d["nombre"], "Adjuntamos el avance de actividades de tus comisiones."
             )
+            nombre_archivo = (f"avance_{d['nombre']}.xlsx".replace(" ", "_")
+                              if d.get("nombre") else "avance_comisiones.xlsx")
             logs.append(log)
             items.append({
                 "log": log, "html": html, "remitente": remitente,
-                "attachments": [("actividades_faltantes.pdf", pdf)],
+                "attachments": [(nombre_archivo, xlsx)],
             })
         if items:
             await self.email_service.enviar_lote(items, client=client)
@@ -185,7 +187,8 @@ class NotificacionService:
                 tanda_id, TipoNotificacionEnum.TUTOR_NEXO, d["email"],
                 d["regional"], f"Avance regional {d['regional']} — Active-IA",
             )
-            xlsx = construir_excel_tutor_nexo(d["regional"], d["materias"])
+            # Excel agrupado POR UNIDAD/SEMANA (1 hoja por materia de la regional).
+            xlsx = construir_excel_avance(d["materias"], agrupar="unidad")
             html = _cuerpo_adjunto(
                 d["nombre"], f"Adjuntamos el avance de los alumnos de la regional {d['regional']}."
             )

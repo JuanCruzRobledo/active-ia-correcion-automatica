@@ -39,7 +39,7 @@ def _make_service() -> NotificacionService:
 
     # Datos de prueba: 1 materia, 1 alumno (Mendoza, comisión M26 C1-09, con faltantes)
     service.materia_repo.get_configuradas_dashboard.return_value = [
-        MagicMock(id=1, nombre="Programación 1")
+        MagicMock(id=1, nombre="Programación 1", etiqueta_unidad="Unidad", unidad_actual=8)
     ]
     service.avance_repo.get_ultimo_snapshot.return_value = MagicMock(id=100)
     service.avance_repo.get_alumnos_de_snapshot.return_value = [_alumno()]
