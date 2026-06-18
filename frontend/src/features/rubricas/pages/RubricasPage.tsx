@@ -44,6 +44,7 @@ import { RubricaEditor } from '../components';
 // Mapeo de tipos a labels legibles
 const TIPO_LABELS: Record<TipoRubrica, string> = {
   TP: 'TP',
+  TPI: 'TPI',
   PARCIAL_1: 'Parcial 1',
   PARCIAL_2: 'Parcial 2',
   RECUPERATORIO_1: 'Recup. 1',
@@ -55,6 +56,7 @@ const TIPO_LABELS: Record<TipoRubrica, string> = {
 // Mapeo de tipos a labels completos para usar en nombres de archivo
 const TIPO_LABELS_FILENAME: Record<TipoRubrica, string> = {
   TP: 'TP',
+  TPI: 'Trabajo Práctico Integrador',
   PARCIAL_1: 'Parcial 1',
   PARCIAL_2: 'Parcial 2',
   RECUPERATORIO_1: 'Recuperatorio 1',
@@ -66,6 +68,7 @@ const TIPO_LABELS_FILENAME: Record<TipoRubrica, string> = {
 // Colores para badges de tipo
 const TIPO_COLORS: Record<TipoRubrica, 'default' | 'info' | 'warning' | 'success'> = {
   TP: 'info',
+  TPI: 'info',
   PARCIAL_1: 'warning',
   PARCIAL_2: 'warning',
   RECUPERATORIO_1: 'default',
