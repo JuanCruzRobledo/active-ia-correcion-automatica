@@ -37,8 +37,7 @@ const rubricaFormSchema = z.object({
   metadata: z.record(z.string(), z.any()),
   criterios: z
     .array(criterioSchema)
-    .min(1, 'Debe haber al menos un criterio')
-    .max(20, 'Máximo 20 criterios'),
+    .min(1, 'Debe haber al menos un criterio'),
   penalizaciones: z.array(z.object({
     id: z.string().min(1),
     descripcion: z.string().min(1),
