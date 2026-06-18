@@ -1339,6 +1339,7 @@ export const EntregasPage = () => {
           onClose={() => setShowUploadModal(false)}
           comisionId={selectedComisionId}
           rubricaId={selectedRubricaId}
+          rubrica={selectedRubrica}
         />
       )}
 

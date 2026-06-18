@@ -15,7 +15,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
 import { useCreateEntrega, useCreateEntregaMasiva } from '../hooks';
-import { useRubrica } from '@/features/rubricas/hooks';
+import type { RubricaListItem } from '@/features/rubricas/types';
 import { getModoConsolidacionInicial } from '../utils/modoConsolidacionInicial';
 import { Modal } from '@/shared/components/ui/Modal';
 import { Button } from '@/shared/components/ui/Button';
@@ -37,6 +37,8 @@ interface CargaEntregaModalProps {
   onClose: () => void;
   comisionId: number;
   rubricaId: number;
+  /** Rúbrica seleccionada (de la lista); define el modo de consolidación inicial. */
+  rubrica?: RubricaListItem;
 }
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
@@ -226,12 +228,14 @@ function CargaEntregaForm({
   mode,
   comisionId,
   rubricaId,
+  rubrica,
   onClose,
   onResult,
 }: {
   mode: CargaMode;
   comisionId: number;
   rubricaId: number;
+  rubrica?: RubricaListItem;
   onClose: () => void;
   onResult: (result: CargaMasivaResponse) => void;
 }) {
@@ -242,9 +246,6 @@ function CargaEntregaForm({
 
   const createMutation = useCreateEntrega();
   const createMasivaMutation = useCreateEntregaMasiva();
-
-  // La rúbrica define el modo de consolidación: pre-rellena el selector.
-  const { data: rubrica } = useRubrica(rubricaId);
 
   const schema = mode === 'individual' ? individualSchema : masivoSchema;
 
@@ -578,6 +579,7 @@ export const CargaEntregaModal = ({
   onClose,
   comisionId,
   rubricaId,
+  rubrica,
 }: CargaEntregaModalProps) => {
   const [cargaMode, setCargaMode] = useState<CargaMode>('individual');
   const [uploadResult, setUploadResult] = useState<CargaMasivaResponse | null>(null);
@@ -637,6 +639,7 @@ export const CargaEntregaModal = ({
         mode={cargaMode}
         comisionId={comisionId}
         rubricaId={rubricaId}
+        rubrica={rubrica}
         onClose={handleClose}
         onResult={setUploadResult}
       />

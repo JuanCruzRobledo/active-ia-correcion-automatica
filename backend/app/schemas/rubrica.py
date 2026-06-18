@@ -523,6 +523,14 @@ class RubricaListItem(BaseModel):
         default=0,
         description="Cantidad de entregas asociadas",
     )
+    modo_consolidacion: str = Field(
+        default="solo_codigo",
+        description="Modo de consolidación definido en la rúbrica (pre-rellena la subida manual)",
+    )
+    extensiones_personalizadas: list[str] | None = Field(
+        default=None,
+        description="Extensiones a incluir si modo_consolidacion='personalizado'",
+    )
     activa: bool
     created_at: str
 

@@ -141,6 +141,8 @@ export interface RubricaListItem {
   puntaje_maximo: number;
   num_criterios: number;
   num_entregas: number;
+  modo_consolidacion: ModoConsolidacion;
+  extensiones_personalizadas: string[] | null;
   activa: boolean;
   created_at: string;
 }

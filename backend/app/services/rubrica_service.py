@@ -280,6 +280,8 @@ class RubricaService:
                     puntaje_maximo=rubrica.puntaje_maximo,
                     num_criterios=num_criterios,
                     num_entregas=num_entregas,
+                    modo_consolidacion=rubrica.modo_consolidacion,
+                    extensiones_personalizadas=rubrica.extensiones_personalizadas,
                     activa=rubrica.activa,
                     created_at=rubrica.created_at,
                 )
