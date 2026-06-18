@@ -160,6 +160,7 @@ export const rubricaCreateSchema = z.object({
   materia_id: z.number().int().positive('Materia ID es requerido'),
   tipo: z.enum([
     'TP',
+    'TPI',
     'PARCIAL_1',
     'PARCIAL_2',
     'RECUPERATORIO_1',

@@ -3,6 +3,7 @@ import type { TipoRubrica } from '../types';
 
 export const TIPO_LABELS: Record<TipoRubrica, string> = {
   TP: 'Trabajo Práctico',
+  TPI: 'Trabajo Práctico Integrador',
   PARCIAL_1: 'Parcial 1',
   PARCIAL_2: 'Parcial 2',
   RECUPERATORIO_1: 'Recuperatorio 1',

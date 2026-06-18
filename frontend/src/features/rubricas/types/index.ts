@@ -8,6 +8,7 @@
 
 export type TipoRubrica =
   | 'TP'
+  | 'TPI'
   | 'PARCIAL_1'
   | 'PARCIAL_2'
   | 'RECUPERATORIO_1'

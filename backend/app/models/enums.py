@@ -21,6 +21,7 @@ class TipoRubricaEnum(str, Enum):
     """Tipos de rúbrica de evaluación."""
 
     TP = "TP"
+    TPI = "TPI"  # Trabajo Práctico Integrador
     PARCIAL_1 = "PARCIAL_1"
     PARCIAL_2 = "PARCIAL_2"
     RECUPERATORIO_1 = "RECUPERATORIO_1"

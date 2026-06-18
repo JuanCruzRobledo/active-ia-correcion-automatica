@@ -37,6 +37,7 @@ export const ROL = {
  */
 export type TipoRubrica =
   | 'TP'
+  | 'TPI'
   | 'PARCIAL_1'
   | 'PARCIAL_2'
   | 'RECUPERATORIO_1'
@@ -49,6 +50,7 @@ export type TipoRubrica =
  */
 export const TIPO_RUBRICA = {
   TP: 'TP' as const,
+  TPI: 'TPI' as const,
   PARCIAL_1: 'PARCIAL_1' as const,
   PARCIAL_2: 'PARCIAL_2' as const,
   RECUPERATORIO_1: 'RECUPERATORIO_1' as const,

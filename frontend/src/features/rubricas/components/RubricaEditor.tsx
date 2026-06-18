@@ -29,7 +29,7 @@ import type { CreationMode } from '../constants/rubrica-constants';
 
 const rubricaFormSchema = z.object({
   materia_id: z.number().min(1, 'Materia requerida'),
-  tipo: z.enum(['TP', 'PARCIAL_1', 'PARCIAL_2', 'RECUPERATORIO_1', 'RECUPERATORIO_2', 'FINAL', 'GLOBAL']),
+  tipo: z.enum(['TP', 'TPI', 'PARCIAL_1', 'PARCIAL_2', 'RECUPERATORIO_1', 'RECUPERATORIO_2', 'FINAL', 'GLOBAL']),
   titulo: z.string().min(1, 'Título requerido').max(200),
   descripcion: z.string().min(1, 'Descripción requerida'),
   numero: z.number().min(1).max(999),
