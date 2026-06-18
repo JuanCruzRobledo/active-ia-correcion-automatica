@@ -9,12 +9,14 @@
  * Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md HU-ENT-01, HU-ENT-02
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import toast from 'react-hot-toast';
 import { useCreateEntrega, useCreateEntregaMasiva } from '../hooks';
+import { useRubrica } from '@/features/rubricas/hooks';
+import { getModoConsolidacionInicial } from '../utils/modoConsolidacionInicial';
 import { Modal } from '@/shared/components/ui/Modal';
 import { Button } from '@/shared/components/ui/Button';
 import { Input } from '@/shared/components/ui/Input';
@@ -241,6 +243,9 @@ function CargaEntregaForm({
   const createMutation = useCreateEntrega();
   const createMasivaMutation = useCreateEntregaMasiva();
 
+  // La rúbrica define el modo de consolidación: pre-rellena el selector.
+  const { data: rubrica } = useRubrica(rubricaId);
+
   const schema = mode === 'individual' ? individualSchema : masivoSchema;
 
   const {
@@ -259,6 +264,14 @@ function CargaEntregaForm({
       modo_consolidacion: 'WEB_COMPLETO' as ModoConsolidacion,
     },
   });
+
+  // Cuando la rúbrica carga, pre-rellena el modo (y sus extensiones si es
+  // personalizado). El usuario puede cambiarlo después para esta entrega.
+  useEffect(() => {
+    const { modo, extensiones } = getModoConsolidacionInicial(rubrica);
+    setValue('modo_consolidacion', modo);
+    setExtensionesPersonalizadas(extensiones);
+  }, [rubrica, setValue]);
 
   const modoConsolidacion = watch('modo_consolidacion');
   const isAlreadyConsolidated = mode === 'individual' && selectedFile?.name.toLowerCase().endsWith('.txt');
