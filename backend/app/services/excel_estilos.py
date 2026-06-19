@@ -111,8 +111,17 @@ def grafico_dona(ws, anchor: str, titulo: str, *, cat_ref, data_ref, colores: li
             punto = DataPoint(idx=i)
             punto.graphicalProperties.solidFill = color
             serie.data_points.append(punto)
+    # Etiquetas: SOLO el porcentaje. Apagamos serie/categoría/valor/clave explícitamente
+    # (openpyxl los deja prendidos por defecto → "Alumnos; Aprobado; 617; 79%" amontonado
+    # encima de la dona). El qué-es-cada-color ya lo dice la leyenda.
     ch.dataLabels = DataLabelList()
     ch.dataLabels.showPercent = True
+    ch.dataLabels.showSerName = False
+    ch.dataLabels.showCatName = False
+    ch.dataLabels.showVal = False
+    ch.dataLabels.showLegendKey = False
+    ch.dataLabels.showBubbleSize = False
+    ch.dataLabels.numFmt = "0%"
     ws.add_chart(ch, anchor)
 
 
