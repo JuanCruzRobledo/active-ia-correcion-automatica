@@ -128,6 +128,8 @@ async def test_crear_desde_bytes_error_consolidacion_no_lanza(service):
             detail="No se encontraron archivos válidos en el ZIP con las extensiones especificadas",
         )
     )
+    # Sin código Y sin PDF dentro → se mantiene el error (caso ZIP vacío/binarios).
+    service.consolidacion_service.extraer_pdf_de_zip = MagicMock(return_value=None)
 
     res = await service.crear_o_actualizar_desde_bytes(
         comision_id=1, rubrica_id=2, alumno_nombre="Juan Perez",
@@ -138,6 +140,34 @@ async def test_crear_desde_bytes_error_consolidacion_no_lanza(service):
     assert res.status == "error"
     assert "archivos válidos" in (res.detalle or "")
     service.entrega_repo.create.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_crear_desde_bytes_zip_con_pdf_se_guarda_como_pdf(service):
+    """ZIP sin código pero con un PDF → se importa como entrega tipo 'pdf'."""
+    from fastapi import HTTPException
+
+    service.entrega_repo.get_by_rubrica_alumno = AsyncMock(return_value=None)
+    _capture_id_on_create(service)
+    # No hay código: consolidar_zip falla, pero hay un PDF adentro.
+    service.consolidacion_service.consolidar_zip = MagicMock(
+        side_effect=HTTPException(status_code=400, detail="No se encontraron archivos válidos")
+    )
+    service.consolidacion_service.extraer_pdf_de_zip = MagicMock(
+        return_value=(b"%PDF-1.4 datos", "Informe.pdf")
+    )
+
+    res = await service.crear_o_actualizar_desde_bytes(
+        comision_id=1, rubrica_id=2, alumno_nombre="Juan Perez",
+        archivo_nombre="tp.zip", contenido_bytes=b"PK\x03\x04",
+        subido_por_id=5, moodle_user_id=101,
+    )
+
+    assert res.status == "creada"
+    creada = service.entrega_repo.create.call_args[0][0]
+    assert creada.archivo_tipo == "pdf"
+    assert creada.pdf_contenido_b64 is not None
+    assert creada.contenido_consolidado is None
 
 
 @pytest.mark.asyncio

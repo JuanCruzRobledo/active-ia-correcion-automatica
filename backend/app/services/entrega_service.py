@@ -138,21 +138,18 @@ class EntregaService:
         # Calculate hash
         hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
 
-        # Consolidate content — PDFs skip consolidation and are stored as Base64
-        if archivo_tipo == "pdf":
-            contenido_consolidado = None
-            contenido_preview = "[Entrega en formato PDF]"
-            archivos_incluidos = [archivo.filename]
-            pdf_contenido_b64: str | None = base64.b64encode(contenido_bytes).decode("utf-8")
-        else:
-            contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
-                contenido_bytes, archivo_tipo, modo_consolidacion, archivo.filename,
-                extensiones_personalizadas=extensiones_personalizadas,
-            )
-            contenido_preview = self.consolidacion_service.generar_preview(
-                contenido_consolidado, max_chars=500
-            )
-            pdf_contenido_b64 = None
+        # Consolidate content. Un ZIP que solo trae un PDF se reclasifica como
+        # "pdf"; con código, prioriza el código. Lógica única en _procesar_contenido.
+        (
+            archivo_tipo,
+            contenido_consolidado,
+            contenido_preview,
+            archivos_incluidos,
+            pdf_contenido_b64,
+        ) = await self._procesar_contenido(
+            contenido_bytes, archivo_tipo, modo_consolidacion, archivo.filename,
+            extensiones_personalizadas,
+        )
 
         # Check if entrega already exists
         entrega_existente = await self.entrega_repo.get_by_rubrica_alumno(
@@ -289,6 +286,7 @@ class EntregaService:
         # (así no aborta la importación del resto del lote).
         try:
             (
+                archivo_tipo,
                 contenido_consolidado,
                 contenido_preview,
                 archivos_incluidos,
@@ -326,6 +324,13 @@ class EntregaService:
         created_entrega = await self.entrega_repo.create(entrega)
         return ResultadoImportEntrega(status="creada", entrega_id=created_entrega.id)
 
+    def _resultado_pdf(
+        self, contenido_bytes: bytes, archivo_nombre: str
+    ) -> tuple[str, None, str, list[str], str]:
+        """Empaqueta una entrega PDF: base64, sin consolidación de texto."""
+        pdf_b64 = base64.b64encode(contenido_bytes).decode("utf-8")
+        return "pdf", None, "[Entrega en formato PDF]", [archivo_nombre], pdf_b64
+
     async def _procesar_contenido(
         self,
         contenido_bytes: bytes,
@@ -333,16 +338,45 @@ class EntregaService:
         modo_consolidacion: str,
         archivo_nombre: str,
         extensiones_personalizadas: list[str] | None,
-    ) -> tuple[str | None, str, list[str], str | None]:
+    ) -> tuple[str, str | None, str, list[str], str | None]:
         """Procesa el contenido de un archivo según su tipo.
 
-        Returns: (contenido_consolidado, contenido_preview, archivos_incluidos, pdf_contenido_b64)
+        Returns: (archivo_tipo, contenido_consolidado, contenido_preview,
+                  archivos_incluidos, pdf_contenido_b64)
+
+        El `archivo_tipo` devuelto puede DIFERIR del recibido: un ZIP que solo
+        contiene un PDF se reclasifica como "pdf" para que la corrección lo mande
+        como documento. Reglas:
+          - PDF directo            → se guarda como Base64.
+          - ZIP con código         → se consolida el código (prioridad).
+          - ZIP sin código con PDF → se extrae y procesa el PDF.
+          - ZIP sin código ni PDF  → se mantiene el error 400 (ZIP vacío/binarios).
         Los PDF no se consolidan: se guardan como Base64.
         """
         if archivo_tipo == "pdf":
-            pdf_b64 = base64.b64encode(contenido_bytes).decode("utf-8")
-            return None, "[Entrega en formato PDF]", [archivo_nombre], pdf_b64
+            return self._resultado_pdf(contenido_bytes, archivo_nombre)
 
+        if archivo_tipo == "zip":
+            try:
+                contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
+                    contenido_bytes, "zip", modo_consolidacion, archivo_nombre,
+                    extensiones_personalizadas=extensiones_personalizadas,
+                )
+            except HTTPException as e:
+                # No hay código en el ZIP. Si trae un PDF, se procesa como entrega
+                # PDF; si no (ZIP vacío o solo binarios), se mantiene el error.
+                if e.status_code == status.HTTP_400_BAD_REQUEST:
+                    pdf = self.consolidacion_service.extraer_pdf_de_zip(contenido_bytes)
+                    if pdf is not None:
+                        pdf_bytes, pdf_nombre = pdf
+                        return self._resultado_pdf(pdf_bytes, pdf_nombre)
+                raise
+            contenido_preview = self.consolidacion_service.generar_preview(
+                contenido_consolidado, max_chars=500
+            )
+            return "zip", contenido_consolidado, contenido_preview, archivos_incluidos, None
+
+        # txt / individual
         contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
             contenido_bytes, archivo_tipo, modo_consolidacion, archivo_nombre,
             extensiones_personalizadas=extensiones_personalizadas,
@@ -350,7 +384,7 @@ class EntregaService:
         contenido_preview = self.consolidacion_service.generar_preview(
             contenido_consolidado, max_chars=500
         )
-        return contenido_consolidado, contenido_preview, archivos_incluidos, None
+        return archivo_tipo, contenido_consolidado, contenido_preview, archivos_incluidos, None
 
     async def listar_entregas(
         self,
@@ -788,23 +822,19 @@ class EntregaService:
                         hash_sha256 = hashlib.sha256(contenido_bytes_alumno).hexdigest()
                         archivo_tamanio = len(contenido_bytes_alumno)
 
-                        # Consolidate content — PDFs skip consolidation and store raw Base64
-                        if archivo_tipo == "pdf":
-                            contenido_consolidado = None
-                            contenido_preview = "[Entrega en formato PDF]"
-                            archivos_incluidos = [archivo_nombre]
-                            pdf_contenido_b64_alumno: str | None = base64.b64encode(
-                                contenido_bytes_alumno
-                            ).decode("utf-8")
-                        else:
-                            contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
-                                contenido_bytes_alumno, archivo_tipo, modo_consolidacion, archivo_nombre,
-                                extensiones_personalizadas=extensiones_personalizadas,
-                            )
-                            contenido_preview = self.consolidacion_service.generar_preview(
-                                contenido_consolidado, max_chars=500
-                            )
-                            pdf_contenido_b64_alumno = None
+                        # Consolidate content. Un ZIP con solo PDF se reclasifica
+                        # como "pdf"; con código prioriza el código. Misma lógica
+                        # única que la subida individual y la importación Moodle.
+                        (
+                            archivo_tipo,
+                            contenido_consolidado,
+                            contenido_preview,
+                            archivos_incluidos,
+                            pdf_contenido_b64_alumno,
+                        ) = await self._procesar_contenido(
+                            contenido_bytes_alumno, archivo_tipo, modo_consolidacion,
+                            archivo_nombre, extensiones_personalizadas,
+                        )
 
                         # Check if entrega already exists
                         entrega_existente = await self.entrega_repo.get_by_rubrica_alumno(

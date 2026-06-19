@@ -9,6 +9,7 @@ Output format matches the project consolidator scripts used for AI processing.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7.3
 """
 
+import io
 import zipfile
 from datetime import datetime
 from typing import BinaryIO
@@ -237,26 +238,7 @@ class ConsolidacionService:
 
         try:
             with zipfile.ZipFile(archivo_zip, "r") as zf:
-                archivos = self._scan_zip(zf, extensiones)
-
-                if not archivos:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="No se encontraron archivos válidos en el ZIP "
-                        "con las extensiones especificadas",
-                    )
-
-                # Read each file with safe encoding
-                contenidos: list[tuple[str, str]] = []
-                for path in archivos:
-                    raw = zf.read(path)
-                    contenidos.append((path, self._read_safely(raw)))
-
-                # Assemble the full document
-                modo_nombre = self._get_modo_nombre(modo)
-                contenido_final = self._build_document(contenidos, modo_nombre)
-
-                return contenido_final, archivos
+                return self._consolidar_desde_zipfile(zf, extensiones, modo)
 
         except zipfile.BadZipFile:
             raise HTTPException(
@@ -270,6 +252,40 @@ class ConsolidacionService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error procesando el archivo ZIP: {str(e)}",
             )
+
+    def _consolidar_desde_zipfile(
+        self,
+        zf: zipfile.ZipFile,
+        extensiones: set[str],
+        modo: str,
+    ) -> tuple[str, list[str]]:
+        """Consolida desde un ZipFile ya abierto.
+
+        Lee cada archivo a través de su objeto ``ZipInfo`` (no del path
+        re-derivado como string): así funciona aunque la entrada del ZIP use
+        backslash de Windows (`carpeta\\archivo.ext`). En Linux ``zipfile``
+        conserva ese `\\` literal, y leer con el path normalizado a `/` provoca
+        ``KeyError "There is no item named '...' in the archive"``.
+        """
+        archivos_info = self._scan_zip(zf, extensiones)
+
+        if not archivos_info:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=self._mensaje_sin_archivos(zf, extensiones),
+            )
+
+        # Read each file with safe encoding — siempre por el ZipInfo.
+        contenidos: list[tuple[str, str]] = []
+        for info, path in archivos_info:
+            raw = zf.read(info)
+            contenidos.append((path, self._read_safely(raw)))
+
+        modo_nombre = self._get_modo_nombre(modo)
+        contenido_final = self._build_document(contenidos, modo_nombre)
+
+        archivos = [path for _, path in archivos_info]
+        return contenido_final, archivos
 
     def consolidar_txt(self, archivo_txt: BinaryIO) -> tuple[str, list[str]]:
         """
@@ -367,6 +383,32 @@ class ConsolidacionService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"Error procesando el archivo: {str(e)}",
             )
+
+    def extraer_pdf_de_zip(self, zip_bytes: bytes) -> tuple[bytes, str] | None:
+        """Devuelve (bytes, nombre) del primer PDF útil del ZIP, o None.
+
+        Pensado como fallback cuando el ZIP no tiene código: ignora carpetas
+        excluidas y ``__MACOSX``, y lee por el objeto ``ZipInfo`` (inmune al
+        separador Windows). NO decide prioridad código-vs-PDF: eso lo resuelve
+        el caller intentando consolidar código primero.
+        """
+        try:
+            with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as zf:
+                candidatos: list[tuple[zipfile.ZipInfo, str]] = []
+                for info in zf.filelist:
+                    if info.is_dir():
+                        continue
+                    path = info.filename.replace("\\", "/")
+                    if self._has_excluded_dir(path):
+                        continue
+                    if self._get_extension(path) == ".pdf":
+                        candidatos.append((info, path))
+                if not candidatos:
+                    return None
+                info, path = sorted(candidatos, key=lambda par: par[1])[0]
+                return zf.read(info), path.split("/")[-1]
+        except zipfile.BadZipFile:
+            return None
 
     def generar_preview(self, contenido: str, max_chars: int = 500) -> str:
         """Generate a truncated preview of the consolidated content."""
@@ -544,15 +586,19 @@ class ConsolidacionService:
 
     def _scan_zip(
         self, zf: zipfile.ZipFile, extensiones: set[str]
-    ) -> list[str]:
+    ) -> list[tuple[zipfile.ZipInfo, str]]:
         """
-        Return sorted list of paths inside the ZIP that pass all filters:
+        Return sorted list of (ZipInfo, normalized_path) for the entries that
+        pass all filters:
         - not a directory entry
         - no excluded directory component in path
         - extension not in BINARY_EXTENSIONS
         - extension in the allowed set
+
+        El ``ZipInfo`` se conserva para leer el archivo por objeto (inmune al
+        separador de la entrada); el path normalizado (`/`) es solo para mostrar.
         """
-        result: list[str] = []
+        result: list[tuple[zipfile.ZipInfo, str]] = []
         for info in zf.filelist:
             if info.is_dir():
                 continue
@@ -567,9 +613,44 @@ class ConsolidacionService:
                 continue
 
             if ext in extensiones:
-                result.append(path)
+                result.append((info, path))
 
-        return sorted(result)
+        return sorted(result, key=lambda par: par[1])
+
+    def _mensaje_sin_archivos(
+        self, zf: zipfile.ZipFile, extensiones: set[str]
+    ) -> str:
+        """Mensaje 400 accionable cuando el ZIP no tiene archivos del modo.
+
+        Lista las extensiones que SÍ trae el ZIP (excluyendo carpetas y dirs
+        ignorados) para que el tutor distinga un ZIP anidado, un PDF/imágenes
+        sueltos o un modo de consolidación mal configurado.
+        """
+        presentes: set[str] = set()
+        for info in zf.filelist:
+            if info.is_dir():
+                continue
+            path = info.filename.replace("\\", "/")
+            if self._has_excluded_dir(path):
+                continue
+            ext = self._get_extension(path)
+            presentes.add(ext or "(sin extensión)")
+
+        base = (
+            "No se encontraron archivos válidos en el ZIP con las extensiones "
+            "especificadas"
+        )
+        if not presentes:
+            return f"{base} (el ZIP no contiene archivos legibles, ¿es un ZIP anidado o vacío?)"
+
+        encontradas = ", ".join(sorted(presentes))
+        esperadas = ", ".join(sorted(extensiones))
+        return (
+            f"{base}. El ZIP contiene: {encontradas}. "
+            f"Extensiones esperadas para este modo: {esperadas}. "
+            "Si el alumno comprimió un ZIP dentro de otro, o subió solo "
+            "documentos/imágenes, revisá el archivo o el modo de consolidación."
+        )
 
     @staticmethod
     def _has_excluded_dir(path: str) -> bool:
