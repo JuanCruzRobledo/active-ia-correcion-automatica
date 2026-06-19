@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from openpyxl import load_workbook
 
 from app.models.enums import EstadoAvanceEnum
-from app.services.dashboard_excel import construir_excel_avance
+from app.services.dashboard_excel import agregar_examenes, construir_excel_avance
 
 
 def _alumno(apellido, nombre, alcanzada, deudas, desaprobada=False, examenes=None):
@@ -93,3 +93,91 @@ def test_resumen_sin_unidad_actual_solo_fecha():
     resumen = load_workbook(io.BytesIO(data))["Resumen"]
     assert "Tareas requeridas" not in resumen["A1"].value
     assert "Documento generado el" in resumen["A2"].value
+
+
+# ===================== hoja de exámenes (estado de parciales) =====================
+
+
+def _ex(etiqueta, resultado, rescatado=False):
+    return {"etiqueta": etiqueta, "resultado": resultado, "rescatado": rescatado}
+
+
+def test_agregar_examenes_cuenta_aprobado_en_cualquier_instancia():
+    # El rescate YA viene aplicado en `resultado`: un parcial rescatado figura "aprobado".
+    alumnos = [
+        SimpleNamespace(resultados_examenes={"examenes": [
+            _ex("Parcial 1", "aprobado"),
+            _ex("Parcial 2", "desaprobado"),
+        ]}),
+        SimpleNamespace(resultados_examenes={"examenes": [
+            _ex("Parcial 1", "aprobado", rescatado=True),  # rescatado → cuenta aprobado
+            _ex("Parcial 2", "ausente"),
+        ]}),
+        SimpleNamespace(resultados_examenes={"examenes": [
+            _ex("Parcial 1", "desaprobado"),
+            _ex("Parcial 2", "aprobado"),
+        ]}),
+    ]
+    filas = agregar_examenes(alumnos)
+    # Orden estable por aparición: Parcial 1, luego Parcial 2.
+    assert [f["etiqueta"] for f in filas] == ["Parcial 1", "Parcial 2"]
+    assert filas[0] == {
+        "etiqueta": "Parcial 1", "aprobado": 2, "desaprobado": 1, "ausente": 0,
+        "sin_corregir": 0, "total": 3,
+    }
+    assert filas[1] == {
+        "etiqueta": "Parcial 2", "aprobado": 1, "desaprobado": 1, "ausente": 1,
+        "sin_corregir": 0, "total": 3,
+    }
+
+
+def test_agregar_examenes_cuenta_sin_corregir():
+    alumnos = [
+        SimpleNamespace(resultados_examenes={"examenes": [_ex("Global 1", "sin_corregir")]}),
+        SimpleNamespace(resultados_examenes={"examenes": [_ex("Global 1", "sin_corregir")]}),
+        SimpleNamespace(resultados_examenes={"examenes": [_ex("Global 1", "aprobado")]}),
+    ]
+    fila = agregar_examenes(alumnos)[0]
+    assert fila["sin_corregir"] == 2
+    assert fila["aprobado"] == 1
+    assert fila["total"] == 3
+
+
+def test_agregar_examenes_sin_examenes_devuelve_vacio():
+    alumnos = [SimpleNamespace(resultados_examenes=None)]
+    assert agregar_examenes(alumnos) == []
+
+
+def test_hoja_examenes_existe_con_conteos():
+    alumnos = {
+        EstadoAvanceEnum.AL_DIA: [
+            _alumno("Gómez", "Ana", 8, None, examenes=[
+                _ex("Parcial 1", "aprobado"), _ex("Parcial 2", "aprobado"),
+            ]),
+        ],
+        EstadoAvanceEnum.RIESGO_ALTO: [
+            _alumno("Páez", "Beto", 8, None, examenes=[
+                _ex("Parcial 1", "desaprobado"), _ex("Parcial 2", "ausente"),
+            ]),
+        ],
+        EstadoAvanceEnum.RIESGO_MEDIO: [],
+        EstadoAvanceEnum.SIN_ACTIVIDAD: [],
+    }
+    data = construir_excel_avance("Test", {}, alumnos, "Unidad", 8, "Parcial 2")
+    wb = load_workbook(io.BytesIO(data))
+    assert "Exámenes" in wb.sheetnames
+    ws = wb["Exámenes"]
+    # Bloque 1 (Parcial 1) arranca en fila 4: barra, header, 4 resultados, total.
+    assert ws["A4"].value == "Parcial 1"
+    assert ws["A6"].value == "Aprobado" and ws["B6"].value == 1
+    assert ws["A7"].value == "Desaprobado" and ws["B7"].value == 1
+    assert ws["A8"].value == "Sin corregir" and ws["B8"].value == 0
+    assert ws["A9"].value == "Ausente" and ws["B9"].value == 0
+    assert ws["A10"].value == "Total" and ws["B10"].value == 2
+
+
+def test_sin_examenes_no_crea_hoja():
+    alumnos = {e: [] for e in EstadoAvanceEnum}
+    data = construir_excel_avance("Test", {}, alumnos, "Unidad", 8)
+    wb = load_workbook(io.BytesIO(data))
+    assert "Exámenes" not in wb.sheetnames

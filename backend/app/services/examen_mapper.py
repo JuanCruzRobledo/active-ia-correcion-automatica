@@ -22,8 +22,10 @@ Config de examen (lo arma el service desde ExamenMateria):
 
 # Tipos que se muestran como fila principal en el reporte.
 TIPOS_PRINCIPALES = ("PARCIAL", "GLOBAL")
-# Precedencia para combinar el parcial con sus rescates (mayor gana).
-_PRECEDENCIA = {"ausente": 0, "desaprobado": 1, "aprobado": 2}
+# Precedencia para combinar el parcial con sus rescates (mayor gana). 'sin_corregir'
+# (entregado, esperando nota) pisa a desaprobado: el rescate todavía puede aprobar, así
+# que el alumno está PENDIENTE, no reprobado. aprobado > sin_corregir > desaprobado > ausente.
+_PRECEDENCIA = {"ausente": 0, "desaprobado": 1, "sin_corregir": 2, "aprobado": 3}
 # Etiqueta visible por tipo (se concatena con el número derivado: "Parcial 2").
 ETIQUETA_TIPO = {
     "PARCIAL": "Parcial",
@@ -76,8 +78,31 @@ def interpretar_resultado(
     return "aprobado"
 
 
+def clasificar_grade_estructural(entry: dict | None) -> str:
+    """Grade estructural de un assign (mod_assign_get_grades) → 'calificado' | 'sin_corregir'
+    | 'ausente'. NO decide aprobado/desaprobado: eso lo resuelve el texto cuando 'calificado'.
+
+    entry: {'timemodified': int, 'grade': str|None} del grade más reciente, o None si el
+    alumno no tiene registro (no entregó). Moodle crea el registro al ENTREGAR con
+    grade=-1 (placeholder) hasta que alguien corrige; grade>=0 = nota puesta. Esta señal
+    es la única que distingue 'entregó pero falta corregir' de 'no entregó' — el texto del
+    calificador muestra '-' en ambos casos.
+    """
+    if not entry:
+        return "ausente"
+    grade = entry.get("grade")
+    try:
+        valor = float(grade)
+    except (TypeError, ValueError):
+        valor = None
+    if valor is not None and valor >= 0:
+        return "calificado"  # hay nota real → el texto la interpreta (NUMERICO o ESCALA)
+    # grade -1 / None: existe registro. Si entregó (timemodified>0) está sin corregir.
+    return "sin_corregir" if (entry.get("timemodified") or 0) > 0 else "ausente"
+
+
 def _mejor(*resultados: str) -> str:
-    """Combina resultados por precedencia aprobado > desaprobado > ausente."""
+    """Combina resultados por precedencia aprobado > desaprobado > sin_corregir > ausente."""
     return max(resultados, key=lambda r: _PRECEDENCIA.get(r, 0))
 
 
@@ -118,21 +143,36 @@ def examen_corte(examenes: list[dict] | None) -> str | None:
 
 
 def calcular_resultados_examenes(
-    notas_uid: dict[int, str], examenes_config: list[dict]
+    notas_uid: dict[int, str],
+    examenes_config: list[dict],
+    estructural_uid: dict[int, dict | None] | None = None,
 ) -> list[dict]:
     """Resultados de los exámenes PRINCIPALES de un alumno, con rescate aplicado.
 
     notas_uid: {cmid: gradeformatted} del alumno (subset del export del calificador).
+    estructural_uid: {cmid: entry} del grade estructural (mod_assign_get_grades), SOLO para
+    los exámenes cuya fuente es Tarea (assign). La PRESENCIA de la clave cmid marca "usar
+    fuente estructural": detecta 'sin_corregir' (entregó, grade=-1) y 'ausente' (sin
+    registro), que el texto no distingue; cuando hay nota real, se interpreta el texto
+    (sirve para NUMERICO y ESCALA). Los exámenes sin clave (quiz/sin fuente) usan el texto.
     Devuelve [{examen_id, tipo, numero, resultado, rescatado}] para cada PARCIAL/GLOBAL.
     """
     numeros = numeros_por_tipo(examenes_config)
+    estructural = estructural_uid or {}
 
-    def resultado_de(ex: dict) -> str:
+    def por_texto(ex: dict) -> str:
         return interpretar_resultado(
             notas_uid.get(ex.get("moodle_cmid")),
             ex.get("modo_aprobacion"),
             ex.get("nota_minima"),
         )
+
+    def resultado_de(ex: dict) -> str:
+        cmid = ex.get("moodle_cmid")
+        if cmid in estructural:  # fuente estructural (assign)
+            estado = clasificar_grade_estructural(estructural[cmid])
+            return por_texto(ex) if estado == "calificado" else estado
+        return por_texto(ex)  # quiz / sin fuente estructural
 
     # Recuperatorios/extensiones/extraordinarias agrupados por el parcial que rescatan.
     rescates: dict[int, list[dict]] = {}
