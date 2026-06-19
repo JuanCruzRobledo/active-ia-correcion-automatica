@@ -68,7 +68,12 @@ def formatear_faltantes(faltantes: dict | None, etiqueta: str = "Unidad") -> str
     return " · ".join(partes)
 
 
-_LABEL_RESULTADO = {"aprobado": "Aprobó", "desaprobado": "Desaprobó", "ausente": "Ausente"}
+_LABEL_RESULTADO = {
+    "aprobado": "Aprobó",
+    "desaprobado": "Desaprobó",
+    "ausente": "Ausente",
+    "sin_corregir": "Sin corregir",
+}
 
 
 def formatear_examenes(resultados: dict | None) -> str:
