@@ -10,6 +10,7 @@ import pytest
 
 from app.services.examen_mapper import (
     calcular_resultados_examenes,
+    clasificar_grade_estructural,
     examen_corte,
     interpretar_resultado,
     parsear_nota_numerica,
@@ -169,3 +170,82 @@ def test_recuperatorios_no_aparecen_como_filas_principales():
     tipos = {r["tipo"] for r in resultados}
     assert tipos == {"PARCIAL"}  # solo principales (parciales/globales)
     assert len(resultados) == 1
+
+
+# ===================== señal estructural (grade=-1: entregado/sin corregir) =====================
+
+
+def test_clasificar_grade_estructural():
+    # Sin registro = no entregó. grade=-1 con entrega = sin corregir. grade>=0 = calificado.
+    assert clasificar_grade_estructural(None) == "ausente"
+    assert clasificar_grade_estructural({"grade": "-1.00000", "timemodified": 1700}) == "sin_corregir"
+    assert clasificar_grade_estructural({"grade": "-1.00000", "timemodified": 0}) == "ausente"
+    assert clasificar_grade_estructural({"grade": None, "timemodified": 1700}) == "sin_corregir"
+    assert clasificar_grade_estructural({"grade": "85.00", "timemodified": 1700}) == "calificado"
+    assert clasificar_grade_estructural({"grade": "0.00", "timemodified": 1700}) == "calificado"
+
+
+def test_estructural_entregado_sin_corregir():
+    # El caso del global: 407 entregaron, grade=-1. El texto muestra "-" (ausente);
+    # la señal estructural los detecta como 'sin_corregir'.
+    cfg = [_ex(7, "GLOBAL", 300, modo="NUMERICO", nota_minima=6.0)]
+    res = _por_examen(
+        calcular_resultados_examenes(
+            {300: "-"}, cfg, estructural_uid={300: {"grade": "-1.00000", "timemodified": 1700}}
+        )
+    )
+    assert res[7]["resultado"] == "sin_corregir"
+
+
+def test_estructural_calificado_interpreta_el_texto():
+    # grade>=0 ⇒ hay nota real → se interpreta el texto (NUMERICO con umbral).
+    cfg = [_ex(1, "PARCIAL", 100, modo="NUMERICO", nota_minima=60.0),
+           _ex(2, "PARCIAL", 101, modo="NUMERICO", nota_minima=60.0, orden=1)]
+    res = _por_examen(
+        calcular_resultados_examenes(
+            {100: "100.00", 101: "50.00"}, cfg,
+            estructural_uid={
+                100: {"grade": "100.00", "timemodified": 1700},
+                101: {"grade": "50.00", "timemodified": 1700},
+            },
+        )
+    )
+    assert res[1]["resultado"] == "aprobado"      # 100 >= 60
+    assert res[2]["resultado"] == "desaprobado"   # 50 < 60
+
+
+def test_estructural_sin_registro_es_ausente():
+    # cmid con fuente estructural pero sin entrega (entry None) → ausente (aunque el texto
+    # trajera algo: la señal estructural manda para distinguir entregó / no entregó).
+    cfg = [_ex(1, "PARCIAL", 100)]
+    res = _por_examen(
+        calcular_resultados_examenes({100: "Aprobado"}, cfg, estructural_uid={100: None})
+    )
+    assert res[1]["resultado"] == "ausente"
+
+
+def test_sin_fuente_estructural_usa_texto():
+    # Examen quiz (cmid NO está en estructural) → comportamiento histórico (texto).
+    cfg = [_ex(1, "PARCIAL", 100)]
+    res = _por_examen(
+        calcular_resultados_examenes({100: "Aprobado"}, cfg, estructural_uid={})
+    )
+    assert res[1]["resultado"] == "aprobado"
+
+
+def test_rescate_recuperatorio_sin_corregir_estructural():
+    # Parcial reprobado (calificado) + recuperatorio entregado-sin-corregir → 'sin_corregir'
+    # (todavía puede aprobar; sin_corregir pisa a desaprobado en la precedencia).
+    cfg = [_ex(1, "PARCIAL", 100, modo="NUMERICO", nota_minima=60.0),
+           _ex(2, "RECUPERATORIO", 200, recupera=1)]
+    res = _por_examen(
+        calcular_resultados_examenes(
+            {100: "50.00"}, cfg,
+            estructural_uid={
+                100: {"grade": "50.00", "timemodified": 1700},
+                200: {"grade": "-1.00000", "timemodified": 1700},
+            },
+        )
+    )
+    assert res[1]["resultado"] == "sin_corregir"
+    assert res[1]["rescatado"] is False

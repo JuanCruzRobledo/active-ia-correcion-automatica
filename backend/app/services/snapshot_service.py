@@ -206,6 +206,22 @@ class SnapshotService:
                 nombre_a_cmid,
                 email_a_uid,
             )
+            # Grade ESTRUCTURAL de los exámenes-Tarea (assign): {cmid: {uid: entry}}. Es la
+            # única señal que distingue 'entregado sin corregir' (grade=-1) de 'ausente' —
+            # el texto del calificador muestra '-' en ambos. 1 request por examen assign
+            # (poquísimos); los quiz quedan con el texto. Ref: diagnóstico PROG1 2026-06-19.
+            mod_por_cmid = {
+                mod.get("id"): mod
+                for sec in secciones
+                for mod in sec.get("modules", [])
+            }
+            grades_por_cmid: dict[int, dict] = {}
+            for ex in examenes_config:
+                mod = mod_por_cmid.get(ex.get("moodle_cmid")) or {}
+                if mod.get("modname") == "assign" and mod.get("instance"):
+                    grades_por_cmid[ex["moodle_cmid"]] = await self.moodle.get_grades_full(
+                        token, host, mod["instance"]
+                    )
         finally:
             if propia:
                 await sesion.aclose()
@@ -223,9 +239,17 @@ class SnapshotService:
                 riesgo_medio_desde=materia.riesgo_medio_desde,
                 riesgo_alto_desde=materia.riesgo_alto_desde,
             )
-            # Resultados de exámenes (mismas notas en memoria; rescate ya aplicado).
+            # Resultados de exámenes (en memoria; rescate aplicado). estructural_uid lleva,
+            # por cada examen-Tarea, el grade estructural del alumno (entry o None): detecta
+            # 'sin corregir' (grade=-1) y 'ausente', que el texto no distingue.
             examenes = (
-                calcular_resultados_examenes(notas_por_uid.get(uid, {}), examenes_config)
+                calcular_resultados_examenes(
+                    notas_por_uid.get(uid, {}),
+                    examenes_config,
+                    estructural_uid={
+                        cmid: grades.get(uid) for cmid, grades in grades_por_cmid.items()
+                    },
+                )
                 if examenes_config
                 else None
             )
