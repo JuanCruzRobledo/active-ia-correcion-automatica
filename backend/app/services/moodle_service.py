@@ -785,19 +785,19 @@ class MoodleService:
     ) -> dict:
         """Cuenta submissions para un assignment, filtradas por grupo (client-side).
 
-        Una entrega cuenta como `espera` (pendiente de corrección) si:
-        - status == "submitted", Y
-        - Moodle NO la da por calificada: gradingstatus != "graded" o no hay una nota
-          REAL puesta (ver `es_calificacion_real`; el grade -1 es el placeholder que
-          Moodle crea al entregar, todavía sin nota).
+        Espeja el filtro "Requiere calificación" de Moodle. Una entrega cuenta como
+        `espera` (pendiente de corrección) si status == "submitted" Y se cumple alguna:
+        - gradingstatus != "graded", o
+        - no hay una nota REAL puesta (ver `es_calificacion_real`; el grade -1 es el
+          placeholder que Moodle crea al entregar, todavía sin nota), o
+        - se re-entregó DESPUÉS de la última nota (`submission.timemodified >
+          grade.timemodified`): Moodle la marca "Calificado - vuelto a entregar" y la
+          lista en "Requiere calificación", así que el conteo debe coincidir.
 
-        Confiamos en el `gradingstatus` de Moodle como fuente de verdad. NO marcamos
-        re-entrega comparando `submission.timemodified > grade.timemodified`: ese
-        timestamp se mueve cuando el alumno edita/reabre la entrega aunque Moodle la
-        siga considerando calificada, lo que generaba "pendientes fantasma" (un alumno
-        ya corregido —incluso Aprobado— que reaparecía como pendiente). Una re-entrega
-        que SÍ requiere recorrección Moodle la expone como gradingstatus="notgraded",
-        así que se sigue detectando por la primera condición.
+        Esta tercera condición es la MISMA que usa `get_submissions_with_files` para la
+        importación; mantener ambas en sincronía evita que un pendiente real se vea pero
+        no se pueda importar (o viceversa). El guard `es_calificacion_real` impide que el
+        placeholder grade=-1 dispare la comparación con un timestamp espurio.
         """
         submissions_data, grades_full = await asyncio.gather(
             self._fetch_submissions(token, moodle_host, assignment_instance_id),
@@ -818,9 +818,14 @@ class MoodleService:
                     continue
 
                 grading_status = submission.get("gradingstatus", "")
-                tiene_nota_real = self.es_calificacion_real(grades_full.get(user_id))
+                grade_entry = grades_full.get(user_id)
+                tiene_nota_real = self.es_calificacion_real(grade_entry)
+                sub_tm = submission.get("timemodified") or 0
+                grade_tm = (grade_entry or {}).get("timemodified") or 0
+                # "Calificado - vuelto a entregar": re-entrega posterior a la nota real.
+                re_entregado = tiene_nota_real and sub_tm > grade_tm
 
-                if grading_status != "graded" or not tiene_nota_real:
+                if grading_status != "graded" or not tiene_nota_real or re_entregado:
                     espera += 1
                 else:
                     corregidos += 1

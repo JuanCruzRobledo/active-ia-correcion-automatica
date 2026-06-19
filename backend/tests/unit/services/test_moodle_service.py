@@ -374,17 +374,20 @@ async def test_save_grade_exception_de_moodle_lanza_error(service):
 
 # =========================================================================
 # get_submissions_count — conteo de pendientes
-# Regresión "pendiente fantasma": confiar en el gradingstatus de Moodle, no en
-# una comparación de timestamps que se dispara cuando la entrega se toca DESPUÉS
-# de la nota aunque Moodle la siga dando por calificada.
+# El conteo debe ESPEJAR el filtro "Requiere calificación" de Moodle. Una entrega
+# calificada que se vuelve a entregar DESPUÉS de la nota (sub_tm > grade_tm) Moodle
+# la marca "Calificado - vuelto a entregar" y la lista como pendiente; el conteo
+# también. (Verificado en vivo contra el TUP: uid 955, Desaprobado 23/4 + re-entrega
+# 13/6, figura en action=grading&status=requiregrading.)
 # =========================================================================
 
 
 @pytest.mark.asyncio
-async def test_count_graded_con_nota_real_no_es_espera_aunque_entrega_posterior(service):
-    """Caso real prod (uid 955): Aprobado (escala índice 2.0) el 23/4, entrega tocada el 13/6.
+async def test_count_graded_pero_reentregado_despues_de_la_nota_es_espera(service):
+    """Caso real prod (uid 955): calificado el 23/4, re-entrega el 13/6.
 
-    sub_tm > grade_tm PERO Moodle dice gradingstatus=graded → NO debe contar espera.
+    sub_tm > grade_tm con nota real → Moodle lo marca "Calificado - vuelto a
+    entregar" y lo lista en "Requiere calificación" → debe contar espera.
     """
     payload = _submissions_payload([
         {"userid": 955, "status": "submitted", "gradingstatus": "graded",
@@ -399,8 +402,8 @@ async def test_count_graded_con_nota_real_no_es_espera_aunque_entrega_posterior(
             group_member_ids={955},
         )
 
-    assert counts["espera"] == 0
-    assert counts["corregidos"] == 1
+    assert counts["espera"] == 1
+    assert counts["corregidos"] == 0
     assert counts["sinEntrega"] == 0
 
 
@@ -479,3 +482,48 @@ async def test_count_nota_placeholder_menos_uno_es_espera(service):
 
     assert counts["espera"] == 1
     assert counts["corregidos"] == 0
+
+
+@pytest.mark.asyncio
+async def test_count_reentrega_tras_desaprobado_graded_es_espera(service):
+    """Desaprobado (escala índice 1.0) y vuelve a entregar después → espera.
+
+    Moodle conserva gradingstatus=graded y la nota vieja real, pero la entrega
+    es posterior a la nota → "Calificado - vuelto a entregar" = requiere corrección.
+    """
+    payload = _submissions_payload([
+        {"userid": 105, "status": "submitted", "gradingstatus": "graded",
+         "timemodified": 500, "attemptnumber": 0, "plugins": []},
+    ])
+    grades_full = {105: {"timemodified": 200, "grade": "1.00000"}}
+    with patch.object(service, "_fetch_submissions", AsyncMock(return_value=payload)), \
+         patch.object(service, "get_grades_full", AsyncMock(return_value=grades_full)), \
+         patch.object(service, "_fetch_grades_map", AsyncMock(return_value={105: 200})):
+        counts = await service.get_submissions_count(
+            token="t", moodle_host="https://m", assignment_instance_id=1,
+            group_member_ids={105},
+        )
+
+    assert counts["espera"] == 1
+    assert counts["corregidos"] == 0
+
+
+@pytest.mark.asyncio
+async def test_count_recalificado_despues_de_la_entrega_es_corregido(service):
+    """Borde inverso: la nota es POSTERIOR a la entrega (el tutor recorrigió la
+    re-entrega) → grade_tm >= sub_tm → ya está corregido, no espera."""
+    payload = _submissions_payload([
+        {"userid": 106, "status": "submitted", "gradingstatus": "graded",
+         "timemodified": 200, "attemptnumber": 1, "plugins": []},
+    ])
+    grades_full = {106: {"timemodified": 300, "grade": "2.00000"}}
+    with patch.object(service, "_fetch_submissions", AsyncMock(return_value=payload)), \
+         patch.object(service, "get_grades_full", AsyncMock(return_value=grades_full)), \
+         patch.object(service, "_fetch_grades_map", AsyncMock(return_value={106: 300})):
+        counts = await service.get_submissions_count(
+            token="t", moodle_host="https://m", assignment_instance_id=1,
+            group_member_ids={106},
+        )
+
+    assert counts["corregidos"] == 1
+    assert counts["espera"] == 0
