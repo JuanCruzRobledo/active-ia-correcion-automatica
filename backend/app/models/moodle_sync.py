@@ -55,7 +55,10 @@ class MoodleSync(Base, TimestampMixin):
     )
 
     # Relationships
-    correccion: Mapped["Correccion"] = relationship("Correccion")
+    correccion: Mapped["Correccion"] = relationship(
+        "Correccion",
+        back_populates="moodle_syncs",
+    )
     enviado_por: Mapped["Usuario"] = relationship("Usuario")
 
     def __repr__(self) -> str:

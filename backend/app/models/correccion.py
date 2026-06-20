@@ -16,6 +16,7 @@ from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.entrega import Entrega
+    from app.models.moodle_sync import MoodleSync
     from app.models.usuario import Usuario
 
 
@@ -108,6 +109,14 @@ class Correccion(Base, TimestampMixin):
     corregido_por: Mapped["Usuario"] = relationship(
         "Usuario",
         back_populates="correcciones_realizadas",
+    )
+    # Auditoría de envíos a Moodle. Cascade para que el hard-delete de la entrega
+    # (y de su corrección) arrastre estos registros: la FK moodle_sync.correccion_id
+    # es NOT NULL, así que sin esto el borrado viola la integridad referencial.
+    moodle_syncs: Mapped[list["MoodleSync"]] = relationship(
+        "MoodleSync",
+        back_populates="correccion",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:
