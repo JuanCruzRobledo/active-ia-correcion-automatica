@@ -32,8 +32,11 @@ import { Select } from '@/shared/components/ui/Select';
 import { Checkbox } from '@/shared/components/ui/Checkbox';
 import { Badge } from '@/shared/components/ui/Badge';
 import { Spinner } from '@/shared/components/ui/Spinner';
-import { HelpButton, LoadingState, ResponsiveTable, ConfirmDialog } from '@/shared/components/ui';
+import { HelpButton, LoadingState, ResponsiveTable, ConfirmDialog, NovedadesBanner } from '@/shared/components/ui';
 import type { TableColumn } from '@/shared/components/ui';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import { useNovedades } from '@/shared/hooks/useNovedades';
+import { mensajeNovedades } from '@/shared/utils/novedades';
 import { helpContent } from '@/shared/content/helpContent';
 import { EmptyState } from '@/shared/components/ui/EmptyState';
 import { Dropdown } from '@/shared/components/ui/Dropdown';
@@ -153,7 +156,7 @@ export const EntregasPage = () => {
   );
   const selectedRubrica = rubricasData?.items?.find((r) => r.id === selectedRubricaId);
 
-  const { data, isLoading, error } = useEntregas(
+  const { data, isLoading, error, refetch } = useEntregas(
     selectedComisionId && selectedRubricaId
       ? {
         comision_id: selectedComisionId,
@@ -178,6 +181,11 @@ export const EntregasPage = () => {
   const archivarMutation = useArchivarEntregas();
   const deleteMasivoMutation = useDeleteEntregasMasivo();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  // Banner "hay novedades": avisa si el backend cambió sin pisar lo que se está viendo.
+  const { hayNovedades, aceptar: aceptarNovedades } = useNovedades('entregas', {
+    enabled: !!selectedComisionId && !!selectedRubricaId,
+  });
 
   // Auto-refresh: poll every 10s while background corrections are running
   // (entregas in PENDIENTE state or active batch being tracked)
@@ -821,6 +829,16 @@ export const EntregasPage = () => {
 
   return (
     <div className="space-y-6">
+      {/* Banner "hay novedades" (item #2, Capa B): el backend cambió mientras mirabas. */}
+      {hayNovedades && (
+        <NovedadesBanner
+          mensaje={mensajeNovedades(user?.rol)}
+          onActualizar={() => {
+            refetch();
+            aceptarNovedades();
+          }}
+        />
+      )}
       {/* API Key Invalid Banner */}
       {profile && !profile.gemini_api_key_valid && (
         <Alert variant="warning" title="⚠️ API Key de Gemini inválida">

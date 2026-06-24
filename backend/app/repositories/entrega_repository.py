@@ -35,6 +35,14 @@ class EntregaRepository:
         """
         self.db = db
 
+    async def version(self) -> tuple[datetime | None, int]:
+        """(MAX(updated_at), COUNT) de todas las entregas — token barato de 'novedades'."""
+        result = await self.db.execute(
+            select(func.max(Entrega.updated_at), func.count(Entrega.id))
+        )
+        max_updated_at, count = result.one()
+        return max_updated_at, count or 0
+
     async def get_by_id(self, entrega_id: int) -> Entrega | None:
         """
         Get entrega by ID.

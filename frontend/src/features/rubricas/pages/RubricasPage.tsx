@@ -29,6 +29,7 @@ import {
   LoadingState,
   HelpButton,
   RefreshButton,
+  NovedadesBanner,
   EmptyState,
   Dropdown,
   ConfirmDialog,
@@ -40,6 +41,8 @@ import { helpContent } from '@/shared/content/helpContent';
 import { formatDate } from '@/shared/utils';
 import { useMaterias } from '@/features/materias/hooks';
 import { useAuth } from '@/features/auth/hooks';
+import { useNovedades } from '@/shared/hooks/useNovedades';
+import { mensajeNovedades } from '@/shared/utils/novedades';
 import { RubricaEditor } from '../components';
 
 // Mapeo de tipos a labels legibles
@@ -104,6 +107,7 @@ export const RubricasPage = () => {
 
   // Queries
   const { data, isLoading, error, refetch, isFetching } = useRubricas(filters);
+  const { hayNovedades, aceptar: aceptarNovedades } = useNovedades('rubricas');
   const { data: materiasData, isLoading: materiasLoading } = useMaterias({ page: 1, per_page: 100 });
   const { data: editingRubrica } = useRubrica(editingId || 0);
   const deleteMutation = useDeleteRubrica();
@@ -373,6 +377,16 @@ export const RubricasPage = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6">
+      {/* Banner "hay novedades" (item #2, Capa B): otra sesión cambió las rúbricas. */}
+      {hayNovedades && (
+        <NovedadesBanner
+          mensaje={mensajeNovedades(user?.rol)}
+          onActualizar={() => {
+            refetch();
+            aceptarNovedades();
+          }}
+        />
+      )}
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">

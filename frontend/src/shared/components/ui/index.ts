@@ -32,6 +32,8 @@ export type { HelpButtonProps } from './HelpButton';
 
 export { RefreshButton } from './RefreshButton';
 
+export { NovedadesBanner } from './NovedadesBanner';
+
 export { Progress } from './Progress';
 export type { ProgressProps } from './Progress';
 

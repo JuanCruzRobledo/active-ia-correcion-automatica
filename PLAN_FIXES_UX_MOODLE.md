@@ -53,7 +53,9 @@ Este plan cubre 7 pedidos. Están **reordenados por dependencia y riesgo** (no p
 2. Completar invalidaciones faltantes: `useCreateRubrica`/`useUpdateRubrica`/`useDeleteRubrica` invalidan también `['pendientes-moodle']` y `['entregas']` cuando cambia `moodle_assign_id`.
 3. Componente compartido `<RefreshButton/>` (extraer del de pendientes, que al usuario le gusta) y colocarlo en las pantallas con datos vivos: Pendientes, Entregas, Rúbricas, Dashboard. Cada uno hace `refetchQueries` de su key.
 
-**Capa B — OPCIONAL (detección de cambios, "hay novedades"):**
+**Capa B — IMPLEMENTADA (detección de cambios, "hay novedades"):**
+> Nota de implementación: el token de versión (`GET /sync/version` → `{entregas, rubricas}` = `MAX(updated_at)|COUNT`) es un HINT **global** (no scopeado por usuario): puede sobre-disparar (un cambio de otro tutor avisa igual), pero nunca pierde un cambio. El refresco real lo hace la query de la pantalla; el banner solo decide cuándo ofrecer actualizar. Mensaje por rol vía `mensajeNovedades(rol)`. Poolea cada 45s, no en background.
+
 - El pedido "cuando haya un cambio en el backend… con un mensaje según el rol" implica detección de cambios. Sin WebSocket, lo barato es **polling liviano** de un endpoint `GET /<recurso>/version` (devuelve un `updated_at`/contador máximo). Si el valor cambió respecto al que tengo, muestro un banner "Hay datos nuevos — Actualizar".
 - **Mensaje por rol** (`useAuth.ts` da `user.rol`): TUTOR → "Hay entregas nuevas para corregir"; COORDINADOR/GESTOR → "Hay datos actualizados"; ADMIN → idem genérico. Sin filtrar info de más.
 
