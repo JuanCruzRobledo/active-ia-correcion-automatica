@@ -88,6 +88,34 @@ def dedup_ultimo_intento(submissions: list["MoodleSubmission"]) -> list["MoodleS
     return list(mejor.values())
 
 
+def es_reentrega(sub_tm: int | None, grade_tm: int | None) -> bool:
+    """True si el alumno re-entregó DESPUÉS de la última nota (item #3b).
+
+    Señal del propio Moodle: submission.timemodified > grade.timemodified. Si falta
+    alguno (0/None) no se puede afirmar re-entrega → False.
+    """
+    return bool(sub_tm) and bool(grade_tm) and sub_tm > grade_tm
+
+
+def parse_submission_timemod_map(data: dict) -> dict[int, int]:
+    """De mod_assign_get_submissions → {userid: timemodified más reciente} (solo 'submitted').
+
+    Toma el máximo timemodified por usuario (puede haber varios intentos).
+    """
+    out: dict[int, int] = {}
+    for assignment in (data or {}).get("assignments", []):
+        for sub in assignment.get("submissions", []):
+            if sub.get("status") != "submitted":
+                continue
+            uid = sub.get("userid")
+            if uid is None:
+                continue
+            tm = sub.get("timemodified") or 0
+            if tm > out.get(uid, -1):
+                out[uid] = tm
+    return out
+
+
 @dataclass
 class AssignmentGradeConfig:
     """Configuración de calificación de un assignment de Moodle.
@@ -672,6 +700,17 @@ class MoodleService:
 
         self._submissions_cache[assignment_instance_id] = data
         return data
+
+    async def get_submission_timemod_map(
+        self, token: str, moodle_host: str, assignment_instance_id: int
+    ) -> dict[int, int]:
+        """{userid: timemodified de la submission más reciente} para un assignment.
+
+        Liviano (sin archivos), reusa el cache de _fetch_submissions. Sirve para detectar
+        re-entregas comparando contra el timemodified del grade (item #3b).
+        """
+        data = await self._fetch_submissions(token, moodle_host, assignment_instance_id)
+        return parse_submission_timemod_map(data)
 
     async def _fetch_grades_map(
         self,

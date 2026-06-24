@@ -12,7 +12,7 @@ Este plan cubre 7 pedidos. Están **reordenados por dependencia y riesgo** (no p
 - ✅ **Ola 2 (#2)** — Capa A + B, hecha y pusheada.
 - ✅ **Ola 3 (#1 #7)** — backend (3a) + frontend (3b), pusheada.
 - ✅ **Ola 4 (#4 #5)** — pusheada.
-- 🟡 **Ola 5 (#3)** — **3a hecho** (dedup último intento) + **3b individual ya funciona** (modal "Reenviar de todas formas"). **3b masivo BLOQUEADO por hallazgo** (ver abajo).
+- ✅ **Ola 5 (#3)** — 3a (dedup último intento) + 3b individual (modal) + **3b masivo HECHO** (re-entrega detectada por señal de Moodle, sin validación real porque la DB no tiene casos; autorizado por el usuario 2026-06-24). **TODAS las olas completas.**
 
 ### Hallazgo crítico item #3b masivo (2026-06-24) — NO implementar a ciegas
 Al re-corregir, `corregir_individual` BORRA la corrección vieja y crea una nueva (id nuevo);
@@ -22,9 +22,12 @@ re-hecha **no tiene ningún `moodle_sync`**. Por eso la regla propuesta
 11755 correcciones, 83 ENVIADO, 0 re-corregidas-post-envío).
 **Diseño corregido:** detectar la re-entrega con la señal de **Moodle**, no de la DB local:
 `submission.timemodified > grade.timemodified` (la misma `es_espera` que ya usa
-`get_submissions_with_files`). El `MoodleGradeService`/`por_entregar_service` debería re-subir
-cuando esa señal indica re-entrega. **PENDIENTE:** re-validar con una re-entrega REAL (la DB
-local no tiene ninguna) antes de codear.
+`get_submissions_with_files`).
+**IMPLEMENTADO (2026-06-24):** `por_entregar_service` clasifica las que ya tienen nota en
+Moodle: si `es_reentrega(sub_tm, grade_tm)` → re-sube con `forzar=True` (cuenta
+`reenviadas_reentrega`); si no → se respeta la nota existente. Señal de Moodle vía
+`get_submission_timemod_map`. Sin validación con datos reales (la DB no tiene re-entregas;
+el usuario autorizó avanzar). **A confirmar cuando exista una re-entrega real.**
 
 ## Orden propuesto (olas)
 

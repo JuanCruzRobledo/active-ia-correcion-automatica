@@ -36,6 +36,7 @@ from app.services.moodle_service import (
     MoodleAuthError,
     MoodleConnectionError,
     MoodleService,
+    es_reentrega,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,6 +82,7 @@ class ResumenEntregaMasiva:
     enviadas: int = 0
     ya_enviadas: int = 0
     ya_calificadas_en_moodle: int = 0  # detectadas ya con nota en Moodle (no se subieron)
+    reenviadas_reentrega: int = 0  # re-entregas (item #3b): tenían nota pero el alumno re-entregó
     omitidas_requieren_comentario: int = 0
     errores: list[dict] = field(default_factory=list)  # {"alumno": str, "motivo": str}
 
@@ -203,12 +205,13 @@ class PorEntregarService:
             yield {"tipo": "error", "detail": str(e)}
             return
 
-        instancia_por_correccion, graded_lookup, instancias_falladas = (
+        instancia_por_correccion, graded_lookup, sub_tm_lookup, instancias_falladas = (
             await self._prefetch_grades(token, moodle_host, automaticas)
         )
 
-        # ── Clasificar: ya calificadas / no verificables / a subir ──
+        # ── Clasificar: ya calificadas / re-entregas / no verificables / a subir ──
         a_subir: list = []
+        a_resubir: list = []  # re-entregas: tenían nota pero el alumno re-entregó (item #3b)
         ya_en_moodle: list = []  # (correccion, instance_id, grade_crudo)
         for c in automaticas:
             instance_id = instancia_por_correccion.get(c.id)
@@ -220,7 +223,13 @@ class PorEntregarService:
                 continue
             entry = (graded_lookup.get(instance_id) or {}).get(c.entrega.moodle_user_id)
             if MoodleService.es_calificacion_real(entry):
-                ya_en_moodle.append((c, instance_id, entry.get("grade")))
+                # Ya hay nota en Moodle. Si el alumno re-entregó DESPUÉS (item #3b), subimos
+                # la nota nueva igual; si no, se respeta la existente y no se toca.
+                sub_tm = (sub_tm_lookup.get(instance_id) or {}).get(c.entrega.moodle_user_id)
+                if es_reentrega(sub_tm, entry.get("timemodified")):
+                    a_resubir.append(c)
+                else:
+                    ya_en_moodle.append((c, instance_id, entry.get("grade")))
             else:
                 a_subir.append(c)
 
@@ -229,7 +238,7 @@ class PorEntregarService:
             await self._registrar_ya_calificada(c, instance_id, grade_crudo, usuario)
             resumen.ya_calificadas_en_moodle += 1
 
-        total = len(a_subir)
+        total = len(a_subir) + len(a_resubir)
         yield {"tipo": "inicio", "total": total}
 
         if total == 0:
@@ -239,7 +248,7 @@ class PorEntregarService:
         sem = asyncio.Semaphore(self.UPLOAD_CONCURRENCY)
         lock = asyncio.Lock()
 
-        async def _subir(correccion) -> None:
+        async def _subir(correccion, es_reentrega_flag: bool = False) -> None:
             alumno = correccion.entrega.alumno_nombre
             async with sem:
                 # Sesión propia por tarea (la AsyncSession no admite concurrencia).
@@ -256,12 +265,17 @@ class PorEntregarService:
                             comentario_final=render.comentario,
                             usuario=usuario,
                             base_url=base_url,
-                            forzar=False,
+                            # Re-entrega (item #3b): forzamos para pisar la nota vieja con la
+                            # nueva (el alumno re-entregó después). El resto, sin forzar.
+                            forzar=es_reentrega_flag,
                             # El masivo ya verificó/registró las ya-calificadas; evitar refetch.
                             verificar_moodle=False,
                         )
                         async with lock:
-                            resumen.enviadas += 1
+                            if es_reentrega_flag:
+                                resumen.reenviadas_reentrega += 1
+                            else:
+                                resumen.enviadas += 1
                     except HTTPException as e:
                         async with lock:
                             if e.status_code == 409:
@@ -274,6 +288,7 @@ class PorEntregarService:
                             resumen.errores.append({"alumno": alumno, "motivo": str(e)})
 
         tasks = [asyncio.create_task(_subir(c)) for c in a_subir]
+        tasks += [asyncio.create_task(_subir(c, es_reentrega_flag=True)) for c in a_resubir]
         procesadas = 0
         for fut in asyncio.as_completed(tasks):
             await fut
@@ -311,15 +326,19 @@ class PorEntregarService:
         instancias = {iid for iid in instancia_por_correccion.values() if iid}
 
         graded_lookup: dict[int, dict] = {}
+        sub_tm_lookup: dict[int, dict] = {}  # {instance_id: {userid: submission timemodified}}
         instancias_falladas: set[int] = set()
 
         async def _fetch(instance_id: int):
             try:
-                return instance_id, await self.moodle.get_grades_full(
+                # Grades + timemodified de submissions (para detectar re-entregas, item #3b).
+                full = await self.moodle.get_grades_full(token, moodle_host, instance_id)
+                subs = await self.moodle.get_submission_timemod_map(
                     token, moodle_host, instance_id
-                ), None
+                )
+                return instance_id, full, subs, None
             except (MoodleConnectionError, MoodleAuthError) as e:
-                return instance_id, None, e
+                return instance_id, None, None, e
 
         sem = asyncio.Semaphore(self.UPLOAD_CONCURRENCY)
 
@@ -327,15 +346,16 @@ class PorEntregarService:
             async with sem:
                 return await _fetch(instance_id)
 
-        for instance_id, full, err in await asyncio.gather(
+        for instance_id, full, subs, err in await asyncio.gather(
             *[_fetch_sem(i) for i in instancias]
         ):
             if err is not None:
                 instancias_falladas.add(instance_id)
             else:
                 graded_lookup[instance_id] = full
+                sub_tm_lookup[instance_id] = subs or {}
 
-        return instancia_por_correccion, graded_lookup, instancias_falladas
+        return instancia_por_correccion, graded_lookup, sub_tm_lookup, instancias_falladas
 
     async def _registrar_ya_calificada(
         self, correccion, instance_id, grade_crudo, usuario
@@ -387,6 +407,7 @@ def _asdict_resumen(r: ResumenEntregaMasiva) -> dict:
         "enviadas": r.enviadas,
         "ya_enviadas": r.ya_enviadas,
         "ya_calificadas_en_moodle": r.ya_calificadas_en_moodle,
+        "reenviadas_reentrega": r.reenviadas_reentrega,
         "omitidas_requieren_comentario": r.omitidas_requieren_comentario,
         "errores": r.errores,
     }
