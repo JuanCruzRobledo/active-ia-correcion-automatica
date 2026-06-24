@@ -383,7 +383,9 @@ export function RubricaEditor({
             criterios_json: data.criterios,
             penalizaciones_json: data.penalizaciones,
             condiciones_desaprobacion_json: data.condiciones_desaprobacion,
-            moodle_assign_id: data.moodle_assign_id ?? undefined,
+            // null EXPLÍCITO para borrar el cmid (no `undefined`, que se cae del JSON y
+            // dejaría el valor anterior). Así se puede vaciar y sale de pendientes.
+            moodle_assign_id: data.moodle_assign_id ?? null,
             modo_consolidacion: data.modo_consolidacion,
             extensiones_personalizadas:
               data.modo_consolidacion === 'personalizado'
