@@ -73,6 +73,21 @@ class MoodleSubmission:
     files: list[MoodleFile] = field(default_factory=list)
 
 
+def dedup_ultimo_intento(submissions: list["MoodleSubmission"]) -> list["MoodleSubmission"]:
+    """Una submission por userid: la del intento MÁS RECIENTE (item #3).
+
+    Moodle devuelve un registro por attemptnumber; ante una re-entrega quedaban varias y
+    el pipeline podía agarrar el intento viejo ("detecta el primer archivo"). Nos quedamos
+    con el mayor attemptnumber (desempate por timemodified).
+    """
+    mejor: dict[int, "MoodleSubmission"] = {}
+    for s in submissions:
+        prev = mejor.get(s.userid)
+        if prev is None or (s.attemptnumber, s.timemodified) > (prev.attemptnumber, prev.timemodified):
+            mejor[s.userid] = s
+    return list(mejor.values())
+
+
 @dataclass
 class AssignmentGradeConfig:
     """Configuración de calificación de un assignment de Moodle.
@@ -960,7 +975,9 @@ class MoodleService:
                     files=files,
                 ))
 
-        return result
+        # Una sola submission por alumno: el intento más reciente (item #3). Ante una
+        # re-entrega, Moodle trae varios registros; sin esto se agarraba el viejo.
+        return dedup_ultimo_intento(result)
 
     async def download_submission_file(self, token: str, fileurl: str) -> bytes:
         """Descarga el contenido de un archivo de Moodle (pluginfile.php) usando el token.
