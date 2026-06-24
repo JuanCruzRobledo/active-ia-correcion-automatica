@@ -633,7 +633,7 @@ export const EntregasPage = () => {
 
     const badge = badges[estado];
     return (
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col items-start gap-0.5">
         <Badge variant={badge.variant} title={estado === 'ERROR' ? errorMensaje ?? undefined : undefined}>
           <span className="mr-1">{badge.icon}</span>
           {estado.charAt(0) + estado.slice(1).toLowerCase()}
