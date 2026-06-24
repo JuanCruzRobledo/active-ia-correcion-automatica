@@ -10,9 +10,21 @@ Este plan cubre 7 pedidos. Están **reordenados por dependencia y riesgo** (no p
 ## Estado (2026-06-24)
 - ✅ **Ola 1 (#6)** — hecha y pusheada.
 - ✅ **Ola 2 (#2)** — Capa A + B, hecha y pusheada.
-- ✅ **Ola 3 (#1 #7)** — backend (3a) + frontend (3b), commiteada local (falta push).
-- ⏳ **Ola 4 (#4 #5)** — pendiente.
-- ⏳ **Ola 5 (#3)** — pendiente.
+- ✅ **Ola 3 (#1 #7)** — backend (3a) + frontend (3b), pusheada.
+- ✅ **Ola 4 (#4 #5)** — pusheada.
+- 🟡 **Ola 5 (#3)** — **3a hecho** (dedup último intento) + **3b individual ya funciona** (modal "Reenviar de todas formas"). **3b masivo BLOQUEADO por hallazgo** (ver abajo).
+
+### Hallazgo crítico item #3b masivo (2026-06-24) — NO implementar a ciegas
+Al re-corregir, `corregir_individual` BORRA la corrección vieja y crea una nueva (id nuevo);
+el cascade `moodle_syncs` (commit ff0a217) borra también sus `moodle_sync`. ⇒ la corrección
+re-hecha **no tiene ningún `moodle_sync`**. Por eso la regla propuesta
+(`correccion.updated_at > moodle_sync.created_at`) **nunca dispara** (diagnóstico read-only:
+11755 correcciones, 83 ENVIADO, 0 re-corregidas-post-envío).
+**Diseño corregido:** detectar la re-entrega con la señal de **Moodle**, no de la DB local:
+`submission.timemodified > grade.timemodified` (la misma `es_espera` que ya usa
+`get_submissions_with_files`). El `MoodleGradeService`/`por_entregar_service` debería re-subir
+cuando esa señal indica re-entrega. **PENDIENTE:** re-validar con una re-entrega REAL (la DB
+local no tiene ninguna) antes de codear.
 
 ## Orden propuesto (olas)
 
