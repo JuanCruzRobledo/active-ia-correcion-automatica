@@ -11,6 +11,8 @@ export interface ProgresoGlobal {
   corregidas: number;
   error: number;
   total: number;
+  /** Desglose de las entregas en ERROR por código (item #7), para el resumen. */
+  errores_por_codigo?: Record<string, number>;
 }
 
 export interface CorregirGlobalResponse {

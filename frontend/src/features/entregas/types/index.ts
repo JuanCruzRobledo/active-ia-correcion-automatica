@@ -146,6 +146,9 @@ export interface EntregaListItem {
   archivado: boolean;
   nota: number | null;
   tiene_correccion: boolean;
+  // Detalle del último error de corrección (item #1), si estado === 'ERROR'.
+  error_code?: string | null;
+  error_mensaje?: string | null;
   created_at: string;
 }
 

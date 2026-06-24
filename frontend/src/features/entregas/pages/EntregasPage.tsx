@@ -620,7 +620,7 @@ export const EntregasPage = () => {
     }
   };
 
-  const getEstadoBadge = (estado: EstadoEntrega) => {
+  const getEstadoBadge = (estado: EstadoEntrega, errorMensaje?: string | null) => {
     const badges: Record<
       EstadoEntrega,
       { variant: 'success' | 'warning' | 'info' | 'destructive'; icon: string }
@@ -633,10 +633,18 @@ export const EntregasPage = () => {
 
     const badge = badges[estado];
     return (
-      <Badge variant={badge.variant}>
-        <span className="mr-1">{badge.icon}</span>
-        {estado.charAt(0) + estado.slice(1).toLowerCase()}
-      </Badge>
+      <div className="flex flex-col gap-0.5">
+        <Badge variant={badge.variant} title={estado === 'ERROR' ? errorMensaje ?? undefined : undefined}>
+          <span className="mr-1">{badge.icon}</span>
+          {estado.charAt(0) + estado.slice(1).toLowerCase()}
+        </Badge>
+        {/* item #1: el motivo del error, no un ERROR seco. */}
+        {estado === 'ERROR' && errorMensaje && (
+          <span className="max-w-[240px] truncate text-xs text-destructive" title={errorMensaje}>
+            {errorMensaje}
+          </span>
+        )}
+      </div>
     );
   };
 
@@ -808,7 +816,7 @@ export const EntregasPage = () => {
     {
       key: 'estado',
       header: 'Estado',
-      render: (entrega) => getEstadoBadge(entrega.estado),
+      render: (entrega) => getEstadoBadge(entrega.estado, entrega.error_mensaje),
     },
     {
       key: 'nota',
@@ -1210,7 +1218,7 @@ export const EntregasPage = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {getEstadoBadge(entrega.estado)}
+                          {getEstadoBadge(entrega.estado, entrega.error_mensaje)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-foreground">
@@ -1286,7 +1294,7 @@ export const EntregasPage = () => {
                             Estado
                           </dt>
                           <dd className="text-right text-sm text-foreground">
-                            {getEstadoBadge(entrega.estado)}
+                            {getEstadoBadge(entrega.estado, entrega.error_mensaje)}
                           </dd>
                         </div>
                         <div className="flex justify-between gap-3 py-1.5 border-b border-border/50">
