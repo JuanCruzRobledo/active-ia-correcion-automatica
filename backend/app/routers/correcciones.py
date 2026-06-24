@@ -412,10 +412,14 @@ async def progreso_global(
     pendientes = counts.get("PENDIENTE", 0)
     corregidas = counts.get("CORREGIDA", 0)
     error = counts.get("ERROR", 0)
+    errores_por_codigo = (
+        await entrega_repo.contar_errores_by_tutor(current_user.id) if error else {}
+    )
     return ProgresoGlobalResponse(
         subidas=subidas,
         pendientes=pendientes,
         corregidas=corregidas,
         error=error,
         total=subidas + pendientes + corregidas + error,
+        errores_por_codigo=errores_por_codigo,
     )

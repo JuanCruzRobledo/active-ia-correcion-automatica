@@ -14,7 +14,13 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
-from app.core.exceptions import APIKeyInvalidError, N8NError, N8NTimeoutError, QuotaExceededError
+from app.core.exceptions import (
+    APIKeyInvalidError,
+    ModelOverloadedError,
+    N8NError,
+    N8NTimeoutError,
+    QuotaExceededError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +94,7 @@ class N8NClient:
                 self._check_http_error_for_api_key(e)
                 raise N8NError(f"Error HTTP {e.response.status_code}: {e.response.text}")
 
-            except (APIKeyInvalidError, QuotaExceededError, N8NError, N8NTimeoutError):
+            except (APIKeyInvalidError, QuotaExceededError, ModelOverloadedError, N8NError, N8NTimeoutError):
                 # Re-raise our own errors without wrapping
                 raise
 
@@ -156,7 +162,7 @@ class N8NClient:
                 self._check_http_error_for_api_key(e)
                 raise N8NError(f"Error HTTP {e.response.status_code}: {e.response.text}")
 
-            except (APIKeyInvalidError, QuotaExceededError, N8NError, N8NTimeoutError):
+            except (APIKeyInvalidError, QuotaExceededError, ModelOverloadedError, N8NError, N8NTimeoutError):
                 # Re-raise our own errors without wrapping
                 raise
 
@@ -314,6 +320,20 @@ class N8NClient:
         if isinstance(error_code, str) and error_code in ("API_KEY_INVALID", "PERMISSION_DENIED"):
             raise APIKeyInvalidError(
                 f"API Key de Gemini inválida o expirada: {error_message}"
+            )
+
+        # --- Detect model overloaded / high demand (503 from Gemini) ---
+        is_overloaded = (
+            error_status == 503
+            or "[503]" in error_message
+            or "status code 503" in error_message.lower()
+            or "overloaded" in error_message.lower()
+            or "high demand" in error_message.lower()
+            or "UNAVAILABLE" in error_message
+        )
+        if is_overloaded:
+            raise ModelOverloadedError(
+                "El modelo de Gemini está sobrecargado. Reintentá en unos minutos."
             )
 
         # --- Detect rate-limit errors (429 from Gemini) ---

@@ -314,14 +314,21 @@ class EntregaRepository:
         return len(entregas)
 
     async def get_subidas_ids_by_tutor(
-        self, tutor_id: int, limite: int | None = None
+        self, tutor_id: int, limite: int | None = None, incluir_errores: bool = True
     ) -> list[int]:
-        """IDs de entregas en estado SUBIDA de TODAS las comisiones del tutor (cross-rúbrica).
+        """IDs de entregas RECORREGIBLES de TODAS las comisiones del tutor (cross-rúbrica).
 
-        Para la corrección masiva global. Excluye archivadas.
+        Para la corrección masiva global. Excluye archivadas. Por defecto incluye las que
+        quedaron en ERROR (item #7: una entrega que falló debe volver a corregirse en la
+        masiva, no quedar atrapada). incluir_errores=False vuelve al comportamiento viejo
+        (solo SUBIDA).
         """
         from app.models.comision import ComisionTutor
         from app.models.enums import EstadoEntregaEnum
+
+        estados = [EstadoEntregaEnum.SUBIDA]
+        if incluir_errores:
+            estados.append(EstadoEntregaEnum.ERROR)
 
         stmt = (
             select(Entrega.id)
@@ -329,7 +336,7 @@ class EntregaRepository:
             .join(ComisionTutor, ComisionTutor.comision_id == Comision.id)
             .where(
                 ComisionTutor.tutor_id == tutor_id,
-                Entrega.estado == EstadoEntregaEnum.SUBIDA,
+                Entrega.estado.in_(estados),
                 Entrega.archivado == False,  # noqa: E712
             )
             .order_by(Entrega.id)
@@ -338,6 +345,25 @@ class EntregaRepository:
             stmt = stmt.limit(limite)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
+
+    async def contar_errores_by_tutor(self, tutor_id: int) -> dict[str, int]:
+        """Conteo de entregas en ERROR por error_code, para el resumen de la masiva (item #7)."""
+        from app.models.comision import ComisionTutor
+        from app.models.enums import EstadoEntregaEnum
+
+        stmt = (
+            select(Entrega.error_code, func.count())
+            .join(Comision, Comision.id == Entrega.comision_id)
+            .join(ComisionTutor, ComisionTutor.comision_id == Comision.id)
+            .where(
+                ComisionTutor.tutor_id == tutor_id,
+                Entrega.estado == EstadoEntregaEnum.ERROR,
+                Entrega.archivado == False,  # noqa: E712
+            )
+            .group_by(Entrega.error_code)
+        )
+        result = await self.db.execute(stmt)
+        return {(code or "DESCONOCIDO"): int(n) for code, n in result.all()}
 
     async def contar_estados_by_tutor(self, tutor_id: int) -> dict[str, int]:
         """Conteo de entregas por estado para el tutor (para el progreso de 'Corregir todo')."""

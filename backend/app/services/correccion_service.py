@@ -12,6 +12,7 @@ Ref: skills/correccion-ia/SKILL.md
 
 import asyncio
 import logging
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -23,8 +24,18 @@ from app.models.base import async_session_maker
 logger = logging.getLogger(__name__)
 
 
+from app.core.error_catalog import (
+    ERROR_API_KEY_INVALID,
+    ERROR_IA_RESPUESTA_INVALIDA,
+    ERROR_N8N,
+    ERROR_N8N_TIMEOUT,
+    ERROR_OVERLOADED,
+    ERROR_RATE_LIMIT,
+    mensaje_error,
+)
 from app.core.exceptions import (
     APIKeyInvalidError,
+    ModelOverloadedError,
     N8NError,
     N8NTimeoutError,
     QuotaExceededError,
@@ -47,6 +58,25 @@ from app.schemas.correccion import (
     CorregirLoteResponse,
     GeminiResponse,
 )
+
+
+def _marcar_entrega_error(entrega, code: str) -> None:
+    """Marca una entrega en ERROR con el detalle traducido (item #1).
+
+    Guarda el código del catálogo + el mensaje claro + el timestamp, para que el
+    frontend muestre QUÉ pasó (no un ERROR seco) y para resumir las corridas masivas.
+    """
+    entrega.estado = EstadoEntregaEnum.ERROR
+    entrega.error_code = code
+    entrega.error_mensaje = mensaje_error(code)
+    entrega.error_at = datetime.utcnow()
+
+
+def _limpiar_entrega_error(entrega) -> None:
+    """Limpia el detalle de error (al corregir con éxito)."""
+    entrega.error_code = None
+    entrega.error_mensaje = None
+    entrega.error_at = None
 
 
 class CorreccionService:
@@ -145,16 +175,14 @@ class CorreccionService:
             else:
                 result = await self._call_n8n_with_retry(payload)
         except N8NTimeoutError:
-            # Mark as ERROR
-            entrega.estado = EstadoEntregaEnum.ERROR
+            _marcar_entrega_error(entrega, ERROR_N8N_TIMEOUT)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Timeout esperando respuesta del servicio de IA",
+                detail=mensaje_error(ERROR_N8N_TIMEOUT),
             )
         except APIKeyInvalidError:
-            # Mark entrega as ERROR
-            entrega.estado = EstadoEntregaEnum.ERROR
+            _marcar_entrega_error(entrega, ERROR_API_KEY_INVALID)
             await self.entrega_repo.update(entrega)
             # Mark user's API key as invalid in DB
             usuario = await self.usuario_repo.get_by_id(corregido_por_id)
@@ -167,17 +195,12 @@ class CorreccionService:
             raise HTTPException(
                 status_code=402,
                 detail={
-                    "error_code": "GEMINI_API_KEY_INVALID",
-                    "message": (
-                        "Tu API Key de Gemini expiró o es inválida. "
-                        "Por favor generá una nueva en Google AI Studio "
-                        "con otra cuenta de Google y actualizala en tu perfil."
-                    ),
+                    "error_code": ERROR_API_KEY_INVALID,
+                    "message": mensaje_error(ERROR_API_KEY_INVALID),
                 },
             )
         except QuotaExceededError as e:
-            # Mark entrega as ERROR
-            entrega.estado = EstadoEntregaEnum.ERROR
+            _marcar_entrega_error(entrega, ERROR_RATE_LIMIT)
             await self.entrega_repo.update(entrega)
             logger.warning(
                 f"Rate limit de Gemini alcanzado corrigiendo entrega {entrega_id}: {e}"
@@ -185,32 +208,40 @@ class CorreccionService:
             raise HTTPException(
                 status_code=429,
                 detail={
-                    "error_code": "GEMINI_RATE_LIMIT",
-                    "message": (
-                        "Se alcanzó el límite de uso de la API de Gemini. "
-                        "Esperá unos minutos antes de volver a corregir."
-                    ),
+                    "error_code": ERROR_RATE_LIMIT,
+                    "message": mensaje_error(ERROR_RATE_LIMIT),
+                },
+            )
+        except ModelOverloadedError as e:
+            _marcar_entrega_error(entrega, ERROR_OVERLOADED)
+            await self.entrega_repo.update(entrega)
+            logger.warning(
+                f"Modelo de Gemini sobrecargado corrigiendo entrega {entrega_id}: {e}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error_code": ERROR_OVERLOADED,
+                    "message": mensaje_error(ERROR_OVERLOADED),
                 },
             )
         except N8NError as e:
-            # Mark as ERROR
-            entrega.estado = EstadoEntregaEnum.ERROR
+            _marcar_entrega_error(entrega, ERROR_N8N)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Error en servicio de IA: {str(e)}",
+                detail=f"{mensaje_error(ERROR_N8N)} ({str(e)})",
             )
 
         # Parse and validate Gemini response
         try:
             gemini_response = self._parse_gemini_response(result)
         except ValidationError as e:
-            # Mark as ERROR
-            entrega.estado = EstadoEntregaEnum.ERROR
+            _marcar_entrega_error(entrega, ERROR_IA_RESPUESTA_INVALIDA)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Respuesta de IA malformada: {e.message}",
+                detail=f"{mensaje_error(ERROR_IA_RESPUESTA_INVALIDA)} ({e.message})",
             )
 
         # Check if correction already exists (re-correction case)
@@ -276,8 +307,9 @@ class CorreccionService:
         correccion = Correccion(**data_dict)
         created_correccion = await self.correccion_repo.create(correccion)
 
-        # Update entrega state to CORREGIDA
+        # Update entrega state to CORREGIDA y limpiar cualquier error previo (item #1).
         entrega.estado = EstadoEntregaEnum.CORREGIDA
+        _limpiar_entrega_error(entrega)
         await self.entrega_repo.update(entrega)
 
         # Return response

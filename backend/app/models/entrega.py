@@ -99,6 +99,12 @@ class Entrega(Base, TimestampMixin):
         Integer,
         nullable=True,
     )
+    # Detalle del ÚLTIMO error de corrección (item #1). NULL si nunca falló o tras una
+    # corrección exitosa (se limpian al pasar a CORREGIDA). error_code = código del
+    # catálogo (app/core/error_catalog); error_mensaje = texto ya traducido al usuario.
+    error_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    error_mensaje: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     __table_args__ = (
         # Índice único: solo permite una entrega por alumno y rúbrica

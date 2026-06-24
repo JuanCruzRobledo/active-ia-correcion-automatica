@@ -85,6 +85,12 @@ class QuotaExceededError(GeminiError):
     pass
 
 
+class ModelOverloadedError(GeminiError):
+    """Raised when the Gemini model is overloaded / high demand (HTTP 503)."""
+
+    pass
+
+
 # External Service Exceptions
 
 

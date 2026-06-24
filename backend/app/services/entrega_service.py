@@ -447,6 +447,8 @@ class EntregaService:
                     archivado=entrega.archivado,
                     nota=entrega.correccion.nota if entrega.correccion else None,
                     tiene_correccion=entrega.correccion is not None,
+                    error_code=entrega.error_code,
+                    error_mensaje=entrega.error_mensaje,
                     subido_por_nombre=entrega.subido_por.nombre,
                     created_at=entrega.created_at,
                 )
