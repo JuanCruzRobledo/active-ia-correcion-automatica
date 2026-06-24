@@ -60,6 +60,10 @@ export const useCreateRubrica = () => {
     onSuccess: () => {
       // Invalidate all rubrica lists to refetch with new data
       queryClient.invalidateQueries({ queryKey: rubricasKeys.lists() });
+      // Una rúbrica con moodle_assign_id cambia lo que aparece en pendientes/entregas;
+      // invalidar acá evita tener que cerrar sesión para ver el nuevo estado.
+      queryClient.invalidateQueries({ queryKey: ['pendientes-moodle'] });
+      queryClient.invalidateQueries({ queryKey: ['entregas'] });
     },
   });
 };
@@ -82,6 +86,9 @@ export const useUpdateRubrica = () => {
       queryClient.invalidateQueries({
         queryKey: rubricasKeys.detail(updatedRubrica.id),
       });
+      // Cambiar/borrar el moodle_assign_id afecta pendientes y entregas.
+      queryClient.invalidateQueries({ queryKey: ['pendientes-moodle'] });
+      queryClient.invalidateQueries({ queryKey: ['entregas'] });
     },
   });
 };
@@ -97,6 +104,9 @@ export const useDeleteRubrica = () => {
     onSuccess: () => {
       // Invalidate all rubrica queries to refetch
       queryClient.invalidateQueries({ queryKey: rubricasKeys.all });
+      // Borrar una rúbrica saca sus pendientes/entregas asociados.
+      queryClient.invalidateQueries({ queryKey: ['pendientes-moodle'] });
+      queryClient.invalidateQueries({ queryKey: ['entregas'] });
     },
   });
 };

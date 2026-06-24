@@ -30,6 +30,8 @@ export type { ConfirmDialogProps } from './ConfirmDialog';
 export { HelpButton } from './HelpButton';
 export type { HelpButtonProps } from './HelpButton';
 
+export { RefreshButton } from './RefreshButton';
+
 export { Progress } from './Progress';
 export type { ProgressProps } from './Progress';
 

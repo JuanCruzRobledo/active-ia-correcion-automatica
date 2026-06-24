@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, CheckCircle, Users, RefreshCw, AlertTriangle } from 'lucide-react';
 import { StatCard } from '@/features/dashboard/components/StatCard';
-import { HelpButton, LoadingState } from '@/shared/components/ui';
+import { HelpButton, LoadingState, RefreshButton } from '@/shared/components/ui';
 import { helpContent } from '@/shared/content/helpContent';
 import { MateriaBlock } from '../components';
 import { ImportarButton } from '../components/ImportarButton';
@@ -101,15 +101,7 @@ export function PendientesPage() {
               fullWidth
             />
           )}
-          <button
-            onClick={refresh}
-            disabled={isRefreshing}
-            aria-label="Actualizar"
-            className="flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">{isRefreshing ? 'Actualizando…' : 'Actualizar'}</span>
-          </button>
+          <RefreshButton onRefresh={refresh} isRefreshing={isRefreshing} />
         </div>
       </div>
 

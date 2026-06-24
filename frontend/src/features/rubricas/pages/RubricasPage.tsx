@@ -28,6 +28,7 @@ import {
   ResponsiveTable,
   LoadingState,
   HelpButton,
+  RefreshButton,
   EmptyState,
   Dropdown,
   ConfirmDialog,
@@ -102,7 +103,7 @@ export const RubricasPage = () => {
   const [duplicateError, setDuplicateError] = useState<string | null>(null);
 
   // Queries
-  const { data, isLoading, error } = useRubricas(filters);
+  const { data, isLoading, error, refetch, isFetching } = useRubricas(filters);
   const { data: materiasData, isLoading: materiasLoading } = useMaterias({ page: 1, per_page: 100 });
   const { data: editingRubrica } = useRubrica(editingId || 0);
   const deleteMutation = useDeleteRubrica();
@@ -380,11 +381,14 @@ export const RubricasPage = () => {
             Gestión de criterios de evaluación
           </p>
         </div>
-        {!sinMateriasAsignadas && (
-          <Button onClick={handleOpenCreate} className="w-full sm:w-auto">
-            + Crear Rúbrica
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <RefreshButton onRefresh={() => refetch()} isRefreshing={isFetching} />
+          {!sinMateriasAsignadas && (
+            <Button onClick={handleOpenCreate} className="w-full sm:w-auto">
+              + Crear Rúbrica
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
