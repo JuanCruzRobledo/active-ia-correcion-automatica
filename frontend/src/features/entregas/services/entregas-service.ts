@@ -103,6 +103,10 @@ export const entregasService = {
       formData.append('sobrescribir', entregaData.sobrescribir.toString());
     }
 
+    if (entregaData.moodle_url) {
+      formData.append('moodle_url', entregaData.moodle_url);
+    }
+
     const { data } = await apiClient.post<Entrega>('/entregas', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',

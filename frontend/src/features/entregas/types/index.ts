@@ -167,6 +167,8 @@ export interface EntregaCreate {
   modo_consolidacion?: ModoConsolidacion;
   extensiones_personalizadas?: string[]; // Ej: ['.sql', '.sh']
   sobrescribir?: boolean;
+  // URL de la entrega en Moodle (item #4): habilita "Subir a Moodle" en cargas manuales.
+  moodle_url?: string;
 }
 
 export interface CargaMasivaCreate {

@@ -56,12 +56,19 @@ export interface ImportDetalleRubrica {
   cargadas: number;
 }
 
+export interface ImportSinArchivoItem {
+  alumno: string;
+  url_moodle: string | null;
+}
+
 export interface ImportarMoodleResponse {
   cargadas: number;
   duplicadas: number;
   omitidas_ya_corregidas: number;
   reentregas: number;
   sin_archivos: number;
+  // item #5: detalle de quienes entregaron sin archivos, con link a su entrega en Moodle.
+  sin_archivos_detalle?: ImportSinArchivoItem[];
   errores: ImportErrorItem[];
   detalle_por_rubrica: ImportDetalleRubrica[];
 }

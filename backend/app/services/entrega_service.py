@@ -84,6 +84,7 @@ class EntregaService:
         sobrescribir: bool = False,
         modo_consolidacion: str = "solo_codigo",
         extensiones_personalizadas: list[str] | None = None,
+        moodle_user_id: int | None = None,
     ) -> EntregaResponse:
         """
         Create a new entrega from individual upload.
@@ -187,6 +188,9 @@ class EntregaService:
             entrega_existente.hash_sha256 = hash_sha256
             entrega_existente.estado = EstadoEntregaEnum.SUBIDA
             entrega_existente.subido_por_id = subido_por_id
+            # Vínculo a Moodle desde la URL pegada (item #4); solo si vino uno nuevo.
+            if moodle_user_id is not None:
+                entrega_existente.moodle_user_id = moodle_user_id
 
             # Note: archivo_ruta would be updated by file storage service
             # For now, we keep the same path or generate a new one
@@ -213,6 +217,9 @@ class EntregaService:
             estado=EstadoEntregaEnum.SUBIDA,
             hash_sha256=hash_sha256,
             subido_por_id=subido_por_id,
+            # Vínculo a Moodle desde la URL pegada (item #4): habilita "Subir a Moodle"
+            # en entregas cargadas a mano.
+            moodle_user_id=moodle_user_id,
         )
 
         created_entrega = await self.entrega_repo.create(entrega)

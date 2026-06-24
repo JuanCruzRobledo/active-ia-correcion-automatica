@@ -29,6 +29,7 @@ from app.schemas.entrega import (
     EntregaResponse,
 )
 from app.services.entrega_service import EntregaService
+from app.services.moodle_url_parser import parsear_url_entrega
 
 router = APIRouter(
     prefix="/entregas",
@@ -92,6 +93,7 @@ async def crear_entrega(
     sobrescribir: bool = Form(False, description="Sobrescribir entrega existente"),
     modo_consolidacion: str = Form("solo_codigo", description="Modo de procesamiento"),
     extensiones_personalizadas: str | None = Form(None, description="JSON array de extensiones para modo personalizado"),
+    moodle_url: str | None = Form(None, description="URL de la entrega en Moodle (para habilitar 'Subir a Moodle')"),
     archivo: UploadFile = File(..., description="Archivo ZIP o TXT"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -126,6 +128,10 @@ async def crear_entrega(
         except (json.JSONDecodeError, ValueError):
             ext_list = None
 
+    # URL de Moodle (item #4): extraemos el userid para habilitar "Subir a Moodle" en
+    # entregas cargadas a mano. El cmid de la URL no se usa acá (lo aporta la rúbrica).
+    moodle_user_id = parsear_url_entrega(moodle_url)["userid"] if moodle_url else None
+
     # Build EntregaCreate schema
     data = EntregaCreate(
         comision_id=comision_id,
@@ -141,6 +147,7 @@ async def crear_entrega(
         sobrescribir=sobrescribir,
         modo_consolidacion=modo_consolidacion.lower(),
         extensiones_personalizadas=ext_list,
+        moodle_user_id=moodle_user_id,
     )
 
 
