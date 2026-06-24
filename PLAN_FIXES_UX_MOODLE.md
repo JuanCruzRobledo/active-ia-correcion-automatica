@@ -7,6 +7,13 @@ Este plan cubre 7 pedidos. Están **reordenados por dependencia y riesgo** (no p
 
 ---
 
+## Estado (2026-06-24)
+- ✅ **Ola 1 (#6)** — hecha y pusheada.
+- ✅ **Ola 2 (#2)** — Capa A + B, hecha y pusheada.
+- ✅ **Ola 3 (#1 #7)** — backend (3a) + frontend (3b), commiteada local (falta push).
+- ⏳ **Ola 4 (#4 #5)** — pendiente.
+- ⏳ **Ola 5 (#3)** — pendiente.
+
 ## Orden propuesto (olas)
 
 | Ola | Items | Por qué juntos | Riesgo (governance) |
