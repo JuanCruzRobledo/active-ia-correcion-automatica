@@ -13,6 +13,7 @@ import type {
   UpdateApiKeyResponse,
   MoodleCredentialsRequest,
   MoodleCredentialsResponse,
+  CorrectionProvider,
 } from '../types';
 
 /**
@@ -26,19 +27,31 @@ export async function getProfile(): Promise<UserProfile> {
 }
 
 /**
- * Update user's Gemini API Key.
- * Backend validates format and performs test call to Gemini.
- *
- * @param apiKey - Gemini API Key (must start with "AIza")
- * @returns Validation result
+ * Configura la API Key del proveedor indicado. El backend la valida contra el
+ * proveedor correspondiente (Gemini Studio → Google; OpenRouter → consulta real)
+ * antes de guardarla. Cada proveedor guarda su key por separado.
  */
 export async function updateApiKey(
-  apiKey: string
+  apiKey: string,
+  provider: CorrectionProvider
 ): Promise<UpdateApiKeyResponse> {
   const { data } = await apiClient.post<UpdateApiKeyResponse>(
     '/perfil/api-key',
-    { gemini_api_key: apiKey } as UpdateApiKeyRequest
+    { gemini_api_key: apiKey, provider } as UpdateApiKeyRequest
   );
+  return data;
+}
+
+/**
+ * Cambia el modo de corrección activo (slider del perfil). No toca las keys.
+ */
+export async function updateCorrectionProvider(
+  provider: CorrectionProvider
+): Promise<{ message: string; correction_provider: CorrectionProvider }> {
+  const { data } = await apiClient.patch<{
+    message: string;
+    correction_provider: CorrectionProvider;
+  }>('/perfil/correction-provider', { provider });
   return data;
 }
 

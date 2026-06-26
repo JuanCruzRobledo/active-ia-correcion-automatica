@@ -5,6 +5,13 @@
  */
 
 /**
+ * Modo de corrección elegido por el usuario.
+ * - 'gemini'     → Corrección Gemini Studio (Google, key directa).
+ * - 'openrouter' → Corrección OpenRouter (beta), modelo google/gemini-3.5-flash.
+ */
+export type CorrectionProvider = 'gemini' | 'openrouter';
+
+/**
  * User profile information (extended from User).
  */
 export interface UserProfile {
@@ -17,6 +24,10 @@ export interface UserProfile {
   gemini_api_key_valid: boolean;
   gemini_api_key_last_4: string | null;
   gemini_api_key_paga: boolean;
+  // Modo de corrección activo + estado de la key de OpenRouter (separada de la de Gemini).
+  correction_provider: CorrectionProvider;
+  openrouter_api_key_valid: boolean;
+  openrouter_api_key_last_4: string | null;
   moodle_username: string | null;
   moodle_host: string | null;
   moodle_configured: boolean;
@@ -27,10 +38,11 @@ export interface UserProfile {
 }
 
 /**
- * Request to update Gemini API Key.
+ * Request to update an API Key for a given provider.
  */
 export interface UpdateApiKeyRequest {
   gemini_api_key: string;
+  provider: CorrectionProvider;
 }
 
 /**

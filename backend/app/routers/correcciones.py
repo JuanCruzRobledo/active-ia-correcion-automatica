@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
 from app.core.permissions import require_any_authenticated
+from app.integrations import ia_provider
 from app.models.usuario import Usuario
 from app.schemas.moodle_grade import (
     PreviewCorreccionMoodleResponse,
@@ -39,6 +40,31 @@ from app.services.correccion_service import (
 
 # Límite de seguridad para la corrección masiva global (evita encolar miles de una).
 GLOBAL_BATCH_MAX = 200
+
+
+def _resolver_credenciales_ia(user: Usuario) -> tuple[str, str]:
+    """Devuelve (api_key_encrypted, provider) según el modo de corrección del usuario.
+
+    El proveedor activo (correction_provider) define qué key se usa y a qué
+    workflow de n8n se rutea. Si el proveedor activo no tiene key configurada,
+    levanta 400 con un mensaje claro nombrando el proveedor.
+    """
+    provider = ia_provider.normalizar_provider(
+        getattr(user, "correction_provider", None)
+    )
+    if provider == ia_provider.PROVIDER_OPENROUTER:
+        key = getattr(user, "openrouter_api_key_encrypted", None)
+        nombre = "OpenRouter"
+    else:
+        key = user.gemini_api_key_encrypted
+        nombre = "Gemini Studio"
+
+    if not key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Debés configurar tu API Key de {nombre} en tu perfil antes de corregir",
+        )
+    return key, provider
 
 router = APIRouter(
     prefix="/correcciones",
@@ -77,18 +103,14 @@ async def corregir_entrega(
     """
     require_any_authenticated(current_user)
 
-    # Validate API Key is configured
-    if not current_user.gemini_api_key_encrypted:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Debes configurar tu API Key de Gemini en tu perfil antes de corregir",
-        )
+    key, provider = _resolver_credenciales_ia(current_user)
 
     service = CorreccionService(db)
     return await service.corregir_individual(
         entrega_id=entrega_id,
-        api_key_encrypted=current_user.gemini_api_key_encrypted,
+        api_key_encrypted=key,
         corregido_por_id=current_user.id,
+        provider=provider,
     )
 
 
@@ -118,17 +140,14 @@ async def recorregir_entrega(
     """
     require_any_authenticated(current_user)
 
-    if not current_user.gemini_api_key_encrypted:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Debes configurar tu API Key de Gemini en tu perfil",
-        )
+    key, provider = _resolver_credenciales_ia(current_user)
 
     service = CorreccionService(db)
     return await service.recorregir(
         entrega_id=entrega_id,
-        api_key_encrypted=current_user.gemini_api_key_encrypted,
+        api_key_encrypted=key,
         corregido_por_id=current_user.id,
+        provider=provider,
     )
 
 
@@ -159,11 +178,7 @@ async def corregir_lote(
     """
     require_any_authenticated(current_user)
 
-    if not current_user.gemini_api_key_encrypted:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Debes configurar tu API Key de Gemini en tu perfil",
-        )
+    key, provider = _resolver_credenciales_ia(current_user)
 
     service = CorreccionService(db)
     entrega_ids = await service.encolar_lote(data)
@@ -172,8 +187,9 @@ async def corregir_lote(
     background_tasks.add_task(
         procesar_lote_background,
         entrega_ids=entrega_ids,
-        api_key_encrypted=current_user.gemini_api_key_encrypted,
+        api_key_encrypted=key,
         corregido_por_id=current_user.id,
+        provider=provider,
     )
 
     return CorregirLoteAceptadoResponse(
@@ -365,12 +381,13 @@ async def corregir_global(
     """
     require_any_authenticated(current_user)
 
-    if not current_user.gemini_api_key_encrypted:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Configurá tu API key de Gemini en tu perfil",
-        )
-    if not getattr(current_user, "gemini_api_key_paga", False):
+    key, provider = _resolver_credenciales_ia(current_user)
+
+    # El gate de "key paga" aplica solo a Gemini Studio (su free tier limita RPM).
+    # OpenRouter es pago por créditos, así que no requiere el toggle.
+    if provider == ia_provider.PROVIDER_GEMINI and not getattr(
+        current_user, "gemini_api_key_paga", False
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="La corrección masiva global requiere una API key paga. Activala en tu perfil.",
@@ -386,8 +403,9 @@ async def corregir_global(
     background_tasks.add_task(
         procesar_global_background,
         ids,
-        current_user.gemini_api_key_encrypted,
+        key,
         current_user.id,
+        provider=provider,
     )
     return CorregirGlobalAceptadoResponse(
         mensaje=(

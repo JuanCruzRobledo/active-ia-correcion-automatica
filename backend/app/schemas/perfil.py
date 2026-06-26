@@ -10,6 +10,11 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.integrations.ia_provider import (
+    PROVIDER_GEMINI,
+    PROVIDERS_VALIDOS,
+    normalizar_provider,
+)
 from app.models.enums import RolEnum
 
 # Validación simple de email (evita la dependencia email-validator).
@@ -38,6 +43,19 @@ class PerfilResponse(BaseModel):
         default=False,
         description="Toggle manual: la API key tiene facturación habilitada (habilita 'Corregir todo')",
     )
+    # Modo de corrección elegido: "gemini" (Gemini Studio) | "openrouter".
+    correction_provider: str = Field(
+        default=PROVIDER_GEMINI,
+        description="Proveedor de corrección activo: 'gemini' o 'openrouter'",
+    )
+    openrouter_api_key_valid: bool = Field(
+        default=False,
+        description="True si la API key de OpenRouter está configurada y validada",
+    )
+    openrouter_api_key_last_4: str | None = Field(
+        None,
+        description="Últimos 4 caracteres de la API key de OpenRouter si está configurada",
+    )
     moodle_username: str | None = Field(None, description="Usuario Moodle configurado")
     moodle_host: str | None = Field(None, description="Host Moodle configurado")
     moodle_configured: bool = Field(default=False, description="True si tiene credenciales Moodle")
@@ -51,13 +69,27 @@ class PerfilResponse(BaseModel):
 
 
 class UpdateApiKeyRequest(BaseModel):
-    """Request to update Gemini API Key."""
+    """Request para configurar la API Key de un proveedor de corrección."""
 
     gemini_api_key: str = Field(
         ...,
         min_length=20,
-        description="Gemini API Key",
+        description="API Key del proveedor (Gemini Studio u OpenRouter)",
     )
+    provider: str = Field(
+        default=PROVIDER_GEMINI,
+        description="Proveedor al que pertenece la key: 'gemini' o 'openrouter'",
+    )
+
+    @field_validator("provider")
+    @classmethod
+    def _validar_provider(cls, v: str) -> str:
+        normalizado = normalizar_provider(v)
+        # normalizar_provider nunca falla (cae a gemini), pero si mandan algo
+        # explícitamente inválido lo rechazamos para no guardar en el lado equivocado.
+        if v and v.strip().lower() not in PROVIDERS_VALIDOS:
+            raise ValueError(f"Proveedor inválido: {v}")
+        return normalizado
 
 
 class UpdateApiKeyResponse(BaseModel):
@@ -65,6 +97,24 @@ class UpdateApiKeyResponse(BaseModel):
 
     message: str
     valid: bool
+
+
+class UpdateCorrectionProviderRequest(BaseModel):
+    """Request para cambiar el modo de corrección activo (slider del perfil)."""
+
+    provider: str = Field(..., description="Proveedor a activar: 'gemini' o 'openrouter'")
+
+    @field_validator("provider")
+    @classmethod
+    def _validar_provider(cls, v: str) -> str:
+        if v.strip().lower() not in PROVIDERS_VALIDOS:
+            raise ValueError(f"Proveedor inválido: {v}")
+        return v.strip().lower()
+
+
+class UpdateCorrectionProviderResponse(BaseModel):
+    message: str
+    correction_provider: str
 
 
 class UpdateKeyPagaRequest(BaseModel):

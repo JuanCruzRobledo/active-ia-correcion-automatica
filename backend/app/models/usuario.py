@@ -52,8 +52,17 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
         index=True,
     )
 
-    # API Key de Gemini (encriptada con AES-256)
+    # API Key de Gemini Studio (Google, encriptada con AES-256).
+    # Corresponde al modo de corrección correction_provider == "gemini".
     gemini_api_key_encrypted: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    # API Key de OpenRouter (encriptada con AES-256).
+    # Corresponde al modo de corrección correction_provider == "openrouter".
+    # Se guarda por separado de la de Gemini Studio: el tutor mantiene ambas.
+    openrouter_api_key_encrypted: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
     )
@@ -63,6 +72,14 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
     moodle_password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     moodle_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
     gemini_api_key_valid: Mapped[bool] = mapped_column(default=False)
+
+    # Validez de la API key de OpenRouter (último health check OK).
+    openrouter_api_key_valid: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default=text("false"),
+        nullable=False,
+    )
 
     # Toggle manual declarado por el tutor: indica que su API key Gemini tiene
     # facturación habilitada (paga). Habilita la corrección masiva global.
