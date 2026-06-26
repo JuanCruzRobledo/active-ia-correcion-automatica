@@ -55,6 +55,7 @@ export const ComisionesPage = () => {
   const { data, isLoading, error } = useComisiones(filters);
   const { user } = useAuth();
   const isTutor = user?.rol === 'TUTOR';
+  const isAdmin = user?.rol === 'ADMIN';
   // Wait for user to load before deciding if we can call admin-only endpoints
   const canListMaterias = !!user && !isTutor;
   const { data: materiasData, isLoading: materiasLoading } = useMaterias(
@@ -161,7 +162,9 @@ export const ComisionesPage = () => {
         icon: <Pencil className="w-4 h-4" />,
       },
     ];
-    if (!isTutor) {
+    // Eliminar/Restaurar siguen siendo admin-only (coincide con el backend).
+    // El coordinador puede crear/editar/asignar tutores de SUS materias, pero no borrar.
+    if (isAdmin) {
       items.push(
         comision.activa
           ? {

@@ -12,7 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_admin
+from app.core.permissions import (
+    require_admin,
+    verificar_acceso_materia,
+    verificar_acceso_materia_de_comision,
+)
 from app.models.enums import RolEnum
 from app.models.usuario import Usuario
 from app.schemas.comision import (
@@ -97,9 +101,11 @@ async def crear_comision(
 
     **Returns:** Comision with materia info and assigned tutores
 
-    **Authorization:** Admin only
+    **Authorization:** Admin (cualquier materia) o Coordinador asignado a la materia.
     """
-    require_admin(current_user)
+    # Admin: cualquier materia. Coordinador: solo las que tiene asignadas (403 si no).
+    # Cualquier otro rol: 403.
+    await verificar_acceso_materia(db, current_user, data.materia_id)
 
     service = ComisionService(db)
     return await service.crear_comision(data, current_user_id=current_user.id)
@@ -188,9 +194,9 @@ async def actualizar_comision(
 
     **Returns:** Updated comision with materia info and assigned tutores
 
-    **Authorization:** Admin only
+    **Authorization:** Admin (cualquiera) o Coordinador de la materia de la comisión.
     """
-    require_admin(current_user)
+    await verificar_acceso_materia_de_comision(db, current_user, comision_id)
 
     service = ComisionService(db)
     return await service.actualizar_comision(comision_id, data)
@@ -255,9 +261,9 @@ async def asignar_tutores(
     - All users must have TUTOR role
     - Comision must exist and be active
 
-    **Authorization:** Admin only
+    **Authorization:** Admin (cualquiera) o Coordinador de la materia de la comisión.
     """
-    require_admin(current_user)
+    await verificar_acceso_materia_de_comision(db, current_user, comision_id)
 
     service = ComisionService(db)
     return await service.asignar_tutores(comision_id, data)

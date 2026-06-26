@@ -435,6 +435,35 @@ async def verificar_acceso_examen(
     await verificar_acceso_materia(db, usuario, row[0])
 
 
+async def verificar_acceso_materia_de_comision(
+    db: AsyncSession, usuario: Usuario, comision_id: int
+) -> None:
+    """Valida acceso a una comisión POR SU MATERIA (coordinador dueño de la materia).
+
+    A diferencia de `verificar_acceso_comision` (que mira ComisionTutor, para
+    tutores asignados), esto resuelve la materia de la comisión y valida contra
+    CoordinadorMateria: el coordinador gestiona las comisiones de SUS materias.
+
+    - ADMIN: acceso total.
+    - COORDINADOR: sólo si está asignado a la materia de la comisión.
+    - Resto: 403. Comisión inexistente: 404.
+    """
+    if usuario.rol == RolEnum.ADMIN:
+        return
+
+    from app.models.comision import Comision
+
+    result = await db.execute(
+        select(Comision.materia_id).where(Comision.id == comision_id).limit(1)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comisión no encontrada"
+        )
+    await verificar_acceso_materia(db, usuario, row[0])
+
+
 async def verificar_acceso_rubrica(
     db: AsyncSession, usuario: Usuario, rubrica_id: int
 ) -> None:
