@@ -5,6 +5,7 @@ import { Sparkles } from 'lucide-react';
 
 import { useProfile } from '@/features/perfil/hooks/usePerfil';
 import { Spinner } from '@/shared/components/ui';
+import { resumenErrores } from '@/shared/utils/erroresResumen';
 import { getProgresoGlobal, corregirGlobal } from '../services/correccion-global.service';
 
 function getErrorMessage(err: unknown): string {
@@ -40,6 +41,10 @@ export function CorregirTodoButton() {
 
   const prog = progresoQuery.data;
   const subidas = prog?.subidas ?? 0;
+  const conError = prog?.error ?? 0;
+  // Las ERROR también se recorrigen en la masiva global (item #7), así que cuentan como
+  // "por corregir" para mostrar el botón y el total.
+  const porCorregir = subidas + conError;
 
   const mutation = useMutation({
     mutationFn: corregirGlobal,
@@ -59,14 +64,26 @@ export function CorregirTodoButton() {
   useEffect(() => {
     if (enProceso && prog && prog.subidas === 0 && prog.pendientes === 0) {
       setEnProceso(false);
-      toast.success('Corrección masiva finalizada.');
+      // Resumen final: si hubo errores, los detallamos por tipo (item #7). Las entregas
+      // en ERROR quedan recorregibles (vuelven a entrar en la próxima masiva).
+      if (prog.error > 0) {
+        const detalle = resumenErrores(prog.errores_por_codigo);
+        toast.error(
+          `Corrección finalizada con ${prog.error} con error` +
+            (detalle ? `: ${detalle}` : '') +
+            '. Volvé a "Corregir todo" para reintentarlas.',
+          { duration: 12000 }
+        );
+      } else {
+        toast.success('Corrección masiva finalizada.');
+      }
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     }
   }, [enProceso, prog, queryClient]);
 
   // No mostrar si no es paga, o si no hay nada por corregir y no está procesando.
   if (!esPaga) return null;
-  if (subidas === 0 && !enProceso) return null;
+  if (porCorregir === 0 && !enProceso) return null;
 
   return (
     <div className="flex items-center justify-between rounded-lg border border-primary/30 bg-primary/10 px-5 py-4">
@@ -83,8 +100,14 @@ export function CorregirTodoButton() {
             </p>
           ) : (
             <p className="font-medium text-foreground">
-              Tenés <span className="font-bold text-primary">{subidas}</span> entrega
-              {subidas !== 1 ? 's' : ''} por corregir.
+              Tenés <span className="font-bold text-primary">{porCorregir}</span> entrega
+              {porCorregir !== 1 ? 's' : ''} por corregir
+              {conError > 0 && (
+                <span className="text-muted-foreground">
+                  {' '}({conError} con error a reintentar)
+                </span>
+              )}
+              .
             </p>
           )}
         </div>

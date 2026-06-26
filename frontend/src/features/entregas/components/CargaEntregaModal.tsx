@@ -88,6 +88,13 @@ const individualSchema = z.object({
     .refine((file) => file.size <= MAX_FILE_SIZE, 'El archivo excede los 100 MB'),
   modo_consolidacion: z.enum(['SOLO_CODIGO', 'WEB_COMPLETO', 'PROYECTO_COMPLETO', 'PERSONALIZADO']),
   sobrescribir: z.boolean().default(false),
+  // URL de la entrega en Moodle (item #4): opcional, habilita "Subir a Moodle".
+  moodle_url: z
+    .string()
+    .trim()
+    .url('Pegá una URL válida de Moodle')
+    .optional()
+    .or(z.literal('')),
 });
 
 // Schema for bulk upload
@@ -347,6 +354,7 @@ function CargaEntregaForm({
               ? extensionesPersonalizadas
               : undefined,
           sobrescribir: individualData.sobrescribir,
+          moodle_url: individualData.moodle_url || undefined,
         });
         onClose();
       } else {
@@ -373,7 +381,7 @@ function CargaEntregaForm({
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       {/* Student name (individual only) */}
       {mode === 'individual' && (
-        <div>
+        <div className="space-y-4">
           <Input
             label="Nombre del Alumno"
             placeholder="Pérez, Juan"
@@ -381,6 +389,14 @@ function CargaEntregaForm({
             error={(errors as any).alumno_nombre?.message}
             tooltip="Ingresa el nombre como aparecerá en los reportes"
             required
+          />
+          {/* item #4: URL de la entrega en Moodle para poder subir la nota luego. */}
+          <Input
+            label="URL de la entrega en Moodle (opcional)"
+            placeholder="https://.../mod/assign/view.php?id=123&userid=456"
+            {...register('moodle_url')}
+            error={(errors as any).moodle_url?.message}
+            tooltip="Pegá la URL de la entrega del alumno en Moodle para habilitar 'Subir a Moodle' en esta carga manual"
           />
         </div>
       )}

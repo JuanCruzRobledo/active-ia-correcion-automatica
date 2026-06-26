@@ -132,6 +132,11 @@ function ResumenView({ data }: { data: EntregaMasivaResumen }) {
       className: 'bg-muted text-muted-foreground',
     },
     {
+      label: 'Re-entregas re-subidas',
+      value: data.reenviadas_reentrega ?? 0,
+      className: 'bg-primary/10 text-primary',
+    },
+    {
       label: 'Requieren comentario',
       value: data.omitidas_requieren_comentario,
       className: 'bg-warning/10 text-warning',
@@ -150,7 +155,7 @@ function ResumenView({ data }: { data: EntregaMasivaResumen }) {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         {chips.map((c) => (
           <div key={c.label} className={`rounded-md px-3 py-2 text-center ${c.className}`}>
             <div className="text-lg font-bold">{c.value}</div>
@@ -163,6 +168,13 @@ function ResumenView({ data }: { data: EntregaMasivaResumen }) {
         <p className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           {data.ya_calificadas_en_moodle} corrección(es) ya tenían nota en Moodle (calificadas por
           fuera de Active-IA). No se reenviaron y se quitaron de la lista.
+        </p>
+      )}
+
+      {(data.reenviadas_reentrega ?? 0) > 0 && (
+        <p className="rounded-md bg-primary/10 px-3 py-2 text-xs text-primary">
+          {data.reenviadas_reentrega} re-entrega(s): el alumno volvió a entregar después de la nota,
+          así que se subió la nota nueva pisando la anterior.
         </p>
       )}
 

@@ -112,6 +112,10 @@ class EntregaResponse(BaseModel):
     archivado: bool
     hash_sha256: str | None
     subido_por_id: int
+    # Detalle del último error de corrección (item #1). NULL si nunca falló o tras éxito.
+    error_code: str | None = None
+    error_mensaje: str | None = None
+    error_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -160,6 +164,9 @@ class EntregaListItem(BaseModel):
         description="Nota de la corrección (si existe)",
     )
     tiene_correccion: bool
+    # Detalle del último error de corrección (item #1), para mostrar el motivo en la tabla.
+    error_code: str | None = None
+    error_mensaje: str | None = None
     subido_por_nombre: str
     created_at: datetime
 

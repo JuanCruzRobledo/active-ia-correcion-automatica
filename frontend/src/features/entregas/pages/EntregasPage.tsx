@@ -32,8 +32,11 @@ import { Select } from '@/shared/components/ui/Select';
 import { Checkbox } from '@/shared/components/ui/Checkbox';
 import { Badge } from '@/shared/components/ui/Badge';
 import { Spinner } from '@/shared/components/ui/Spinner';
-import { HelpButton, LoadingState, ResponsiveTable, ConfirmDialog } from '@/shared/components/ui';
+import { HelpButton, LoadingState, ResponsiveTable, ConfirmDialog, NovedadesBanner } from '@/shared/components/ui';
 import type { TableColumn } from '@/shared/components/ui';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import { useNovedades } from '@/shared/hooks/useNovedades';
+import { mensajeNovedades } from '@/shared/utils/novedades';
 import { helpContent } from '@/shared/content/helpContent';
 import { EmptyState } from '@/shared/components/ui/EmptyState';
 import { Dropdown } from '@/shared/components/ui/Dropdown';
@@ -153,7 +156,7 @@ export const EntregasPage = () => {
   );
   const selectedRubrica = rubricasData?.items?.find((r) => r.id === selectedRubricaId);
 
-  const { data, isLoading, error } = useEntregas(
+  const { data, isLoading, error, refetch } = useEntregas(
     selectedComisionId && selectedRubricaId
       ? {
         comision_id: selectedComisionId,
@@ -178,6 +181,11 @@ export const EntregasPage = () => {
   const archivarMutation = useArchivarEntregas();
   const deleteMasivoMutation = useDeleteEntregasMasivo();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  // Banner "hay novedades": avisa si el backend cambió sin pisar lo que se está viendo.
+  const { hayNovedades, aceptar: aceptarNovedades } = useNovedades('entregas', {
+    enabled: !!selectedComisionId && !!selectedRubricaId,
+  });
 
   // Auto-refresh: poll every 10s while background corrections are running
   // (entregas in PENDIENTE state or active batch being tracked)
@@ -612,7 +620,7 @@ export const EntregasPage = () => {
     }
   };
 
-  const getEstadoBadge = (estado: EstadoEntrega) => {
+  const getEstadoBadge = (estado: EstadoEntrega, errorMensaje?: string | null) => {
     const badges: Record<
       EstadoEntrega,
       { variant: 'success' | 'warning' | 'info' | 'destructive'; icon: string }
@@ -625,10 +633,18 @@ export const EntregasPage = () => {
 
     const badge = badges[estado];
     return (
-      <Badge variant={badge.variant}>
-        <span className="mr-1">{badge.icon}</span>
-        {estado.charAt(0) + estado.slice(1).toLowerCase()}
-      </Badge>
+      <div className="flex flex-col items-start gap-0.5">
+        <Badge variant={badge.variant} title={estado === 'ERROR' ? errorMensaje ?? undefined : undefined}>
+          <span className="mr-1">{badge.icon}</span>
+          {estado.charAt(0) + estado.slice(1).toLowerCase()}
+        </Badge>
+        {/* item #1: el motivo del error, no un ERROR seco. */}
+        {estado === 'ERROR' && errorMensaje && (
+          <span className="max-w-[240px] truncate text-xs text-destructive" title={errorMensaje}>
+            {errorMensaje}
+          </span>
+        )}
+      </div>
     );
   };
 
@@ -800,7 +816,7 @@ export const EntregasPage = () => {
     {
       key: 'estado',
       header: 'Estado',
-      render: (entrega) => getEstadoBadge(entrega.estado),
+      render: (entrega) => getEstadoBadge(entrega.estado, entrega.error_mensaje),
     },
     {
       key: 'nota',
@@ -821,6 +837,16 @@ export const EntregasPage = () => {
 
   return (
     <div className="space-y-6">
+      {/* Banner "hay novedades" (item #2, Capa B): el backend cambió mientras mirabas. */}
+      {hayNovedades && (
+        <NovedadesBanner
+          mensaje={mensajeNovedades(user?.rol)}
+          onActualizar={() => {
+            refetch();
+            aceptarNovedades();
+          }}
+        />
+      )}
       {/* API Key Invalid Banner */}
       {profile && !profile.gemini_api_key_valid && (
         <Alert variant="warning" title="⚠️ API Key de Gemini inválida">
@@ -1192,7 +1218,7 @@ export const EntregasPage = () => {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          {getEstadoBadge(entrega.estado)}
+                          {getEstadoBadge(entrega.estado, entrega.error_mensaje)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-foreground">
@@ -1268,7 +1294,7 @@ export const EntregasPage = () => {
                             Estado
                           </dt>
                           <dd className="text-right text-sm text-foreground">
-                            {getEstadoBadge(entrega.estado)}
+                            {getEstadoBadge(entrega.estado, entrega.error_mensaje)}
                           </dd>
                         </div>
                         <div className="flex justify-between gap-3 py-1.5 border-b border-border/50">

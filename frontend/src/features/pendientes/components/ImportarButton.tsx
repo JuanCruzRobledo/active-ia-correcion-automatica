@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { DownloadCloud, CheckCircle, AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { DownloadCloud, CheckCircle, AlertCircle, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { Modal } from '@/shared/components/ui/Modal';
 import { importarMoodleStream } from '../services/pendientes.service';
 import { PENDIENTES_QUERY_KEY } from '../hooks/usePendientesMoodle';
@@ -167,6 +167,7 @@ export function ImportarButton({
 
 function ResumenView({ data }: { data: ImportarMoodleResponse }) {
   const [showErrores, setShowErrores] = useState(false);
+  const [showSinArchivos, setShowSinArchivos] = useState(false);
 
   const chips: { label: string; value: number; className: string }[] = [
     { label: 'Cargadas', value: data.cargadas, className: 'bg-success/10 text-success' },
@@ -218,6 +219,40 @@ function ResumenView({ data }: { data: ImportarMoodleResponse }) {
               {data.errores.map((e, i) => (
                 <li key={i} className="text-muted-foreground">
                   <span className="font-medium text-foreground">{e.alumno}</span>: {e.motivo}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* item #5: entregaron sin archivos → link directo a su entrega en Moodle. */}
+      {data.sin_archivos_detalle && data.sin_archivos_detalle.length > 0 && (
+        <div className="rounded-md border border-border">
+          <button
+            onClick={() => setShowSinArchivos((s) => !s)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-muted-foreground"
+          >
+            {showSinArchivos ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            {data.sin_archivos_detalle.length} entregaron sin archivos
+          </button>
+          {showSinArchivos && (
+            <ul className="max-h-40 space-y-1 overflow-y-auto border-t border-border px-3 py-2 text-xs">
+              {data.sin_archivos_detalle.map((s, i) => (
+                <li key={i} className="flex items-center justify-between gap-2">
+                  <span className="font-medium text-foreground">{s.alumno}</span>
+                  {s.url_moodle ? (
+                    <a
+                      href={s.url_moodle}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex shrink-0 items-center gap-1 text-primary hover:underline"
+                    >
+                      Ver en Moodle <ExternalLink className="h-3 w-3" />
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">sin link</span>
+                  )}
                 </li>
               ))}
             </ul>

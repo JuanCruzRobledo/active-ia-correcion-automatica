@@ -12,7 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import * as perfilService from '../services/perfil-service';
 import { changePassword } from '../../auth/services/auth-service';
-import type { UserProfile } from '../types';
+import type { UserProfile, CorrectionProvider } from '../types';
 import type { ChangePasswordRequest } from '@/shared/types';
 
 /**
@@ -65,9 +65,10 @@ export const useUpdateApiKey = () => {
   return useMutation<
     { message: string; valid: boolean },
     Error,
-    string
+    { apiKey: string; provider: CorrectionProvider }
   >({
-    mutationFn: (apiKey: string) => perfilService.updateApiKey(apiKey),
+    mutationFn: ({ apiKey, provider }) =>
+      perfilService.updateApiKey(apiKey, provider),
     onSuccess: (response) => {
       // Invalidate profile to refetch with updated API Key status
       queryClient.invalidateQueries({ queryKey: perfilKeys.all });
@@ -83,6 +84,33 @@ export const useUpdateApiKey = () => {
       toast.error(
         error.message || 'Error al configurar API Key. Intenta nuevamente.'
       );
+    },
+  });
+};
+
+/**
+ * Hook para cambiar el modo de corrección activo (slider del perfil).
+ * Invalida el perfil para reflejar el modo y la key correspondiente.
+ */
+export const useUpdateCorrectionProvider = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    { message: string; correction_provider: CorrectionProvider },
+    Error,
+    CorrectionProvider
+  >({
+    mutationFn: (provider) => perfilService.updateCorrectionProvider(provider),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: perfilKeys.all });
+      toast.success(
+        res.correction_provider === 'openrouter'
+          ? 'Modo de corrección: OpenRouter (beta)'
+          : 'Modo de corrección: Gemini Studio'
+      );
+    },
+    onError: (error) => {
+      toast.error(error.message || 'No se pudo cambiar el modo de corrección');
     },
   });
 };

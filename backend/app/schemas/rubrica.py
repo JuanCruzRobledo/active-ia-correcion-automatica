@@ -408,7 +408,11 @@ class RubricaUpdate(BaseModel):
     )
     moodle_assign_id: int | None = Field(
         None,
-        description="ID de la asignación (cmid) en Moodle",
+        gt=0,
+        description=(
+            "ID de la asignación (cmid) en Moodle. Enviar null EXPLÍCITO para borrarlo "
+            "(y que la rúbrica deje de aparecer en pendientes); omitir el campo lo deja intacto."
+        ),
     )
     modo_consolidacion: ModoConsolidacion | None = Field(
         None,

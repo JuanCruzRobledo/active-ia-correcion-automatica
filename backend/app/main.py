@@ -185,6 +185,11 @@ def register_routers(app: FastAPI) -> None:
 
     app.include_router(por_entregar_router, prefix="/api/v1")
 
+    # Sync (tokens de versión para el banner "hay novedades")
+    from app.routers.sync import router as sync_router
+
+    app.include_router(sync_router, prefix="/api/v1")
+
     # Gestión (rol GESTOR — reportes/export de usuarios de Moodle)
     from app.routers.gestion import router as gestion_router
 

@@ -29,7 +29,16 @@ export function usePendientesMoodle() {
     if (refreshingRef.current) return;
     refreshingRef.current = true;
     setIsRefreshing(true);
-    queryClient.removeQueries({ queryKey: PENDIENTES_QUERY_KEY });
+    // refetchQueries (no removeQueries): dispara el refetch INMEDIATO y resuelve cuando
+    // termina. Con removeQueries el dato se borraba pero el refetch dependía de que el
+    // componente se re-montara → por eso hacía falta F5. El finally apaga el spinner aun
+    // si el fetch falla (el useEffect de isFetching no cubre el caso de error de red).
+    queryClient
+      .refetchQueries({ queryKey: PENDIENTES_QUERY_KEY })
+      .finally(() => {
+        refreshingRef.current = false;
+        setIsRefreshing(false);
+      });
   };
 
   return { ...query, isRefreshing, refresh };

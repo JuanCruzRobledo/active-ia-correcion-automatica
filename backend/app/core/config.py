@@ -83,6 +83,15 @@ class Settings(BaseSettings):
     N8N_TIMEOUT_SECONDS: int = 90
 
     # =========================================
+    # OpenRouter (proveedor de IA del workflow de corrección)
+    # =========================================
+    # La API key del usuario es de OpenRouter (sk-or-v1-...) y se usa con auth
+    # Bearer. El modelo está hardcodeado en el workflow de n8n; lo replicamos
+    # acá solo para validar la key (health check).
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_MODEL: str = "google/gemini-3.5-flash"
+
+    # =========================================
     # Archivos
     # =========================================
     UPLOAD_DIR: str = "./uploads"

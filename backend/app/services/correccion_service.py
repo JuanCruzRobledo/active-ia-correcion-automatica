@@ -12,6 +12,7 @@ Ref: skills/correccion-ia/SKILL.md
 
 import asyncio
 import logging
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
@@ -23,8 +24,20 @@ from app.models.base import async_session_maker
 logger = logging.getLogger(__name__)
 
 
+from app.core.error_catalog import (
+    ERROR_API_KEY_INVALID,
+    ERROR_IA_RESPUESTA_INVALIDA,
+    ERROR_N8N,
+    ERROR_N8N_TIMEOUT,
+    ERROR_OVERLOADED,
+    ERROR_RATE_LIMIT,
+    ERROR_SIN_CREDITOS,
+    mensaje_error,
+)
 from app.core.exceptions import (
     APIKeyInvalidError,
+    InsufficientCreditsError,
+    ModelOverloadedError,
     N8NError,
     N8NTimeoutError,
     QuotaExceededError,
@@ -49,6 +62,26 @@ from app.schemas.correccion import (
 )
 
 
+def _marcar_entrega_error(entrega, code: str, provider: str = "gemini") -> None:
+    """Marca una entrega en ERROR con el detalle traducido (item #1).
+
+    Guarda el código del catálogo + el mensaje claro (adaptado al proveedor activo)
+    + el timestamp, para que el frontend muestre QUÉ pasó (no un ERROR seco) y para
+    resumir las corridas masivas.
+    """
+    entrega.estado = EstadoEntregaEnum.ERROR
+    entrega.error_code = code
+    entrega.error_mensaje = mensaje_error(code, provider)
+    entrega.error_at = datetime.utcnow()
+
+
+def _limpiar_entrega_error(entrega) -> None:
+    """Limpia el detalle de error (al corregir con éxito)."""
+    entrega.error_code = None
+    entrega.error_mensaje = None
+    entrega.error_at = None
+
+
 class CorreccionService:
     """Service for AI-powered correction operations."""
 
@@ -71,14 +104,17 @@ class CorreccionService:
         entrega_id: int,
         api_key_encrypted: str,
         corregido_por_id: int,
+        provider: str = "gemini",
     ) -> CorreccionResponse:
         """
         Correct a single entrega using AI.
 
         Args:
             entrega_id: ID of the entrega to correct.
-            api_key_encrypted: Encrypted Gemini API key.
+            api_key_encrypted: Encrypted API key (del proveedor activo).
             corregido_por_id: ID of user performing correction.
+            provider: Proveedor de corrección ("gemini" | "openrouter"). Rutea
+                al webhook de n8n correspondiente.
 
         Returns:
             CorreccionResponse with correction data.
@@ -94,6 +130,17 @@ class CorreccionService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Entrega no encontrada",
+            )
+
+        # La corrección de PDF todavía solo existe en el workflow de Gemini Studio.
+        # En modo OpenRouter avisamos claro en vez de mandar la key al workflow equivocado.
+        if entrega.archivo_tipo == "pdf" and provider == "openrouter":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "La corrección de PDF todavía no está disponible en modo OpenRouter. "
+                    "Cambiá a Gemini Studio en tu perfil para corregir PDFs."
+                ),
             )
 
         # Validate entrega has content appropriate for its type
@@ -143,74 +190,93 @@ class CorreccionService:
             if entrega.archivo_tipo == "pdf":
                 result = await self._call_n8n_pdf_with_retry(payload)
             else:
-                result = await self._call_n8n_with_retry(payload)
+                result = await self._call_n8n_with_retry(payload, provider=provider)
         except N8NTimeoutError:
-            # Mark as ERROR
-            entrega.estado = EstadoEntregaEnum.ERROR
+            _marcar_entrega_error(entrega, ERROR_N8N_TIMEOUT, provider)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Timeout esperando respuesta del servicio de IA",
+                detail=mensaje_error(ERROR_N8N_TIMEOUT, provider),
             )
         except APIKeyInvalidError:
-            # Mark entrega as ERROR
-            entrega.estado = EstadoEntregaEnum.ERROR
+            _marcar_entrega_error(entrega, ERROR_API_KEY_INVALID, provider)
             await self.entrega_repo.update(entrega)
-            # Mark user's API key as invalid in DB
+            # Marcar la API key del proveedor activo como inválida en la DB.
             usuario = await self.usuario_repo.get_by_id(corregido_por_id)
             if usuario:
-                usuario.gemini_api_key_valid = False
+                if provider == "openrouter":
+                    usuario.openrouter_api_key_valid = False
+                else:
+                    usuario.gemini_api_key_valid = False
                 await self.usuario_repo.update(usuario)
                 logger.warning(
-                    f"API Key de Gemini marcada como inválida para usuario {corregido_por_id}"
+                    f"API Key de {provider} marcada como inválida para usuario {corregido_por_id}"
                 )
             raise HTTPException(
                 status_code=402,
                 detail={
-                    "error_code": "GEMINI_API_KEY_INVALID",
-                    "message": (
-                        "Tu API Key de Gemini expiró o es inválida. "
-                        "Por favor generá una nueva en Google AI Studio "
-                        "con otra cuenta de Google y actualizala en tu perfil."
-                    ),
+                    "error_code": ERROR_API_KEY_INVALID,
+                    "message": mensaje_error(ERROR_API_KEY_INVALID, provider),
+                },
+            )
+        except InsufficientCreditsError as e:
+            # Sin créditos (OpenRouter): la key es válida, pero no se puede corregir.
+            # Devolvemos 402 para que la masiva CORTE el lote (no tiene sentido seguir).
+            _marcar_entrega_error(entrega, ERROR_SIN_CREDITOS, provider)
+            await self.entrega_repo.update(entrega)
+            logger.warning(
+                f"Sin créditos en {provider} corrigiendo entrega {entrega_id}: {e}"
+            )
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error_code": ERROR_SIN_CREDITOS,
+                    "message": mensaje_error(ERROR_SIN_CREDITOS, provider),
                 },
             )
         except QuotaExceededError as e:
-            # Mark entrega as ERROR
-            entrega.estado = EstadoEntregaEnum.ERROR
+            _marcar_entrega_error(entrega, ERROR_RATE_LIMIT, provider)
             await self.entrega_repo.update(entrega)
             logger.warning(
-                f"Rate limit de Gemini alcanzado corrigiendo entrega {entrega_id}: {e}"
+                f"Rate limit de {provider} alcanzado corrigiendo entrega {entrega_id}: {e}"
             )
             raise HTTPException(
                 status_code=429,
                 detail={
-                    "error_code": "GEMINI_RATE_LIMIT",
-                    "message": (
-                        "Se alcanzó el límite de uso de la API de Gemini. "
-                        "Esperá unos minutos antes de volver a corregir."
-                    ),
+                    "error_code": ERROR_RATE_LIMIT,
+                    "message": mensaje_error(ERROR_RATE_LIMIT, provider),
+                },
+            )
+        except ModelOverloadedError as e:
+            _marcar_entrega_error(entrega, ERROR_OVERLOADED, provider)
+            await self.entrega_repo.update(entrega)
+            logger.warning(
+                f"Modelo de {provider} sobrecargado corrigiendo entrega {entrega_id}: {e}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error_code": ERROR_OVERLOADED,
+                    "message": mensaje_error(ERROR_OVERLOADED, provider),
                 },
             )
         except N8NError as e:
-            # Mark as ERROR
-            entrega.estado = EstadoEntregaEnum.ERROR
+            _marcar_entrega_error(entrega, ERROR_N8N, provider)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Error en servicio de IA: {str(e)}",
+                detail=f"{mensaje_error(ERROR_N8N, provider)} ({str(e)})",
             )
 
         # Parse and validate Gemini response
         try:
             gemini_response = self._parse_gemini_response(result)
         except ValidationError as e:
-            # Mark as ERROR
-            entrega.estado = EstadoEntregaEnum.ERROR
+            _marcar_entrega_error(entrega, ERROR_IA_RESPUESTA_INVALIDA, provider)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Respuesta de IA malformada: {e.message}",
+                detail=f"{mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, provider)} ({e.message})",
             )
 
         # Check if correction already exists (re-correction case)
@@ -276,8 +342,9 @@ class CorreccionService:
         correccion = Correccion(**data_dict)
         created_correccion = await self.correccion_repo.create(correccion)
 
-        # Update entrega state to CORREGIDA
+        # Update entrega state to CORREGIDA y limpiar cualquier error previo (item #1).
         entrega.estado = EstadoEntregaEnum.CORREGIDA
+        _limpiar_entrega_error(entrega)
         await self.entrega_repo.update(entrega)
 
         # Return response
@@ -303,14 +370,16 @@ class CorreccionService:
         entrega_id: int,
         api_key_encrypted: str,
         corregido_por_id: int,
+        provider: str = "gemini",
     ) -> CorreccionResponse:
         """
         Re-correct an entrega (replaces existing correction).
 
         Args:
             entrega_id: ID of the entrega to re-correct.
-            api_key_encrypted: Encrypted Gemini API key.
+            api_key_encrypted: Encrypted API key (del proveedor activo).
             corregido_por_id: ID of user performing re-correction.
+            provider: Proveedor de corrección (rutea el webhook).
 
         Returns:
             CorreccionResponse with new correction data.
@@ -321,6 +390,7 @@ class CorreccionService:
             entrega_id=entrega_id,
             api_key_encrypted=api_key_encrypted,
             corregido_por_id=corregido_por_id,
+            provider=provider,
         )
 
     async def editar_correccion(
@@ -533,6 +603,7 @@ class CorreccionService:
         self,
         payload: dict[str, Any],
         max_retries: int = 1,
+        provider: str = "gemini",
     ) -> dict[str, Any]:
         """
         Call N8N with retry logic.
@@ -540,6 +611,7 @@ class CorreccionService:
         Args:
             payload: Payload to send.
             max_retries: Maximum number of retries (default: 1).
+            provider: Proveedor de corrección (rutea el webhook).
 
         Returns:
             N8N response.
@@ -550,11 +622,17 @@ class CorreccionService:
         """
         for attempt in range(max_retries + 1):
             try:
-                result = await self.n8n_client.trigger_correction(payload)
+                result = await self.n8n_client.trigger_correction(
+                    payload, provider=provider
+                )
                 return result
 
             except APIKeyInvalidError:
                 # Never retry on invalid API key — re-raise immediately
+                raise
+
+            except InsufficientCreditsError:
+                # Sin créditos: reintentar no sirve — re-raise immediately
                 raise
 
             except QuotaExceededError:
@@ -602,6 +680,10 @@ class CorreccionService:
 
             except APIKeyInvalidError:
                 # Never retry on invalid API key — re-raise immediately
+                raise
+
+            except InsufficientCreditsError:
+                # Sin créditos: reintentar no sirve — re-raise immediately
                 raise
 
             except QuotaExceededError:
@@ -707,6 +789,7 @@ async def procesar_lote_background(
     entrega_ids: list[int],
     api_key_encrypted: str,
     corregido_por_id: int,
+    provider: str = "gemini",
 ) -> None:
     """
     Standalone background task to correct multiple entregas sequentially.
@@ -742,6 +825,7 @@ async def procesar_lote_background(
                         entrega_id=entrega_id,
                         api_key_encrypted=api_key_encrypted,
                         corregido_por_id=corregido_por_id,
+                        provider=provider,
                     )
                     exitosas += 1
                     succeeded = True
@@ -806,6 +890,7 @@ async def procesar_global_background(
     api_key_encrypted: str,
     corregido_por_id: int,
     concurrency: int = 5,
+    provider: str = "gemini",
 ) -> None:
     """Corrección masiva GLOBAL (cross-rúbrica) para tutores con API key paga.
 
@@ -835,6 +920,7 @@ async def procesar_global_background(
                             entrega_id=entrega_id,
                             api_key_encrypted=api_key_encrypted,
                             corregido_por_id=corregido_por_id,
+                            provider=provider,
                         )
                         return "ok"
                     except HTTPException as e:

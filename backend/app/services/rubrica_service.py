@@ -410,7 +410,9 @@ class RubricaService:
         if data.condiciones_desaprobacion_json is not None:
             rubrica.condiciones_desaprobacion_json = data.condiciones_desaprobacion_json
 
-        if data.moodle_assign_id is not None:
+        # moodle_assign_id: distinguir "no vino el campo" (preservar) de "vino en null"
+        # (borrar). Con `is not None` un null explícito se ignoraba y no se podía vaciar.
+        if "moodle_assign_id" in data.model_fields_set:
             rubrica.moodle_assign_id = data.moodle_assign_id
 
         if data.modo_consolidacion is not None:

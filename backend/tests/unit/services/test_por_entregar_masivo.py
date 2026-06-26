@@ -43,7 +43,7 @@ def _tutor():
     )
 
 
-def _svc(correcciones, *, grades=None, token_ok=True, grades_error=False):
+def _svc(correcciones, *, grades=None, sub_tms=None, token_ok=True, grades_error=False):
     svc = PorEntregarService(AsyncMock())
     svc.correccion_repo = AsyncMock()
     svc.correccion_repo.get_pendientes_subida_moodle = AsyncMock(return_value=correcciones)
@@ -60,6 +60,8 @@ def _svc(correcciones, *, grades=None, token_ok=True, grades_error=False):
         AsyncMock(side_effect=MoodleConnectionError("grades fail")) if grades_error
         else AsyncMock(return_value=grades or {})
     )
+    # timemodified de las submissions por userid (item #3b): default {} = sin re-entrega.
+    svc.moodle.get_submission_timemod_map = AsyncMock(return_value=sub_tms or {})
     return svc
 
 
@@ -112,6 +114,31 @@ async def test_ya_calificada_en_moodle_se_registra_y_no_se_sube():
     sync = svc.moodle_sync_repo.create.call_args.args[0]
     assert sync.nota_enviada == "1"
     assert "ya calificada en moodle" in (sync.comentario_enviado or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_reentrega_se_resube_con_forzar():
+    # Hay nota en Moodle (timemodified=100) PERO el alumno re-entregó después (500): item #3b.
+    correcciones = [_correccion(1, tipo="TP", moodle_user_id=101)]
+    svc = _svc(
+        correcciones,
+        grades={101: {"timemodified": 100, "grade": "1.00000"}},
+        sub_tms={101: 500},
+    )
+
+    with patch("app.services.por_entregar_service.MoodleGradeService") as cls, patch(
+        "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
+    ):
+        cls.return_value.subir_correccion = AsyncMock(return_value=MagicMock())
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test"))
+
+    resumen = eventos[-1]
+    assert resumen["reenviadas_reentrega"] == 1
+    assert resumen["ya_calificadas_en_moodle"] == 0
+    assert resumen["enviadas"] == 0
+    # Se subió forzando (pisa la nota vieja con la nueva de la re-entrega).
+    cls.return_value.subir_correccion.assert_awaited_once()
+    assert cls.return_value.subir_correccion.call_args.kwargs["forzar"] is True
 
 
 @pytest.mark.asyncio

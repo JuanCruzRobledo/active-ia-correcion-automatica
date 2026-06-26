@@ -32,6 +32,7 @@ from sqlalchemy.orm import selectinload
 
 from app.repositories.usuario_repository import UsuarioRepository
 from app.services.entrega_service import EntregaService
+from app.services.moodle_url_parser import construir_url_entrega
 from app.services.moodle_service import (
     MoodleAuthError,
     MoodleConnectionError,
@@ -51,6 +52,9 @@ class ResumenImportacion:
     omitidas_ya_corregidas: int = 0
     reentregas: int = 0
     sin_archivos: int = 0
+    # Detalle de los que entregaron SIN archivos válidos (item #5): {alumno, url_moodle}
+    # para poder ir a la entrega en Moodle y avisarle al alumno.
+    sin_archivos_detalle: list[dict] = field(default_factory=list)
     errores: list[dict] = field(default_factory=list)  # {"alumno": str, "motivo": str}
     detalle_por_rubrica: list[dict] = field(default_factory=list)
 
@@ -240,6 +244,12 @@ class MoodleImportService:
                     continue
                 if not sub.files:
                     resumen.sin_archivos += 1
+                    resumen.sin_archivos_detalle.append({
+                        "alumno": alumno,
+                        "url_moodle": construir_url_entrega(
+                            moodle_host, info["rubrica"].moodle_assign_id, sub.userid
+                        ),
+                    })
                     continue
                 trabajo.append((info["rubrica"], comision_match, alumno, sub))
 
@@ -434,6 +444,12 @@ class MoodleImportService:
 
             if not sub.files:
                 resumen.sin_archivos += 1
+                resumen.sin_archivos_detalle.append({
+                    "alumno": alumno_nombre,
+                    "url_moodle": construir_url_entrega(
+                        moodle_host, rubrica.moodle_assign_id, sub.userid
+                    ),
+                })
                 continue
 
             existente = await self.entrega_service.verificar_entrega_existente(

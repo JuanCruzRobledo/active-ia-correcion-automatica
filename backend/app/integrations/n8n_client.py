@@ -14,7 +14,15 @@ from typing import Any
 import httpx
 
 from app.core.config import settings
-from app.core.exceptions import APIKeyInvalidError, N8NError, N8NTimeoutError, QuotaExceededError
+from app.core.exceptions import (
+    APIKeyInvalidError,
+    InsufficientCreditsError,
+    ModelOverloadedError,
+    N8NError,
+    N8NTimeoutError,
+    QuotaExceededError,
+)
+from app.integrations import ia_provider
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +37,9 @@ class N8NClient:
         self.rubric_timeout = 120.0  # 2 minutes for PDF processing
         self.health_timeout = 10.0  # 10 seconds for health checks
 
-    async def trigger_correction(self, payload: dict) -> dict[str, Any]:
+    async def trigger_correction(
+        self, payload: dict, provider: str = "gemini"
+    ) -> dict[str, Any]:
         """
         Trigger the correction workflow in N8N.
 
@@ -37,8 +47,11 @@ class N8NClient:
             payload: Dictionary containing:
                 - codigo: Consolidated code content
                 - rubrica: Rubric with evaluation criteria
-                - api_key: User's Gemini API key
+                - api_key: User's API key (Gemini Studio or OpenRouter)
                 - contexto: Additional context (materia, lenguaje, etc.)
+            provider: Proveedor de corrección ("gemini" o "openrouter"). Define
+                a qué webhook de n8n se rutea: gemini → /webhook/corregir;
+                openrouter → /webhook/corregir-openrouter.
 
         Returns:
             Dictionary with correction results:
@@ -48,13 +61,14 @@ class N8NClient:
 
         Raises:
             N8NTimeoutError: If the request times out
-            APIKeyInvalidError: If the Gemini API key is invalid/expired
+            APIKeyInvalidError: If the API key is invalid/expired
             N8NError: For other N8N-related errors
         """
+        path = ia_provider.webhook_path(provider)
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.post(
-                    f"{self.base_url}/webhook/corregir",
+                    f"{self.base_url}/webhook/{path}",
                     json=payload,
                     timeout=self.correction_timeout,
                 )
@@ -88,7 +102,7 @@ class N8NClient:
                 self._check_http_error_for_api_key(e)
                 raise N8NError(f"Error HTTP {e.response.status_code}: {e.response.text}")
 
-            except (APIKeyInvalidError, QuotaExceededError, N8NError, N8NTimeoutError):
+            except (APIKeyInvalidError, InsufficientCreditsError, QuotaExceededError, ModelOverloadedError, N8NError, N8NTimeoutError):
                 # Re-raise our own errors without wrapping
                 raise
 
@@ -156,7 +170,7 @@ class N8NClient:
                 self._check_http_error_for_api_key(e)
                 raise N8NError(f"Error HTTP {e.response.status_code}: {e.response.text}")
 
-            except (APIKeyInvalidError, QuotaExceededError, N8NError, N8NTimeoutError):
+            except (APIKeyInvalidError, InsufficientCreditsError, QuotaExceededError, ModelOverloadedError, N8NError, N8NTimeoutError):
                 # Re-raise our own errors without wrapping
                 raise
 
@@ -285,57 +299,88 @@ class N8NClient:
             f"code={error_code}, name={error_name}, message={error_message[:200]}"
         )
 
-        # --- Detect API_KEY_INVALID from Gemini ---
+        error_message_lower = error_message.lower()
+
+        # --- Detect API_KEY_INVALID (Gemini Studio o OpenRouter) ---
 
         # Check in nested details (raw Gemini error format)
         details = error_data.get("details", [])
         if isinstance(details, list):
             reasons = [d.get("reason", "") for d in details if isinstance(d, dict)]
             if "API_KEY_INVALID" in reasons:
-                raise APIKeyInvalidError(
-                    "API Key de Gemini inválida o expirada"
-                )
+                raise APIKeyInvalidError("API Key inválida o expirada")
 
-        # Check for API key patterns in the error message
+        # Patrones de API key inválida. Incluye los de Google (Gemini Studio) y los
+        # de OpenRouter (HTTP 401 con textos como "No auth credentials found").
         api_key_patterns = [
             "API_KEY_INVALID",
             "API key expired",
             "API key not valid",
             "API key invalid",
             "PERMISSION_DENIED",
+            "[401]",
+            "no auth credentials",
+            "user not found",
+            "invalid api key",
+            "no auth credential",
         ]
         for pattern in api_key_patterns:
-            if pattern.lower() in error_message.lower():
+            if pattern.lower() in error_message_lower:
                 raise APIKeyInvalidError(
-                    f"API Key de Gemini inválida o expirada: {error_message}"
+                    f"API Key inválida o expirada: {error_message}"
                 )
 
         # Check error_code for API key indicators
         if isinstance(error_code, str) and error_code in ("API_KEY_INVALID", "PERMISSION_DENIED"):
             raise APIKeyInvalidError(
-                f"API Key de Gemini inválida o expirada: {error_message}"
+                f"API Key inválida o expirada: {error_message}"
             )
 
-        # --- Detect rate-limit errors (429 from Gemini) ---
+        # --- Detect sin créditos (HTTP 402, típico de OpenRouter) ---
+        is_no_credits = (
+            error_status == 402
+            or "[402]" in error_message
+            or "insufficient credit" in error_message_lower
+            or "requires more credit" in error_message_lower
+            or "negative credit" in error_message_lower
+        )
+        if is_no_credits:
+            raise InsufficientCreditsError(
+                "La cuenta del proveedor no tiene créditos suficientes."
+            )
+
+        # --- Detect model overloaded / high demand (503) ---
+        is_overloaded = (
+            error_status == 503
+            or "[503]" in error_message
+            or "status code 503" in error_message_lower
+            or "overloaded" in error_message_lower
+            or "high demand" in error_message_lower
+            or "UNAVAILABLE" in error_message
+        )
+        if is_overloaded:
+            raise ModelOverloadedError(
+                "El modelo está sobrecargado. Reintentá en unos minutos."
+            )
+
+        # --- Detect rate-limit errors (429) ---
         is_rate_limit = (
             error_status == 429
             or "[429]" in error_message
-            or "status code 429" in error_message.lower()
+            or "status code 429" in error_message_lower
             or "429" in str(error_status)
-            or "spacing your requests" in error_message.lower()
+            or "spacing your requests" in error_message_lower
             or (error_code == "GEMINI_ERROR" and "ERR_BAD_REQUEST" in error_message)
         )
         if is_rate_limit:
             raise QuotaExceededError(
-                f"Límite de uso de Gemini API alcanzado. "
-                f"Intenta nuevamente en unos minutos."
+                "Límite de uso de la API alcanzado. "
+                "Intentá nuevamente en unos minutos."
             )
 
         # Any other error in the body — raise as N8NError with clear message
         if error_message:
-            raise N8NError(
-                f"Error de Gemini: {error_message}"
-            )
+            raise N8NError(f"Error del proveedor de IA: {error_message}")
 
     def _check_http_error_for_api_key(self, error: httpx.HTTPStatusError) -> None:
         """

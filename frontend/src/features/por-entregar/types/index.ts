@@ -36,6 +36,8 @@ export interface EntregaMasivaResumen {
   enviadas: number;
   ya_enviadas: number;
   ya_calificadas_en_moodle: number;
+  // Re-entregas (item #3b): tenían nota en Moodle pero el alumno re-entregó; se re-subió la nueva.
+  reenviadas_reentrega?: number;
   omitidas_requieren_comentario: number;
   errores: EntregaErrorItem[];
 }

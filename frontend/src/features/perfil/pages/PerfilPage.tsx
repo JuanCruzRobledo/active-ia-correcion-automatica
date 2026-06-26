@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Eye, EyeOff, Key, Info, Shield, User as UserIcon, Globe, Mail } from 'lucide-react';
+import { Eye, EyeOff, Info, Shield, User as UserIcon, Globe, Mail, Sparkles } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { useProfile, useUpdateApiKey, useChangePassword, useUpdateKeyPaga, useUpdateEmail } from '../hooks/usePerfil';
+import { useProfile, useUpdateApiKey, useChangePassword, useUpdateKeyPaga, useUpdateEmail, useUpdateCorrectionProvider } from '../hooks/usePerfil';
+import type { CorrectionProvider } from '../types';
 import { updateMoodleCredentials } from '../services/perfil-service';
 import { Button } from '../../../shared/components/ui/Button';
 import { Input } from '../../../shared/components/ui/Input';
@@ -22,9 +23,30 @@ const moodleSchema = z.object({
 });
 type MoodleForm = z.infer<typeof moodleSchema>;
 
+// Metadata por proveedor de corrección (label, ayuda para obtener la key).
+const PROVIDER_META: Record<
+  CorrectionProvider,
+  { nombre: string; descripcion: string; helpUrl: string; helpLabel: string }
+> = {
+  gemini: {
+    nombre: 'Gemini Studio',
+    descripcion: 'Tu API Key personal de Google Gemini (AI Studio).',
+    helpUrl: 'https://aistudio.google.com/api-keys',
+    helpLabel: '¿Cómo obtener una API Key de Gemini? →',
+  },
+  openrouter: {
+    nombre: 'OpenRouter (beta)',
+    descripcion:
+      'Tu API Key de OpenRouter. Corrige con el modelo google/gemini-3.5-flash.',
+    helpUrl: 'https://openrouter.ai/keys',
+    helpLabel: '¿Cómo obtener una API Key de OpenRouter? →',
+  },
+};
+
 export const PerfilPage = () => {
   const { data: profile, isLoading } = useProfile();
   const updateApiKeyMutation = useUpdateApiKey();
+  const updateCorrectionProviderMutation = useUpdateCorrectionProvider();
   const updateKeyPagaMutation = useUpdateKeyPaga();
   const updateEmailMutation = useUpdateEmail();
   const changePasswordMutation = useChangePassword();
@@ -105,18 +127,32 @@ export const PerfilPage = () => {
     );
   }
 
+  // Proveedor de corrección activo + estado de SU key (cada uno guarda la suya).
+  const activeProvider: CorrectionProvider = profile.correction_provider ?? 'gemini';
+  const isOpenRouter = activeProvider === 'openrouter';
+  const providerMeta = PROVIDER_META[activeProvider];
+  const keyValid = isOpenRouter
+    ? profile.openrouter_api_key_valid
+    : profile.gemini_api_key_valid;
+  const keyLast4 = isOpenRouter
+    ? profile.openrouter_api_key_last_4
+    : profile.gemini_api_key_last_4;
+
   const handleApiKeySubmit = () => {
     setApiKeyError('');
 
-    updateApiKeyMutation.mutate(apiKey, {
-      onSuccess: () => {
-        setShowApiKeyModal(false);
-        setApiKey('');
-      },
-      onError: () => {
-        setApiKeyError('Error al validar la API Key. Verifica que sea correcta.');
-      },
-    });
+    updateApiKeyMutation.mutate(
+      { apiKey, provider: activeProvider },
+      {
+        onSuccess: () => {
+          setShowApiKeyModal(false);
+          setApiKey('');
+        },
+        onError: () => {
+          setApiKeyError('Error al validar la API Key. Verifica que sea correcta.');
+        },
+      }
+    );
   };
 
   const handlePasswordSubmit = () => {
@@ -304,31 +340,67 @@ export const PerfilPage = () => {
         </div>
       </div>
 
-      {/* Configuración de API Key */}
+      {/* Modo de corrección + API Key del proveedor activo */}
       <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
         <div className="flex items-center gap-3 mb-6">
-          <Key className="h-5 w-5 text-muted-foreground" />
+          <Sparkles className="h-5 w-5 text-muted-foreground" />
           <h2 className="text-xl font-semibold text-foreground">
-            API Key de Google Gemini
+            Corrección con IA
           </h2>
         </div>
 
         <div className="space-y-4">
+          {/* Slider de modo de corrección */}
+          <div>
+            <label className="text-sm font-medium text-foreground">
+              Modo de corrección
+            </label>
+            <p className="mb-2 mt-0.5 text-xs text-muted-foreground">
+              Elegí qué proveedor usás para corregir. Cada modo guarda su propia API Key.
+            </p>
+            <div
+              role="tablist"
+              aria-label="Modo de corrección"
+              className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1"
+            >
+              {(['gemini', 'openrouter'] as CorrectionProvider[]).map((p) => {
+                const selected = activeProvider === p;
+                return (
+                  <button
+                    key={p}
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => {
+                      if (!selected) updateCorrectionProviderMutation.mutate(p);
+                    }}
+                    disabled={updateCorrectionProviderMutation.isPending}
+                    className={`min-h-[44px] rounded-md px-3 py-2 text-sm font-medium transition-colors touch-manipulation disabled:cursor-not-allowed ${
+                      selected
+                        ? 'bg-card text-foreground shadow-sm ring-1 ring-border'
+                        : 'text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    {PROVIDER_META[p].nombre}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Info + ayuda del proveedor activo */}
           <div className="flex items-start gap-3 p-4 rounded-md bg-muted/50">
             <Info className="h-5 w-5 text-info mt-0.5 flex-shrink-0" />
             <div className="text-sm text-muted-foreground">
               <p className="mb-2">
-                Tu API Key personal de Google Gemini se usa para las
-                correcciones automáticas. Se almacena de forma segura y
-                encriptada.
+                {providerMeta.descripcion} Se almacena de forma segura y encriptada (AES-256).
               </p>
               <a
-                href="https://aistudio.google.com/api-keys"
+                href={providerMeta.helpUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-accent hover:underline"
               >
-                ¿Cómo obtener una API Key? →
+                {providerMeta.helpLabel}
               </a>
             </div>
           </div>
@@ -336,15 +408,15 @@ export const PerfilPage = () => {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <label className="text-sm font-medium text-foreground">
-                Estado de la API Key
+                API Key de {providerMeta.nombre}
               </label>
               <div className="flex flex-wrap items-center gap-2 mt-1">
-                {profile.gemini_api_key_valid ? (
+                {keyValid ? (
                   <>
                     <Badge variant="success">Configurada</Badge>
-                    {profile.gemini_api_key_last_4 && (
+                    {keyLast4 && (
                       <span className="text-sm text-muted-foreground break-all">
-                        ****{profile.gemini_api_key_last_4}
+                        ****{keyLast4}
                       </span>
                     )}
                   </>
@@ -355,16 +427,16 @@ export const PerfilPage = () => {
             </div>
 
             <Button
-              variant={profile.gemini_api_key_valid ? 'secondary' : 'primary'}
+              variant={keyValid ? 'secondary' : 'primary'}
               onClick={() => setShowApiKeyModal(true)}
               className="w-full sm:w-auto"
             >
-              {profile.gemini_api_key_valid ? 'Cambiar' : 'Configurar'}
+              {keyValid ? 'Cambiar' : 'Configurar'}
             </Button>
           </div>
 
-          {/* Toggle: API key paga (habilita corrección masiva global) */}
-          {profile.gemini_api_key_valid && (
+          {/* Toggle: API key paga (solo Gemini Studio — su free tier limita RPM) */}
+          {!isOpenRouter && profile.gemini_api_key_valid && (
             <div className="mt-4 flex items-start justify-between gap-3 rounded-md border border-border bg-muted/20 px-4 py-3">
               <div className="min-w-0">
                 <label className="text-sm font-medium text-foreground">
@@ -384,6 +456,13 @@ export const PerfilPage = () => {
                 aria-label="API key paga"
               />
             </div>
+          )}
+
+          {isOpenRouter && (
+            <p className="rounded-md bg-info/10 px-3 py-2 text-xs text-info">
+              OpenRouter es pago por créditos: la corrección masiva “Corregir todo”
+              queda habilitada automáticamente sin un toggle de facturación.
+            </p>
           )}
         </div>
       </div>
@@ -523,9 +602,9 @@ export const PerfilPage = () => {
           setApiKeyError('');
         }}
         title={
-          profile.gemini_api_key_valid
-            ? 'Cambiar API Key de Gemini'
-            : 'Configurar API Key de Gemini'
+          keyValid
+            ? `Cambiar API Key de ${providerMeta.nombre}`
+            : `Configurar API Key de ${providerMeta.nombre}`
         }
       >
         <div className="space-y-4">

@@ -253,3 +253,5 @@ class ProgresoGlobalResponse(BaseModel):
     corregidas: int = 0
     error: int = 0
     total: int = 0
+    # Desglose de las que están en ERROR por código (item #7), para el resumen de la masiva.
+    errores_por_codigo: dict[str, int] = {}

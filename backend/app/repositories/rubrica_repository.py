@@ -35,6 +35,18 @@ class RubricaRepository:
         """
         self.db = db
 
+    async def version(self) -> tuple[datetime | None, int]:
+        """(MAX(updated_at), COUNT) de todas las rúbricas — token barato de 'novedades'.
+
+        Cuenta todas (incluidas las soft-deleted): la baja lógica toca updated_at, así que
+        el token cambia igual ante un borrado.
+        """
+        result = await self.db.execute(
+            select(func.max(Rubrica.updated_at), func.count(Rubrica.id))
+        )
+        max_updated_at, count = result.one()
+        return max_updated_at, count or 0
+
     async def get_by_id(self, rubrica_id: int) -> Rubrica | None:
         """
         Get rubrica by ID.

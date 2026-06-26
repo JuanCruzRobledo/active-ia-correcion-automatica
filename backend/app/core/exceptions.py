@@ -85,6 +85,18 @@ class QuotaExceededError(GeminiError):
     pass
 
 
+class ModelOverloadedError(GeminiError):
+    """Raised when the model is overloaded / high demand (HTTP 503)."""
+
+    pass
+
+
+class InsufficientCreditsError(GeminiError):
+    """Raised when the provider account has no credits (HTTP 402, ej. OpenRouter)."""
+
+    pass
+
+
 # External Service Exceptions
 
 
