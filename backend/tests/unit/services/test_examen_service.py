@@ -106,14 +106,39 @@ async def test_crear_parcial_asigna_orden_y_deriva_etiqueta():
 
 
 @pytest.mark.asyncio
-async def test_crear_recuperatorio_vinculo_a_no_parcial_falla():
+async def test_crear_recuperatorio_vinculo_a_global_ok():
+    # Un GLOBAL también es rescatable: un recuperatorio/extensión/extraordinaria
+    # puede apuntar a un GLOBAL, igual que a un PARCIAL.
     service = _make_service()
     service.materia_repo.get_by_id.return_value = MagicMock(id=5)
-    # El objetivo existe pero es un GLOBAL, no un parcial.
     service.examen_repo.get_by_id.return_value = _examen(3, "GLOBAL", materia_id=5)
+    service.examen_repo.max_orden.return_value = 0
+    creado = _examen(12, "RECUPERATORIO", cmid=200, recupera=3, orden=1)
+    service.examen_repo.create.return_value = creado
+    service.examen_repo.get_by_materia.return_value = [
+        _examen(3, "GLOBAL", orden=0), creado
+    ]
 
     data = ExamenMateriaCreate(
         tipo=TipoExamenEnum.RECUPERATORIO, moodle_cmid=200,
+        modo_aprobacion=ModoAprobacionEnum.ESCALA, recupera_examen_id=3,
+    )
+    r = await service.crear(5, data)
+    assert r.recupera_examen_id == 3
+    assert r.etiqueta == "Recuperatorio 1"
+
+
+@pytest.mark.asyncio
+async def test_crear_recuperatorio_vinculo_a_tipo_invalido_falla():
+    # El padre debe ser PARCIAL o GLOBAL: apuntar a otro recuperatorio falla.
+    service = _make_service()
+    service.materia_repo.get_by_id.return_value = MagicMock(id=5)
+    service.examen_repo.get_by_id.return_value = _examen(
+        3, "RECUPERATORIO", materia_id=5, recupera=1
+    )
+
+    data = ExamenMateriaCreate(
+        tipo=TipoExamenEnum.EXTENSION, moodle_cmid=200,
         modo_aprobacion=ModoAprobacionEnum.ESCALA, recupera_examen_id=3,
     )
     with pytest.raises(HTTPException) as exc:

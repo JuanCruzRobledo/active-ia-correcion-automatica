@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.enums import ModoAprobacionEnum, TipoExamenEnum
 
-# Tipos cuyo resultado se rescata vinculándose a un PARCIAL.
+# Tipos cuyo resultado se rescata vinculándose a un PARCIAL o GLOBAL.
 TIPOS_RESCATE = {
     TipoExamenEnum.RECUPERATORIO,
     TipoExamenEnum.EXTENSION,
@@ -29,7 +29,8 @@ class ExamenMateriaCreate(BaseModel):
         None, description="Mínimo para aprobar (requerido si modo NUMERICO)"
     )
     recupera_examen_id: int | None = Field(
-        None, description="PARCIAL que recupera (requerido para recu/ext/extraordinaria)"
+        None,
+        description="PARCIAL o GLOBAL que recupera (requerido para recu/ext/extraordinaria)",
     )
 
     @model_validator(mode="after")
@@ -38,10 +39,12 @@ class ExamenMateriaCreate(BaseModel):
             raise ValueError("nota_minima es requerida cuando el modo es NUMERICO")
         if self.tipo in TIPOS_RESCATE and self.recupera_examen_id is None:
             raise ValueError(
-                "recuperatorio/extensión/extraordinaria deben vincularse a un parcial"
+                "recuperatorio/extensión/extraordinaria deben vincularse a un parcial o global"
             )
         if self.tipo not in TIPOS_RESCATE and self.recupera_examen_id is not None:
-            raise ValueError("solo recu/ext/extraordinaria pueden recuperar a un parcial")
+            raise ValueError(
+                "solo recu/ext/extraordinaria pueden recuperar a un parcial o global"
+            )
         return self
 
 
@@ -60,10 +63,12 @@ class ExamenMateriaUpdate(BaseModel):
             raise ValueError("nota_minima es requerida cuando el modo es NUMERICO")
         if self.tipo in TIPOS_RESCATE and self.recupera_examen_id is None:
             raise ValueError(
-                "recuperatorio/extensión/extraordinaria deben vincularse a un parcial"
+                "recuperatorio/extensión/extraordinaria deben vincularse a un parcial o global"
             )
         if self.tipo not in TIPOS_RESCATE and self.recupera_examen_id is not None:
-            raise ValueError("solo recu/ext/extraordinaria pueden recuperar a un parcial")
+            raise ValueError(
+                "solo recu/ext/extraordinaria pueden recuperar a un parcial o global"
+            )
         return self
 
 

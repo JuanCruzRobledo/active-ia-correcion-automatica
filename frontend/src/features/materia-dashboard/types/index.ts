@@ -93,7 +93,7 @@ export type TipoExamen =
   | 'GLOBAL';
 export type ModoAprobacion = 'ESCALA' | 'NUMERICO';
 
-/** Tipos cuyo resultado se rescata vinculándose a un PARCIAL. */
+/** Tipos cuyo resultado se rescata vinculándose a un PARCIAL o GLOBAL. */
 export const TIPOS_RESCATE: TipoExamen[] = [
   'RECUPERATORIO',
   'EXTENSION',

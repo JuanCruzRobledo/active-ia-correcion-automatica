@@ -11,8 +11,8 @@ los exámenes del mismo `tipo` de la materia (no se persiste), así borrar uno d
 secuencia contigua sin renumerar.
 
 Rescate: RECUPERATORIO/EXTENSION/EXTRAORDINARIA apuntan con `recupera_examen_id` al
-PARCIAL que recuperan. Un parcial queda aprobado si lo aprobó O si aprobó alguno de
-sus recuperatorios/extensiones/extraordinarias (lógica en examen_mapper).
+PARCIAL o GLOBAL que recuperan. Ese principal queda aprobado si lo aprobó O si aprobó
+alguno de sus recuperatorios/extensiones/extraordinarias (lógica en examen_mapper).
 """
 
 from typing import TYPE_CHECKING
