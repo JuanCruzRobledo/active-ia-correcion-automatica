@@ -73,21 +73,16 @@ class Settings(BaseSettings):
     PASSWORD_MIN_LENGTH: int = 8
 
     # =========================================
-    # N8N Integration
+    # Gemini API (corrección e IA directa)
     # =========================================
-    N8N_BASE_URL: str = "http://n8n:5678"
-    N8N_WEBHOOK_CORRECCION: str = "http://n8n:5678/webhook/corregir"
-    N8N_WEBHOOK_RUBRICA: str = "http://n8n:5678/webhook/generar-rubrica"
-    N8N_WEBHOOK_HEALTH: str = "http://n8n:5678/webhook/health"
-    N8N_WEBHOOK_SECRET: str = "change-me-webhook-secret"
-    N8N_TIMEOUT_SECONDS: int = 90
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_TIMEOUT_SECONDS: float = 90.0
 
     # =========================================
-    # OpenRouter (proveedor de IA del workflow de corrección)
+    # OpenRouter (proveedor alternativo de corrección)
     # =========================================
     # La API key del usuario es de OpenRouter (sk-or-v1-...) y se usa con auth
-    # Bearer. El modelo está hardcodeado en el workflow de n8n; lo replicamos
-    # acá solo para validar la key (health check).
+    # Bearer.
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_MODEL: str = "google/gemini-3.5-flash"
 

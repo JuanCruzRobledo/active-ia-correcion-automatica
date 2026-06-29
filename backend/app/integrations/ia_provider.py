@@ -14,14 +14,6 @@ PROVIDER_OPENROUTER = "openrouter"
 
 PROVIDERS_VALIDOS = frozenset({PROVIDER_GEMINI, PROVIDER_OPENROUTER})
 
-# Path del webhook de corrección de texto en n8n, por proveedor.
-# gemini → workflow histórico (Gemini Studio directo);
-# openrouter → workflow nuevo (OpenRouter, modelo google/gemini-3.5-flash).
-_WEBHOOK_PATHS = {
-    PROVIDER_GEMINI: "corregir",
-    PROVIDER_OPENROUTER: "corregir-openrouter",
-}
-
 
 def es_provider_valido(provider: str | None) -> bool:
     """True si el provider es uno de los soportados."""
@@ -38,11 +30,6 @@ def normalizar_provider(provider: str | None) -> str:
         return PROVIDER_GEMINI
     limpio = provider.strip().lower()
     return limpio if limpio in PROVIDERS_VALIDOS else PROVIDER_GEMINI
-
-
-def webhook_path(provider: str | None) -> str:
-    """Path del webhook de corrección de n8n para el proveedor dado."""
-    return _WEBHOOK_PATHS[normalizar_provider(provider)]
 
 
 async def validar_api_key(provider: str, api_key: str) -> bool:

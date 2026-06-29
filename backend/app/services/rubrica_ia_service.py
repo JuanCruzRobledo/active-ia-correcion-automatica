@@ -15,7 +15,7 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.core.exceptions import N8NError, N8NTimeoutError, ValidationError
 from app.core.security import decrypt_api_key
-from app.integrations.n8n_client import N8NClient
+from app.integrations.gemini_correction_client import GeminiCorrectionClient
 
 
 class RubricaIAService:
@@ -23,7 +23,7 @@ class RubricaIAService:
 
     def __init__(self):
         """Initialize rubrica IA service."""
-        self.n8n_client = N8NClient()
+        self.gemini_client = GeminiCorrectionClient()
 
     async def generar_rubrica_desde_pdf(
         self,
@@ -83,7 +83,7 @@ class RubricaIAService:
                 detail="El archivo PDF es demasiado grande (máximo 10MB)",
             )
 
-        # Build payload for N8N
+        # Build payload for Gemini
         payload = self._build_rubrica_payload(
             pdf_content=pdf_content,
             filename=pdf_file.filename,
@@ -91,9 +91,9 @@ class RubricaIAService:
             tipo_rubrica=tipo_rubrica,
         )
 
-        # Call N8N
+        # Call Gemini directly
         try:
-            result = await self.n8n_client.trigger_rubric_generation(payload)
+            result = await self.gemini_client.generar_rubrica(payload)
         except N8NTimeoutError:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,

@@ -44,7 +44,8 @@ from app.core.exceptions import (
     ValidationError,
 )
 from app.core.security import decrypt_api_key
-from app.integrations.n8n_client import N8NClient
+from app.integrations import openrouter_client
+from app.integrations.gemini_correction_client import GeminiCorrectionClient
 from app.models.correccion import Correccion
 from app.models.enums import EstadoEntregaEnum
 from app.repositories.correccion_repository import CorreccionRepository
@@ -97,7 +98,7 @@ class CorreccionService:
         self.entrega_repo = EntregaRepository(db)
         self.rubrica_repo = RubricaRepository(db)
         self.usuario_repo = UsuarioRepository(db)
-        self.n8n_client = N8NClient()
+        self.gemini_client = GeminiCorrectionClient()
 
     async def corregir_individual(
         self,
@@ -185,12 +186,12 @@ class CorreccionService:
         entrega.estado = EstadoEntregaEnum.PENDIENTE
         await self.entrega_repo.update(entrega)
 
-        # Call the appropriate N8N workflow with retry logic
+        # Call the appropriate AI provider directly (Gemini or OpenRouter)
         try:
             if entrega.archivo_tipo == "pdf":
-                result = await self._call_n8n_pdf_with_retry(payload)
+                result = await self._call_ia_pdf_with_retry(payload)
             else:
-                result = await self._call_n8n_with_retry(payload, provider=provider)
+                result = await self._call_ia_with_retry(payload, provider=provider)
         except N8NTimeoutError:
             _marcar_entrega_error(entrega, ERROR_N8N_TIMEOUT, provider)
             await self.entrega_repo.update(entrega)
@@ -599,22 +600,22 @@ class CorreccionService:
             },
         }
 
-    async def _call_n8n_with_retry(
+    async def _call_ia_with_retry(
         self,
         payload: dict[str, Any],
         max_retries: int = 1,
         provider: str = "gemini",
     ) -> dict[str, Any]:
         """
-        Call N8N with retry logic.
+        Call the AI provider directly (Gemini or OpenRouter) with retry logic.
 
         Args:
             payload: Payload to send.
             max_retries: Maximum number of retries (default: 1).
-            provider: Proveedor de corrección (rutea el webhook).
+            provider: AI provider to use ("gemini" or "openrouter").
 
         Returns:
-            N8N response.
+            AI provider response.
 
         Raises:
             N8NTimeoutError: If timeout occurs after retries.
@@ -622,9 +623,10 @@ class CorreccionService:
         """
         for attempt in range(max_retries + 1):
             try:
-                result = await self.n8n_client.trigger_correction(
-                    payload, provider=provider
-                )
+                if provider == "openrouter":
+                    result = await openrouter_client.corregir(payload)
+                else:
+                    result = await self.gemini_client.corregir_codigo(payload)
                 return result
 
             except APIKeyInvalidError:
@@ -654,20 +656,20 @@ class CorreccionService:
         # Should not reach here
         raise N8NError("Error inesperado en reintentos")
 
-    async def _call_n8n_pdf_with_retry(
+    async def _call_ia_pdf_with_retry(
         self,
         payload: dict[str, Any],
         max_retries: int = 1,
     ) -> dict[str, Any]:
         """
-        Call N8N PDF correction webhook with retry logic.
+        Call Gemini Vision PDF correction directly with retry logic.
 
         Args:
             payload: Payload with pdf_base64 and rubrica to send.
             max_retries: Maximum number of retries (default: 1).
 
         Returns:
-            N8N response with correction data.
+            Gemini response with correction data.
 
         Raises:
             N8NTimeoutError: If timeout occurs after retries.
@@ -675,7 +677,7 @@ class CorreccionService:
         """
         for attempt in range(max_retries + 1):
             try:
-                result = await self.n8n_client.trigger_correction_pdf(payload)
+                result = await self.gemini_client.corregir_pdf(payload)
                 return result
 
             except APIKeyInvalidError:
