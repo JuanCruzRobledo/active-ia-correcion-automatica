@@ -75,7 +75,7 @@ class Settings(BaseSettings):
     # =========================================
     # Gemini API (corrección e IA directa)
     # =========================================
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
     GEMINI_TIMEOUT_SECONDS: float = 90.0
 
     # =========================================
