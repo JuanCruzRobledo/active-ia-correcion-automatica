@@ -3,8 +3,8 @@
 ExamenService — ABM de exámenes de una materia (Dashboard de Gestores). Solo admin.
 
 CRUD incremental por examen. Valida la coherencia del vínculo de rescate
-(recupera_examen_id debe ser un PARCIAL de la misma materia) y deriva el número/etiqueta
-visible por tipo reusando examen_mapper.
+(recupera_examen_id debe ser un PARCIAL o GLOBAL de la misma materia) y deriva el
+número/etiqueta visible por tipo reusando examen_mapper.
 """
 
 from fastapi import HTTPException, status
@@ -48,22 +48,25 @@ class ExamenService:
             )
         return examen
 
+    # Tipos que pueden SER rescatados (padre de un recuperatorio/extensión/extraordinaria).
+    TIPOS_RESCATABLES = (TipoExamenEnum.PARCIAL, TipoExamenEnum.GLOBAL)
+
     async def _validar_vinculo(
         self, materia_id: int, recupera_examen_id: int | None
     ) -> None:
-        """El examen a recuperar debe existir, ser de la misma materia y ser un PARCIAL."""
+        """El examen a recuperar debe existir, ser de la misma materia y ser PARCIAL o GLOBAL."""
         if recupera_examen_id is None:
             return
         objetivo = await self.examen_repo.get_by_id(recupera_examen_id)
         if objetivo is None or objetivo.materia_id != materia_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="El parcial a recuperar no existe en esta materia",
+                detail="El examen a recuperar no existe en esta materia",
             )
-        if objetivo.tipo != TipoExamenEnum.PARCIAL:
+        if objetivo.tipo not in self.TIPOS_RESCATABLES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Solo se puede recuperar un PARCIAL",
+                detail="Solo se puede recuperar un PARCIAL o un GLOBAL",
             )
 
     def _a_response(

@@ -65,7 +65,11 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
   const [form, setForm] = useState<FormState>(FORM_VACIO);
   const [editId, setEditId] = useState<number | null>(null);
 
-  const parciales = (examenes ?? []).filter((e) => e.tipo === 'PARCIAL');
+  // Exámenes "principales" (rescatables): un recu/ext/extraordinaria puede recuperar
+  // tanto un PARCIAL como un GLOBAL.
+  const principales = (examenes ?? []).filter(
+    (e) => e.tipo === 'PARCIAL' || e.tipo === 'GLOBAL',
+  );
   const set = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
 
   const resetForm = () => {
@@ -106,9 +110,9 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
     }
   };
 
-  const parcialOptions: SelectOption[] = [
-    { value: '', label: '— elegí el parcial que recupera —' },
-    ...parciales.map((p) => ({ value: String(p.id), label: p.etiqueta })),
+  const principalOptions: SelectOption[] = [
+    { value: '', label: '— elegí el parcial o global que recupera —' },
+    ...principales.map((p) => ({ value: String(p.id), label: p.etiqueta })),
   ];
 
   const etiquetaDe = (id: number | null) =>
@@ -175,8 +179,8 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
         <p className="mt-1 text-sm text-muted-foreground">
           Dá de alta los exámenes con el <strong>ID de la tarea de Moodle</strong> (cmid). La
           numeración por tipo es automática (Parcial 1, 2…). Recuperatorios, extensiones e
-          instancias extraordinarias se vinculan a un parcial: si lo aprobás, ese parcial queda
-          rescatado.
+          instancias extraordinarias se vinculan a un parcial o global: si lo aprobás, ese
+          parcial o global queda rescatado.
         </p>
       </div>
 
@@ -252,8 +256,8 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
           )}
           {rescate && (
             <Select
-              label="Recupera el parcial"
-              options={parcialOptions}
+              label="Recupera el parcial o global"
+              options={principalOptions}
               value={form.recupera}
               onChange={(ev) => set({ recupera: ev.target.value })}
               wrapperClassName="w-full sm:col-span-2"
@@ -261,9 +265,10 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
           )}
         </div>
 
-        {rescate && parciales.length === 0 && (
+        {rescate && principales.length === 0 && (
           <p className="text-xs text-amber-600 dark:text-amber-500">
-            No hay parciales cargados todavía. Cargá primero el parcial que este examen recupera.
+            No hay parciales ni globales cargados todavía. Cargá primero el parcial o global que
+            este examen recupera.
           </p>
         )}
 

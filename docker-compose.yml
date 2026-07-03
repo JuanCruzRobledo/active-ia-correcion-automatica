@@ -2,7 +2,7 @@
 # Active-IA - Docker Compose (Producción/Híbrido)
 # ============================================
 # Modo: Base de datos en la nube
-# Servicios: backend, frontend, n8n
+# Servicios: backend, frontend
 # Uso: docker-compose up -d
 # ============================================
 
@@ -33,13 +33,6 @@ services:
       # CORS
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
 
-      # N8N (URLs internas de Docker)
-      N8N_BASE_URL: http://n8n:5678
-      N8N_WEBHOOK_CORRECCION: http://n8n:5678/webhook/corregir
-      N8N_WEBHOOK_RUBRICA: http://n8n:5678/webhook/generar-rubrica
-      N8N_WEBHOOK_HEALTH: http://n8n:5678/webhook/health
-      N8N_TIMEOUT_SECONDS: 90
-
       # Archivos
       UPLOAD_DIR: /app/uploads
       MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-104857600}
@@ -53,9 +46,6 @@ services:
       - backend_backups:/app/backups
     networks:
       - active-ia-network
-    depends_on:
-      n8n:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/api/v1/health"]
       interval: 30s
@@ -88,47 +78,6 @@ services:
       retries: 3
       start_period: 10s
 
-  # ==========================================
-  # N8N (Workflows de IA)
-  # ==========================================
-  n8n:
-    image: juancruzrobledo/n8n-active-ia:latest
-    container_name: active-ia-n8n
-    restart: unless-stopped
-    ports:
-      - "${N8N_PORT:-5678}:5678"
-    environment:
-      # Autenticación
-      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
-      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
-      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
-
-      # Red
-      N8N_HOST: 0.0.0.0
-      N8N_PORT: 5678
-      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678}
-
-      # Configuración
-      GENERIC_TIMEZONE: ${TIMEZONE:-America/Argentina/Buenos_Aires}
-      N8N_LOG_LEVEL: ${N8N_LOG_LEVEL:-info}
-
-      # Persistencia de ejecuciones
-      EXECUTIONS_DATA_PRUNE: true
-      EXECUTIONS_DATA_MAX_AGE: 168  # 7 días
-      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
-    volumes:
-      - n8n_data:/home/node/.n8n
-      # Montar workflows para fácil importación (read-only)
-      - ./n8n/workflows:/workflows:ro
-    networks:
-      - active-ia-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5678/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
-
 # ==========================================
 # Volúmenes persistentes
 # ==========================================
@@ -137,8 +86,6 @@ volumes:
     name: active-ia_backend_uploads
   backend_backups:
     name: active-ia_backend_backups
-  n8n_data:
-    name: active-ia_n8n_data
 
 # ==========================================
 # Red interna

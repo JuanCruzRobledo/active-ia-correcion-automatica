@@ -2,7 +2,7 @@
 # Active-IA - Docker Compose (Desarrollo Local)
 # ============================================
 # Modo: Base de datos local en Docker
-# Servicios: backend, frontend, n8n, postgres
+# Servicios: backend, frontend, postgres
 # Uso: docker-compose -f docker-compose.local.yml up -d
 # ============================================
 
@@ -56,13 +56,6 @@ services:
       # CORS
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000","http://localhost:5173"]}
 
-      # N8N (URLs internas de Docker)
-      N8N_BASE_URL: http://n8n:5678
-      N8N_WEBHOOK_CORRECCION: http://n8n:5678/webhook/corregir
-      N8N_WEBHOOK_RUBRICA: http://n8n:5678/webhook/generar-rubrica
-      N8N_WEBHOOK_HEALTH: http://n8n:5678/webhook/health
-      N8N_TIMEOUT_SECONDS: 90
-
       # Email / Resend (notificaciones)
       RESEND_API_KEY: ${RESEND_API_KEY}
       EMAIL_REMITENTE: ${EMAIL_REMITENTE:-onboarding@resend.dev}
@@ -85,8 +78,6 @@ services:
       - active-ia-network
     depends_on:
       postgres:
-        condition: service_healthy
-      n8n:
         condition: service_healthy
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:80/api/v1/health']
@@ -131,55 +122,6 @@ services:
       retries: 3
       start_period: 10s
 
-  # ==========================================
-  # N8N (Workflows de IA)
-  # ==========================================
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: active-ia-n8n
-    restart: unless-stopped
-    ports:
-      - '${N8N_PORT:-5678}:5678'
-    environment:
-      # Autenticación
-      N8N_BASIC_AUTH_ACTIVE: ${N8N_BASIC_AUTH_ACTIVE:-true}
-      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
-      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:-admin123}
-
-      # Red
-      N8N_HOST: 0.0.0.0
-      N8N_PORT: 5678
-      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678}
-
-      # Configuración
-      GENERIC_TIMEZONE: ${TIMEZONE:-America/Argentina/Buenos_Aires}
-      N8N_LOG_LEVEL: ${N8N_LOG_LEVEL:-debug}
-
-      # Persistencia de ejecuciones
-      EXECUTIONS_DATA_PRUNE: true
-      EXECUTIONS_DATA_MAX_AGE: 168 # 7 días
-      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
-    volumes:
-      - n8n_data:/home/node/.n8n
-      # Montar workflows para fácil importación (read-only)
-      - ./n8n/workflows:/workflows:ro
-    networks:
-      - active-ia-network
-    healthcheck:
-      test:
-        [
-          'CMD',
-          'wget',
-          '--quiet',
-          '--tries=1',
-          '--spider',
-          'http://localhost:5678/healthz',
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
-
 # ==========================================
 # Volúmenes persistentes
 # ==========================================
@@ -190,8 +132,6 @@ volumes:
     name: active-ia_backend_uploads
   backend_backups:
     name: active-ia_backend_backups
-  n8n_data:
-    name: active-ia_n8n_data
 
 # ==========================================
 # Red interna

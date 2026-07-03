@@ -1,9 +1,0 @@
-# Datos de N8N (generados al configurar, pueden contener credenciales)
-data/
-
-# Logs
-*.log
-
-# Archivos temporales
-*.tmp
-.DS_Store

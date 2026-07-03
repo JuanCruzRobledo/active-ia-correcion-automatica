@@ -2,9 +2,10 @@
 Integrations package for external services.
 
 This package contains clients for integrating with external services:
-- N8N: Workflow automation and AI orchestration
+- Gemini: Direct Google Gemini API for AI correction and rubric generation
+- OpenRouter: OpenRouter proxy for model-agnostic AI correction
 """
 
-from app.integrations.n8n_client import N8NClient
+from app.integrations.gemini_correction_client import GeminiCorrectionClient
 
-__all__ = ["N8NClient"]
+__all__ = ["GeminiCorrectionClient"]

@@ -7,7 +7,6 @@ from app.integrations.ia_provider import (
     PROVIDER_OPENROUTER,
     es_provider_valido,
     normalizar_provider,
-    webhook_path,
 )
 
 
@@ -36,14 +35,3 @@ class TestNormalizarProvider:
 
     def test_desconocido_cae_a_gemini(self):
         assert normalizar_provider("foo") == PROVIDER_GEMINI
-
-
-class TestWebhookPath:
-    def test_gemini_usa_corregir(self):
-        assert webhook_path(PROVIDER_GEMINI) == "corregir"
-
-    def test_openrouter_usa_corregir_openrouter(self):
-        assert webhook_path(PROVIDER_OPENROUTER) == "corregir-openrouter"
-
-    def test_default_cae_a_corregir(self):
-        assert webhook_path(None) == "corregir"

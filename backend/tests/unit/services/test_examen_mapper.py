@@ -152,6 +152,21 @@ def test_global_standalone():
     assert res[1]["tipo"] == "GLOBAL"
 
 
+def test_global_desaprobado_se_rescata_con_recuperatorio():
+    # El rescate también aplica a los GLOBALES: un recuperatorio que apunta a un
+    # global desaprobado lo deja aprobado y marca rescatado=True.
+    cfg = [
+        _ex(1, "GLOBAL", 300),
+        _ex(2, "RECUPERATORIO", 400, recupera=1),
+    ]
+    res = _por_examen(
+        calcular_resultados_examenes({300: "Desaprobado", 400: "Aprobado"}, cfg)
+    )
+    assert res[1]["resultado"] == "aprobado"
+    assert res[1]["rescatado"] is True
+    assert res[1]["tipo"] == "GLOBAL"
+
+
 def test_numero_se_deriva_por_tipo_segun_orden():
     cfg = [
         _ex(1, "PARCIAL", 100, orden=0),
