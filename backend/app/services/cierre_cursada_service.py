@@ -224,6 +224,19 @@ class CierreCursadaService:
         p2_items = por_categoria.get(CategoriaItemCierreEnum.PARCIAL_2, [])
         tpi_items = por_categoria.get(CategoriaItemCierreEnum.TPI, [])
 
+        # Guard contra el mapeo confirmado que termina sin ítems en NINGUNA categoría
+        # relevante (todo IGNORAR): eso produce un cierre donde absolutamente todos
+        # recursan, en silencio, y es casi siempre un error de clasificación, no la
+        # realidad — bloquear ahora es mucho más barato que descubrirlo en el Excel.
+        if not (tp_items or autoeval_items or p1_items or p2_items or tpi_items):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "El mapeo confirmado no tiene ningún ítem en TP/Autoevaluación/Parcial 1/"
+                    "Parcial 2/TPI — revisá las categorías del mapeo antes de generar el cierre"
+                ),
+            )
+
         comisiones = await self.comision_repo.get_by_materia_con_tutores(materia_id)
 
         sesion = self.moodle.crear_cliente_sesion()
@@ -246,6 +259,24 @@ class CierreCursadaService:
             notas_por_uid = parsear_export_calificador_dual(csv_text, nombre_a_cmid, email_a_uid)
         finally:
             await sesion.aclose()
+
+        # Guard contra el export sin ninguna columna "percentage" reconocida: si hay
+        # ítems de autoeval/parcial/TPI mapeados pero el export nunca trajo un % para
+        # NINGUNO de ellos en NINGÚN alumno, el problema es de parseo/formato del
+        # export (no de datos) — cortar acá en vez de persistir 100% RECURSA.
+        cmids_esperan_pct = {r.moodle_cmid for r in (autoeval_items + p1_items + p2_items + tpi_items)}
+        cmids_con_pct_real = {
+            cmid for notas in notas_por_uid.values() for cmid, valores in notas.items() if "percentage" in valores
+        }
+        if cmids_esperan_pct and not (cmids_esperan_pct & cmids_con_pct_real):
+            raise HTTPException(
+                status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "El export del calificador de Moodle no trajo el % de ningún ítem de "
+                    "autoevaluación/parcial/TPI mapeado — no se generó el cierre. Puede ser un "
+                    "problema de formato del export; avisá para revisarlo antes de reintentar."
+                ),
+            )
 
         alumnos: list[CierreCursadaAlumno] = []
         conteos = {"PROMOCIONA": 0, "REGULARIZA": 0, "RECURSA": 0}

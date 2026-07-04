@@ -42,7 +42,10 @@ class CierreMappingConfirmResponse(BaseModel):
 
 class GenerarCierreRequest(BaseModel):
     cuatrimestre_id: int
-    umbral_tp_pct: float = Field(gt=0, le=100, description="% mínimo de TPs aprobados para no recursar")
+    umbral_tp_pct: float = Field(
+        ge=0, le=100,
+        description="% mínimo de TPs aprobados para no recursar (0 = no exigir ningún TP)",
+    )
     reglas: dict[str, float] | None = Field(
         None,
         description="Override puntual de autoeval_min_pct/parcial_promocion_min_pct/"

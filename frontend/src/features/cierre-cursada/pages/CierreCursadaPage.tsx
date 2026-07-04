@@ -54,7 +54,7 @@ export const CierreCursadaPage = () => {
   const generar = useGenerarCierre(materiaId ?? 0);
   const historial = useHistorialCierre(materiaId ?? 0);
 
-  const umbralValido = Number(umbralTp) > 0 && Number(umbralTp) <= 100;
+  const umbralValido = umbralTp !== '' && Number(umbralTp) >= 0 && Number(umbralTp) <= 100;
 
   const handleGenerar = async () => {
     if (!cuatrimestreId || !umbralValido) return;
@@ -126,11 +126,12 @@ export const CierreCursadaPage = () => {
               label="% mínimo de TPs aprobados"
               type="number"
               inputMode="numeric"
-              min={1}
+              min={0}
               max={100}
               value={umbralTp}
               onChange={(e) => setUmbralTp(e.target.value)}
-              error={!umbralValido ? 'Tiene que ser un número entre 1 y 100' : undefined}
+              helperText="0 = no exigir ningún TP aprobado"
+              error={!umbralValido ? 'Tiene que ser un número entre 0 y 100' : undefined}
               className="w-full sm:w-48"
             />
             <Button onClick={handleGenerar} isLoading={generar.isPending} disabled={!umbralValido}>

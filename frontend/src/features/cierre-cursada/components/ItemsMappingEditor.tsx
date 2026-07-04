@@ -59,6 +59,21 @@ export const ItemsMappingEditor = ({ materiaId, cuatrimestreId, items }: Props) 
 
   const sinConfirmar = items.filter((i) => !i.confirmado).length;
 
+  // Conteo en vivo por categoría — si TP/Autoeval/Parcial 1/Parcial 2/TPI quedan
+  // TODOS en 0, el cierre va a recursar a todo el mundo sin que se note hasta ver
+  // el Excel. Mostrarlo bien visible ahora es mucho más barato que descubrirlo después.
+  const conteoPorCategoria = CATEGORIA_OPTIONS.reduce<Record<string, number>>((acc, opt) => {
+    acc[opt.value] = rows.filter((r) => r.categoria === opt.value).length;
+    return acc;
+  }, {});
+  const sinNingunaCategoriaUtil =
+    (conteoPorCategoria.TP ?? 0) +
+      (conteoPorCategoria.AUTOEVAL ?? 0) +
+      (conteoPorCategoria.PARCIAL_1 ?? 0) +
+      (conteoPorCategoria.PARCIAL_2 ?? 0) +
+      (conteoPorCategoria.TPI ?? 0) ===
+    0;
+
   const guardar = () => {
     confirmar.mutate(
       rows.map((r) => ({
@@ -74,6 +89,29 @@ export const ItemsMappingEditor = ({ materiaId, cuatrimestreId, items }: Props) 
 
   return (
     <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+      <div className="flex flex-wrap gap-2 text-xs">
+        {CATEGORIA_OPTIONS.map((opt) => (
+          <span
+            key={opt.value}
+            className="rounded-full border border-border bg-background px-2.5 py-1 font-medium"
+          >
+            {opt.label}: {conteoPorCategoria[opt.value] ?? 0}
+          </span>
+        ))}
+      </div>
+
+      {sinNingunaCategoriaUtil && (
+        <p className="flex items-start gap-1 text-sm font-medium text-destructive">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            Ningún ítem quedó en TP/Autoevaluación/Parcial 1/Parcial 2/TPI — con este mapeo
+            TODOS los alumnos van a recursar. Revisá las categorías antes de confirmar (es
+            casi seguro que la sugerencia automática no reconoció los nombres reales de
+            esta cohorte).
+          </span>
+        </p>
+      )}
+
       {sinConfirmar > 0 && (
         <p className="flex items-start gap-1 text-sm text-amber-600 dark:text-amber-500">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />

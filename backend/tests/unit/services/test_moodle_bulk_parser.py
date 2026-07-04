@@ -192,6 +192,43 @@ def test_parsear_export_calificador_dual_item_sin_match_se_ignora():
     assert out.get(1001, {}) == {}
 
 
+# Variantes reales de sufijo NUNCA observadas antes de esta feature (el export de este
+# código solo pedía "real" hasta ahora) — el matcheo tiene que tolerar variaciones de
+# texto, no requerir el string exacto " (porcentaje)".
+@pytest.mark.parametrize(
+    "header,clave_esperada",
+    [
+        ('Cuestionario:Primer Parcial (Porcentaje)', 'percentage'),
+        ('Cuestionario:Primer Parcial (Porcentaje %)', 'percentage'),
+        ('Cuestionario:Primer Parcial (%)', 'percentage'),
+        ('Cuestionario:Primer Parcial (percentage)', 'percentage'),
+        ('Cuestionario:Primer Parcial (Real)', 'real'),
+        ('Cuestionario:Primer Parcial (Letra)', 'letter'),
+        ('Cuestionario:Primer Parcial (Calculado)', 'calculado'),
+    ],
+)
+def test_parsear_export_calificador_dual_tolera_variantes_de_sufijo(header, clave_esperada):
+    csv = (
+        'Nombre,Apellido(s),"Número de ID",Institución,Departamento,"Dirección de correo",'
+        f'"{header}"\n'
+        '"Juan","Pérez","33","R","","juan@x.com","70,00"\n'
+    )
+    out = parsear_export_calificador_dual(csv, IDX_DUAL, EMAIL_UID)
+    assert out[1001][444] == {clave_esperada: "70,00"}
+
+
+def test_parsear_export_calificador_dual_parentesis_sin_palabra_clave_se_ignora():
+    # Un paréntesis final que no menciona ninguna representación conocida (ej. un año)
+    # no se puede clasificar -> se descarta, no se inventa una clave.
+    csv = (
+        'Nombre,Apellido(s),"Número de ID",Institución,Departamento,"Dirección de correo",'
+        '"Cuestionario:Primer Parcial (2026)"\n'
+        '"Juan","Pérez","33","R","","juan@x.com","70,00"\n'
+    )
+    out = parsear_export_calificador_dual(csv, IDX_DUAL, EMAIL_UID)
+    assert out.get(1001, {}) == {}
+
+
 def test_parsear_export_calificador_dual_match_email_case_insensitive():
     out = parsear_export_calificador_dual(EXPORT_CALIF_DUAL, IDX_DUAL, EMAIL_UID)
     assert 1001 in out

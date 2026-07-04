@@ -23,14 +23,22 @@ import re
 _COLS_FIJAS_CALIF = 6
 # Sufijos de tipo de visualización que el export agrega al header del item.
 _SUFIJOS_DISPLAY = (" (real)", " (calculado)", " (porcentaje)", " (letra)")
-# Mismos sufijos, pero mapeados a una clave estable para parsear_export_calificador_dual
-# (que sí necesita saber CUÁL representación trae cada columna, no solo descartarla).
-_SUFIJO_A_CLAVE = {
-    " (real)": "real",
-    " (calculado)": "calculado",
-    " (porcentaje)": "percentage",
-    " (letra)": "letter",
-}
+
+# parsear_export_calificador_dual necesita saber CUÁL representación trae cada
+# columna (no solo descartar el sufijo como el parser de una sola representación).
+# El texto EXACTO del sufijo de "percentage"/"calculado"/"letra" nunca se había
+# observado contra un Moodle real antes de esta feature (el export de este código
+# solo pedía "real" hasta acá) — por eso esto matchea por PALABRA CLAVE dentro del
+# último paréntesis del header, no por un string fijo tipo " (porcentaje)": una
+# variante real como "(Porcentaje %)" rompería un endswith exacto en silencio, y
+# "silencioso" acá significa "todos los parciales/TPI dan N/E" — carísimo de detectar.
+_SUFIJO_FINAL_RE = re.compile(r"\(([^()]+)\)\s*$")
+_CLAVE_PATRONES: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+    ("real", re.compile(r"\breal\b", re.IGNORECASE)),
+    ("percentage", re.compile(r"porcent|percent|%", re.IGNORECASE)),
+    ("letter", re.compile(r"letra|letter", re.IGNORECASE)),
+    ("calculado", re.compile(r"calcul", re.IGNORECASE)),
+)
 
 
 def _norm(s: str | None) -> str:
@@ -148,13 +156,14 @@ def _limpiar_header_item_calif_dual(header: str) -> tuple[list[str], str | None]
     saber a qué representación corresponde.
     """
     h = (header or "").strip()
-    low = h.lower()
-    sufijo = None
-    for suf, clave in _SUFIJO_A_CLAVE.items():
-        if low.endswith(suf):
-            h = h[: -len(suf)]
-            sufijo = clave
-            break
+    m = _SUFIJO_FINAL_RE.search(h)
+    if not m:
+        return [], None
+    contenido = m.group(1)
+    sufijo = next((clave for clave, patron in _CLAVE_PATRONES if patron.search(contenido)), None)
+    if sufijo is None:
+        return [], None
+    h = h[: m.start()].rstrip()
     candidatos = [_norm(h)]
     if ":" in h:
         candidatos.append(_norm(h.split(":", 1)[1]))
