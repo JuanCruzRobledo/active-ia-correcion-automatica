@@ -17,6 +17,7 @@ from app.services.moodle_bulk_parser import (
     estado_finalizacion_a_state,
     parsear_csv_finalizacion,
     parsear_export_calificador,
+    parsear_export_calificador_dual,
 )
 
 
@@ -141,3 +142,56 @@ def test_parsear_csv_finalizacion_actividad_sin_cmid_se_ignora():
     out = parsear_csv_finalizacion(csv, IDX, EMAIL_UID)
     # solo el quiz conocido (cmid 111); la fantasma se ignora
     assert out[1001] == [{"cmid": 111, "state": 1}]
+
+
+# ===================== export del calificador — variante dual (real + porcentaje) =====================
+
+# Mismo item ("Primer Parcial") pedido en las 2 representaciones a la vez — el caso que
+# rompería a parsear_export_calificador (una pisaría a la otra al compartir cmid).
+EXPORT_CALIF_DUAL = (
+    'Nombre,Apellido(s),"Número de ID",Institución,Departamento,"Dirección de correo",'
+    '"Tarea:TP1 - Estructuras (Real)",'
+    '"Cuestionario:Primer Parcial (Real)","Cuestionario:Primer Parcial (Porcentaje)"\n'
+    '"Juan","Pérez","33","Regional UTN","","juan@x.com","Aprobado","70,00","70,00 %"\n'
+    '"Ana","Gómez","34","Regional UTN","","ana@x.com","Desaprobado","-","-"\n'
+)
+
+IDX_DUAL = {**IDX, "primer parcial": 444}
+
+
+def test_parsear_export_calificador_dual_preserva_real_y_percentage_del_mismo_cmid():
+    out = parsear_export_calificador_dual(EXPORT_CALIF_DUAL, IDX_DUAL, EMAIL_UID)
+    # El TP (solo "real") queda con una sola clave.
+    assert out[1001][222] == {"real": "Aprobado"}
+    # El parcial (real + percentage) preserva AMBOS, ninguno pisa al otro.
+    assert out[1001][444] == {"real": "70,00", "percentage": "70,00 %"}
+
+
+def test_parsear_export_calificador_dual_alumno_sin_notas():
+    out = parsear_export_calificador_dual(EXPORT_CALIF_DUAL, IDX_DUAL, EMAIL_UID)
+    assert out[1002][444] == {"real": "-", "percentage": "-"}
+
+
+def test_parsear_export_calificador_dual_columna_sin_sufijo_reconocido_se_ignora():
+    csv = (
+        'Nombre,Apellido(s),"Número de ID",Institución,Departamento,"Dirección de correo",'
+        '"Cuestionario:Primer Parcial"\n'  # sin sufijo de display -> no se puede saber la representación
+        '"Juan","Pérez","33","R","","juan@x.com","70,00"\n'
+    )
+    out = parsear_export_calificador_dual(csv, IDX_DUAL, EMAIL_UID)
+    assert out.get(1001, {}) == {}
+
+
+def test_parsear_export_calificador_dual_item_sin_match_se_ignora():
+    csv = (
+        'Nombre,Apellido(s),"Número de ID",Institución,Departamento,"Dirección de correo",'
+        '"Cuestionario:Actividad Fantasma (Real)"\n'
+        '"Juan","Pérez","33","R","","juan@x.com","7,00"\n'
+    )
+    out = parsear_export_calificador_dual(csv, IDX_DUAL, EMAIL_UID)
+    assert out.get(1001, {}) == {}
+
+
+def test_parsear_export_calificador_dual_match_email_case_insensitive():
+    out = parsear_export_calificador_dual(EXPORT_CALIF_DUAL, IDX_DUAL, EMAIL_UID)
+    assert 1001 in out

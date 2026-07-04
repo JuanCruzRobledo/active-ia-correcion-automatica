@@ -23,6 +23,14 @@ import re
 _COLS_FIJAS_CALIF = 6
 # Sufijos de tipo de visualización que el export agrega al header del item.
 _SUFIJOS_DISPLAY = (" (real)", " (calculado)", " (porcentaje)", " (letra)")
+# Mismos sufijos, pero mapeados a una clave estable para parsear_export_calificador_dual
+# (que sí necesita saber CUÁL representación trae cada columna, no solo descartarla).
+_SUFIJO_A_CLAVE = {
+    " (real)": "real",
+    " (calculado)": "calculado",
+    " (porcentaje)": "percentage",
+    " (letra)": "letter",
+}
 
 
 def _norm(s: str | None) -> str:
@@ -125,6 +133,76 @@ def parsear_export_calificador(
         for col, cmid in col_a_cmid.items():
             if col < len(fila):
                 notas[cmid] = fila[col].strip()
+        out[uid] = notas
+    return out
+
+
+def _limpiar_header_item_calif_dual(header: str) -> tuple[list[str], str | None]:
+    """Como _limpiar_header_item_calif, pero además devuelve QUÉ representación trae la
+    columna ("real"/"percentage"/"letter"/"calculado").
+
+    Hace falta cuando el export pide más de una representación del mismo ítem a la vez
+    (real para TP en escala, percentage para autoeval/parciales/TPI ya normalizados al
+    máximo del ítem) — ahí sí importa no perder de cuál columna viene cada valor. Sin
+    sufijo reconocido → (candidatos, None): el caller debe ignorar esa columna, no puede
+    saber a qué representación corresponde.
+    """
+    h = (header or "").strip()
+    low = h.lower()
+    sufijo = None
+    for suf, clave in _SUFIJO_A_CLAVE.items():
+        if low.endswith(suf):
+            h = h[: -len(suf)]
+            sufijo = clave
+            break
+    candidatos = [_norm(h)]
+    if ":" in h:
+        candidatos.append(_norm(h.split(":", 1)[1]))
+    return [c for c in candidatos if c], sufijo
+
+
+def parsear_export_calificador_dual(
+    csv_text: str,
+    nombre_a_cmid: dict[str, int],
+    email_a_uid: dict[str, int],
+) -> dict[int, dict[int, dict[str, str]]]:
+    """Export del calificador → {moodle_user_id: {cmid: {"real"|"percentage"|...: valor}}}.
+
+    Variante de parsear_export_calificador para cuando el export pide MÁS de una
+    representación del mismo ítem a la vez (real + percentage). NO reusar
+    parsear_export_calificador para este caso: su `col_a_cmid` está indexado por columna
+    pero escribe a `notas[cmid]` una sola vez por fila — la columna "percentage" pisaría
+    silenciosamente el valor "real" del mismo cmid (o viceversa). Acá cada representación
+    se guarda bajo su propia clave, así ninguna pisa a la otra.
+    """
+    filas = _leer_filas(csv_text)
+    if not filas:
+        return {}
+    header = filas[0]
+    # columna → (cmid, sufijo). Columnas sin sufijo reconocido se descartan: no hay forma
+    # de saber a qué representación corresponden.
+    col_info: dict[int, tuple[int, str]] = {}
+    for i in range(_COLS_FIJAS_CALIF, len(header)):
+        candidatos, sufijo = _limpiar_header_item_calif_dual(header[i])
+        if sufijo is None:
+            continue
+        for cand in candidatos:
+            if cand in nombre_a_cmid:
+                col_info[i] = (nombre_a_cmid[cand], sufijo)
+                break
+
+    out: dict[int, dict[int, dict[str, str]]] = {}
+    for fila in filas[1:]:
+        if len(fila) <= _COLS_FIJAS_CALIF:
+            continue
+        email = (fila[5] if len(fila) > 5 else "").strip().lower()
+        uid = email_a_uid.get(email)
+        if uid is None:
+            continue
+        notas: dict[int, dict[str, str]] = {}
+        for col, (cmid, sufijo) in col_info.items():
+            if col < len(fila):
+                notas.setdefault(cmid, {})[sufijo] = fila[col].strip()
         out[uid] = notas
     return out
 

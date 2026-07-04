@@ -67,6 +67,7 @@ class TipoActividadEnum(str, Enum):
     EXAMEN_CREADO = "EXAMEN_CREADO"
     SNAPSHOT_GENERADO = "SNAPSHOT_GENERADO"
     NOTIFICACIONES_ENVIADAS = "NOTIFICACIONES_ENVIADAS"
+    CIERRE_CURSADA_GENERADO = "CIERRE_CURSADA_GENERADO"
 
 
 class MoodleSyncEstado(str, Enum):
@@ -167,3 +168,26 @@ class ModoAprobacionEnum(str, Enum):
 
     ESCALA = "ESCALA"
     NUMERICO = "NUMERICO"
+
+
+class CategoriaItemCierreEnum(str, Enum):
+    """Categoría de un ítem del calificador de Moodle para el cierre de cursada.
+
+    Mapeo confirmado por el coordinador (ver CierreCursadaItem) — nunca se usa
+    una sugerencia sin confirmar para calcular. Ver cierre_cursada_calculo.py.
+    """
+
+    TP = "TP"
+    AUTOEVAL = "AUTOEVAL"
+    PARCIAL_1 = "PARCIAL_1"
+    PARCIAL_2 = "PARCIAL_2"
+    TPI = "TPI"
+    IGNORAR = "IGNORAR"
+
+
+class EstadoCierreEnum(str, Enum):
+    """Veredicto de cierre de cursada de un alumno en una materia."""
+
+    PROMOCIONA = "PROMOCIONA"
+    REGULARIZA = "REGULARIZA"
+    RECURSA = "RECURSA"

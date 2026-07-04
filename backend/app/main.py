@@ -225,6 +225,11 @@ def register_routers(app: FastAPI) -> None:
 
     app.include_router(notificaciones_router, prefix="/api/v1")
 
+    # Cierre de cursada (admin panel) — mapeo de ítems del calificador + corridas
+    from app.routers.cierre_cursada import router as cierre_cursada_router
+
+    app.include_router(cierre_cursada_router, prefix="/api/v1")
+
     # Público (Fase 3 — PDF de devolución sin JWT, vía token firmado)
     from app.routers.public_docs import router as public_docs_router
 

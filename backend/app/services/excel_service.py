@@ -12,6 +12,7 @@ import io
 from datetime import datetime
 
 from app.core.fecha import ahora_ar, fmt_fecha_ar
+from app.services import excel_estilos
 
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -346,10 +347,7 @@ class ExcelService:
 
     def _sheet_title(self, regional: str) -> str:
         """Nombre de hoja válido para Excel: sin caracteres prohibidos y ≤ 31 chars."""
-        import re
-
-        limpio = re.sub(r"[:\\/?*\[\]]", " ", regional).strip()
-        return (limpio or "Sin regional")[:31]
+        return excel_estilos.sheet_title(regional, default="Sin regional")
 
     def exportar_pendientes(self, pendientes, materia_nombre: str, agrupar_por: str = "trabajo") -> tuple[bytes, str]:
         """Arma el .xlsx de "entregas pendientes" (entregadas en Moodle sin corregir).
@@ -478,15 +476,7 @@ class ExcelService:
 
     def _titulo_unico(self, titulo: str, usados: set[str]) -> str:
         """Nombre de hoja válido y único (Excel no permite hojas con el mismo nombre)."""
-        base = self._sheet_title(titulo)
-        candidato = base
-        i = 2
-        while candidato in usados:
-            sufijo = f" ({i})"
-            candidato = base[: 31 - len(sufijo)] + sufijo
-            i += 1
-        usados.add(candidato)
-        return candidato
+        return excel_estilos.titulo_unico(titulo, usados)
 
     def _get_nota_fill(self, nota: float) -> PatternFill:
         """
@@ -524,13 +514,4 @@ class ExcelService:
         Returns:
             Sanitized filename.
         """
-        import re
-
-        # Remove invalid characters
-        filename = re.sub(r'[<>:"/\\|?*]', "_", filename)
-        # Remove multiple spaces
-        filename = re.sub(r"\s+", "_", filename)
-        # Remove leading/trailing spaces and dots
-        filename = filename.strip(". ")
-
-        return filename
+        return excel_estilos.sanitize_filename(filename)

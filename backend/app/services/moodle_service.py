@@ -587,11 +587,20 @@ class MoodleService:
         client: "httpx.AsyncClient",
         moodle_host: str,
         course_id: int,
+        *,
+        incluir_porcentaje: bool = False,
     ) -> str:
         """Export del calificador (notas de TODOS los alumnos) en TXT/comma → str CSV.
 
         GET del form (extrae sesskey + itemids) → POST a export.php. Requiere `client` ya
         logueado (login_sesion). ~282 KB para 772 alumnos en el spike R0.
+
+        incluir_porcentaje=True también tilda `display[percentage]`, así el export trae
+        una columna extra por ítem ya normalizada a % del máximo configurado (necesario
+        para cierre de cursada, que nunca compara notas crudas contra 60/90/40). Default
+        False preserva el comportamiento exacto de antes para los demás callers (snapshot).
+        Parsear el resultado con parsear_export_calificador_dual, no con
+        parsear_export_calificador (esa pisa una representación con la otra).
         """
         base = moodle_host.rstrip("/")
         idx_url = f"{base}/grade/export/txt/index.php"
@@ -625,7 +634,7 @@ class MoodleService:
             "export_feedback": "0",
             "export_onlyactive": "1",
             "display[real]": "1",
-            "display[percentage]": "0",
+            "display[percentage]": "1" if incluir_porcentaje else "0",
             "display[letter]": "0",
             "decimals": "2",
             "separator": "comma",

@@ -14,6 +14,7 @@ import {
   PieChart,
   Mail,
   BellRing,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -45,6 +46,12 @@ export const navItems: NavItem[] = [
     primary: true,
   },
   { to: '/rubricas', icon: FileText, label: 'Rúbricas', roles: ['ADMIN', 'COORDINADOR'] },
+  {
+    to: '/cierre-cursada',
+    icon: FileSpreadsheet,
+    label: 'Cierre de cursada',
+    roles: ['ADMIN', 'COORDINADOR'],
+  },
   {
     to: '/entregas',
     icon: CheckSquare,

@@ -1,4 +1,5 @@
 import { apiClient } from '@/shared/services/api-client';
+import { dispararDescarga } from '@/shared/services/download';
 import type {
   AgruparPor,
   ConsultaGestion,
@@ -6,9 +7,6 @@ import type {
   FiltrosDisponibles,
   FiltrosGestion,
 } from '../types';
-
-const XLSX_MIME =
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
 export async function getCursos(): Promise<CursoGestion[]> {
   const { data } = await apiClient.get<CursoGestion[]>('/gestion/cursos');
@@ -37,23 +35,6 @@ export async function consultarGestion(
  * Descarga el .xlsx (una hoja por regional). Pide el body como blob y dispara
  * la descarga en el navegador usando el filename que manda el backend.
  */
-/** Dispara la descarga en el navegador a partir de una respuesta blob de axios. */
-function dispararDescarga(resp: { data: BlobPart; headers: Record<string, unknown> }, fallback: string): void {
-  const cd = resp.headers['content-disposition'] as string | undefined;
-  const match = cd?.match(/filename="?([^"]+)"?/);
-  const filename = match?.[1] ?? fallback;
-
-  const blob = new Blob([resp.data], { type: XLSX_MIME });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 export async function descargarExcel(
   materiaId: number,
   filtros: FiltrosGestion,

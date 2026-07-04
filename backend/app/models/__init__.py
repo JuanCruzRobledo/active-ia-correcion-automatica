@@ -14,7 +14,9 @@ from app.models.base import (
     get_async_session,
 )
 from app.models.enums import (
+    CategoriaItemCierreEnum,
     EstadoAvanceEnum,
+    EstadoCierreEnum,
     EstadoCriterioEnum,
     EstadoEntregaEnum,
     EstadoEnvioEnum,
@@ -45,6 +47,7 @@ from app.models.moodle_sync import MoodleSync
 from app.models.avance import AvanceAlumno, AvanceSnapshot, SnapshotCronConfig
 from app.models.tutor_nexo import TutorNexo
 from app.models.notificacion import EnvioEmailLog, NotificacionCronConfig
+from app.models.cierre_cursada import CierreCursadaAlumno, CierreCursadaItem, CierreCursadaRun
 
 __all__ = [
     # Base
@@ -70,6 +73,8 @@ __all__ = [
     "FuenteComponenteEnum",
     "TipoExamenEnum",
     "ModoAprobacionEnum",
+    "CategoriaItemCierreEnum",
+    "EstadoCierreEnum",
     # Models
     "Usuario",
     "Cohorte",
@@ -93,4 +98,7 @@ __all__ = [
     "TutorNexo",
     "EnvioEmailLog",
     "NotificacionCronConfig",
+    "CierreCursadaItem",
+    "CierreCursadaRun",
+    "CierreCursadaAlumno",
 ]

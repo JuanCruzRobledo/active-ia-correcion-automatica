@@ -1,5 +1,6 @@
 // Servicio de lectura del dashboard de gestores
 import { apiClient } from '@/shared/services/api-client';
+import { dispararDescarga } from '@/shared/services/download';
 import type { AlumnoDetalle, AvanceResponse, CohorteArbol, EstadoAvance } from '../types';
 
 export const dashboardGestorService = {
@@ -46,17 +47,6 @@ export const dashboardGestorService = {
       `/gestion/dashboard/avance/excel?${params.toString()}`,
       { responseType: 'blob' }
     );
-    const dispo = resp.headers['content-disposition'] as string | undefined;
-    const match = dispo ? /filename="?([^"]+)"?/.exec(dispo) : null;
-    const filename = match?.[1] ?? 'avance.xlsx';
-
-    const url = URL.createObjectURL(resp.data as Blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    dispararDescarga(resp, 'avance.xlsx');
   },
 };

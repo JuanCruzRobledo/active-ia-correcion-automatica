@@ -20,6 +20,7 @@ import { PendientesPage } from '@/features/pendientes/pages';
 import { PorEntregarPage } from '@/features/por-entregar/pages';
 import { GestionPage } from '@/features/gestion/pages';
 import { PerfilPage } from '@/features/perfil/pages/PerfilPage';
+import { CierreCursadaPage } from '@/features/cierre-cursada/pages';
 
 // Lazy: el dashboard de gestores trae Recharts (~350 KB gzip). Se carga solo al
 // entrar a /avance, así no pesa en el bundle principal del resto de la app.
@@ -107,6 +108,10 @@ export const router = createBrowserRouter([
       {
         path: 'rubricas',
         element: <RubricasPage />,
+      },
+      {
+        path: 'cierre-cursada',
+        element: <CierreCursadaPage />,
       },
       // Tutor routes
       {

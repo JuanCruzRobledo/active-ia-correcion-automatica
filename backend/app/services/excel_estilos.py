@@ -7,6 +7,8 @@ reportes (avance de tutor nexo/académico y dashboard de gestores) se ven idént
 un cambio de estilo se hace en un solo lugar.
 """
 
+import re
+
 from openpyxl.chart import DoughnutChart, Reference
 from openpyxl.chart.label import DataLabelList
 from openpyxl.chart.series import DataPoint
@@ -179,3 +181,32 @@ def fila_datos(
         u = ws.cell(fila, resaltar_col)
         u.fill = FILL_DESAPROB
         u.font = Font(color=ROJO_TXT)
+
+
+# ===================== nombre de hoja / archivo (compartido entre generadores) =====================
+
+
+def sheet_title(nombre: str, *, default: str = "Sin nombre") -> str:
+    """Nombre de hoja válido para Excel: sin caracteres prohibidos y ≤ 31 chars."""
+    limpio = re.sub(r"[:\\/?*\[\]]", " ", nombre).strip()
+    return (limpio or default)[:31]
+
+
+def titulo_unico(nombre: str, usados: set[str]) -> str:
+    """Nombre de hoja válido y único (Excel no permite hojas con el mismo nombre)."""
+    base = sheet_title(nombre)
+    candidato = base
+    i = 2
+    while candidato in usados:
+        sufijo = f" ({i})"
+        candidato = base[: 31 - len(sufijo)] + sufijo
+        i += 1
+    usados.add(candidato)
+    return candidato
+
+
+def sanitize_filename(filename: str) -> str:
+    """Nombre de archivo sin caracteres inválidos, espacios colapsados a '_'."""
+    filename = re.sub(r'[<>:"/\\|?*]', "_", filename)
+    filename = re.sub(r"\s+", "_", filename)
+    return filename.strip(". ")

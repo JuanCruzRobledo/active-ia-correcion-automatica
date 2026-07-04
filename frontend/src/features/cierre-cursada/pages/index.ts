@@ -1,0 +1,1 @@
+export { CierreCursadaPage } from './CierreCursadaPage';
