@@ -106,6 +106,21 @@ def _mejor(*resultados: str) -> str:
     return max(resultados, key=lambda r: _PRECEDENCIA.get(r, 0))
 
 
+def _valor_numerico(ex: dict, notas_uid: dict[int, str]) -> float | None:
+    """Nota numérica de un examen (base o rescate), o None si el examen es modo ESCALA o
+    no tiene nota parseable. Sólo tiene sentido en modo NUMERICO (ESCALA no tiene escala
+    numérica: el cierre lo evalúa por `resultado`, no por `valor_real`)."""
+    if ex.get("modo_aprobacion") != "NUMERICO":
+        return None
+    return parsear_nota_numerica(notas_uid.get(ex.get("moodle_cmid")))
+
+
+def _mejor_valor_real(*valores: float | None) -> float | None:
+    """Mejor (mayor) valor numérico entre varios, ignorando los None. None si todos None."""
+    numericos = [v for v in valores if v is not None]
+    return max(numericos) if numericos else None
+
+
 def numeros_por_tipo(examenes: list[dict]) -> dict[int, int]:
     """{examen_id: número visible} derivado del orden entre exámenes del mismo tipo."""
     numeros: dict[int, int] = {}
@@ -155,7 +170,12 @@ def calcular_resultados_examenes(
     fuente estructural": detecta 'sin_corregir' (entregó, grade=-1) y 'ausente' (sin
     registro), que el texto no distingue; cuando hay nota real, se interpreta el texto
     (sirve para NUMERICO y ESCALA). Los exámenes sin clave (quiz/sin fuente) usan el texto.
-    Devuelve [{examen_id, tipo, numero, resultado, rescatado}] para cada PARCIAL/GLOBAL.
+    Devuelve [{examen_id, tipo, numero, etiqueta, resultado, rescatado, valor_real,
+    modo_aprobacion, nota_minima}] para cada PARCIAL/GLOBAL. `valor_real` es el mejor valor
+    NUMÉRICO (mayor) entre la instancia base y sus rescates —vía `parsear_nota_numerica`
+    sobre `notas_uid`—, o `None` si el principal está en modo ESCALA o no tiene nota
+    numérica parseable. `modo_aprobacion`/`nota_minima` son los del examen principal (los
+    consume el service para armar la entrada de `calcular_estado_cierre`).
     """
     numeros = numeros_por_tipo(examenes_config)
     estructural = estructural_uid or {}
@@ -186,10 +206,15 @@ def calcular_resultados_examenes(
         if ex.get("tipo") not in TIPOS_PRINCIPALES:
             continue
         base = resultado_de(ex)
-        recs = [resultado_de(r) for r in rescates.get(ex["id"], [])]
+        recs_ex = rescates.get(ex["id"], [])
+        recs = [resultado_de(r) for r in recs_ex]
         efectivo = _mejor(base, *recs) if recs else base
         rescatado = base != "aprobado" and efectivo == "aprobado"
         numero = numeros.get(ex["id"])
+        valor_real = _mejor_valor_real(
+            _valor_numerico(ex, notas_uid),
+            *[_valor_numerico(r, notas_uid) for r in recs_ex],
+        )
         out.append(
             {
                 "examen_id": ex["id"],
@@ -198,6 +223,9 @@ def calcular_resultados_examenes(
                 "etiqueta": etiqueta_examen(ex.get("tipo"), numero),
                 "resultado": efectivo,
                 "rescatado": rescatado,
+                "valor_real": valor_real,
+                "modo_aprobacion": ex.get("modo_aprobacion"),
+                "nota_minima": ex.get("nota_minima"),
             }
         )
     return out

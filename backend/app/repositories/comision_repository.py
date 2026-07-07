@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.comision import Comision, ComisionTutor
 from app.models.materia import CoordinadorMateria
+from app.utils.orden_natural import orden_natural_sql
 
 
 class ComisionRepository:
@@ -124,7 +125,7 @@ class ComisionRepository:
         total = total_result.scalar() or 0
 
         # Apply pagination and ordering
-        query = query.order_by(Comision.anio.desc(), Comision.nombre.asc())
+        query = query.order_by(Comision.anio.desc(), *orden_natural_sql(Comision.nombre))
         query = query.offset((page - 1) * per_page).limit(per_page)
 
         # Execute
@@ -149,7 +150,7 @@ class ComisionRepository:
                 Comision.materia_id == materia_id,
                 Comision.activa == True,  # noqa: E712
             )
-            .order_by(Comision.anio.desc(), Comision.nombre.asc())
+            .order_by(Comision.anio.desc(), *orden_natural_sql(Comision.nombre))
         )
         return list(result.scalars().all())
 
@@ -165,7 +166,7 @@ class ComisionRepository:
                 Comision.activa == True,  # noqa: E712
             )
             .options(selectinload(Comision.tutores).selectinload(ComisionTutor.tutor))
-            .order_by(Comision.nombre.asc())
+            .order_by(*orden_natural_sql(Comision.nombre))
         )
         return list(result.scalars().all())
 
@@ -186,7 +187,7 @@ class ComisionRepository:
                 ComisionTutor.tutor_id == tutor_id,
                 Comision.activa == True,  # noqa: E712
             )
-            .order_by(Comision.anio.desc(), Comision.nombre.asc())
+            .order_by(Comision.anio.desc(), *orden_natural_sql(Comision.nombre))
         )
         return list(result.scalars().all())
 

@@ -1,0 +1,463 @@
+{
+  "pbtResults": {},
+  "executionHistory": {
+    "1. Escribir tests exploratorios de la Bug Condition (ANTES del fix)": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361373219
+      },
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361393699
+      }
+    ],
+    "2. Escribir tests de preservación (ANTES del fix)": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361373313
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783362825938
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783366513210
+      }
+    ],
+    "3. Funciones puras de escala en `cierre_cursada_calculo.py`": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361373411
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783366518055
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783366699990
+      }
+    ],
+    "4. Función pura de clasificación `calcular_estado_cierre` (reemplaza `calcular_estado`)": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361373474
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783366705679
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783367910949
+      }
+    ],
+    "5. Función pura `calcular_nota_final` (Nota Final ponderada, escala normalizada)": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361373558
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783367915083
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783368115109
+      }
+    ],
+    "6. Tests basados en propiedades (PBT) de las funciones puras": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361373631
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783368127329
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783368669258
+      }
+    ],
+    "7. Extender `examen_mapper.calcular_resultados_examenes` con el mejor `valor_real`": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361373693
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783368673383
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783368913714
+      }
+    ],
+    "8.1 Modelos SQLAlchemy": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361373769
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783368927108
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783369617734
+      }
+    ],
+    "8.2 Schemas Pydantic": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361373842
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783370594152
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783371080404
+      }
+    ],
+    "9. Repository (`repositories/cierre_cursada_repository.py`)": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361373930
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783371085565
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783372616991
+      }
+    ],
+    "10. Router (`routers/cierre_cursada.py`)": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361373989
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783372621397
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783373499180
+      }
+    ],
+    "11.1 Reemplazar la generación por el flujo dirigido por config": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374053
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783373511364
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783374218832
+      }
+    ],
+    "11.2 Vigilar el límite de 500 LOC": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374112
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783374224903
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783374230997
+      }
+    ],
+    "11.3 Verificar el test exploratorio de clasificación/NF (Property 1)": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374180
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783374235414
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783374636454
+      }
+    ],
+    "11.4 Verificar que la preservación se mantiene (Property 2)": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374248
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783374641592
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783374798241
+      }
+    ],
+    "12. Excel (`services/excel_cierre_cursada.py`) — layout del modelo CORREGIDO + Nota Final": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374312
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783374803311
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783375583536
+      }
+    ],
+    "13. Migración Alembic (`backend/alembic/versions/`)": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374371
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783375590900
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783376315158
+      }
+    ],
+    "14. Tests de integración (`backend/tests/integration/api/`)": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374430
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783376323488
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783377962024
+      }
+    ],
+    "15. Checkpoint — toda la suite verde": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374539
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783377966753
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378491550
+      }
+    ],
+    "16.1 Eliminar el componente de mapeo manual": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374605
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378524099
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378616955
+      }
+    ],
+    "16.2 `types/index.ts` — alinear los tipos al contrato nuevo": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374665
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378537075
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378617221
+      }
+    ],
+    "16.3 `services/cierre-cursada.service.ts` — quitar el mapeo manual": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374730
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378622650
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378785954
+      }
+    ],
+    "16.4 `hooks/useCierreCursada.ts` — quitar hooks y key del mapeo": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374793
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378633363
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378786912
+      }
+    ],
+    "16.5 `pages/CierreCursadaPage.tsx` — quitar el paso de mapeo y el umbral": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374855
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378640722
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378787599
+      }
+    ],
+    "16.6 `components/HistorialRunsTable.tsx` — quitar la columna \"Umbral TP\"": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361374949
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378640866
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378787889
+      }
+    ],
+    "16.7 Verificación del frontend (typecheck + lint)": [
+      {
+        "executionId": "396aedcc-d706-4b99-a571-48c4eb6d64a1",
+        "chatSessionId": "sess_b39a6636-639e-45f5-8bc1-0710a394c40a",
+        "timestamp": 1783361375013
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378795753
+      },
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378944591
+      }
+    ],
+    "8. Modelos y schemas (`models/cierre_cursada.py`, `schemas/cierre_cursada.py`)": [
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783371080529
+      }
+    ],
+    "11. Servicio (`services/cierre_cursada_service.py`) — orquestación dirigida por ExamenMateria": [
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783374798340
+      }
+    ],
+    "16. Frontend — alinear la pantalla \"Cierre de cursada\" al contrato nuevo (`frontend/src/features/cierre-cursada/`)": [
+      {
+        "executionId": "754462f4-01c4-4688-8a39-468b3e8eb0f6",
+        "chatSessionId": "sess_8f3e9dec-75c5-4ed5-9411-44da3d2a0d26",
+        "timestamp": 1783378944667
+      }
+    ]
+  }
+}

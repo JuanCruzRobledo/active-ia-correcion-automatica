@@ -47,7 +47,7 @@ from app.models.moodle_sync import MoodleSync
 from app.models.avance import AvanceAlumno, AvanceSnapshot, SnapshotCronConfig
 from app.models.tutor_nexo import TutorNexo
 from app.models.notificacion import EnvioEmailLog, NotificacionCronConfig
-from app.models.cierre_cursada import CierreCursadaAlumno, CierreCursadaItem, CierreCursadaRun
+from app.models.cierre_cursada import CierreCursadaAlumno, CierreCursadaRun
 
 __all__ = [
     # Base
@@ -98,7 +98,6 @@ __all__ = [
     "TutorNexo",
     "EnvioEmailLog",
     "NotificacionCronConfig",
-    "CierreCursadaItem",
     "CierreCursadaRun",
     "CierreCursadaAlumno",
 ]

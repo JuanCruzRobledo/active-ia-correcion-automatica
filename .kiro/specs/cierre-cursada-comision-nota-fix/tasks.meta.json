@@ -1,0 +1,290 @@
+{
+  "pbtResults": {
+    "1. Escribir test de exploración de la condición de bug (Bug 1 + Bug 2) — ANTES del fix": {
+      "status": "passed",
+      "failingExample": "Bug 1 (test_bug_resolver_comision_match_por_moodle_group_id): grupos=[{\"id\": 342, \"name\": \"M26 C1-09\"}], comisiones=[Comision(id=1, nombre=\"M26 C1-09\", moodle_group_code=None, moodle_group_id=342)] -> CierreCursadaService._resolver_comision(grupos, comisiones) raises AttributeError: 'dict' object has no attribute 'strip' (código actual espera list[str] y matchea por moodle_group_code, no sabe iterar dicts ni usar moodle_group_id). Esperado tras el fix: (1, \"M26 C1-09\", None).\n\nBug 1 (test_bug_resolver_comision_match_por_nombre_derivado): grupos=[{\"id\": None, \"name\": \"M26 C1-09\"}], comisiones=[Comision(id=1, nombre=\"M26 C1-09\", moodle_group_code=None)] -> mismo AttributeError: 'dict' object has no attribute 'strip' (no deriva el código de comisión del nombre vía parse_comision). Esperado tras el fix: (1, \"M26 C1-09\", None).\n\nBug 2 (test_bug_nota_final_parcial_y_global_faltantes_cuentan_como_cero): examenes P1=93(nota_minima=60), P2=None, Global=None -> calcular_nota_final(examenes) == None (assert None == 2 falló). Esperado tras el fix: 2.\n\nBug 2 (test_bug_nota_final_parcial_escala_aprobado_vale_diez): parcial ESCALA aprobado + Global=9.0 -> calcular_nota_final(examenes) == None (assert None == 9 falló). Esperado tras el fix: 9.\n\nBug 2 (test_bug_nota_final_ningun_examen_entregado_es_cero): parcial=None, global=None -> calcular_nota_final(examenes) == None (assert None == 0 falló). Esperado tras el fix: 0.\n\n5 failed, 17 passed (los 17 tests preexistentes de _resolver_comision/calcular_nota_final con la firma/contrato actual siguen pasando, confirmando que sólo se tocaron los casos de bug).",
+      "lastRunTimestamp": 1783381820895
+    },
+    "5. Escribir test de exploración — Orden de bloques de comisión (Bug 3) — ANTES del fix": {
+      "status": "passed",
+      "failingExample": "Scoped case 1 (desordenado): alumnos en comisiones \"M26 C1-03\", \"M26 C1-01\", \"M26 C1-02\" (orden de llegada) -> _agrupar_por_comision(alumnos).keys() = ['M26 C1-03', 'M26 C1-01', 'M26 C1-02']; esperado ['M26 C1-01', 'M26 C1-02', 'M26 C1-03']. Scoped case 2 (Sin comisión al final): alumno sin comisión llega primero + 2 comisiones reales -> keys()[-1] = 'M26 C1-02'; esperado 'Sin comisión asignada'. Hypothesis falsifying example: test_prop5_bloques_siempre_alfabeticos_con_sin_comision_al_final(nombres=['M26 C1-03', 'm26 c1-01']) -> titulos = ['M26 C1-03', 'm26 c1-01']; esperado (alfabético case-insensitive) ['m26 c1-01', 'M26 C1-03'].",
+      "lastRunTimestamp": 1783387125455
+    },
+    "6. Escribir test de exploración — Nota Final sólo para PROMOCIONA (Bug 4) — ANTES del fix": {
+      "status": "passed",
+      "failingExample": "4 distinct failing examples confirming Bug 4 exists on unfixed code:\n1) test_bug_regulariza_con_numericos_deberia_tener_nota_final_none: alumno REGULARIZA con parciales [45.0 (nota_minima 60), 60.0] + global 9.0 (nota_minima 6) -> calcular_estado_cierre(...)[\"nota_final\"] == 8, esperado None. AssertionError: assert 8 is None\n2) test_bug_recursa_con_examenes_no_entregados_deberia_tener_nota_final_none: alumno RECURSA con parcial y global no entregados (valor_real=None) -> nota_final == 0, esperado None. AssertionError: assert 0 is None\n3) test_bug_fmt_nota_final_none_deberia_ser_blanco_no_ne: _fmt_nota_final(None) == \"N/E\", esperado \"\". AssertionError: assert 'N/E' == ''\n4) test_prop6_bug_nota_final_solo_deberia_estar_presente_en_promociona (Hypothesis property-based): Falsifying example - parciales=[{examen_id:1, modo_aprobacion:'ESCALA', resultado_escala:'aprobado', valor_real:None}], global_examen={examen_id:1, modo_aprobacion:'ESCALA', resultado_escala:'desaprobado', valor_real:None} -> estado != PROMOCIONA pero nota_final == 4 (esperado None). AssertionError: assert 4 is None",
+      "lastRunTimestamp": 1783387524662
+    },
+    "8.5 Verificar que los tests de exploración de la condición de bug ahora pasan": {
+      "status": "passed",
+      "lastRunTimestamp": 1783388535016
+    }
+  },
+  "executionHistory": {
+    "1. Escribir test de exploración de la condición de bug (Bug 1 + Bug 2) — ANTES del fix": [
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783381602576
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783381611565
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783381849159
+      }
+    ],
+    "2. Escribir tests de preservación (property-based) — ANTES del fix": [
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783381602665
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783381853170
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783382711058
+      }
+    ],
+    "3.1 Implementar el fix de resolución de comisión (Bug 1)": [
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783381602745
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783382727360
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783383026846
+      }
+    ],
+    "3.2 Implementar el fix de la Nota Final (Bug 2)": [
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783381602823
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783383027067
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783383127290
+      }
+    ],
+    "3.3 Actualizar los tests existentes que afirman `is None` (casos 3, 7, 9)": [
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783381602884
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783383131277
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783383265752
+      }
+    ],
+    "3.4 Verificar que el test de exploración de la condición de bug ahora pasa": [
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783381602951
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783383269807
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783383319783
+      }
+    ],
+    "3.5 Verificar que los tests de preservación siguen pasando": [
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783381603008
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783383326186
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783383380772
+      }
+    ],
+    "4. Checkpoint - Asegurar que todos los tests pasan": [
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783381603075
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783383386914
+      },
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783384467028
+      }
+    ],
+    "3. Fix para resolución de comisión (Bug 1) y Nota Final \"N/E\" (Bug 2)": [
+      {
+        "executionId": "58ed99d9-d148-454b-b340-a12db6a4b7fa",
+        "chatSessionId": "sess_86b72c3f-3328-4135-9063-f9e492d19169",
+        "timestamp": 1783383380864
+      }
+    ],
+    "5. Escribir test de exploración — Orden de bloques de comisión (Bug 3) — ANTES del fix": [
+      {
+        "executionId": "ec9d4dba-cb19-4e60-8803-63f0954acfd3",
+        "chatSessionId": "sess_ce75de0c-9fc8-47ac-b564-e2999677c01b",
+        "timestamp": 1783386907665
+      },
+      {
+        "executionId": "ec9d4dba-cb19-4e60-8803-63f0954acfd3",
+        "chatSessionId": "sess_ce75de0c-9fc8-47ac-b564-e2999677c01b",
+        "timestamp": 1783387142616
+      }
+    ],
+    "6. Escribir test de exploración — Nota Final sólo para PROMOCIONA (Bug 4) — ANTES del fix": [
+      {
+        "executionId": "59287db8-980a-4c0b-a57b-3ca3d76144d9",
+        "chatSessionId": "sess_534a0045-d816-4b44-a093-2ce44090580a",
+        "timestamp": 1783387247789
+      },
+      {
+        "executionId": "59287db8-980a-4c0b-a57b-3ca3d76144d9",
+        "chatSessionId": "sess_534a0045-d816-4b44-a093-2ce44090580a",
+        "timestamp": 1783387544375
+      }
+    ],
+    "7. Escribir tests de preservación (Bug 3 + Bug 4) — ANTES del fix": [
+      {
+        "executionId": "64327a2b-08d1-4d84-bfb5-26998fd27089",
+        "chatSessionId": "sess_3ad7c83e-dea6-424f-807d-faeccba071d5",
+        "timestamp": 1783387722984
+      }
+    ],
+    "8.1 Implementar el fix de orden de bloques (Bug 3)": [
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388053232
+      },
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388161380
+      }
+    ],
+    "8.2 Implementar el gate de la Nota Final por estado (Bug 4) — Opción A": [
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388165298
+      },
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388257111
+      }
+    ],
+    "8.3 Implementar el render en blanco de la Nota Final (Bug 4)": [
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388268051
+      },
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388341059
+      }
+    ],
+    "8.4 Actualizar los tests existentes al nuevo contrato (Bug 4)": [
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388345345
+      },
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388475661
+      }
+    ],
+    "8.5 Verificar que los tests de exploración de la condición de bug ahora pasan": [
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388479604
+      },
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388552302
+      }
+    ],
+    "8.6 Verificar que los tests de preservación siguen pasando": [
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388556390
+      },
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388615789
+      }
+    ],
+    "8. Fix para orden de bloques (Bug 3) y Nota Final sólo para PROMOCIONA (Bug 4)": [
+      {
+        "executionId": "bb1d11cf-757a-4bda-adb6-9831b0164350",
+        "chatSessionId": "sess_c0cd9223-a141-47e8-bbe3-76ad7b12becc",
+        "timestamp": 1783388615868
+      }
+    ],
+    "9. Checkpoint - Asegurar que todos los tests pasan (Bug 3 + Bug 4)": [
+      {
+        "executionId": "5bf15a5e-aea1-4d4c-a75b-6ddfddd1bd6c",
+        "chatSessionId": "sess_5a9fc5bf-1e4e-4721-8ab6-12779a5e878d",
+        "timestamp": 1783388824322
+      },
+      {
+        "executionId": "5bf15a5e-aea1-4d4c-a75b-6ddfddd1bd6c",
+        "chatSessionId": "sess_5a9fc5bf-1e4e-4721-8ab6-12779a5e878d",
+        "timestamp": 1783389282511
+      }
+    ]
+  }
+}

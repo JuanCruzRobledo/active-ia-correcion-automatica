@@ -1,71 +1,24 @@
 # app/repositories/cierre_cursada_repository.py
 """
-Repository de cierre de cursada: mapeo de ítems del calificador
-(CierreCursadaItem) y corridas (CierreCursadaRun/CierreCursadaAlumno).
+Repository de cierre de cursada: corridas (CierreCursadaRun/CierreCursadaAlumno).
+
+El mapeo manual de ítems (CierreCursadaItem) se eliminó: el cierre ahora se
+dirige exclusivamente por la configuración de exámenes (`ExamenMateria`).
 """
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.cierre_cursada import (
-    CierreCursadaAlumno,
-    CierreCursadaItem,
-    CierreCursadaRun,
-)
+from app.models.cierre_cursada import CierreCursadaAlumno, CierreCursadaRun
+from app.utils.orden_natural import orden_natural_sql
 
 
 class CierreCursadaRepository:
-    """Repository para CierreCursadaItem / CierreCursadaRun / CierreCursadaAlumno."""
+    """Repository para CierreCursadaRun / CierreCursadaAlumno."""
 
     def __init__(self, db: AsyncSession):
         self.db = db
-
-    # ----- Mapeo de ítems (CierreCursadaItem) -----
-
-    async def get_mapping(
-        self, materia_id: int, cuatrimestre_id: int
-    ) -> list[CierreCursadaItem]:
-        """Mapeo ya confirmado para esa materia+cuatrimestre, indexado por cmid."""
-        result = await self.db.execute(
-            select(CierreCursadaItem).where(
-                CierreCursadaItem.materia_id == materia_id,
-                CierreCursadaItem.cuatrimestre_id == cuatrimestre_id,
-            )
-        )
-        return list(result.scalars().all())
-
-    async def upsert_mapping(
-        self, materia_id: int, cuatrimestre_id: int, items: list[dict]
-    ) -> list[CierreCursadaItem]:
-        """Reemplaza el mapeo confirmado de (materia, cuatrimestre) por `items`.
-
-        items: [{"moodle_cmid", "nombre_moodle", "categoria", "unidad", "opcional",
-        "orden"}]. Delete-then-insert: más simple que un ON CONFLICT DO UPDATE
-        y el volumen (decenas de ítems por materia) no lo justifica.
-        """
-        await self.db.execute(
-            delete(CierreCursadaItem).where(
-                CierreCursadaItem.materia_id == materia_id,
-                CierreCursadaItem.cuatrimestre_id == cuatrimestre_id,
-            )
-        )
-        filas = [
-            CierreCursadaItem(
-                materia_id=materia_id,
-                cuatrimestre_id=cuatrimestre_id,
-                moodle_cmid=item["moodle_cmid"],
-                nombre_moodle=item["nombre_moodle"],
-                categoria=item["categoria"],
-                unidad=item.get("unidad"),
-                opcional=item.get("opcional", False),
-                orden=item.get("orden"),
-            )
-            for item in items
-        ]
-        self.db.add_all(filas)
-        await self.db.commit()
-        return filas
 
     # ----- Corridas (CierreCursadaRun) -----
 
@@ -98,7 +51,7 @@ class CierreCursadaRepository:
             select(CierreCursadaAlumno)
             .where(CierreCursadaAlumno.run_id == run_id)
             .order_by(
-                CierreCursadaAlumno.comision_nombre.asc().nullslast(),
+                *orden_natural_sql(CierreCursadaAlumno.comision_nombre),
                 CierreCursadaAlumno.apellido.asc(),
                 CierreCursadaAlumno.nombre.asc(),
             )

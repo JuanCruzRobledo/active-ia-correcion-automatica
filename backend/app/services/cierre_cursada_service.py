@@ -1,13 +1,17 @@
 # app/services/cierre_cursada_service.py
 """
 CierreCursadaService — orquesta el cierre de cursada (PROMOCIONA/REGULARIZA/
-RECURSA) de una materia: trae el calificador completo de Moodle (WS + 1
-sesión + 1 export masivo, número CONSTANTE de requests, mismo patrón que
-SnapshotService), aplica el mapeo de ítems confirmado y la fórmula PURA de
-cierre_cursada_calculo, y persiste una corrida con el detalle por alumno.
+RECURSA) de una materia dirigido por `ExamenMateria` (fuente de verdad única,
+ver diseño "Destino de CierreCursadaItem"): trae el calificador completo de
+Moodle (WS + 1 sesión + 1 export masivo, número CONSTANTE de requests, mismo
+patrón que SnapshotService), resuelve rescates + valor por examen con
+`examen_mapper.calcular_resultados_examenes`, clasifica con la función PURA
+`cierre_cursada_calculo.calcular_estado_cierre` y persiste una corrida con el
+detalle por alumno.
 
-Nunca calcula con un mapeo sin confirmar: generar() bloquea si hay ítems del
-curso todavía sin una fila en cierre_cursada_items.
+Ya NO existe un mapeo manual de ítems del calificador (`CierreCursadaItem`):
+si la materia no tiene exámenes PARCIAL/GLOBAL configurados en el dashboard,
+`generar` bloquea con 400.
 """
 
 import logging
@@ -16,14 +20,15 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cierre_cursada import CierreCursadaAlumno, CierreCursadaRun
-from app.models.enums import CategoriaItemCierreEnum, EstadoCierreEnum, TipoActividadEnum
+from app.models.enums import EstadoCierreEnum, TipoActividadEnum
 from app.repositories.cierre_cursada_repository import CierreCursadaRepository
 from app.repositories.comision_repository import ComisionRepository
+from app.repositories.examen_repository import ExamenRepository
 from app.repositories.materia_repository import MateriaRepository
-from app.repositories.usuario_repository import UsuarioRepository
 from app.services.actividad_service import ActividadService
-from app.services.cierre_cursada_calculo import calcular_estado, sugerir_categoria
-from app.services.examen_mapper import parsear_nota_numerica
+from app.services.cierre_cursada_calculo import SinExamenesConfigurados, calcular_estado_cierre
+from app.services.examen_mapper import TIPOS_PRINCIPALES, calcular_resultados_examenes
+from app.services.gestion_parser import parse_comision
 from app.services.moodle_bulk_parser import (
     construir_indice_nombre_cmid,
     parsear_export_calificador_dual,
@@ -32,38 +37,15 @@ from app.services.moodle_service import MoodleService
 
 logger = logging.getLogger(__name__)
 
-REGLAS_CIERRE_DEFAULT = {
-    "autoeval_min_pct": 90,
-    "parcial_promocion_min_pct": 60,
-    "parcial_regulariza_min_pct": 40,
-    "tpi_min_pct": 60,
-}
-
-# Módulos de Moodle que pueden aportar una nota al calificador (assign=Tarea,
-# quiz=Cuestionario); otros modname (resource, forum, etc.) no tienen nota.
-_MODNAMES_CALIFICABLES = ("assign", "quiz")
-
-
-def _parse_pct(texto: str | None) -> float | None:
-    """"70,00 %" / "70,00" / "-" / None -> float o None (sin nota)."""
-    if not texto:
-        return None
-    return parsear_nota_numerica(texto.strip().rstrip("%").strip())
-
-
-def _tp_resultado(texto: str | None) -> str:
-    """Texto crudo del ítem TP (escala) -> "Aprobado"/"Desaprobado"/"N/E"."""
-    return texto if texto in ("Aprobado", "Desaprobado") else "N/E"
-
 
 class CierreCursadaService:
-    """Orquesta el mapeo de ítems y la generación del cierre de cursada."""
+    """Orquesta la generación del cierre de cursada dirigido por ExamenMateria."""
 
     def __init__(self, db: AsyncSession):
         self.db = db
         self.materia_repo = MateriaRepository(db)
         self.comision_repo = ComisionRepository(db)
-        self.usuario_repo = UsuarioRepository(db)
+        self.examen_repo = ExamenRepository(db)
         self.cierre_repo = CierreCursadaRepository(db)
         self.moodle = MoodleService(db)
 
@@ -91,152 +73,86 @@ class CierreCursadaService:
             )
         return materia
 
-    async def _items_del_curso(self, token: str, host: str, course_id: int) -> list[dict]:
-        """Ítems calificables del curso (assign/quiz), en el orden real de Moodle."""
-        secciones = await self.moodle.get_course_contents(token, host, course_id)
-        items = []
-        orden = 0
-        for seccion in secciones:
-            for modulo in seccion.get("modules", []):
-                if modulo.get("modname") not in _MODNAMES_CALIFICABLES:
-                    continue
-                items.append({"cmid": modulo.get("id"), "nombre": modulo.get("name"), "orden": orden})
-                orden += 1
-        return items
-
-    # ----- Mapeo de ítems -----
-
-    async def obtener_items_calificador(
-        self, materia_id: int, cuatrimestre_id: int, usuario
-    ) -> list[dict]:
-        """Ítems del calificador con sugerencia (regex) o mapeo ya confirmado."""
-        materia = await self._get_materia_configurada(materia_id)
-        token, host = await self.token_de_usuario(usuario)
-        items = await self._items_del_curso(token, host, materia.moodle_course_id)
-
-        guardados = {
-            row.moodle_cmid: row
-            for row in await self.cierre_repo.get_mapping(materia_id, cuatrimestre_id)
-        }
-
-        resultado = []
-        for item in items:
-            guardado = guardados.get(item["cmid"])
-            if guardado is not None:
-                resultado.append(
-                    {
-                        "moodle_cmid": item["cmid"],
-                        "nombre_moodle": item["nombre"],
-                        "orden": item["orden"],
-                        "categoria": guardado.categoria.value,
-                        "unidad": guardado.unidad,
-                        "opcional": guardado.opcional,
-                        "confirmado": True,
-                    }
-                )
-            else:
-                sugerencia = sugerir_categoria(item["nombre"] or "")
-                resultado.append(
-                    {
-                        "moodle_cmid": item["cmid"],
-                        "nombre_moodle": item["nombre"],
-                        "orden": item["orden"],
-                        "categoria": sugerencia["categoria"],
-                        "unidad": sugerencia["unidad"],
-                        "opcional": sugerencia["opcional"],
-                        "confirmado": False,
-                    }
-                )
-        return resultado
-
-    async def confirmar_mapping(
-        self, materia_id: int, cuatrimestre_id: int, items: list[dict]
-    ) -> list[dict]:
-        """Persiste el mapeo confirmado por el coordinador (reemplaza el anterior)."""
-        filas = await self.cierre_repo.upsert_mapping(materia_id, cuatrimestre_id, items)
-        return [
-            {
-                "moodle_cmid": f.moodle_cmid,
-                "nombre_moodle": f.nombre_moodle,
-                "orden": f.orden,
-                "categoria": f.categoria.value,
-                "unidad": f.unidad,
-                "opcional": f.opcional,
-            }
-            for f in filas
-        ]
-
-    # ----- Generación del cierre -----
-
     @staticmethod
     def _es_student(usuario: dict) -> bool:
         return any(r.get("shortname") == "student" for r in (usuario.get("roles") or []))
 
     @staticmethod
-    def _resolver_comision(grupos: list[str], comisiones: list) -> tuple[int | None, str | None, str | None]:
-        """(comision_id, comision_nombre, tutor_nombre) matcheando el nombre del grupo
-        Moodle del alumno contra Comision.moodle_group_code. 0 o >1 match -> sin comisión
-        (nunca se rompe la corrida por un alumno con mapeo ambiguo/roto)."""
-        nombres = {g.strip().casefold() for g in grupos if g}
-        matches = [
-            c for c in comisiones
-            if c.moodle_group_code and c.moodle_group_code.strip().casefold() in nombres
-        ]
-        if len(matches) != 1:
+    def _resolver_comision(grupos: list[dict], comisiones: list) -> tuple[int | None, str | None, str | None]:
+        """(comision_id, comision_nombre, tutor_nombre) resolviendo el/los grupo(s) de
+        comisión del alumno dentro de `grupos` (que trae VARIOS grupos: comisión +
+        regional + TPI + cohortes...). Bridge primario por `moodle_group_id` (mismo
+        puente confiable que `gestion_service`/`moodle_import_service`); fallback por
+        nombre de comisión derivado del grupo (`parse_comision`) contra `Comision.nombre`.
+        Los grupos que no son de comisión (regional "R-*", TPI "Grupo_NN", cohortes...)
+        no matchean ninguno de los dos puentes y se descartan naturalmente. 0 o >1
+        `Comision` DISTINTAS matcheadas -> sin comisión (nunca se rompe la corrida por
+        un alumno con mapeo ambiguo/roto)."""
+        por_group_id = {c.moodle_group_id: c for c in comisiones if c.moodle_group_id}
+        por_nombre = {c.nombre.strip().casefold(): c for c in comisiones if c.nombre}
+        encontradas: dict[int, object] = {}
+        for g in grupos:
+            gid = g.get("id")
+            if gid is not None and gid in por_group_id:
+                c = por_group_id[gid]
+                encontradas[c.id] = c
+                continue
+            codigo = parse_comision(g.get("name") or "")
+            if codigo:
+                c = por_nombre.get(codigo.strip().casefold())
+                if c:
+                    encontradas[c.id] = c
+        if len(encontradas) != 1:
             return None, "Sin comisión asignada", None
-        comision = matches[0]
+        comision = next(iter(encontradas.values()))
         tutor_nombre = " / ".join(ct.tutor.nombre for ct in comision.tutores) or None
         return comision.id, comision.nombre, tutor_nombre
+
+    # ----- Generación del cierre -----
 
     async def generar(
         self,
         materia_id: int,
         cuatrimestre_id: int,
-        umbral_tp_pct: float,
         usuario,
-        reglas_override: dict | None = None,
     ) -> CierreCursadaRun:
+        """Genera y persiste una corrida de cierre dirigida por `ExamenMateria`.
+
+        Carga la config de exámenes (PARCIAL/GLOBAL únicamente cuentan como
+        principales), descarga el calificador completo de Moodle (WS + sesión
+        + export dual, número CONSTANTE de requests, igual patrón que
+        `SnapshotService.generar`), resuelve rescates + `valor_real` por
+        alumno con `examen_mapper.calcular_resultados_examenes` y clasifica
+        con la función PURA `calcular_estado_cierre` (que también calcula la
+        Nota Final ponderada).
+        """
         materia = await self._get_materia_configurada(materia_id)
         course_id = materia.moodle_course_id
-        reglas = {**REGLAS_CIERRE_DEFAULT, **(reglas_override or {})}
+
+        examenes_materia = await self.examen_repo.get_by_materia(materia_id)
+        examenes_principales = [e for e in examenes_materia if e.tipo.value in TIPOS_PRINCIPALES]
+        if not examenes_principales:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail="La materia no tiene exámenes configurados en el dashboard",
+            )
+
+        # Config completa (incluye recuperatorio/extensión/extraordinaria: necesarios
+        # para que examen_mapper resuelva las cadenas de rescate de cada principal).
+        examenes_config = [
+            {
+                "id": e.id,
+                "tipo": e.tipo.value,
+                "moodle_cmid": e.moodle_cmid,
+                "modo_aprobacion": e.modo_aprobacion.value,
+                "nota_minima": e.nota_minima,
+                "recupera_examen_id": e.recupera_examen_id,
+                "orden": e.orden,
+            }
+            for e in examenes_materia
+        ]
 
         token, host = await self.token_de_usuario(usuario)
-
-        items_curso = await self._items_del_curso(token, host, course_id)
-        mapping_rows = await self.cierre_repo.get_mapping(materia_id, cuatrimestre_id)
-        cmids_mapeados = {row.moodle_cmid for row in mapping_rows}
-        faltantes = [i for i in items_curso if i["cmid"] not in cmids_mapeados]
-        if faltantes:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Faltan confirmar {len(faltantes)} ítem(s) del calificador antes de "
-                    "generar el cierre — revisá el mapeo primero"
-                ),
-            )
-
-        por_categoria: dict[CategoriaItemCierreEnum, list] = {}
-        for row in mapping_rows:
-            por_categoria.setdefault(row.categoria, []).append(row)
-        tp_items = [r for r in por_categoria.get(CategoriaItemCierreEnum.TP, []) if not r.opcional]
-        autoeval_items = [r for r in por_categoria.get(CategoriaItemCierreEnum.AUTOEVAL, []) if not r.opcional]
-        p1_items = por_categoria.get(CategoriaItemCierreEnum.PARCIAL_1, [])
-        p2_items = por_categoria.get(CategoriaItemCierreEnum.PARCIAL_2, [])
-        tpi_items = por_categoria.get(CategoriaItemCierreEnum.TPI, [])
-
-        # Guard contra el mapeo confirmado que termina sin ítems en NINGUNA categoría
-        # relevante (todo IGNORAR): eso produce un cierre donde absolutamente todos
-        # recursan, en silencio, y es casi siempre un error de clasificación, no la
-        # realidad — bloquear ahora es mucho más barato que descubrirlo en el Excel.
-        if not (tp_items or autoeval_items or p1_items or p2_items or tpi_items):
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "El mapeo confirmado no tiene ningún ítem en TP/Autoevaluación/Parcial 1/"
-                    "Parcial 2/TPI — revisá las categorías del mapeo antes de generar el cierre"
-                ),
-            )
-
         comisiones = await self.comision_repo.get_by_materia_con_tutores(materia_id)
 
         sesion = self.moodle.crear_cliente_sesion()
@@ -257,68 +173,65 @@ class CierreCursadaService:
                 sesion, host, course_id, incluir_porcentaje=True
             )
             notas_por_uid = parsear_export_calificador_dual(csv_text, nombre_a_cmid, email_a_uid)
+
+            # Grade ESTRUCTURAL de los exámenes-Tarea (assign): {cmid: {uid: entry}} —
+            # única señal que distingue 'entregado sin corregir' (grade=-1) de 'ausente'
+            # (el texto del calificador muestra '-' en ambos casos). Igual patrón que
+            # SnapshotService.generar: 1 request por examen assign.
+            mod_por_cmid = {
+                mod.get("id"): mod
+                for sec in secciones
+                for mod in sec.get("modules", [])
+            }
+            grades_por_cmid: dict[int, dict] = {}
+            for ex in examenes_config:
+                mod = mod_por_cmid.get(ex.get("moodle_cmid")) or {}
+                if mod.get("modname") == "assign" and mod.get("instance"):
+                    grades_por_cmid[ex["moodle_cmid"]] = await self.moodle.get_grades_full(
+                        token, host, mod["instance"]
+                    )
         finally:
             await sesion.aclose()
-
-        # Guard contra el export sin ninguna columna "percentage" reconocida: si hay
-        # ítems de autoeval/parcial/TPI mapeados pero el export nunca trajo un % para
-        # NINGUNO de ellos en NINGÚN alumno, el problema es de parseo/formato del
-        # export (no de datos) — cortar acá en vez de persistir 100% RECURSA.
-        cmids_esperan_pct = {r.moodle_cmid for r in (autoeval_items + p1_items + p2_items + tpi_items)}
-        cmids_con_pct_real = {
-            cmid for notas in notas_por_uid.values() for cmid, valores in notas.items() if "percentage" in valores
-        }
-        if cmids_esperan_pct and not (cmids_esperan_pct & cmids_con_pct_real):
-            raise HTTPException(
-                status.HTTP_502_BAD_GATEWAY,
-                detail=(
-                    "El export del calificador de Moodle no trajo el % de ningún ítem de "
-                    "autoevaluación/parcial/TPI mapeado — no se generó el cierre. Puede ser un "
-                    "problema de formato del export; avisá para revisarlo antes de reintentar."
-                ),
-            )
 
         alumnos: list[CierreCursadaAlumno] = []
         conteos = {"PROMOCIONA": 0, "REGULARIZA": 0, "RECURSA": 0}
         for u in students:
             uid = u.get("id")
-            notas = notas_por_uid.get(uid, {})
-
-            tps = [
-                {"unidad": r.unidad, "cmid": r.moodle_cmid, "resultado": _tp_resultado(notas.get(r.moodle_cmid, {}).get("real"))}
-                for r in tp_items
-            ]
-            autoeval = [
-                {"unidad": r.unidad, "pct": _parse_pct(notas.get(r.moodle_cmid, {}).get("percentage"))}
-                for r in autoeval_items
-            ]
-            p1 = [
-                {"cmid": r.moodle_cmid, "etiqueta": r.nombre_moodle, "pct": _parse_pct(notas.get(r.moodle_cmid, {}).get("percentage"))}
-                for r in p1_items
-            ]
-            p2 = [
-                {"cmid": r.moodle_cmid, "etiqueta": r.nombre_moodle, "pct": _parse_pct(notas.get(r.moodle_cmid, {}).get("percentage"))}
-                for r in p2_items
-            ]
-            tpi = [
-                {"cmid": r.moodle_cmid, "etiqueta": r.nombre_moodle, "pct": _parse_pct(notas.get(r.moodle_cmid, {}).get("percentage"))}
-                for r in tpi_items
-            ]
-
-            veredicto = calcular_estado(
-                {
-                    "tps": [t["resultado"] for t in tps],
-                    "autoeval_pcts": [a["pct"] for a in autoeval],
-                    "parcial1_pcts": [x["pct"] for x in p1],
-                    "parcial2_pcts": [x["pct"] for x in p2],
-                    "tpi_pcts": [x["pct"] for x in tpi],
+            notas_uid = {
+                cmid: valores.get("real") for cmid, valores in notas_por_uid.get(uid, {}).items()
+            }
+            examenes_alumno = calcular_resultados_examenes(
+                notas_uid,
+                examenes_config,
+                estructural_uid={
+                    cmid: grades.get(uid) for cmid, grades in grades_por_cmid.items()
                 },
-                reglas,
-                umbral_tp_pct,
             )
+            # examen_mapper expone `resultado`; calcular_estado_cierre espera
+            # `resultado_escala` (ver diseño, entrada de calcular_estado_cierre).
+            examenes_para_estado = [
+                {
+                    "examen_id": ex["examen_id"],
+                    "tipo": ex["tipo"],
+                    "modo_aprobacion": ex["modo_aprobacion"],
+                    "nota_minima": ex["nota_minima"],
+                    "valor_real": ex["valor_real"],
+                    "resultado_escala": ex["resultado"],
+                }
+                for ex in examenes_alumno
+            ]
 
-            grupos = [g.get("name") for g in (u.get("groups") or []) if g.get("name")]
-            comision_id, comision_nombre, tutor_nombre = self._resolver_comision(grupos, comisiones)
+            try:
+                veredicto = calcular_estado_cierre(examenes_para_estado)
+            except SinExamenesConfigurados as exc:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    detail="La materia no tiene exámenes configurados en el dashboard",
+                ) from exc
+
+            comision_id, comision_nombre, tutor_nombre = self._resolver_comision(
+                u.get("groups") or [], comisiones
+            )
 
             conteos[veredicto["estado"]] += 1
             alumnos.append(
@@ -330,27 +243,17 @@ class CierreCursadaService:
                     comision_id=comision_id,
                     comision_nombre=comision_nombre,
                     tutor_nombre=tutor_nombre,
-                    tps=tps,
-                    autoeval_pcts=autoeval,
-                    parcial1_instancias=p1,
-                    parcial2_instancias=p2,
-                    tpi_instancias=tpi,
-                    tp_ok=veredicto["tp_ok"],
-                    autoeval_ok=veredicto["autoeval_ok"],
-                    p1_max=veredicto["p1_max"],
-                    p2_max=veredicto["p2_max"],
-                    tpi_max=veredicto["tpi_max"],
+                    resultados_examenes=veredicto["resultados_examenes"],
+                    global_valor=veredicto["global_valor"],
                     estado=EstadoCierreEnum(veredicto["estado"]),
                     nota_final=veredicto["nota_final"],
-                    habilitado_final=veredicto["habilitado_final"],
                 )
             )
 
         run = CierreCursadaRun(
             materia_id=materia_id,
             cuatrimestre_id=cuatrimestre_id,
-            umbral_tp_pct=umbral_tp_pct,
-            reglas_snapshot=reglas,
+            examenes_snapshot=examenes_config,
             generado_por_id=usuario.id,
             total_alumnos=len(alumnos),
             total_promociona=conteos["PROMOCIONA"],

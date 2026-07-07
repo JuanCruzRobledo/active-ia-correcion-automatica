@@ -217,6 +217,7 @@ async def test_generar_calcula_resultados_examenes():
     assert ana == [{
         "examen_id": 1, "tipo": "PARCIAL", "numero": 1, "etiqueta": "Parcial 1",
         "resultado": "aprobado", "rescatado": False,
+        "valor_real": None, "modo_aprobacion": "ESCALA", "nota_minima": None,
     }]
     # Beto: ausente.
     assert por_uid[2].resultados_examenes["examenes"][0]["resultado"] == "ausente"

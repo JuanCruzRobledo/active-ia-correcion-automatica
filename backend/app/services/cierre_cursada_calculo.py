@@ -1,57 +1,81 @@
 # app/services/cierre_cursada_calculo.py
 """
 Lógica PURA del cierre de cursada (PROMOCIONA / REGULARIZA / RECURSA) —
-portada 1:1 desde el script de referencia validado de la skill
-`informe-cierre-cursada` (generar_informe_cierre.py / reglas-cierre.md).
+dirigida por la configuración de exámenes de la materia (`ExamenMateria`),
+fuente de verdad única (reemplaza al sistema paralelo de mapeo manual de
+ítems + umbrales fijos).
 
-Sin I/O: opera sobre notas ya clasificadas y normalizadas a porcentaje del
-máximo de cada ítem (el caller filtra las unidades marcadas "opcional" antes
-de llamar a estas funciones — este módulo nunca ve una unidad opcional).
+Sin I/O: opera sobre los resultados por examen PRINCIPAL (PARCIAL/GLOBAL) del
+alumno, ya resueltos con cadena de rescate por
+`examen_mapper.calcular_resultados_examenes` (valor numérico `valor_real` +
+resultado de escala `resultado_escala`).
 
-Árbol de decisión (por alumno):
-  - autoeval_ok: TODAS las unidades no-opcionales dieron >= autoeval_min_pct
-    (una sola por debajo ya rompe la condición, NO es un promedio).
-  - tp_ok: % de TPs "Aprobado" >= umbral_tp_pct. "N/E" cuenta como NO
-    aprobado, igual que "Desaprobado" — no es una categoría neutra.
-  - p1_max/p2_max/tpi_max: nota más alta entre TODAS las instancias rendidas
-    (entrega + recuperatorio + extraordinaria + extensión); None si ninguna.
-  - Nota Final (0-10, entero) solo se calcula si PROMOCIONA; REGULARIZA/
-    RECURSA la dejan en None ("N/E" en el reporte).
+Árbol de decisión (por alumno, ver diseño "Algoritmo de clasificación"):
+  - Promocionado: cumple el mínimo (`nota_minima`, con rescate) en TODOS los
+    exámenes principales, incluido el GLOBAL.
+  - Regular: no promociona pero cumple la banda (`nota_minima - banda`) en
+    TODOS los exámenes EXCEPTO el GLOBAL (opcional para regularizar).
+  - Recursante: cualquier otro caso.
+  - Exámenes en modo ESCALA no tienen banda numérica: cumplir el mínimo y
+    cumplir la banda son lo mismo (`resultado_escala == 'aprobado'`).
+
+La Nota Final ponderada (`calcular_nota_final`) normaliza cada examen a una
+escala común 0–10 (`normalizar_a_10`) antes de ponderar los N parciales al
+40 % y el GLOBAL al 60 % — evita que mezclar escalas (parciales en escala
+100, global en escala 10) produzca un número sin sentido.
 """
 
 import math
-import re
 
-CATEGORIA_TP = "TP"
-CATEGORIA_AUTOEVAL = "AUTOEVAL"
-CATEGORIA_PARCIAL_1 = "PARCIAL_1"
-CATEGORIA_PARCIAL_2 = "PARCIAL_2"
-CATEGORIA_TPI = "TPI"
-CATEGORIA_IGNORAR = "IGNORAR"
 
-# Unidades universalmente opcionales en las 3 materias de Programación —
-# cualquier otra particularidad (ej. Unidad 1/2 de Prog I) es un toggle
-# manual del coordinador, nunca hardcodeado acá: ya cambió una vez.
-_UNIDADES_OPCIONALES_DEFAULT = {9, 10}
+class SinExamenesConfigurados(Exception):
+    """La materia no tiene exámenes PARCIAL/GLOBAL configurados para clasificar.
 
-# Regex de sugerencia (ver references/moodle-export.md de la skill). Se
-# evalúan en este orden porque "Cuestionario de Actividad N" (miniquiz,
-# ignorar) y "Cuestionario de Autoevaluación... Unidad N" comparten el
-# prefijo "Cuestionario de" pero son cosas distintas.
-_RE_MINIQUIZ = re.compile(r"Cuestionario de Actividad\s*\d", re.IGNORECASE)
-_RE_DIAGNOSTICO = re.compile(r"Antes de comenzar", re.IGNORECASE)
-_RE_TP = re.compile(r"Actividad de cierre.*unidad\s*(\d+)", re.IGNORECASE)
-_RE_AUTOEVAL = re.compile(
-    r"(Cuestionario de )?Autoevaluaci[oó]n.*Unidad\s*(\d+)", re.IGNORECASE
-)
-_RE_PARCIAL_1 = re.compile(r"Primer(a)?\s+(Examen\s+)?Parcial", re.IGNORECASE)
-_RE_PARCIAL_2 = re.compile(r"Segundo\s+(Examen\s+)?Parcial", re.IGNORECASE)
-_RE_TPI = re.compile(r"Entrega.*Trabajo Integrador", re.IGNORECASE)
+    El service la traduce a `HTTPException(400)` (ver diseño, "Convenciones
+    de error").
+    """
 
 
 def round_half_up(x: float) -> int:
     """Redondeo estándar (no bankers' rounding) — 6.5 -> 7, no 6."""
     return math.floor(x + 0.5)
+
+
+def detectar_escala(nota_minima: float | None) -> int | None:
+    """Detecta la escala (100 o 10) de un examen a partir de la magnitud de
+    su `nota_minima` — config-driven, sin llamadas extra a Moodle.
+
+    `None` si el examen está en modo ESCALA (`nota_minima is None`, se
+    evalúa por Aprobado/Desaprobado, no tiene escala numérica). `100` si
+    `nota_minima >= 10` (frontera documentada: los valores reales esperados
+    son 6 y 60, lejos del corte en 10), si no `10`.
+    """
+    if nota_minima is None:
+        return None
+    return 100 if nota_minima >= 10 else 10
+
+
+def banda_regular(nota_minima: float | None) -> int | None:
+    """Relajación relativa al mínimo para clasificar como Regular: `20` en
+    escala 100, `2` en escala 10, `None` (sin banda numérica) en modo ESCALA.
+    """
+    escala = detectar_escala(nota_minima)
+    if escala is None:
+        return None
+    return 20 if escala == 100 else 2
+
+
+def normalizar_a_10(valor_real: float | None, nota_minima: float | None) -> float | None:
+    """Lleva `valor_real` a la escala común 0–10 antes de ponderar la Nota
+    Final: escala 100 se divide por 10 (80 -> 8.0), escala 10 (o `None` /
+    ESCALA) queda sin cambio. `None` si no hay valor numérico.
+    """
+    if valor_real is None:
+        return None
+    escala = detectar_escala(nota_minima)
+    if escala == 100:
+        return valor_real / 10
+    return valor_real
 
 
 def max_o_none(valores: list[float | None] | None) -> float | None:
@@ -60,115 +84,136 @@ def max_o_none(valores: list[float | None] | None) -> float | None:
     return max(limpios) if limpios else None
 
 
-def tp_ok(tps: list[str], umbral_tp_pct: float) -> bool:
-    """% de TPs "Aprobado" >= umbral. Sin TPs -> True (vacuamente cumplido).
+def cumple_minimo(examen: dict) -> bool:
+    """Cumple el mínimo de aprobación de un examen principal.
 
-    "N/E" (no entregado) cuenta como NO aprobado, igual que "Desaprobado".
+    examen: `{tipo, modo_aprobacion, nota_minima, valor_real,
+    resultado_escala}` (ya con rescate aplicado). Modo ESCALA: sin nota
+    numérica, se evalúa por `resultado_escala`. Modo NUMERICO: `valor_real
+    >= nota_minima` (`>=`, no `>`).
     """
-    if not tps:
-        return True
-    aprobados = sum(1 for t in tps if t == "Aprobado")
-    return (aprobados / len(tps) * 100) >= umbral_tp_pct
+    if examen.get("modo_aprobacion") == "ESCALA":
+        return examen.get("resultado_escala") == "aprobado"
+    valor_real = examen.get("valor_real")
+    nota_minima = examen.get("nota_minima")
+    return valor_real is not None and nota_minima is not None and valor_real >= nota_minima
 
 
-def autoeval_ok(autoeval_pcts: list[float | None], minimo: float) -> bool:
-    """TODAS las unidades no-opcionales >= minimo. Lista vacía -> False:
-    sin ninguna unidad evaluable no se puede afirmar que el alumno cumplió.
+def cumple_banda(examen: dict) -> bool:
+    """Cumple la banda relativa para Regular (sólo aplica a exámenes NO
+    globales, el caller filtra el GLOBAL antes de usar esta función).
+
+    Modo ESCALA: no tiene banda numérica, exige aprobado (igual que
+    `cumple_minimo`). Modo NUMERICO: `valor_real >= (nota_minima - banda)`.
     """
-    return len(autoeval_pcts) > 0 and all(
-        v is not None and v >= minimo for v in autoeval_pcts
-    )
+    if examen.get("modo_aprobacion") == "ESCALA":
+        return examen.get("resultado_escala") == "aprobado"
+    valor_real = examen.get("valor_real")
+    nota_minima = examen.get("nota_minima")
+    banda = banda_regular(nota_minima)
+    if valor_real is None or nota_minima is None or banda is None:
+        return False
+    return valor_real >= (nota_minima - banda)
 
 
-def calcular_estado(alumno: dict, reglas: dict, umbral_tp_pct: float) -> dict:
+def _valor_para_nota_final(examen: dict) -> float:
+    """Valor numérico 0-10 de un examen para ponderar la Nota Final —
+    SIEMPRE devuelve un número (nunca `None`): un faltante cuenta como 0.
+
+    Modo ESCALA: `10.0` si `resultado_escala == "aprobado"`, si no `0.0`
+    (desaprobado, ausente, o sin resultado). Modo NUMERICO: `valor_real`
+    normalizado a 0-10 (`normalizar_a_10`); `0.0` si no se rindió (no hay
+    `valor_real`).
+    """
+    if examen.get("modo_aprobacion") == "ESCALA":
+        return 10.0 if examen.get("resultado_escala") == "aprobado" else 0.0
+    norm = normalizar_a_10(examen.get("valor_real"), examen.get("nota_minima"))
+    return norm if norm is not None else 0.0
+
+
+def calcular_nota_final(examenes: list[dict]) -> int | None:
+    """Nota Final ponderada del alumno, con escala normalizada.
+
+    `NF = (promedio de los N exámenes PARCIAL normalizados a 0-10) * 0.4 +
+    (GLOBAL normalizado a 0-10) * 0.6`, redondeada con `round_half_up` a
+    entero 0-10. Un examen no entregado (o en modo ESCALA no aprobado)
+    cuenta como `0` en vez de invalidar el cálculo — ver
+    `_valor_para_nota_final`.
+
+    examenes: misma lista de exámenes PRINCIPALES (PARCIAL/GLOBAL) del
+    alumno que recibe `calcular_estado_cierre`, cada uno
+    `{tipo, modo_aprobacion, nota_minima, valor_real, ...}` (ya con rescate
+    resuelto — `valor_real` es el mejor valor numérico entre la instancia
+    base y sus rescates).
+
+    Devuelve `None` (`N/E` en el reporte) sólo si la materia no tiene la
+    forma PARCIAL+GLOBAL configurada:
+      - no hay ningún examen PARCIAL, o
+      - no hay exactamente un examen GLOBAL.
+
+    Si hay PARCIAL y GLOBAL, SIEMPRE devuelve un `int` 0-10 (los faltantes
+    cuentan como 0).
+    """
+    parciales = [e for e in examenes if e.get("tipo") == "PARCIAL"]
+    globales = [e for e in examenes if e.get("tipo") == "GLOBAL"]
+
+    if len(parciales) == 0 or len(globales) != 1:
+        return None
+
+    parciales_vals = [_valor_para_nota_final(e) for e in parciales]
+    global_val = _valor_para_nota_final(globales[0])
+
+    promedio_parciales = sum(parciales_vals) / len(parciales_vals)
+    nf = promedio_parciales * 0.4 + global_val * 0.6
+    return round_half_up(nf)
+
+
+def calcular_estado_cierre(examenes: list[dict]) -> dict:
     """Veredicto de cierre de un alumno: PROMOCIONA / REGULARIZA / RECURSA.
 
-    alumno: {"tps": [...], "autoeval_pcts": [...], "parcial1_pcts": [...],
-             "parcial2_pcts": [...], "tpi_pcts": [...]} — ya normalizados a
-    porcentaje del máximo de cada ítem, unidades opcionales ya excluidas.
-    reglas: {"autoeval_min_pct", "parcial_promocion_min_pct",
-             "parcial_regulariza_min_pct", "tpi_min_pct"}.
+    examenes: lista de exámenes PRINCIPALES (PARCIAL/GLOBAL) del alumno, cada
+    uno `{examen_id, tipo, modo_aprobacion, nota_minima, valor_real,
+    resultado_escala}` (ya con rescate resuelto por
+    `examen_mapper.calcular_resultados_examenes`).
+
+    Devuelve `{estado, resultados_examenes, global_valor, nota_final}`.
+    `nota_final` sólo se informa para el estado PROMOCIONA (entero 0-10,
+    resultado de `calcular_nota_final(examenes)`); para REGULARIZA/RECURSA
+    es siempre `None` (celda en blanco en el reporte, no "N/E") — la Nota
+    Final ponderada sólo tiene sentido para quien promociona.
+
+    Lanza `SinExamenesConfigurados` si `examenes` está vacío.
     """
-    tp_cumple = tp_ok(alumno.get("tps", []), umbral_tp_pct)
-    autoeval_cumple = autoeval_ok(alumno.get("autoeval_pcts", []), reglas["autoeval_min_pct"])
+    if not examenes:
+        raise SinExamenesConfigurados(
+            "La materia no tiene exámenes PARCIAL/GLOBAL configurados para clasificar"
+        )
 
-    p1_max = max_o_none(alumno.get("parcial1_pcts"))
-    p2_max = max_o_none(alumno.get("parcial2_pcts"))
-    tpi_max = max_o_none(alumno.get("tpi_pcts"))
+    no_globales = [e for e in examenes if e.get("tipo") != "GLOBAL"]
+    globales = [e for e in examenes if e.get("tipo") == "GLOBAL"]
 
-    promociona = (
-        autoeval_cumple
-        and tp_cumple
-        and p1_max is not None and p1_max >= reglas["parcial_promocion_min_pct"]
-        and p2_max is not None and p2_max >= reglas["parcial_promocion_min_pct"]
-        and tpi_max is not None and tpi_max >= reglas["tpi_min_pct"]
-    )
-    regulariza = (not promociona) and (
-        autoeval_cumple
-        and tp_cumple
-        and p1_max is not None and p1_max >= reglas["parcial_regulariza_min_pct"]
-        and p2_max is not None and p2_max >= reglas["parcial_regulariza_min_pct"]
-    )
+    promociona = all(cumple_minimo(e) for e in examenes)  # incluye GLOBAL
+    regulariza = (not promociona) and all(cumple_banda(e) for e in no_globales)
 
     if promociona:
-        nf_cruda = ((p1_max + p2_max) / 2) * 0.4 + tpi_max * 0.6
-        nota_final = round_half_up(nf_cruda / 10)
-        habilitado_final = "No aplica (promocionó)"
         estado = "PROMOCIONA"
     elif regulariza:
-        nota_final = None
-        habilitado_final = (
-            "Sí" if (tpi_max is not None and tpi_max >= reglas["tpi_min_pct"])
-            else "No (falta aprobar TPI)"
-        )
         estado = "REGULARIZA"
     else:
-        nota_final = None
-        habilitado_final = "No"
         estado = "RECURSA"
+
+    resultados_examenes = []
+    for e in examenes:
+        resultado = dict(e)
+        resultado["cumple_minimo"] = cumple_minimo(e)
+        resultado["cumple_banda"] = cumple_banda(e)
+        resultados_examenes.append(resultado)
+
+    global_valor = max_o_none([g.get("valor_real") for g in globales])
 
     return {
         "estado": estado,
-        "nota_final": nota_final,
-        "habilitado_final": habilitado_final,
-        "tp_ok": tp_cumple,
-        "autoeval_ok": autoeval_cumple,
-        "p1_max": p1_max,
-        "p2_max": p2_max,
-        "tpi_max": tpi_max,
+        "resultados_examenes": resultados_examenes,
+        "global_valor": global_valor,
+        "nota_final": calcular_nota_final(examenes) if estado == "PROMOCIONA" else None,
     }
-
-
-def sugerir_categoria(nombre_moodle: str) -> dict:
-    """Sugiere categoria/unidad/opcional para un ítem del calificador, por
-    nombre — SOLO una sugerencia inicial para precargar la UI de mapeo; el
-    coordinador siempre confirma antes de que se use para calcular (los
-    nombres de ítem cambian de cohorte a cohorte, confiar en esto a ciegas
-    rompería el cálculo en silencio).
-
-    opcional se sugiere True SOLO para unidad 9/10 (regla universal a las 3
-    materias) — cualquier otra particularidad queda para el toggle manual.
-    """
-    if _RE_MINIQUIZ.search(nombre_moodle) or _RE_DIAGNOSTICO.search(nombre_moodle):
-        return {"categoria": CATEGORIA_IGNORAR, "unidad": None, "opcional": False}
-
-    m = _RE_TP.search(nombre_moodle)
-    if m:
-        unidad = int(m.group(1))
-        return {"categoria": CATEGORIA_TP, "unidad": unidad, "opcional": unidad in _UNIDADES_OPCIONALES_DEFAULT}
-
-    m = _RE_AUTOEVAL.search(nombre_moodle)
-    if m:
-        unidad = int(m.group(2))
-        return {"categoria": CATEGORIA_AUTOEVAL, "unidad": unidad, "opcional": unidad in _UNIDADES_OPCIONALES_DEFAULT}
-
-    if _RE_PARCIAL_1.search(nombre_moodle):
-        return {"categoria": CATEGORIA_PARCIAL_1, "unidad": None, "opcional": False}
-
-    if _RE_PARCIAL_2.search(nombre_moodle):
-        return {"categoria": CATEGORIA_PARCIAL_2, "unidad": None, "opcional": False}
-
-    if _RE_TPI.search(nombre_moodle):
-        return {"categoria": CATEGORIA_TPI, "unidad": None, "opcional": False}
-
-    return {"categoria": CATEGORIA_IGNORAR, "unidad": None, "opcional": False}
