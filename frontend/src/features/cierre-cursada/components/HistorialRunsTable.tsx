@@ -34,7 +34,6 @@ export const HistorialRunsTable = ({ runs }: Props) => {
         <thead>
           <tr className="border-b border-border text-left text-muted-foreground">
             <th className="py-2 pr-2">Generado</th>
-            <th className="py-2 pr-2">Umbral TP</th>
             <th className="py-2 pr-2">Promociona</th>
             <th className="py-2 pr-2">Regulariza</th>
             <th className="py-2 pr-2">Recursa</th>
@@ -46,7 +45,6 @@ export const HistorialRunsTable = ({ runs }: Props) => {
           {runs.map((r) => (
             <tr key={r.id} className="border-b border-border/60">
               <td className="py-2 pr-2">{new Date(r.created_at).toLocaleString('es-AR')}</td>
-              <td className="py-2 pr-2">{r.umbral_tp_pct}%</td>
               <td className="py-2 pr-2">{r.total_promociona}</td>
               <td className="py-2 pr-2">{r.total_regulariza}</td>
               <td className="py-2 pr-2">{r.total_recursa}</td>

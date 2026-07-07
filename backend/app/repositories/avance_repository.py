@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.avance import AvanceAlumno, AvanceSnapshot
 from app.models.enums import EstadoAvanceEnum
+from app.utils.orden_natural import orden_natural_sql
 
 
 class AvanceRepository:
@@ -57,7 +58,7 @@ class AvanceRepository:
             select(AvanceAlumno)
             .where(AvanceAlumno.snapshot_id == snapshot_id)
             .order_by(
-                AvanceAlumno.comision.asc().nullslast(),
+                *orden_natural_sql(AvanceAlumno.comision),
                 AvanceAlumno.apellido.asc(),
                 AvanceAlumno.nombre.asc(),
             )
@@ -77,7 +78,7 @@ class AvanceRepository:
                 AvanceAlumno.estado == estado,
             )
             .order_by(
-                AvanceAlumno.comision.asc().nullslast(),
+                *orden_natural_sql(AvanceAlumno.comision),
                 AvanceAlumno.apellido.asc(),
                 AvanceAlumno.nombre.asc(),
             )

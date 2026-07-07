@@ -1,0 +1,214 @@
+{
+  "pbtResults": {
+    "1. Escribir test de exploración de la Bug Condition (ANTES del fix, en las 4 superficies)": {
+      "status": "passed",
+      "failingExample": "Los 5 tests del archivo backend/tests/test_orden_natural_comision.py FALLAN sobre el código sin arreglar (correcto — confirma el bug en las 4 superficies):\n\n1) Superficie 1 (Excel, `_agrupar_por_comision`): con alumnos en COMI-1, COMI-2, COMI-10, COMI-20 -> se obtiene ['COMI-1', 'COMI-10', 'COMI-2', 'COMI-20'] (esperado natural: ['COMI-1', 'COMI-2', 'COMI-10', 'COMI-20']).\n\n2) Superficie 2 (Listado, `ComisionRepository.get_all`): comisiones COMI-2/COMI-10 del mismo año -> se obtiene ['COMI-10', 'COMI-2'] (esperado natural: ['COMI-2', 'COMI-10']).\n\n3) Superficie 3 (Corrida de cierre, `CierreCursadaRepository.get_alumnos_de_run`): alumnos en M26 C1-2 / M26 C1-10 -> se obtiene ['M26 C1-10', 'M26 C1-2'] (esperado natural: ['M26 C1-2', 'M26 C1-10']). Nota: se ajustó el par respecto de la redacción literal de la tarea (\"M26 C1-02\"/\"M26 C1-10\", ambos cero-rellenados a igual longitud) porque ese par concreto NO dispara el bug (longitudes de cadena iguales); se usó \"M26 C1-2\" (sin cero-relleno) vs \"M26 C1-10\" para reproducir sufijos de distinta longitud de dígitos, tal como exige la Bug Condition formal de design.md.\n\n4) Superficie 4 (Avance, `AvanceRepository.get_alumnos_de_snapshot`): COMI-3/COMI-21 -> se obtiene ['COMI-21', 'COMI-3'] (esperado natural: ['COMI-3', 'COMI-21']).\n\n5) Property-based (hypothesis, listas aleatorias PREFIJO-<n>): contraejemplo hallado por hypothesis: prefijo='COMI', numeros=[2, 100] -> `_agrupar_por_comision` devuelve ['COMI-100', 'COMI-2'] en vez del orden natural esperado ['COMI-2', 'COMI-100'].\n\nCausa raíz confirmada en las 5 fallas: comparación textual/lexicográfica del nombre de comisión (`nombre.casefold()` en el Excel; `Comision.nombre.asc()`, `comision_nombre.asc().nullslast()`, `comision.asc().nullslast()` en SQL) en lugar de comparar por el valor ENTERO del sufijo numérico dentro de cada prefijo.",
+      "lastRunTimestamp": 1783393809018
+    },
+    "3.6 Verificar que el test de exploración de la Bug Condition ahora pasa": {
+      "status": "failed",
+      "failingExample": "4 de 5 tests en test_orden_natural_comision.py siguen en FAILED tras resolver el blocker de regexp_replace (no por la brecha SQLite, sino por aserciones obsoletas heredadas de la tarea 1). Ejemplos concretos de las AssertionError observadas (el orden REAL producido por el código ya arreglado, visible en el mensaje de error, es el natural correcto):\n- test_bug_superficie1_excel_...: `assert titulos == orden_actual_lexicografico` con orden_actual_lexicografico=['COMI-1','COMI-10','COMI-2','COMI-20'] pero se obtuvo ['COMI-1','COMI-2','COMI-10','COMI-20'] (orden natural correcto).\n- test_bug_superficie2_listado_...: `assert nombres == ['COMI-10','COMI-2']` pero se obtuvo ['COMI-2','COMI-10'] (correcto).\n- test_bug_superficie3_corrida_cierre_...: `assert nombres == ['M26 C1-10','M26 C1-2']` pero se obtuvo ['M26 C1-2','M26 C1-10'] (correcto).\n- test_bug_superficie4_avance_...: `assert nombres == ['COMI-21','COMI-3']` pero se obtuvo ['COMI-3','COMI-21'] (correcto).\nSólo test_prop1_bug_random_prefijo_n_orden_natural_no_coincide_con_actual (hypothesis) PASÓ.",
+      "lastRunTimestamp": 1783397698445
+    },
+    "3.7 Verificar que los tests de preservación siguen pasando": {
+      "status": "passed",
+      "lastRunTimestamp": 1783398652772
+    }
+  },
+  "executionHistory": {
+    "1. Escribir test de exploración de la Bug Condition (ANTES del fix, en las 4 superficies)": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390727993
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390734078
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783393857044
+      }
+    ],
+    "2. Escribir tests de preservación (ANTES del fix — observation-first)": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390728188
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783393867132
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783394784056
+      }
+    ],
+    "3.1 Crear el módulo compartido de orden natural": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390728263
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783394789832
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783395132100
+      }
+    ],
+    "3.2 Superficie 1 — Excel de cierre de cursada": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390728326
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783395158686
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783396925274
+      }
+    ],
+    "3.3 Superficie 2 — Listado / gestión de comisiones": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390728392
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783395172668
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783396925542
+      }
+    ],
+    "3.4 Superficie 3 — Corrida de cierre (alumnos)": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390728454
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783395173428
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783396926532
+      }
+    ],
+    "3.5 Superficie 4 — Reporte de avance": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390728531
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783395173969
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783396926781
+      }
+    ],
+    "3.6 Verificar que el test de exploración de la Bug Condition ahora pasa": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390728613
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783396932295
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783397975203
+      }
+    ],
+    "3.7 Verificar que los tests de preservación siguen pasando": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390728675
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783397979804
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783398679558
+      }
+    ],
+    "4. Tests unitarios, de propiedad e integración adicionales": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390728742
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783398684604
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783399362155
+      }
+    ],
+    "5. Checkpoint - Correr la suite completa de backend": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783390728809
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783399366476
+      },
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783399747416
+      }
+    ],
+    "3. Fix del orden numérico natural de comisiones": [
+      {
+        "executionId": "94913cac-cf20-40d7-8da9-fabf81de0169",
+        "chatSessionId": "sess_75efc3a9-1a23-41cf-b3e2-033ec7900e7b",
+        "timestamp": 1783398679618
+      }
+    ]
+  }
+}

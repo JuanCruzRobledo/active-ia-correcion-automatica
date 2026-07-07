@@ -1,0 +1,219 @@
+# Implementation Plan
+
+- [x] 1. Escribir test de exploración de la condición de bug (Bug 1 + Bug 2) — ANTES del fix
+  - **Property 1: Bug Condition** - Resolución de comisión y Nota Final numérica
+  - **CRITICAL**: Estos tests DEBEN FALLAR sobre el código sin arreglar — la falla confirma que los bugs existen
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: Estos tests codifican el comportamiento esperado — validarán el fix cuando pasen luego de implementarlo
+  - **GOAL**: Surface counterexamples que demuestren que ambos bugs existen
+  - **Scoped PBT Approach**: Al ser bugs deterministas, acotar las propiedades a los casos concretos que fallan para asegurar reproducibilidad
+  - Bug 1 — `_resolver_comision` (en `backend/tests/unit/services/test_cierre_cursada_service.py`, migrar a la nueva firma con grupos completos `[{id, name}]`):
+    - Match por `moodle_group_id`: grupo `{"id": 342, "name": "M26 C1-09"}` con `Comision(nombre="M26 C1-09", moodle_group_id=342, moodle_group_code=None)` → debe resolver esa comisión (hoy devuelve `(None, "Sin comisión asignada", None)`)
+    - Match por nombre derivado (`parse_comision`): grupo `{"id": None, "name": "M26 C1-09"}` con `Comision(nombre="M26 C1-09", moodle_group_code=None)` → debe resolver esa comisión (hoy "Sin comisión asignada")
+    - Detalle de la Bug Condition: `existe_grupo_valido AND existe_comision_real AND NOT resuelto` (ver `isBugCondition_comision` en design)
+  - Bug 2 — `calcular_nota_final` (en `backend/tests/unit/services/test_cierre_cursada_calculo.py`):
+    - P1=93 (nota_minima 60 → 9.3), P2=None (→ 0), Global=None (→ 0) → esperado `2`; hoy devuelve `None`
+    - Parcial en modo ESCALA aprobado + Global=9.0 → esperado `9`; hoy devuelve `None`
+    - Ningún examen entregado (≥1 parcial y 1 global configurados, todos `None`) → esperado `0`; hoy devuelve `None`
+    - Las aserciones deben coincidir con las Expected Behavior Properties (Property 2 del design)
+  - Ejecutar los tests sobre el código SIN arreglar: `cd backend && pytest tests/unit/services/test_cierre_cursada_service.py tests/unit/services/test_cierre_cursada_calculo.py -k "bug or resolver or nota_final"`
+  - **EXPECTED OUTCOME**: Los tests FALLAN (correcto — prueba que los bugs existen)
+  - Documentar los contraejemplos hallados (`_resolver_comision` devuelve "Sin comisión asignada" pese a existir la comisión; `calcular_nota_final` devuelve `None` ante cualquier faltante)
+  - Marcar la tarea como completa cuando los tests estén escritos, ejecutados y la falla documentada
+  - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5_
+
+- [x] 2. Escribir tests de preservación (property-based) — ANTES del fix
+  - **Property 2: Preservation** - Sin comisión (ambiguo/sin grupo), fórmula numérica, guard estructural, columna N/E y estado
+  - **IMPORTANT**: Seguir la metodología observation-first — correr el código SIN arreglar con inputs que NO disparan cada bug y capturar el comportamiento observado
+  - Bug 1 — `_resolver_comision` (migrado a firma con `[{id, name}]`):
+    - Sin grupo válido (3.1): grupos que no matchean ninguna comisión → observar `(None, "Sin comisión asignada", None)`
+    - Match ambiguo (3.2): alumno en dos grupos que matchean dos comisiones distintas → observar `(None, "Sin comisión asignada", None)` sin excepción
+  - Bug 2 — `calcular_nota_final` / `calcular_estado_cierre`:
+    - Todo numérico (3.4): property-based — generar ≥1 parcial + 1 global con valores numéricos → el resultado coincide con la fórmula ponderada normalizada (promedio parciales a 0–10 al 40 % + global a 0–10 al 60 %, `round_half_up`). Complementar `test_cierre_cursada_calculo_pbt.py`
+    - Guard estructural / sin global (edge, 3.5-scope): 0 parciales o ≠1 global → observar que `calcular_nota_final` sigue devolviendo `None`
+    - Columna N/E (3.3): examen no entregado → `global_valor`/`valor_real` sigue siendo `None` (el Excel imprime "N/E" en esa columna) aunque la Nota Final ahora sea numérica
+    - Estado sin cambios (3.6): un examen no entregado sigue produciendo el mismo estado PROMOCIONA/REGULARIZA/RECURSA (mismos asserts de `calcular_estado_cierre`)
+  - Property-based testing recomendado para la preservación de la fórmula (genera muchos casos, cubre bordes de redondeo y escalas mixtas)
+  - Ejecutar los tests sobre el código SIN arreglar: `cd backend && pytest tests/unit/services/test_cierre_cursada_service.py tests/unit/services/test_cierre_cursada_calculo.py tests/unit/services/test_cierre_cursada_calculo_pbt.py`
+  - **EXPECTED OUTCOME**: Los tests PASAN (confirma el comportamiento base a preservar)
+  - Marcar la tarea como completa cuando los tests estén escritos, ejecutados y pasando sobre el código sin arreglar
+  - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
+
+- [x] 3. Fix para resolución de comisión (Bug 1) y Nota Final "N/E" (Bug 2)
+
+  - [x] 3.1 Implementar el fix de resolución de comisión (Bug 1)
+    - En `backend/app/services/cierre_cursada_service.py`, cambiar la firma de `_resolver_comision(grupos, comisiones)` para recibir los grupos completos (lista de dicts `[{"id", "name"}, ...]`) en vez de sólo nombres
+    - En `generar`, reemplazar `grupos = [g.get("name") for g in ...]` por pasar los grupos crudos: `self._resolver_comision(u.get("groups") or [], comisiones)`
+    - Bridge primario por `moodle_group_id`: `por_group_id = {c.moodle_group_id: c for c in comisiones if c.moodle_group_id}`, matchear cada `g["id"]` contra ese mapa
+    - Fallback por nombre derivado: `parse_comision(g["name"])` (importar desde `app.services.gestion_parser`) y matchear el código resultante (case-insensitive) contra `Comision.nombre`
+    - Unicidad (preservación 3.1/3.2): juntar el conjunto de `Comision` DISTINTAS matcheadas por cualquiera de los dos puentes; exactamente una → `(c.id, c.nombre, tutor_nombre)`; cero o >1 → `(None, "Sin comisión asignada", None)`
+    - Tutor: mantener `" / ".join(ct.tutor.nombre for ct in comision.tutores) or None`
+    - Respetar Clean Architecture (Router → Service → Repository) y máximo 500 LOC por archivo
+    - _Bug_Condition: isBugCondition_comision(alumno, comisiones) from design_
+    - _Expected_Behavior: Property 1 — match único por moodle_group_id o nombre derivado → comisión real; sin depender de moodle_group_code_
+    - _Preservation: sin grupo válido / ambiguo → "Sin comisión asignada" (Property 3)_
+    - _Requirements: 2.1, 2.2_
+
+  - [x] 3.2 Implementar el fix de la Nota Final (Bug 2)
+    - En `backend/app/services/cierre_cursada_calculo.py`, agregar el helper `_valor_para_nota_final(examen) -> float` que devuelve SIEMPRE un número:
+      - modo ESCALA → `10.0` si `resultado_escala == "aprobado"`, si no `0.0` (Req 2.4)
+      - modo NUMERICO → `normalizar_a_10(valor_real, nota_minima)`; si es `None` (no entregado) → `0.0`
+    - En `calcular_nota_final`, mantener el guard estructural `if len(parciales) == 0 or len(globales) != 1: return None` (preservación 3.5/edge)
+    - Reemplazar el corte `if any(v is None ...) or global_norm is None: return None` por el uso del helper, de modo que los faltantes cuenten como 0 y la función devuelva SIEMPRE un `int` 0–10 cuando hay PARCIAL y GLOBAL
+    - Reutilizar `normalizar_a_10` y `round_half_up` sin cambios (preserva la fórmula 3.4)
+    - No tocar `calcular_estado_cierre` (`cumple_minimo`/`cumple_banda`), ni `global_valor`/`_valor_parcial` del Excel (preservación 3.3, 3.6)
+    - Respetar máximo 500 LOC por archivo
+    - _Bug_Condition: isBugCondition_nota_final(examenes) from design_
+    - _Expected_Behavior: Property 2 — NF entero 0–10, no entregado→0, ESCALA aprobado→10 / resto→0; P1=9.3/P2=0/Global=0 ⇒ 2_
+    - _Preservation: fórmula ponderada para todo numérico (3.4), guard estructural (3.5), columna N/E (3.3), estado (3.6)_
+    - _Requirements: 2.3, 2.4, 2.5, 2.6_
+
+  - [x] 3.3 Actualizar los tests existentes que afirman `is None` (casos 3, 7, 9)
+    - En `backend/tests/unit/services/test_cierre_cursada_calculo.py`, actualizar al nuevo contrato numérico los 3 tests que hoy afirman `calcular_nota_final(...) is None` para casos que ahora son numéricos:
+      - `test_nota_final_none_si_falta_global` (caso 3): reencuadrar — 0 globales sigue devolviendo `None` sólo por guard estructural; si el intento era "falta la nota del global", ahora es numérico (global no entregado → 0)
+      - `test_nota_final_none_si_falta_un_parcial` (caso 7): ahora numérico (parcial faltante → 0)
+      - `test_nota_final_none_si_parcial_escala_sin_valor_numerico` (caso 9): ahora numérico (ESCALA aprobado → 10 / resto → 0)
+    - CONSERVAR sin cambios los tests de guard estructural: `test_nota_final_none_si_no_hay_parciales` y `test_nota_final_none_si_no_hay_exactamente_un_global`
+    - _Requirements: 2.3, 2.4, 2.6_
+
+  - [x] 3.4 Verificar que el test de exploración de la condición de bug ahora pasa
+    - **Property 1: Expected Behavior** - Resolución de comisión y Nota Final numérica
+    - **IMPORTANT**: Re-ejecutar los MISMOS tests de la tarea 1 — NO escribir tests nuevos
+    - Los tests de la tarea 1 codifican el comportamiento esperado; cuando pasan, confirman que ambos bugs quedaron resueltos
+    - Ejecutar: `cd backend && pytest tests/unit/services/test_cierre_cursada_service.py tests/unit/services/test_cierre_cursada_calculo.py`
+    - **EXPECTED OUTCOME**: Los tests PASAN (confirma que los bugs están arreglados)
+    - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 2.6_
+
+  - [x] 3.5 Verificar que los tests de preservación siguen pasando
+    - **Property 2: Preservation** - Sin comisión, fórmula numérica, guard, columna N/E y estado
+    - **IMPORTANT**: Re-ejecutar los MISMOS tests de la tarea 2 — NO escribir tests nuevos
+    - Ejecutar: `cd backend && pytest tests/unit/services/test_cierre_cursada_calculo_pbt.py tests/unit/services/test_cierre_cursada_calculo.py tests/unit/services/test_cierre_cursada_service.py`
+    - **EXPECTED OUTCOME**: Los tests PASAN (confirma que no hay regresiones)
+    - Confirmar específicamente que el Excel sigue mostrando "N/E" en columnas (3.3) y que la clasificación PROMOCIONA/REGULARIZA/RECURSA no cambia (3.6)
+    - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6_
+
+- [x] 4. Checkpoint - Asegurar que todos los tests pasan
+  - Ejecutar toda la suite del backend: `cd backend && pytest`
+  - Confirmar unit (`test_cierre_cursada_calculo.py`, `test_cierre_cursada_service.py`), property-based (`test_cierre_cursada_calculo_pbt.py`) e integración (`test_cierre_cursada.py`, incluyendo el 400 sin exámenes configurados — 3.5)
+  - Verificar que no queden `print`/`console.log` de debug ni archivos temporales
+  - Asegurar que todos los tests pasan; consultar al usuario si surgen dudas
+
+- [x] 5. Escribir test de exploración — Orden de bloques de comisión (Bug 3) — ANTES del fix
+  - **Property 5: Bug Condition** - Bloques de comisión ordenados alfabéticamente
+  - **CRITICAL**: Este test DEBE FALLAR sobre el código sin arreglar — la falla confirma que el Bug 3 existe
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: El test codifica el comportamiento esperado — validará el fix cuando pase luego de implementarlo
+  - **GOAL**: Surface counterexamples que demuestren que los bloques salen en orden de llegada (no alfabético) y que "Sin comisión asignada" no queda al final
+  - **Scoped PBT Approach**: Al ser un bug determinista, acotar la propiedad a casos concretos que fallan para asegurar reproducibilidad, y complementar con la property-based (ver más abajo)
+  - Test en `backend/tests/unit/services/test_excel_cierre_cursada.py` (extender el archivo existente — hoy sólo tiene tests de layout; agregar una sección para `_agrupar_por_comision`), importando `_agrupar_por_comision` desde `app.services.excel_cierre_cursada`:
+    - Caso desordenado: alumnos que llegan en comisiones "M26 C1-03", "M26 C1-01", "M26 C1-02" → esperado que `list(_agrupar_por_comision(alumnos).keys())` empiece por el bloque de "M26 C1-01", luego "M26 C1-02", luego "M26 C1-03" (hoy salen en el orden de llegada "M26 C1-03", "M26 C1-01", "M26 C1-02")
+    - Caso "Sin comisión asignada" al final: incluir un alumno con `comision_nombre=None` que llega PRIMERO, más dos comisiones reales → esperado que el bloque "Sin comisión asignada" quede como ÚLTIMA clave (hoy queda primero por orden de llegada)
+    - Detalle de la Bug Condition: `existen >= 2 bloques AND bloques_actuales != bloques_esperados` donde `bloques_esperados = SORT(nombres_reales, casefold) ++ ["Sin comisión asignada" if existe]` (ver `isBugCondition_orden_bloques` en design)
+    - Las aserciones deben coincidir con la Expected Behavior Property (Property 5 del design)
+  - Property-based (Property 5): agregar en `backend/tests/unit/services/test_excel_cierre_cursada.py` un test con Hypothesis que genere listas de alumnos con `comision_nombre` aleatorios (incluyendo `None`) en orden de llegada aleatorio → las claves de `_agrupar_por_comision` SIEMPRE quedan alfabéticas (case-insensitive) por nombre de comisión, con "Sin comisión asignada" estrictamente último
+  - Ejecutar el test sobre el código SIN arreglar: `cd backend && pytest tests/unit/services/test_excel_cierre_cursada.py -k "orden or agrupar or bloque"`
+  - **EXPECTED OUTCOME**: El test FALLA (correcto — prueba que el Bug 3 existe)
+  - Documentar el contraejemplo hallado (`_agrupar_por_comision` devuelve las claves en orden de llegada, no alfabético; "Sin comisión asignada" no queda al final)
+  - Marcar la tarea como completa cuando el test esté escrito, ejecutado y la falla documentada
+  - _Requirements: 1.6, 1.7_
+
+- [x] 6. Escribir test de exploración — Nota Final sólo para PROMOCIONA (Bug 4) — ANTES del fix
+  - **Property 6: Bug Condition** - Nota Final sólo para PROMOCIONA
+  - **CRITICAL**: Estos tests DEBEN FALLAR sobre el código sin arreglar — la falla confirma que el Bug 4 existe
+  - **DO NOT attempt to fix the test or the code when it fails**
+  - **NOTE**: Estos tests codifican el comportamiento esperado — validarán el fix cuando pasen luego de implementarlo
+  - **GOAL**: Surface counterexamples que demuestren que REGULARIZA/RECURSA obtienen `nota_final` numérica y que `_fmt_nota_final(None)` renderiza "N/E" en vez de blanco
+  - **Scoped PBT Approach**: Al ser un bug determinista, acotar las propiedades a los casos concretos que fallan, y complementar con la property-based (ver más abajo)
+  - Bug 4 — `calcular_estado_cierre` (en `backend/tests/unit/services/test_cierre_cursada_calculo.py`):
+    - REGULARIZA con exámenes numéricos (parciales que cumplen banda pero no mínimo + global numérico) → esperado `calcular_estado_cierre(...)["nota_final"] is None`; hoy devuelve un entero (p. ej. 8)
+    - RECURSA con exámenes no entregados → esperado `nota_final is None`; hoy devuelve un número (0 o más)
+    - Detalle de la Bug Condition: `estado IN {"REGULARIZA", "RECURSA"} AND nota_final IS NOT None` (ver `isBugCondition_nota_no_promociona` en design)
+  - Bug 4 — `_fmt_nota_final` (en `backend/tests/unit/services/test_excel_cierre_cursada.py`, importar `_fmt_nota_final` desde `app.services.excel_cierre_cursada`):
+    - Esperado `_fmt_nota_final(None) == ""` (celda en blanco); hoy devuelve `"N/E"`
+    - Las aserciones deben coincidir con la Expected Behavior Property (Property 6 del design)
+  - Property-based (Property 6): agregar en `backend/tests/unit/services/test_cierre_cursada_calculo_pbt.py` un test con Hypothesis que genere alumnos con estado y exámenes aleatorios → el `nota_final` del veredicto es `int` en [0, 10] SII `estado == "PROMOCIONA"`, y `None` en cualquier otro estado
+  - Ejecutar los tests sobre el código SIN arreglar: `cd backend && pytest tests/unit/services/test_cierre_cursada_calculo.py tests/unit/services/test_excel_cierre_cursada.py tests/unit/services/test_cierre_cursada_calculo_pbt.py -k "promociona or nota_final or fmt"`
+  - **EXPECTED OUTCOME**: Los tests FALLAN (correcto — prueba que el Bug 4 existe)
+  - Documentar los contraejemplos hallados (`calcular_estado_cierre` da `nota_final` numérica a REGULARIZA/RECURSA; `_fmt_nota_final(None)` devuelve "N/E")
+  - Marcar la tarea como completa cuando los tests estén escritos, ejecutados y la falla documentada
+  - _Requirements: 1.8, 1.9_
+
+- [x] 7. Escribir tests de preservación (Bug 3 + Bug 4) — ANTES del fix
+  - **Property 5: Preservation** - Orden intra-bloque y encabezado (Bug 3)
+  - **Property 6: Preservation** - PROMOCIONA numérico, columna N/E de examen y estado (Bug 4)
+  - **IMPORTANT**: Seguir la metodología observation-first — correr el código SIN arreglar con inputs que NO disparan cada bug y capturar el comportamiento observado
+  - Bug 3 — preservación (en `backend/tests/unit/services/test_excel_cierre_cursada.py`):
+    - Orden intra-bloque (3.7): dentro de un bloque, los alumnos siguen ordenados por `(apellido, nombre)` — observar el orden actual en `generar_excel_cierre` (ya existe en `_escribir_detalle`) y capturarlo
+    - Encabezado de bloque (3.8): la barra de cada bloque sigue con el formato "{comisión} — Tutor: {tutor}" — observar y capturar (ya cubierto parcialmente por `test_barra_de_bloque_mergea_c_hasta_g`; extender para verificar el texto compuesto con tutor)
+    - Edge una sola comisión / sólo "Sin comisión asignada": el orden ya correcto no se altera
+  - Bug 4 — preservación (en `test_cierre_cursada_calculo.py` y `test_excel_cierre_cursada.py`):
+    - PROMOCIONA conserva su nota (3.9): un alumno PROMOCIONA con parciales + global numéricos → observar la misma Nota Final ponderada que hoy (fix de Bug 2 intacto) — ya cubierto por `test_promociona_todos_incluido_global`; no duplicar
+    - Columna de examen "N/E" bajo Bug 4 (3.10): `_fmt_valor(None) == "N/E"` sigue sin cambios (divergencia con `_fmt_nota_final`) — importar `_fmt_valor` y observar
+    - Estado sin cambios (3.11): la clasificación PROMOCIONA/REGULARIZA/RECURSA no cambia — ya cubierto por los tests de `calcular_estado_cierre`; no duplicar
+  - Ejecutar los tests sobre el código SIN arreglar: `cd backend && pytest tests/unit/services/test_excel_cierre_cursada.py tests/unit/services/test_cierre_cursada_calculo.py`
+  - **EXPECTED OUTCOME**: Los tests PASAN (confirma el comportamiento base a preservar)
+  - Marcar la tarea como completa cuando los tests estén escritos, ejecutados y pasando sobre el código sin arreglar
+  - _Requirements: 3.7, 3.8, 3.9, 3.10, 3.11_
+
+- [x] 8. Fix para orden de bloques (Bug 3) y Nota Final sólo para PROMOCIONA (Bug 4)
+
+  - [x] 8.1 Implementar el fix de orden de bloques (Bug 3)
+    - En `backend/app/services/excel_cierre_cursada.py`, ordenar los BLOQUES por nombre de comisión subyacente (`comision_nombre`), NO por el título compuesto "{comisión} — Tutor: {tutor}"
+    - Definir la constante `_SIN_COMISION = "Sin comisión asignada"` y detectar ese bucket por `comision_nombre` (que es `None` en el alumno y se normaliza a "Sin comisión asignada"), NO por substring del título
+    - En `_agrupar_por_comision`, agrupar por `comision_nombre` conservando el título compuesto (con tutor) por bloque, y devolver un dict `{titulo: [alumnos]}` ya ORDENADO con clave `(1, "")` para "Sin comisión asignada" (fuerza el final) y `(0, nombre.casefold())` para las comisiones reales
+    - `_escribir_detalle` NO cambia: sigue iterando `_agrupar_por_comision(alumnos).items()`, pero ahora recibe los bloques ya ordenados (dict de Python preserva el orden de inserción)
+    - Cambio de PRESENTACIÓN puro: no tocar cálculos; el orden intra-bloque por `(apellido, nombre)` y el formato del encabezado quedan intactos
+    - Respetar Clean Architecture (Router → Service → Repository) y máximo 500 LOC por archivo
+    - _Bug_Condition: isBugCondition_orden_bloques(alumnos) from design_
+    - _Expected_Behavior: Property 5 — bloques alfabéticos (case-insensitive) por comisión, "Sin comisión asignada" siempre al final_
+    - _Preservation: orden intra-bloque por (apellido, nombre) (3.7) y encabezado "{comisión} — Tutor: {tutor}" (3.8)_
+    - _Requirements: 2.7, 2.8_
+
+  - [x] 8.2 Implementar el gate de la Nota Final por estado (Bug 4) — Opción A
+    - En `backend/app/services/cierre_cursada_calculo.py`, dentro de `calcular_estado_cierre`, gatear la `nota_final` por estado: `"nota_final": calcular_nota_final(examenes) if estado == "PROMOCIONA" else None`
+    - NO cambiar `calcular_nota_final` ni el helper `_valor_para_nota_final` (siguen puros/reutilizables) — preserva 3.9
+    - NO cambiar la clasificación de estado (`cumple_minimo`/`cumple_banda`) — preserva 3.11
+    - El service (`generar`) no cambia: sigue persistiendo `veredicto["nota_final"]`
+    - Respetar máximo 500 LOC por archivo
+    - _Bug_Condition: isBugCondition_nota_no_promociona(alumno) from design_
+    - _Expected_Behavior: Property 6 — nota_final entero 0–10 SII estado == "PROMOCIONA", None en REGULARIZA/RECURSA_
+    - _Preservation: PROMOCIONA conserva su nota numérica (3.9); estado sin cambios (3.11)_
+    - _Requirements: 2.9, 2.10_
+
+  - [x] 8.3 Implementar el render en blanco de la Nota Final (Bug 4)
+    - En `backend/app/services/excel_cierre_cursada.py`, cambiar `_fmt_nota_final` para que ante `None` devuelva `""` (celda en blanco) en vez de `"N/E"`: `return "" if valor is None else valor`
+    - NO tocar `_fmt_valor` (columnas de examen `Parcial n` / `Global TPI`): sigue devolviendo `"N/E"` ante `None` — ambos formateadores DIVERGEN a propósito (preserva 3.10)
+    - _Bug_Condition: isBugCondition_nota_no_promociona(alumno) — render de la celda "Nota Final" from design_
+    - _Expected_Behavior: Property 6 — celda "Nota Final" en BLANCO para no promocionados, nunca "N/E"_
+    - _Preservation: _fmt_valor(None) == "N/E" en columnas de examen (3.10)_
+    - _Requirements: 2.10_
+
+  - [x] 8.4 Actualizar los tests existentes al nuevo contrato (Bug 4)
+    - En `backend/tests/unit/services/test_cierre_cursada_calculo.py`, actualizar `test_regulariza_con_global_numerico_tiene_nota_final_numerica` (codifica la regla de Bug 2: REGULARIZA con Nota Final numérica) al nuevo contrato de Bug 4: un alumno REGULARIZA debe tener `nota_final is None`. Renombrarlo a `test_regulariza_tiene_nota_final_none`
+    - En `backend/tests/unit/services/test_excel_cierre_cursada.py`, actualizar `test_celda_nota_final_entero_o_ne`: el alumno REGULARIZA con `nota_final=None` ahora debe renderizar la celda "Nota Final" en BLANCO (`fila_bruno[-1].value == ""` o `is None`), NO `"N/E"`. La aserción del alumno PROMOCIONA con `nota_final=8` se conserva
+    - CONSERVAR sin cambios el test de la Nota Final numérica de un alumno PROMOCIONA y los tests de `_fmt_valor` (columnas de examen siguen "N/E")
+    - _Requirements: 2.9, 2.10, 3.9, 3.10_
+
+  - [x] 8.5 Verificar que los tests de exploración de la condición de bug ahora pasan
+    - **Property 5: Expected Behavior** - Bloques de comisión ordenados alfabéticamente
+    - **Property 6: Expected Behavior** - Nota Final sólo para PROMOCIONA
+    - **IMPORTANT**: Re-ejecutar los MISMOS tests de las tareas 5 y 6 — NO escribir tests nuevos
+    - Los tests de las tareas 5 y 6 codifican el comportamiento esperado; cuando pasan, confirman que Bug 3 y Bug 4 quedaron resueltos
+    - Ejecutar: `cd backend && pytest tests/unit/services/test_excel_cierre_cursada.py tests/unit/services/test_cierre_cursada_calculo.py tests/unit/services/test_cierre_cursada_calculo_pbt.py`
+    - **EXPECTED OUTCOME**: Los tests PASAN (confirma que los bugs están arreglados)
+    - _Requirements: 2.7, 2.8, 2.9, 2.10_
+
+  - [x] 8.6 Verificar que los tests de preservación siguen pasando
+    - **Property 5: Preservation** - Orden intra-bloque y encabezado
+    - **Property 6: Preservation** - PROMOCIONA numérico, columna N/E de examen y estado
+    - **IMPORTANT**: Re-ejecutar los MISMOS tests de la tarea 7 — NO escribir tests nuevos
+    - Ejecutar: `cd backend && pytest tests/unit/services/test_excel_cierre_cursada.py tests/unit/services/test_cierre_cursada_calculo.py`
+    - **EXPECTED OUTCOME**: Los tests PASAN (confirma que no hay regresiones)
+    - Confirmar específicamente que el orden intra-bloque por `(apellido, nombre)` (3.7), el encabezado "{comisión} — Tutor: {tutor}" (3.8), la Nota Final de PROMOCIONA (3.9), `_fmt_valor(None) == "N/E"` (3.10) y la clasificación de estado (3.11) no cambian
+    - _Requirements: 3.7, 3.8, 3.9, 3.10, 3.11_
+
+- [x] 9. Checkpoint - Asegurar que todos los tests pasan (Bug 3 + Bug 4)
+  - Ejecutar toda la suite del backend: `cd backend && pytest`
+  - Confirmar unit (`test_cierre_cursada_calculo.py`, `test_cierre_cursada_service.py`, `test_excel_cierre_cursada.py`), property-based (`test_cierre_cursada_calculo_pbt.py`, incluyendo Property 5 orden de bloques y Property 6 nota_final por estado) e integración (`test_cierre_cursada.py`)
+  - Verificar que no queden `print`/`console.log` de debug ni archivos temporales
+  - Asegurar que todos los tests pasan; consultar al usuario si surgen dudas

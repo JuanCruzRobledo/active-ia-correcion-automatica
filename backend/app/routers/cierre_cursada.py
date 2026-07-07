@@ -1,9 +1,8 @@
 # app/routers/cierre_cursada.py
 """Router del cierre de cursada (admin panel).
 
-- GET  /cierre-cursada/materias/{materia_id}/items       → ítems del calificador + sugerencia/mapeo.
-- POST /cierre-cursada/materias/{materia_id}/items       → confirma el mapeo.
-- POST /cierre-cursada/materias/{materia_id}/generar     → calcula y persiste una corrida.
+- POST /cierre-cursada/materias/{materia_id}/generar     → calcula y persiste una corrida
+  (dirigida por la config de ExamenMateria de la materia).
 - GET  /cierre-cursada/runs/{run_id}/excel                → descarga el .xlsx de una corrida.
 - GET  /cierre-cursada/materias/{materia_id}/historial    → corridas pasadas de la materia.
 
@@ -20,8 +19,6 @@ from app.models import Usuario
 from app.repositories.materia_repository import MateriaRepository
 from app.schemas.cierre_cursada import (
     CierreHistorialResponse,
-    CierreItemSugeridoResponse,
-    CierreMappingConfirmRequest,
     CierreRunResponse,
     GenerarCierreRequest,
 )
@@ -45,41 +42,6 @@ def _ascii_filename(filename: str) -> str:
     return limpio or "cierre_cursada.xlsx"
 
 
-@router.get("/materias/{materia_id}/items", response_model=list[CierreItemSugeridoResponse])
-async def obtener_items_calificador(
-    materia_id: int,
-    cuatrimestre_id: int,
-    current_user: Usuario = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> list[CierreItemSugeridoResponse]:
-    await verificar_acceso_materia(db, current_user, materia_id)
-    _requerir_credenciales_moodle(current_user)
-    service = CierreCursadaService(db)
-    try:
-        return await service.obtener_items_calificador(materia_id, cuatrimestre_id, current_user)
-    except MoodleAuthError as e:
-        raise HTTPException(status.HTTP_424_FAILED_DEPENDENCY, detail=str(e))
-    except MoodleConnectionError as e:
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(e))
-
-
-@router.post("/materias/{materia_id}/items", response_model=list[CierreItemSugeridoResponse])
-async def confirmar_mapping(
-    materia_id: int,
-    payload: CierreMappingConfirmRequest,
-    current_user: Usuario = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-) -> list[CierreItemSugeridoResponse]:
-    await verificar_acceso_materia(db, current_user, materia_id)
-    service = CierreCursadaService(db)
-    guardados = await service.confirmar_mapping(
-        materia_id,
-        payload.cuatrimestre_id,
-        [item.model_dump() for item in payload.items],
-    )
-    return [{**g, "confirmado": True} for g in guardados]
-
-
 @router.post("/materias/{materia_id}/generar", response_model=CierreRunResponse)
 async def generar_cierre(
     materia_id: int,
@@ -91,13 +53,7 @@ async def generar_cierre(
     _requerir_credenciales_moodle(current_user)
     service = CierreCursadaService(db)
     try:
-        run = await service.generar(
-            materia_id,
-            payload.cuatrimestre_id,
-            payload.umbral_tp_pct,
-            current_user,
-            reglas_override=payload.reglas,
-        )
+        run = await service.generar(materia_id, payload.cuatrimestre_id, current_user)
     except MoodleAuthError as e:
         raise HTTPException(status.HTTP_424_FAILED_DEPENDENCY, detail=str(e))
     except MoodleConnectionError as e:

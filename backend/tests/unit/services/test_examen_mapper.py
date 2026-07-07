@@ -179,6 +179,55 @@ def test_numero_se_deriva_por_tipo_segun_orden():
     assert res[3]["numero"] == 1  # global numera aparte
 
 
+def test_valor_real_es_mejor_valor_numerico_entre_base_y_rescate():
+    # Parcial NUMERICO desaprobado (50) + recuperatorio NUMERICO aprobado (70) ->
+    # valor_real = máximo entre base y rescates = 70.0 (no rompe `resultado`/`rescatado`).
+    cfg = [
+        _ex(1, "PARCIAL", 100, modo="NUMERICO", nota_minima=60.0),
+        _ex(2, "RECUPERATORIO", 200, modo="NUMERICO", nota_minima=60.0, recupera=1),
+    ]
+    res = _por_examen(
+        calcular_resultados_examenes({100: "50,00", 200: "70,00"}, cfg)
+    )
+    assert res[1]["valor_real"] == 70.0
+    assert res[1]["resultado"] == "aprobado"
+    assert res[1]["rescatado"] is True
+
+
+def test_valor_real_toma_la_base_si_es_mayor_que_el_rescate():
+    cfg = [
+        _ex(1, "PARCIAL", 100, modo="NUMERICO", nota_minima=60.0),
+        _ex(2, "RECUPERATORIO", 200, modo="NUMERICO", nota_minima=60.0, recupera=1),
+    ]
+    res = _por_examen(
+        calcular_resultados_examenes({100: "90,00", 200: "70,00"}, cfg)
+    )
+    assert res[1]["valor_real"] == 90.0
+
+
+def test_valor_real_none_cuando_falta_la_nota():
+    cfg = [_ex(1, "PARCIAL", 100, modo="NUMERICO", nota_minima=60.0)]
+    res = _por_examen(calcular_resultados_examenes({}, cfg))
+    assert res[1]["valor_real"] is None
+    assert res[1]["resultado"] == "ausente"
+
+
+def test_valor_real_none_en_modo_escala():
+    # Modo ESCALA no tiene escala numérica: valor_real siempre None, aunque el
+    # `resultado` de escala sea 'aprobado'. El cierre lo evalúa por `resultado`.
+    cfg = [_ex(1, "PARCIAL", 100, modo="ESCALA")]
+    res = _por_examen(calcular_resultados_examenes({100: "Aprobado"}, cfg))
+    assert res[1]["valor_real"] is None
+    assert res[1]["resultado"] == "aprobado"
+
+
+def test_modo_aprobacion_y_nota_minima_expuestos_del_principal():
+    cfg = [_ex(1, "PARCIAL", 100, modo="NUMERICO", nota_minima=60.0)]
+    res = _por_examen(calcular_resultados_examenes({100: "70,00"}, cfg))
+    assert res[1]["modo_aprobacion"] == "NUMERICO"
+    assert res[1]["nota_minima"] == 60.0
+
+
 def test_recuperatorios_no_aparecen_como_filas_principales():
     cfg = [_ex(1, "PARCIAL", 100), _ex(2, "RECUPERATORIO", 200, recupera=1)]
     resultados = calcular_resultados_examenes({100: "Aprobado"}, cfg)
@@ -264,3 +313,140 @@ def test_rescate_recuperatorio_sin_corregir_estructural():
     )
     assert res[1]["resultado"] == "sin_corregir"
     assert res[1]["rescatado"] is False
+
+
+# ===================== Property-Based Tests (preservación — bugfix cierre-cursada-fix) =====================
+#
+# Metodología observación-primero: capturan el comportamiento YA EXISTENTE de
+# examen_mapper (rescate + evaluación por escala) para que sigan pasando tanto ANTES
+# como DESPUÉS del fix de cierre de cursada — este módulo no cambia con el fix salvo
+# la extensión aditiva de `valor_real` (tarea 7).
+#
+# Validates: Requirements 3.1, 3.2
+
+from hypothesis import given, strategies as st
+
+# Precedencia documentada en bugfix.md/design.md: aprobado > sin_corregir > desaprobado
+# > ausente. Se reimplementa acá (no se importa el privado del módulo) porque es la
+# propiedad que se quiere preservar, no un detalle de implementación.
+_PRECEDENCIA_ESPERADA = {"ausente": 0, "desaprobado": 1, "sin_corregir": 2, "aprobado": 3}
+
+_NOTA_ESCALA = st.sampled_from(["Aprobado", "Desaprobado", "", "-"])
+
+
+@given(
+    base_nota=_NOTA_ESCALA,
+    rescates_notas=st.lists(_NOTA_ESCALA, min_size=1, max_size=3),
+)
+def test_pbt_cadena_de_rescate_respeta_precedencia(base_nota, rescates_notas):
+    """Property 2 (Preservación) — Req 3.1: un PARCIAL/GLOBAL con N rescates
+    (recuperatorio/extensión/extraordinaria) queda con el resultado de MAYOR
+    precedencia entre él y sus rescates (aprobado > sin_corregir > desaprobado >
+    ausente), y `rescatado` es True sii el base no estaba aprobado pero el
+    resultado final sí."""
+    cfg = [_ex(1, "PARCIAL", 100)]
+    notas = {100: base_nota}
+    for i, nota in enumerate(rescates_notas, start=1):
+        cmid_rescate = 200 + i
+        cfg.append(_ex(100 + i, "RECUPERATORIO", cmid_rescate, recupera=1))
+        notas[cmid_rescate] = nota
+
+    resultado = _por_examen(calcular_resultados_examenes(notas, cfg))[1]
+
+    interpretados = [
+        interpretar_resultado(t, "ESCALA", None) for t in [base_nota, *rescates_notas]
+    ]
+    esperado = max(interpretados, key=lambda r: _PRECEDENCIA_ESPERADA[r])
+    base_interpretado = interpretados[0]
+
+    assert resultado["resultado"] == esperado
+    assert resultado["rescatado"] == (base_interpretado != "aprobado" and esperado == "aprobado")
+
+
+def test_pbt_ejemplo_documentado_desaprobado_mas_recuperatorio_aprobado():
+    """Ejemplo puntual documentado en la tarea: parcial desaprobado + recuperatorio
+    aprobado -> resultado == 'aprobado' y rescatado == True."""
+    cfg = [_ex(1, "PARCIAL", 100), _ex(2, "RECUPERATORIO", 200, recupera=1)]
+    res = _por_examen(
+        calcular_resultados_examenes({100: "Desaprobado", 200: "Aprobado"}, cfg)
+    )
+    assert res[1]["resultado"] == "aprobado"
+    assert res[1]["rescatado"] is True
+
+
+_NOTA_NUMERICA_TEXTO = st.one_of(
+    st.none(),
+    st.just(""),
+    st.just("-"),
+    st.floats(min_value=0, max_value=100, allow_nan=False, allow_infinity=False).map(
+        lambda v: f"{v:.2f}".replace(".", ",")
+    ),
+)
+
+
+@given(
+    base_texto=_NOTA_NUMERICA_TEXTO,
+    rescates_textos=st.lists(_NOTA_NUMERICA_TEXTO, min_size=1, max_size=3),
+)
+def test_pbt_valor_real_es_el_maximo_numerico_entre_base_y_rescates(base_texto, rescates_textos):
+    """Property (tarea 7, aditiva) — Req 3.1: en modo NUMERICO, `valor_real` del principal
+    es el máximo valor numérico parseable (`parsear_nota_numerica`) entre la instancia base
+    y sus rescates, sin alterar `resultado`/`rescatado` (que siguen la precedencia de
+    escala preexistente)."""
+    cfg = [_ex(1, "PARCIAL", 100, modo="NUMERICO", nota_minima=60.0)]
+    notas = {100: base_texto}
+    for i, texto in enumerate(rescates_textos, start=1):
+        cmid_rescate = 200 + i
+        cfg.append(
+            _ex(100 + i, "RECUPERATORIO", cmid_rescate, modo="NUMERICO", nota_minima=60.0, recupera=1)
+        )
+        notas[cmid_rescate] = texto
+
+    resultado = _por_examen(calcular_resultados_examenes(notas, cfg))[1]
+
+    valores = [parsear_nota_numerica(t) for t in [base_texto, *rescates_textos]]
+    numericos = [v for v in valores if v is not None]
+    esperado = max(numericos) if numericos else None
+
+    assert resultado["valor_real"] == esperado
+
+
+@given(nota=st.sampled_from(["Aprobado", "Desaprobado", "", "-", None]))
+def test_pbt_valor_real_none_en_modo_escala(nota):
+    """Property (tarea 7, aditiva) — Req 3.2: en modo ESCALA, `valor_real` siempre es
+    `None` (no hay escala numérica), sin importar el `resultado` obtenido."""
+    cfg = [_ex(1, "PARCIAL", 100, modo="ESCALA")]
+    resultado = _por_examen(calcular_resultados_examenes({100: nota}, cfg))[1]
+    assert resultado["valor_real"] is None
+
+
+_ESCALA_TEXTOS = st.sampled_from(
+    [
+        "Aprobado", "APROBADO", "aprobado", "  Aprobado  ",
+        "Desaprobado", "DESAPROBADO", "desaprobado", "  Desaprobado  ",
+        "", "-", "   ", None,
+    ]
+)
+
+
+@given(
+    nota=_ESCALA_TEXTOS,
+    nota_minima=st.one_of(st.none(), st.floats(min_value=-50, max_value=200, allow_nan=False)),
+)
+def test_pbt_examen_escala_se_evalua_por_escala_no_por_nota_numerica(nota, nota_minima):
+    """Property 2 (Preservación) — Req 3.2: un examen en modo ESCALA se evalúa por
+    'Aprobado'/'Desaprobado'/vacío -> aprobado/desaprobado/ausente, y el resultado NO
+    depende de `nota_minima` (a diferencia de NUMERICO)."""
+    resultado = interpretar_resultado(nota, "ESCALA", nota_minima)
+
+    t = (nota or "").strip().lower()
+    if not t or t == "-":
+        esperado = "ausente"
+    elif "desaprob" in t:
+        esperado = "desaprobado"
+    else:
+        esperado = "aprobado"
+
+    assert resultado == esperado
+    # nota_minima es irrelevante en modo ESCALA.
+    assert resultado == interpretar_resultado(nota, "ESCALA", None)
