@@ -9,7 +9,7 @@ sección "Layout exacto del modelo CORREGIDO") + una columna `Nota Final` agrega
 final:
   R1: "TOTAL MATERIA {NOMBRE}" (merge A1:B1, mayúsculas)
   R2-R6: resumen PROMOCIONADOS/REGULARES/RECURSANTES/RECUPERABLES/ABANDONOS con el conteo
-         como fórmula nativa `CONTAR.SI` (A=etiqueta, B=fórmula)
+         como fórmula nativa `COUNTIF` (A=etiqueta, B=fórmula)
   R7: vacía (separador)
   R8+: por comisión, barra "{comisión} — Tutor: {tutor}" (merge desde la columna C hasta
        la última) + encabezados + filas de alumnos.
@@ -21,7 +21,7 @@ Nota Final`. Sin columnas de TPs y sin gráfico de dona (a diferencia del sistem
 Dependencia de locale (es-AR):
     Las fórmulas nativas que este módulo escribe (columna "Recuperable" por fila y los
     conteos del resumen) usan la sintaxis de Excel en **español** — funciones `SI`,
-    `CONTAR.SI`, `Y`, `VALOR`, `SI.ERROR` — y el punto y coma `;` como separador de
+    `COUNTIF`, `Y`, `VALOR`, `SI.ERROR` — y el punto y coma `;` como separador de
     argumentos. El archivo está pensado para abrirse en un Excel configurado en español
     (es-AR): en un Excel en inglés estas fórmulas no resolverían (esperaría `IF`,
     `COUNTIF`, `AND`, `VALUE`, `IFERROR` y `,` como separador). Se persisten con openpyxl
@@ -76,10 +76,10 @@ def _formula_recuperable(estado_col: str, p1_col: str, p2_col: str, fila: int) -
     locale del módulo.
     """
     return (
-        f'=SI({estado_col}{fila}<>"RECURSA";"";'
-        f"SI(Y(SI.ERROR(VALOR({p1_col}{fila});0)>=40;SI.ERROR(VALOR({p2_col}{fila});0)<40);"
+        f'=IF({estado_col}{fila}<>"RECURSA";"";'
+        f"IF(AND(IFERROR(VALOR({p1_col}{fila});0)>=40;IFERROR(VALOR({p2_col}{fila});0)<40);"
         f'"RECUPERABLE CON PARCIAL 2";'
-        f"SI(Y(SI.ERROR(VALOR({p2_col}{fila});0)>=40;SI.ERROR(VALOR({p1_col}{fila});0)<40);"
+        f"IF(AND(IFERROR(VALOR({p2_col}{fila});0)>=40;IFERROR(VALOR({p1_col}{fila});0)<40);"
         f'"RECUPERABLE CON PARCIAL 1";"")))'
     )
 
@@ -87,16 +87,16 @@ def _formula_recuperable(estado_col: str, p1_col: str, p2_col: str, fila: int) -
 def _formulas_conteo_resumen(
     estado_letra: str, recuperable_letra: str, recuperable_criterio: str
 ) -> list[tuple[str, str]]:
-    """[(etiqueta, fórmula `CONTAR.SI`)] del resumen — conteos como fórmulas nativas es-AR
+    """[(etiqueta, fórmula `COUNTIF`)] del resumen — conteos como fórmulas nativas es-AR
     (no enteros estáticos), que recalculan al editar la columna "Estado Alumno".
 
     Los estados se cuentan sobre la columna Estado (`estado_letra`) y los recuperables
     sobre la columna auxiliar `Recuperable` (`recuperable_letra`). El criterio de
     recuperable cambia por hoja: `"RECUPERABLE*"` en "por Comisiones", `"RECUPERABLE CON*"`
-    en "Crudo" (`recuperable_criterio`). Sintaxis es-AR (`CONTAR.SI`, `;` como separador)
+    en "Crudo" (`recuperable_criterio`). Sintaxis es-AR (`COUNTIF`, `;` como separador)
     — ver la nota de locale del módulo (2.11, 2.12, 2.15)."""
     def _por_estado(patron: str) -> str:
-        return f'=CONTAR.SI({estado_letra}:{estado_letra};"{patron}")'
+        return f'=COUNTIF({estado_letra}:{estado_letra};"{patron}")'
 
     return [
         ("PROMOCIONADOS", _por_estado("PROMOCIONA")),
@@ -104,7 +104,7 @@ def _formulas_conteo_resumen(
         ("RECURSANTES", _por_estado("RECURSA")),
         (
             "RECUPERABLES",
-            f'=CONTAR.SI({recuperable_letra}:{recuperable_letra};"{recuperable_criterio}")',
+            f'=COUNTIF({recuperable_letra}:{recuperable_letra};"{recuperable_criterio}")',
         ),
         ("ABANDONOS", _por_estado("ABANDONO")),
     ]
@@ -207,7 +207,7 @@ def _agrupar_por_comision(alumnos: list[CierreCursadaAlumno]) -> dict[str, list[
 def _escribir_resumen(ws, materia_nombre: str, estado_letra: str, recuperable_letra: str) -> None:
     """R1: título (merge A1:B1, mayúsculas). R2-R6: conteo PROMOCIONADOS/REGULARES/
     RECURSANTES/RECUPERABLES/ABANDONOS en A:B, con la celda de conteo (col B) como
-    fórmula nativa `CONTAR.SI` (no un entero estático) que recalcula al editar la columna
+    fórmula nativa `COUNTIF` (no un entero estático) que recalcula al editar la columna
     "Estado Alumno". En el layout estándar Estado es F y Recuperable H (2.11, 2.12, 2.15)."""
     banda_titulo(ws, f"TOTAL MATERIA {materia_nombre.upper()}", ncols=2)
 
@@ -284,7 +284,7 @@ def _headers_crudo(parciales: list[dict], global_examen: dict | None) -> list[st
 def _escribir_resumen_crudo(ws, materia_nombre: str, estado_letra: str, recuperable_letra: str) -> None:
     """R1: título (merge A1:B1, mayúsculas). R2-R6: conteo PROMOCIONADOS/REGULARES/
     RECURSANTES/RECUPERABLES/ABANDONOS en A:B, con la celda de conteo (col B) como
-    fórmula nativa `CONTAR.SI` que recalcula al editar la columna "Estado Alumno". En el
+    fórmula nativa `COUNTIF` que recalcula al editar la columna "Estado Alumno". En el
     layout estándar Estado es H y Recuperable J; el criterio de recuperable es
     `"RECUPERABLE CON*"`. Reutiliza `banda_titulo`/`FONT_SECCION` (estilos de la casa →
     3.10) (2.11, 2.12, 2.15)."""
