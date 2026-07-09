@@ -33,7 +33,12 @@ from app.services.moodle_bulk_parser import (
     construir_indice_nombre_cmid,
     parsear_export_calificador_dual,
 )
-from app.services.moodle_service import MoodleService
+from app.services.moodle_service import (
+    MoodleAuthError,
+    MoodleConnectionError,
+    MoodleService,
+    construir_mapa_uid_grupos,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +148,7 @@ class CierreCursadaService:
             {
                 "id": e.id,
                 "tipo": e.tipo.value,
+                "tipo_actividad": e.tipo_actividad.value,
                 "moodle_cmid": e.moodle_cmid,
                 "modo_aprobacion": e.modo_aprobacion.value,
                 "nota_minima": e.nota_minima,
@@ -162,6 +168,34 @@ class CierreCursadaService:
             )
             enrolled = await self.moodle.get_enrolled_users_full(token, host, course_id, client=sesion)
             students = [u for u in enrolled if isinstance(u, dict) and self._es_student(u)]
+
+            # Mapa autoritativo `uid → grupos` (Bug 3). El `groups[]` embebido en
+            # `core_enrol_get_enrolled_users` puede venir incompleto en cursos con grupos
+            # separados (`groupmode=1`) → se arma una fuente autoritativa cruzando TODOS los
+            # grupos del curso (`core_group_get_course_groups`, 1 request) con sus miembros
+            # (`core_group_get_group_members`, 1 request por grupo, reutilizando la sesión).
+            #
+            # Fallback ante WS de grupos deshabilitado/forbidden (tarea 11.5): si el cliente
+            # no tiene habilitado `core_group_get_course_groups`/`core_group_get_group_members`
+            # (o el token no tiene permiso → `nopermissions`), NO se rompe la corrida: se degrada
+            # a `mapa_uid_grupos = {}` y se loguea la degradación. El loop de alumnos usa
+            # `mapa_uid_grupos.get(uid) or (u.get("groups") or [])`, así que un mapa vacío cae
+            # limpiamente al `groups[]` embebido (comportamiento actual, preserva 3.7).
+            try:
+                grupos_curso = await self.moodle.get_course_groups(token, host, course_id, client=sesion)
+                members_por_group = {
+                    g["id"]: await self.moodle.get_group_members(token, host, g["id"], client=sesion)
+                    for g in grupos_curso
+                }
+                mapa_uid_grupos = construir_mapa_uid_grupos(grupos_curso, members_por_group)
+            except (MoodleConnectionError, MoodleAuthError) as e:
+                logger.warning(
+                    "Cierre de cursada: grupos autoritativos no disponibles "
+                    "(course_id=%s); se degrada al groups[] embebido: %s",
+                    course_id, e,
+                )
+                mapa_uid_grupos = {}
+
             secciones = await self.moodle.get_course_contents(token, host, course_id, client=sesion)
             nombre_a_cmid = construir_indice_nombre_cmid(secciones)
             email_a_uid = {
@@ -186,7 +220,16 @@ class CierreCursadaService:
             grades_por_cmid: dict[int, dict] = {}
             for ex in examenes_config:
                 mod = mod_por_cmid.get(ex.get("moodle_cmid")) or {}
-                if mod.get("modname") == "assign" and mod.get("instance"):
+                # Sólo los exámenes marcados como Tarea (assign) usan el grade
+                # estructural (`mod_assign_get_grades`). Un `quiz` NO tiene grade
+                # estructural: su nota sale por el texto del calificador en
+                # `examen_mapper`, así que se excluye acá para no pegarle al WS de
+                # assign con una instancia que no corresponde.
+                if (
+                    ex["tipo_actividad"] == "assign"
+                    and mod.get("modname") == "assign"
+                    and mod.get("instance")
+                ):
                     grades_por_cmid[ex["moodle_cmid"]] = await self.moodle.get_grades_full(
                         token, host, mod["instance"]
                     )
@@ -194,7 +237,7 @@ class CierreCursadaService:
             await sesion.aclose()
 
         alumnos: list[CierreCursadaAlumno] = []
-        conteos = {"PROMOCIONA": 0, "REGULARIZA": 0, "RECURSA": 0}
+        conteos = {"PROMOCIONA": 0, "REGULARIZA": 0, "RECURSA": 0, "ABANDONO": 0}
         for u in students:
             uid = u.get("id")
             notas_uid = {
@@ -229,8 +272,10 @@ class CierreCursadaService:
                     detail="La materia no tiene exámenes configurados en el dashboard",
                 ) from exc
 
+            # Preferir los grupos del mapa autoritativo para este uid (Bug 3); si el uid no
+            # tiene entrada allí, caer al `groups[]` embebido (fallback seguro que preserva 3.7).
             comision_id, comision_nombre, tutor_nombre = self._resolver_comision(
-                u.get("groups") or [], comisiones
+                mapa_uid_grupos.get(uid) or (u.get("groups") or []), comisiones
             )
 
             conteos[veredicto["estado"]] += 1
@@ -259,22 +304,25 @@ class CierreCursadaService:
             total_promociona=conteos["PROMOCIONA"],
             total_regulariza=conteos["REGULARIZA"],
             total_recursa=conteos["RECURSA"],
+            total_abandono=conteos["ABANDONO"],
         )
         run.alumnos = alumnos
         creado = await self.cierre_repo.crear_run(run)
 
         logger.info(
             "Cierre de cursada generado: materia=%s cuatrimestre=%s alumnos=%s "
-            "(promociona=%s regulariza=%s recursa=%s)",
+            "(promociona=%s regulariza=%s recursa=%s abandono=%s)",
             materia_id, cuatrimestre_id, creado.total_alumnos,
             creado.total_promociona, creado.total_regulariza, creado.total_recursa,
+            creado.total_abandono,
         )
         await ActividadService(self.db).registrar_actividad(
             tipo=TipoActividadEnum.CIERRE_CURSADA_GENERADO,
             descripcion=(
                 f"Cierre de cursada de '{materia.nombre}' generado "
                 f"({creado.total_alumnos} alumnos: {creado.total_promociona} promociona, "
-                f"{creado.total_regulariza} regulariza, {creado.total_recursa} recursa)"
+                f"{creado.total_regulariza} regulariza, {creado.total_recursa} recursa, "
+                f"{creado.total_abandono} abandono)"
             ),
             entidad_id=creado.id,
             entidad_nombre=materia.nombre,

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.models.enums import ModoAprobacionEnum, TipoExamenEnum
+from app.models.enums import ModoAprobacionEnum, TipoActividadMoodleEnum, TipoExamenEnum
 
 
 @pytest.fixture(autouse=True)
@@ -44,6 +44,7 @@ def _examen(id, tipo, *, cmid=100, modo="ESCALA", nota_minima=None, recupera=Non
     e.nota_minima = nota_minima
     e.recupera_examen_id = recupera
     e.orden = orden
+    e.tipo_actividad = TipoActividadMoodleEnum.ASSIGN
     return e
 
 
@@ -197,3 +198,69 @@ async def test_actualizar_no_puede_recuperarse_a_si_mismo():
     with pytest.raises(HTTPException) as exc:
         await service.actualizar(7, data)
     assert exc.value.status_code == 400
+
+
+# =====================================================================
+# Bug 1 — Tipo de actividad ASSIGN vs QUIZ (test de EXPLORACIÓN)
+# =====================================================================
+# CRITICAL: estos tests DEBEN FALLAR sobre el código sin arreglar. La falla
+# confirma el Bug 1: hoy `ExamenMateria` y sus schemas NO tienen el campo
+# `tipo_actividad`, por lo que no hay forma de representar un examen `quiz`.
+# Bug Condition (Bug 1): input.examen.actividad_moodle_real == "quiz"
+#                        AND NOT existeCampoTipoActividad(examen).
+# NOTE: codifican el comportamiento esperado (Property 1 del design) y validarán
+# el fix cuando pasen.
+
+
+def test_schema_create_acepta_y_persiste_tipo_actividad_quiz():
+    """Property 1: alta de un examen quiz (Extraordinaria 2/3 sobre Parcial 2).
+
+    Hoy el campo `tipo_actividad` no existe en `ExamenMateriaCreate`: Pydantic lo
+    ignora silenciosamente y acceder a `.tipo_actividad` lanza AttributeError (falla).
+    """
+    data = ExamenMateriaCreate(
+        tipo=TipoExamenEnum.EXTRAORDINARIA,
+        moodle_cmid=17679,
+        modo_aprobacion=ModoAprobacionEnum.ESCALA,
+        recupera_examen_id=1,
+        tipo_actividad="quiz",
+    )
+    assert data.tipo_actividad == "quiz"
+
+
+def test_schema_create_default_tipo_actividad_assign():
+    """Property 1: un examen sin tipo declarado queda por defecto en `assign`.
+
+    Hoy falla porque el campo no existe (AttributeError al leer `.tipo_actividad`).
+    """
+    data = ExamenMateriaCreate(
+        tipo=TipoExamenEnum.PARCIAL,
+        moodle_cmid=17648,
+        modo_aprobacion=ModoAprobacionEnum.ESCALA,
+    )
+    assert data.tipo_actividad == "assign"
+
+
+def test_schema_update_acepta_tipo_actividad_quiz():
+    """Property 1: la edición también debe permitir marcar `quiz`.
+
+    Hoy falla porque `ExamenMateriaUpdate` no tiene el campo (AttributeError).
+    """
+    data = ExamenMateriaUpdate(
+        tipo=TipoExamenEnum.EXTRAORDINARIA,
+        moodle_cmid=20467,
+        modo_aprobacion=ModoAprobacionEnum.ESCALA,
+        recupera_examen_id=1,
+        tipo_actividad="quiz",
+    )
+    assert data.tipo_actividad == "quiz"
+
+
+def test_modelo_examen_materia_tiene_columna_tipo_actividad():
+    """Property 1: `ExamenMateria` debe persistir `tipo_actividad`.
+
+    Hoy falla porque el modelo no tiene esa columna mapeada.
+    """
+    from app.models.examen_materia import ExamenMateria
+
+    assert hasattr(ExamenMateria, "tipo_actividad")

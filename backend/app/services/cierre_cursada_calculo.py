@@ -116,6 +116,18 @@ def cumple_banda(examen: dict) -> bool:
     return valor_real >= (nota_minima - banda)
 
 
+def examen_ausente(examen: dict) -> bool:
+    """El alumno NO rindió este examen (quedó `N/E`).
+
+    Modo ESCALA: `resultado_escala` no es ni `aprobado` ni `desaprobado`
+    (ausente o sin resultado). Modo NUMERICO: no hay `valor_real` (`None`).
+    Se usa para detectar ABANDONO (todos los principales ausentes).
+    """
+    if examen.get("modo_aprobacion") == "ESCALA":
+        return examen.get("resultado_escala") not in ("aprobado", "desaprobado")
+    return examen.get("valor_real") is None
+
+
 def _valor_para_nota_final(examen: dict) -> float:
     """Valor numérico 0-10 de un examen para ponderar la Nota Final —
     SIEMPRE devuelve un número (nunca `None`): un faltante cuenta como 0.
@@ -169,7 +181,7 @@ def calcular_nota_final(examenes: list[dict]) -> int | None:
 
 
 def calcular_estado_cierre(examenes: list[dict]) -> dict:
-    """Veredicto de cierre de un alumno: PROMOCIONA / REGULARIZA / RECURSA.
+    """Veredicto de cierre de un alumno: PROMOCIONA / REGULARIZA / ABANDONO / RECURSA.
 
     examenes: lista de exámenes PRINCIPALES (PARCIAL/GLOBAL) del alumno, cada
     uno `{examen_id, tipo, modo_aprobacion, nota_minima, valor_real,
@@ -177,10 +189,18 @@ def calcular_estado_cierre(examenes: list[dict]) -> dict:
     `examen_mapper.calcular_resultados_examenes`).
 
     Devuelve `{estado, resultados_examenes, global_valor, nota_final}`.
-    `nota_final` sólo se informa para el estado PROMOCIONA (entero 0-10,
-    resultado de `calcular_nota_final(examenes)`); para REGULARIZA/RECURSA
-    es siempre `None` (celda en blanco en el reporte, no "N/E") — la Nota
-    Final ponderada sólo tiene sentido para quien promociona.
+    La `nota_final` depende del estado (Bug 6, spec
+    `cierre-cursada-quiz-recuperables-fix`):
+      - PROMOCIONA -> Nota Final ponderada (entero 0-10, resultado de
+        `calcular_nota_final(examenes)`).
+      - REGULARIZA -> `5` (valor fijo, persistido y mostrado en el Excel).
+      - RECURSA / ABANDONO -> `None` (celda en blanco en el reporte, no
+        "N/E").
+    La regla de REGULARIZA se concentra en este único punto para poder
+    revertirla trivialmente (cambiar `5` por `None`). Sobrescribe
+    deliberadamente la regla previa de `cierre-cursada-comision-nota-fix`
+    (que dejaba REGULARIZA en blanco); ver "Decisión: Bug 6 vs modelo de
+    referencia" en el diseño.
 
     Lanza `SinExamenesConfigurados` si `examenes` está vacío.
     """
@@ -194,11 +214,14 @@ def calcular_estado_cierre(examenes: list[dict]) -> dict:
 
     promociona = all(cumple_minimo(e) for e in examenes)  # incluye GLOBAL
     regulariza = (not promociona) and all(cumple_banda(e) for e in no_globales)
+    todos_ausentes = all(examen_ausente(e) for e in examenes)
 
     if promociona:
         estado = "PROMOCIONA"
     elif regulariza:
         estado = "REGULARIZA"
+    elif todos_ausentes:
+        estado = "ABANDONO"
     else:
         estado = "RECURSA"
 
@@ -211,9 +234,18 @@ def calcular_estado_cierre(examenes: list[dict]) -> dict:
 
     global_valor = max_o_none([g.get("valor_real") for g in globales])
 
+    # Nota Final por estado (Bug 6): PROMOCIONA usa la Nota Final ponderada;
+    # REGULARIZA es siempre 5; RECURSA/ABANDONO quedan en blanco (None).
+    if estado == "PROMOCIONA":
+        nota_final = calcular_nota_final(examenes)
+    elif estado == "REGULARIZA":
+        nota_final = 5
+    else:  # RECURSA / ABANDONO
+        nota_final = None
+
     return {
         "estado": estado,
         "resultados_examenes": resultados_examenes,
         "global_valor": global_valor,
-        "nota_final": calcular_nota_final(examenes) if estado == "PROMOCIONA" else None,
+        "nota_final": nota_final,
     }

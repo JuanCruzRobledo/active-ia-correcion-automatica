@@ -264,12 +264,14 @@ def test_resultados_examenes_incluye_cumple_minimo_y_cumple_banda():
     assert detalle["cumple_banda"] is True
 
 
-def test_regulariza_tiene_nota_final_none():
-    # Bug 4 (tarea 8.4): un alumno que REGULARIZA (no promociona) debe tener
-    # `nota_final is None`, aunque tenga parciales y global numéricos que
-    # producirían una Nota Final ponderada válida. La Nota Final sólo se
-    # completa para el estado PROMOCIONA (celda del Excel en blanco, no
-    # "N/E", para los demás estados).
+def test_regulariza_tiene_nota_final_5():
+    # Bug 6 (tarea 9.3, spec cierre-cursada-quiz-recuperables-fix): un alumno
+    # que REGULARIZA (no promociona) debe tener `nota_final == 5` (valor fijo),
+    # aunque tenga parciales y global numéricos que producirían una Nota Final
+    # ponderada distinta. Esta regla sobrescribe deliberadamente la anterior
+    # (`cierre-cursada-comision-nota-fix`, que dejaba REGULARIZA en blanco).
+    # La Nota Final ponderada sigue siendo exclusiva de PROMOCIONA; RECURSA y
+    # ABANDONO quedan en blanco (None).
     examenes = [
         _examen(tipo="PARCIAL", nota_minima=60.0, valor_real=45.0, examen_id=1),  # banda 40, no minimo
         _examen(tipo="PARCIAL", nota_minima=60.0, valor_real=60.0, examen_id=2),
@@ -277,7 +279,7 @@ def test_regulariza_tiene_nota_final_none():
     ]
     resultado = calcular_estado_cierre(examenes)
     assert resultado["estado"] == "REGULARIZA"
-    assert resultado["nota_final"] is None
+    assert resultado["nota_final"] == 5
 
 
 # ===================== calcular_nota_final =====================
@@ -497,13 +499,13 @@ def test_bug_nota_final_ningun_examen_entregado_es_cero():
 # **Validates: Requirements 1.8, 1.9**
 
 
-def test_bug_regulariza_con_numericos_deberia_tener_nota_final_none():
-    """Bug 4: alumno REGULARIZA (parciales que cumplen la banda pero no el mínimo, más
-    un global numérico) -> esperado (tras el fix) `nota_final is None` y celda "Nota
-    Final" en BLANCO en el Excel. HOY: `calcular_estado_cierre` no gatea la Nota Final
-    por estado y devuelve un entero (ver `test_regulariza_con_global_numerico_tiene_nota_final_numerica`,
-    que hoy espera `nota_final == 8` para este mismo escenario -- ese test codifica la
-    regla de Bug 2 y deberá actualizarse en la tarea 8.4)."""
+def test_regulariza_con_numericos_tiene_nota_final_5():
+    """Bug 6 (tarea 9.3): alumno REGULARIZA (parciales que cumplen la banda pero no el
+    mínimo, más un global numérico) -> `nota_final == 5` (valor fijo), NO la Nota Final
+    ponderada. Antes de Bug 6 este mismo escenario esperaba `nota_final is None`
+    (regla de `cierre-cursada-comision-nota-fix`, Bug 4); Bug 6 la sobrescribe con
+    la instrucción explícita del usuario (REGULARIZA -> 5). El gate por estado
+    sigue vigente: sólo PROMOCIONA usa la Nota Final ponderada."""
     examenes = [
         _examen(tipo="PARCIAL", nota_minima=60.0, valor_real=45.0, examen_id=1),  # banda 40, no minimo
         _examen(tipo="PARCIAL", nota_minima=60.0, valor_real=60.0, examen_id=2),
@@ -511,19 +513,119 @@ def test_bug_regulariza_con_numericos_deberia_tener_nota_final_none():
     ]
     resultado = calcular_estado_cierre(examenes)
     assert resultado["estado"] == "REGULARIZA"
-    assert resultado["nota_final"] is None
+    assert resultado["nota_final"] == 5
 
 
-def test_bug_recursa_con_examenes_no_entregados_deberia_tener_nota_final_none():
-    """Bug 4: alumno RECURSA con exámenes no entregados -> esperado (tras el fix)
-    `nota_final is None` y celda "Nota Final" en BLANCO en el Excel. HOY:
-    `calcular_estado_cierre` calcula la Nota Final para cualquier estado (los no
-    entregados cuentan como 0 desde el fix de Bug 2), así que devuelve un número
-    (0 o más) en vez de `None`."""
+def test_abandono_con_examenes_no_entregados_tiene_nota_final_none():
+    """Nota Final en BLANCO para un alumno que no entregó ningún examen (celda
+    "Nota Final" vacía en el Excel).
+
+    Origen: este test provenía de `cierre-cursada-comision-nota-fix` (Bug 4) y
+    verificaba que un alumno con TODOS los exámenes `N/E` quedaba con
+    `nota_final is None`, asumiendo `estado == "RECURSA"`. Con el fix de Bug 5
+    (spec `cierre-cursada-quiz-recuperables-fix`, tarea 9.2), un alumno con todos
+    los principales ausentes ahora se clasifica correctamente como `ABANDONO`,
+    no `RECURSA`. La intención original (Nota Final en blanco) se preserva: tanto
+    RECURSA como ABANDONO dejan `nota_final = None` (tarea 9.3, sólo PROMOCIONA
+    tiene Nota Final ponderada y REGULARIZA = 5)."""
     examenes = [
         _examen(tipo="PARCIAL", nota_minima=60.0, valor_real=None, examen_id=1),
         _examen(tipo="GLOBAL", nota_minima=60.0, valor_real=None, examen_id=2),
     ]
     resultado = calcular_estado_cierre(examenes)
-    assert resultado["estado"] == "RECURSA"
+    assert resultado["estado"] == "ABANDONO"
     assert resultado["nota_final"] is None
+
+
+# ===================== Bug 5 exploration (tarea 5, ANTES del fix) =====================
+#
+# Property 5: Bug Condition - Estado ABANDONO
+# (cierre-cursada-quiz-recuperables-fix/design.md, isBugCondition de Bug 5).
+# CRITICAL: estos tests codifican el comportamiento ESPERADO tras el fix -> DEBEN FALLAR
+# sobre `calcular_estado_cierre` SIN arreglar, que hoy clasifica al alumno con TODOS los
+# exámenes principales en `N/E` como "RECURSA" (cae en el `else`), sin distinguir el caso
+# de abandono total. La falla confirma que el Bug 5 existe. NO se debe modificar
+# `calcular_estado_cierre` (ni ningún otro código fuente) para hacer pasar estos tests.
+#
+# Scoped PBT: al ser un bug determinista, la propiedad se acota al caso concreto
+# "todos los principales ausentes".
+# Bug Condition: todos_ne AND clasificacionActual(examenes) == "RECURSA".
+# **Validates: Requirements 1.11, 1.12**
+
+
+def test_bug_todos_ne_numerico_deberia_ser_abandono():
+    """Bug 5: alumno con Parcial 1, Parcial 2 y Global todos `N/E` en modo NUMERICO
+    (`valor_real=None`) -> esperado (tras el fix) `estado == "ABANDONO"`.
+    HOY: `calcular_estado_cierre` no tiene rama ABANDONO; ninguno cumple mínimo ni banda,
+    así que cae en el `else` y devuelve `"RECURSA"` en vez de `"ABANDONO"`."""
+    examenes = [
+        _examen(tipo="PARCIAL", nota_minima=60.0, valor_real=None, examen_id=1),
+        _examen(tipo="PARCIAL", nota_minima=60.0, valor_real=None, examen_id=2),
+        _examen(tipo="GLOBAL", nota_minima=6.0, valor_real=None, examen_id=3),
+    ]
+    resultado = calcular_estado_cierre(examenes)
+    assert resultado["estado"] == "ABANDONO"
+
+
+def test_bug_todos_ne_escala_sin_resultado_deberia_ser_abandono():
+    """Bug 5: alumno con exámenes principales en modo ESCALA sin resultado (ni
+    `aprobado` ni `desaprobado`) -> esperado (tras el fix) `estado == "ABANDONO"`.
+    HOY: `calcular_estado_cierre` devuelve `"RECURSA"` (no hay rama ABANDONO)."""
+    examenes = [
+        _examen(tipo="PARCIAL", modo="ESCALA", nota_minima=None, resultado_escala=None, examen_id=1),
+        _examen(tipo="PARCIAL", modo="ESCALA", nota_minima=None, resultado_escala="ausente", examen_id=2),
+        _examen(tipo="GLOBAL", modo="ESCALA", nota_minima=None, resultado_escala=None, examen_id=3),
+    ]
+    resultado = calcular_estado_cierre(examenes)
+    assert resultado["estado"] == "ABANDONO"
+
+
+# ===================== Bug 6 exploration (tarea 6, ANTES del fix) =====================
+#
+# Property 6: Bug Condition - Nota Final = 5 para REGULARIZA
+# (cierre-cursada-quiz-recuperables-fix/design.md, isBugCondition de Bug 6).
+# CRITICAL: estos tests codifican el comportamiento ESPERADO tras el fix -> DEBEN FALLAR
+# sobre `calcular_estado_cierre` SIN arreglar, que hoy asigna `nota_final = None` para
+# todo estado distinto de PROMOCIONA, por lo que un alumno REGULARIZA queda con la celda
+# "Nota Final" en blanco (`None`) en vez de `5`. La falla confirma que el Bug 6 existe.
+# NO se debe modificar `calcular_estado_cierre` (ni ningún otro código fuente) para hacer
+# pasar estos tests.
+#
+# Bug Condition: estado == "REGULARIZA" AND nota_final != 5.
+#
+# NOTA sobre la discrepancia con `cierre-cursada-comision-nota-fix` (Bug 4 de esa spec,
+# `test_regulariza_tiene_nota_final_none` / `test_bug_regulariza_con_numericos_...`):
+# aquellos tests codifican la regla ANTERIOR (REGULARIZA -> Nota Final en blanco). Bug 6
+# de esta spec sigue la instrucción explícita del usuario (REGULARIZA -> Nota Final = 5)
+# y esa contradicción se resuelve en la fase de fix (tarea 9.3), donde esos tests se
+# actualizarán. Ver "Decisión: Bug 6 vs modelo de referencia" en design.md.
+# **Validates: Requirements 1.13**
+
+
+def test_bug_regulariza_banda_global_opcional_deberia_tener_nota_final_5():
+    """Bug 6: alumno REGULARIZA (parciales que cumplen la banda pero no el mínimo, con el
+    global opcional ausente) -> esperado (tras el fix) `nota_final == 5`.
+    HOY: `calcular_estado_cierre` asigna `nota_final = None` para todo estado != PROMOCIONA,
+    así que devuelve `None` en vez de `5`."""
+    examenes = [
+        _examen(tipo="PARCIAL", nota_minima=60.0, valor_real=40.0, examen_id=1),  # banda 40, no minimo
+        _examen(tipo="PARCIAL", nota_minima=70.0, valor_real=55.0, examen_id=2),  # banda 50, no minimo
+        _examen(tipo="GLOBAL", nota_minima=6.0, valor_real=None, examen_id=3),
+    ]
+    resultado = calcular_estado_cierre(examenes)
+    assert resultado["estado"] == "REGULARIZA"
+    assert resultado["nota_final"] == 5
+
+
+def test_bug_regulariza_con_numericos_deberia_tener_nota_final_5():
+    """Bug 6: alumno REGULARIZA con parciales y global numéricos (banda cumplida, mínimo
+    no) -> esperado (tras el fix) `nota_final == 5` (valor fijo, NO la Nota Final
+    ponderada). HOY: `calcular_estado_cierre` devuelve `None` para REGULARIZA."""
+    examenes = [
+        _examen(tipo="PARCIAL", nota_minima=60.0, valor_real=45.0, examen_id=1),  # banda 40, no minimo
+        _examen(tipo="PARCIAL", nota_minima=60.0, valor_real=60.0, examen_id=2),
+        _examen(tipo="GLOBAL", nota_minima=6.0, valor_real=9.0, examen_id=3),
+    ]
+    resultado = calcular_estado_cierre(examenes)
+    assert resultado["estado"] == "REGULARIZA"
+    assert resultado["nota_final"] == 5

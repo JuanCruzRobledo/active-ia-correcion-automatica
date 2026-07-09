@@ -32,7 +32,7 @@ Nota Final (Property 4 — Requirements 2.11, 2.13):
       produce la misma NF.
 """
 
-from hypothesis import given, strategies as st
+from hypothesis import assume, given, strategies as st
 
 from app.services.cierre_cursada_calculo import (
     banda_regular,
@@ -41,6 +41,7 @@ from app.services.cierre_cursada_calculo import (
     cumple_banda,
     cumple_minimo,
     detectar_escala,
+    examen_ausente,
     max_o_none,
     normalizar_a_10,
     round_half_up,
@@ -247,6 +248,10 @@ def test_prop3_algun_no_global_sin_banda_siempre_recursa(
     examenes = [parcial_que_falla] + resto_parciales
     if incluir_global:
         examenes.append(global_examen)
+    # El alumno debe haber rendido al menos un examen: si TODOS están ausentes
+    # (todo-N/E) el veredicto es ABANDONO, no RECURSA (Bug 5,
+    # cierre-cursada-quiz-recuperables-fix). Esa rama la cubre Property 5.
+    assume(not all(examen_ausente(e) for e in examenes))
     resultado = calcular_estado_cierre(examenes)
     assert resultado["estado"] == "RECURSA"
 
@@ -485,13 +490,161 @@ def test_prop6_bug_nota_final_solo_deberia_estar_presente_en_promociona(parciale
     # fuera de 0-10/0-100 (ej. 12.0 en escala 10). Por eso acá NO se repite el chequeo de
     # rango 0-10 de la Nota Final para PROMOCIONA (ya cubierto por Property 9, que usa
     # `_examen_numerico_valido`, correctamente acotado a la escala); esta propiedad se
-    # acota, como indica la tarea, a lo que hoy falla por el Bug 4: que `nota_final` NO
-    # sea `None` para estados distintos de PROMOCIONA.
+    # acota al gate por estado: PROMOCIONA trae Nota Final ponderada (int), REGULARIZA
+    # trae 5 (Bug 6, tarea 9.3) y RECURSA/ABANDONO quedan en `None`.
     examenes = list(parciales) + [global_examen]
     resultado = calcular_estado_cierre(examenes)
     nf = resultado["nota_final"]
 
     if resultado["estado"] == "PROMOCIONA":
         assert isinstance(nf, int)
-    else:
+    elif resultado["estado"] == "REGULARIZA":
+        # Bug 6 (tarea 9.3): REGULARIZA -> Nota Final = 5 (valor fijo).
+        assert nf == 5
+    else:  # RECURSA / ABANDONO
         assert nf is None
+
+
+# =====================================================================
+# Property 7 (Preservación) — spec cierre-cursada-quiz-recuperables-fix
+# =====================================================================
+#
+# Metodología observation-first: se corre el código SIN arreglar con inputs que NO
+# disparan ninguna condición de bug de ESTA spec (Bugs 5/6) y se captura el
+# comportamiento observado, que el fix (tareas 9.2/9.3) debe PRESERVAR.
+#
+# El fix de esta spec sólo cambia dos cosas en `calcular_estado_cierre`:
+#   - Bug 5: un alumno con TODOS los exámenes principales en `N/E` pasa de RECURSA a
+#     ABANDONO (nuevo estado).
+#   - Bug 6: un alumno REGULARIZA pasa de `nota_final = None` a `nota_final = 5`.
+# Todo lo demás (PROMOCIONA + su Nota Final ponderada, RECURSA de quien rindió algo,
+# precedencia de la cadena de rescate) NO cambia. Estas propiedades codifican EXACTAMENTE
+# ese "resto" con inputs que evitan las dos condiciones de bug, por lo que PASAN sobre el
+# código sin arreglar y deben seguir pasando tras el fix.
+# **Validates: Requirements 3.2, 3.3, 3.5**
+
+
+@st.composite
+def _examen_presente(draw, tipo):
+    """Examen 'rendido' (NO ausente): NUMERICO con `valor_real` numérico, o ESCALA con
+    resultado `aprobado`/`desaprobado`. Garantiza que el alumno NO caiga en la condición
+    de ABANDONO (todo-`N/E`) del Bug 5 — es decir, un input que NO dispara ese bug."""
+    modo = draw(st.sampled_from(["NUMERICO", "ESCALA"]))
+    examen_id = draw(st.integers(min_value=1, max_value=10_000))
+    if modo == "ESCALA":
+        resultado = draw(st.sampled_from(["aprobado", "desaprobado"]))
+        return _examen(
+            tipo=tipo, modo="ESCALA", nota_minima=None,
+            resultado_escala=resultado, examen_id=examen_id,
+        )
+    nota_minima = draw(st.sampled_from(NOTA_MINIMA_CHOICES))
+    max_val = _max_valor_por_escala(nota_minima)
+    valor_real = draw(st.floats(min_value=0.0, max_value=max_val, allow_nan=False, allow_infinity=False))
+    return _examen(
+        tipo=tipo, modo="NUMERICO", nota_minima=nota_minima,
+        valor_real=valor_real, examen_id=examen_id,
+    )
+
+
+@st.composite
+def _examen_promociona_valido(draw, tipo):
+    """Examen que cumple el mínimo (PROMOCIONA) y cae DENTRO de su escala (0-10 / 0-100),
+    para que la Nota Final ponderada sea un valor válido y comparable con la fórmula
+    recalculada de forma independiente."""
+    modo = draw(st.sampled_from(["NUMERICO", "ESCALA"]))
+    examen_id = draw(st.integers(min_value=1, max_value=10_000))
+    if modo == "ESCALA":
+        return _examen(
+            tipo=tipo, modo="ESCALA", nota_minima=None,
+            resultado_escala="aprobado", examen_id=examen_id,
+        )
+    nota_minima = draw(st.sampled_from(NOTA_MINIMA_CHOICES))
+    max_val = _max_valor_por_escala(nota_minima)
+    valor_real = draw(st.floats(min_value=nota_minima, max_value=max_val, allow_nan=False, allow_infinity=False))
+    return _examen(
+        tipo=tipo, modo="NUMERICO", nota_minima=nota_minima,
+        valor_real=valor_real, examen_id=examen_id,
+    )
+
+
+def _valor_para_nf_esperado(examen: dict) -> float:
+    """Recalcula, de forma independiente a `calcular_nota_final`, el valor 0-10 de un
+    examen para la ponderación: ESCALA aprobado -> 10.0; NUMERICO -> normalizado a 0-10.
+    (Los generadores de esta sección sólo producen exámenes presentes/aprobados, así que
+    no hace falta el caso de faltante = 0.)"""
+    if examen["modo_aprobacion"] == "ESCALA":
+        return 10.0
+    return normalizar_a_10(examen["valor_real"], examen["nota_minima"])
+
+
+@given(
+    parciales=st.lists(_examen_promociona_valido("PARCIAL"), min_size=1, max_size=4),
+    global_examen=_examen_promociona_valido("GLOBAL"),
+)
+def test_prop7_preservacion_promociona_conserva_nota_final_ponderada(parciales, global_examen):
+    """3.3: un alumno PROMOCIONA (cumple el mínimo en todos, incluido el GLOBAL) conserva
+    su Nota Final ponderada numérica actual (promedio de parciales normalizados a 0-10 al
+    40% + global normalizado a 0-10 al 60%, `round_half_up`). El fix de Bugs 5/6 no toca
+    ni la clasificación PROMOCIONA ni su Nota Final."""
+    examenes = list(parciales) + [global_examen]
+    veredicto = calcular_estado_cierre(examenes)
+
+    assert veredicto["estado"] == "PROMOCIONA"
+
+    parciales_norm = [_valor_para_nf_esperado(e) for e in parciales]
+    global_norm = _valor_para_nf_esperado(global_examen)
+    promedio = sum(parciales_norm) / len(parciales_norm)
+    nf_esperado = round_half_up(promedio * 0.4 + global_norm * 0.6)
+
+    assert veredicto["nota_final"] == nf_esperado
+    assert 0 <= veredicto["nota_final"] <= 10
+
+
+@given(
+    presente=_examen_presente("PARCIAL"),
+    resto_parciales=st.lists(_examen_cualquiera("PARCIAL"), min_size=0, max_size=3),
+    incluir_global=st.booleans(),
+    global_examen=_examen_cualquiera("GLOBAL"),
+)
+def test_prop7_preservacion_alumno_que_rindio_algo_no_es_abandono(
+    presente, resto_parciales, incluir_global, global_examen
+):
+    """3.5: un alumno que rindió AL MENOS un examen (no todo-`N/E`) sigue clasificándose
+    como PROMOCIONA/REGULARIZA/RECURSA igual que hoy, NUNCA como ABANDONO — el Bug 5 sólo
+    cambia el caso de todo-`N/E`. Se fuerza al menos un examen presente (`_examen_presente`)
+    para NO disparar la condición de ABANDONO."""
+    examenes = [presente] + resto_parciales
+    if incluir_global:
+        examenes.append(global_examen)
+
+    veredicto = calcular_estado_cierre(examenes)
+
+    assert veredicto["estado"] in {"PROMOCIONA", "REGULARIZA", "RECURSA"}
+    assert veredicto["estado"] != "ABANDONO"
+
+
+@given(
+    nota_minima=st.sampled_from(NOTA_MINIMA_CHOICES),
+    intentos=st.lists(
+        st.one_of(st.none(), st.floats(min_value=0.0, max_value=150.0, allow_nan=False, allow_infinity=False)),
+        min_size=1,
+        max_size=5,
+    ),
+)
+def test_prop7_preservacion_cadena_rescate_toma_el_mejor_intento(nota_minima, intentos):
+    """3.2: la cadena de rescate (recu/extensión/extraordinaria) mantiene su precedencia
+    actual — el `valor_real` de un examen con rescates es el MÁXIMO entre la instancia base
+    y todas sus instancias de rescate (`max_o_none`), y si alguna alcanza el mínimo, el
+    examen cumple el mínimo. Esta precedencia no cambia con el fix de esta spec."""
+    valor_real = max_o_none(intentos)
+    intentos_rendidos = [v for v in intentos if v is not None]
+
+    if not intentos_rendidos:
+        assert valor_real is None
+    else:
+        assert valor_real == max(intentos_rendidos)
+
+    examen = _examen(nota_minima=nota_minima, valor_real=valor_real)
+    algun_intento_alcanza_el_minimo = any(v >= nota_minima for v in intentos_rendidos)
+    if algun_intento_alcanza_el_minimo:
+        assert cumple_minimo(examen) is True

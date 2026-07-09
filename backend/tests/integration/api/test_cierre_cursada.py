@@ -238,13 +238,14 @@ async def test_excel_run_exitoso_devuelve_xlsx_con_layout_corregido():
     wb = load_workbook(io.BytesIO(resp.content))
     ws = wb.active
 
-    # 6 columnas del modelo corregido + Nota Final como última (7ª), sin TPs/dona.
+    # Layout (Bug 2/4): columnas del modelo + Nota Final + la columna auxiliar
+    # "Recuperable" como última (8ª), sin TPs/dona.
     fila_headers = next(
         [c.value for c in row] for row in ws.iter_rows() if row[0].value == "Nombre y Apellido"
     )
     assert fila_headers == [
         "Nombre y Apellido", "Email", "Parcial 1", "Parcial 2",
-        "Global TPI", "Estado Alumno", "Nota Final",
+        "Global TPI", "Estado Alumno", "Nota Final", "Recuperable",
     ]
     valores = {c.value for row in ws.iter_rows() for c in row if isinstance(c.value, str)}
     assert not (valores & {"TPs Aprobados", "Autoeval OK", "TPI", "Habilitado para Final"})
@@ -252,11 +253,12 @@ async def test_excel_run_exitoso_devuelve_xlsx_con_layout_corregido():
 
     fila_ana = next(row for row in ws.iter_rows() if row[0].value == "Gómez, Ana")
     fila_bruno = next(row for row in ws.iter_rows() if row[0].value == "Pérez, Bruno")
-    assert fila_ana[-1].value == 8  # Nota Final numérica
+    # Nota Final es ahora la penúltima columna (la última es "Recuperable").
+    assert fila_ana[-2].value == 8  # Nota Final numérica
     # Bug 4 (nota_final sólo para PROMOCIONA): REGULARIZA renderiza la celda "Nota
     # Final" en blanco (no "N/E") — openpyxl guarda la cadena vacía como None al
     # persistir el .xlsx.
-    assert fila_bruno[-1].value in ("", None)
+    assert fila_bruno[-2].value in ("", None)
     assert fila_bruno[4].value == "N/E"  # Global TPI también N/E
 
 
@@ -395,6 +397,11 @@ def _mock_moodle_service():
     mock.get_course_contents = AsyncMock(return_value=_secciones_curso())
     mock.descargar_export_calificador = AsyncMock(return_value=_csv_calificador_dual())
     mock.get_grades_full = AsyncMock(return_value={})
+    # Bug 3: fuente autoritativa de grupos (`core_group_*`). El curso tiene un único
+    # grupo de comisión "G1" (id 342, moodle_group_id de Comisión 1) con los 3 alumnos
+    # como miembros → el mapa autoritativo uid→grupos asocia a los 3 a Comisión 1.
+    mock.get_course_groups = AsyncMock(return_value=[{"id": 342, "name": "G1"}])
+    mock.get_group_members = AsyncMock(return_value=[1, 2, 3])
     return mock
 
 

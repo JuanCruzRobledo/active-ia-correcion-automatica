@@ -21,7 +21,11 @@ from sqlalchemy import Enum as SQLEnum, Float, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, backref, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
-from app.models.enums import ModoAprobacionEnum, TipoExamenEnum
+from app.models.enums import (
+    ModoAprobacionEnum,
+    TipoActividadMoodleEnum,
+    TipoExamenEnum,
+)
 
 if TYPE_CHECKING:
     from app.models.materia import Materia
@@ -44,6 +48,21 @@ class ExamenMateria(Base, TimestampMixin):
     )
     moodle_cmid: Mapped[int] = mapped_column(
         Integer, nullable=False, comment="cmid de la actividad de Moodle del examen"
+    )
+    tipo_actividad: Mapped[TipoActividadMoodleEnum] = mapped_column(
+        SQLEnum(
+            TipoActividadMoodleEnum,
+            name="tipoactividadmoodleenum",
+            create_type=True,
+            # Persistir por VALOR del enum ("assign"/"quiz"), no por NOMBRE
+            # ("ASSIGN"/"QUIZ"). El tipo nativo de PG (ver migración
+            # f5a6b7c8d9e0) y el server_default usan las minúsculas, así que la
+            # ORM debe round-tripear con los mismos literales.
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+        server_default="assign",
+        comment="Actividad de Moodle: assign (Tarea) | quiz (Cuestionario)",
     )
     modo_aprobacion: Mapped[ModoAprobacionEnum] = mapped_column(
         SQLEnum(ModoAprobacionEnum, name="modoaprobacionenum", create_type=True),

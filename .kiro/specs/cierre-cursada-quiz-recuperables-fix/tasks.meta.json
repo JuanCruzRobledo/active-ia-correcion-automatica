@@ -1,0 +1,642 @@
+{
+  "pbtResults": {
+    "1. Escribir test de exploración de la condición de bug — Tipo de actividad ASSIGN vs QUIZ (Bug 1)": {
+      "status": "passed",
+      "failingExample": "Los 7 tests de exploración FALLAN sobre el código sin arreglar (correcto — confirma Bug 1):\n\nResolución de link (test_moodle_url_parser.py):\n- construir_url_actividad(host, 17679, \"quiz\")  -> ImportError: cannot import name 'construir_url_actividad' from 'app.services.moodle_url_parser'\n- construir_url_actividad(host, 20467, \"quiz\")  -> ImportError (mismo helper inexistente)\n- construir_url_actividad(host, 17648, \"assign\") -> ImportError (mismo helper inexistente)\n  => No existe forma de resolver el link por tipo; hoy solo existe construir_url_entrega que arma SIEMPRE /mod/assign/view.php\n\nSchema/modelo (test_examen_service.py):\n- ExamenMateriaCreate(tipo=EXTRAORDINARIA, moodle_cmid=17679, modo=ESCALA, recupera_examen_id=1, tipo_actividad=\"quiz\").tipo_actividad\n    -> AttributeError: 'ExamenMateriaCreate' object has no attribute 'tipo_actividad' (Pydantic ignora el campo extra)\n- ExamenMateriaCreate(tipo=PARCIAL, moodle_cmid=17648, modo=ESCALA).tipo_actividad\n    -> AttributeError: 'ExamenMateriaCreate' object has no attribute 'tipo_actividad' (no hay default 'assign')\n- ExamenMateriaUpdate(..., tipo_actividad=\"quiz\").tipo_actividad\n    -> AttributeError: 'ExamenMateriaUpdate' object has no attribute 'tipo_actividad'\n- hasattr(ExamenMateria, \"tipo_actividad\") -> False (la columna no existe en el modelo)\n\nBug Condition confirmada: actividad_moodle_real == \"quiz\" AND NOT existeCampoTipoActividad(examen).\nPreservación intacta: los 21 tests existentes (incluido construir_url_entrega -> /mod/assign/...) siguen pasando.",
+      "lastRunTimestamp": 1783460895396
+    },
+    "2. Escribir test de exploración de la condición de bug — Excel de dos hojas (Bug 2)": {
+      "status": "passed",
+      "failingExample": "generar_excel_cierre(\"Programación 3\", run) produce UNA sola hoja: len(wb.worksheets) == 1 con wb.sheetnames == ['Programación 3'] (se esperaban 2 hojas: 'Programación 3 por Comisiones' y 'Programación 3 Crudo'). Además, la hoja 'Programación 3 Crudo' no existe, por lo que no hay encabezados 'Comision' ni 'Tutor'. Contraejemplos:\n- test_bug_excel_dos_hojas_por_comisiones_y_crudo: assert 1 == 2 (where 1 = len([Worksheet \"Programación 3\"]))\n- test_bug_hoja_crudo_tiene_columnas_comision_y_tutor: assert 'Programación 3 Crudo' in ['Programación 3']",
+      "lastRunTimestamp": 1783461072396
+    },
+    "3. DIAGNÓSTICO + test de exploración — Exploración de grupos de Moodle (Bug 3) — PRIMER PASO DEL FIX DE BUG 3": {
+      "status": "passed",
+      "failingExample": "Bug 3 confirmado. Ambos tests de exploración FALLAN sobre el código sin arreglar (correcto):\n\ntest_moodle_service.py::test_bug_construir_mapa_uid_grupos_separados\n  ImportError: cannot import name 'construir_mapa_uid_grupos' from 'app.services.moodle_service'\n\ntest_cierre_cursada_service.py::test_bug_alumno_grupo_separado_se_resuelve_por_mapa_autoritativo\n  ImportError: cannot import name 'construir_mapa_uid_grupos' from 'app.services.moodle_service'\n\nContraejemplo (Bug Condition): alumno uid=9001 pertenece REALMENTE a M25 C3-01 (grupo de comisión válido, listado por core_group_get_course_groups + core_group_get_group_members), pero el groups[] embebido de core_enrol_get_enrolled_users viene vacío (grupos separados) → _resolver_comision([], comisiones) == (None, \"Sin comisión asignada\", None). No existe fuente autoritativa (construir_mapa_uid_grupos) en el código actual → la resolución depende 100% del groups[] embebido incompleto.",
+      "lastRunTimestamp": 1783461260866
+    },
+    "4. Escribir test de exploración de la condición de bug — Conteos y Recuperable estáticos (Bug 4)": {
+      "status": "passed",
+      "failingExample": "Los 3 tests de exploración FALLAN sobre el código sin arreglar (correcto — confirma Bug 4):\n\n1) test_bug_conteo_promocionados_es_formula_no_entero:\n   AssertionError: esperaba una fórmula, obtuve 1 (valor estático)\n   -> la celda \"PROMOCIONADOS\" es un int (run.total_promociona), no =CONTAR.SI(F:F;\"PROMOCIONA\")\n\n2) test_bug_columna_recuperable_es_formula_por_fila:\n   AssertionError: no existe la columna \"Recuperable\"\n   -> no hay encabezado ni fórmula =SI(F{n}<>\"RECURSA\";\"\";SI(Y(...\n\n3) test_bug_conteo_recuperables_y_abandonos_son_formulas:\n   AssertionError: falta el conteo de recuperables; fórmulas halladas: []\n   -> no existen =CONTAR.SI(H:H;\"RECUPERABLE*\") ni =CONTAR.SI(F:F;\"ABANDONO\"); el Excel no contiene NINGUNA fórmula nativa",
+      "lastRunTimestamp": 1783461422484
+    },
+    "5. Escribir test de exploración de la condición de bug — Estado ABANDONO (Bug 5)": {
+      "status": "passed",
+      "failingExample": "calcular_estado_cierre([\n    {tipo: \"PARCIAL\", modo_aprobacion: \"NUMERICO\", nota_minima: 60.0, valor_real: None, examen_id: 1},\n    {tipo: \"PARCIAL\", modo_aprobacion: \"NUMERICO\", nota_minima: 60.0, valor_real: None, examen_id: 2},\n    {tipo: \"GLOBAL\",  modo_aprobacion: \"NUMERICO\", nota_minima: 6.0,  valor_real: None, examen_id: 3},\n])\nAssertionError: assert 'RECURSA' == 'ABANDONO'\n  - ABANDONO\n  + RECURSA\n(mismo contraejemplo para el caso ESCALA sin resultado)",
+      "lastRunTimestamp": 1783461525214
+    },
+    "6. Escribir test de exploración de la condición de bug — Nota Final = 5 para REGULARIZA (Bug 6)": {
+      "status": "passed",
+      "failingExample": "calcular_estado_cierre para un alumno REGULARIZA devuelve nota_final=None en vez de 5.\n\nContraejemplo 1 (banda con global opcional ausente):\n  examenes = [\n    {tipo: PARCIAL, nota_minima: 60.0, valor_real: 40.0},  # cumple banda (40), no minimo\n    {tipo: PARCIAL, nota_minima: 70.0, valor_real: 55.0},  # cumple banda (50), no minimo\n    {tipo: GLOBAL,  nota_minima: 6.0,  valor_real: None},\n  ]\n  -> estado == \"REGULARIZA\" (OK), pero nota_final == None\n  AssertionError: assert None == 5\n\nContraejemplo 2 (parciales/global numéricos):\n  examenes = [\n    {tipo: PARCIAL, nota_minima: 60.0, valor_real: 45.0},\n    {tipo: PARCIAL, nota_minima: 60.0, valor_real: 60.0},\n    {tipo: GLOBAL,  nota_minima: 6.0,  valor_real: 9.0},\n  ]\n  -> estado == \"REGULARIZA\" (OK), pero nota_final == None\n  AssertionError: assert None == 5\n\nCausa raíz confirmada: en calcular_estado_cierre, la clave \"nota_final\" se asigna\n`calcular_nota_final(examenes) if estado == \"PROMOCIONA\" else None`, dejando REGULARIZA\nen None. La falla confirma Bug 6.",
+      "lastRunTimestamp": 1783461631158
+    }
+  },
+  "executionHistory": {
+    "1. Escribir test de exploración de la condición de bug — Tipo de actividad ASSIGN vs QUIZ (Bug 1)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460692534
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460709660
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460923646
+      }
+    ],
+    "2. Escribir test de exploración de la condición de bug — Excel de dos hojas (Bug 2)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460692654
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460927509
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783461093035
+      }
+    ],
+    "3. DIAGNÓSTICO + test de exploración — Exploración de grupos de Moodle (Bug 3) — PRIMER PASO DEL FIX DE BUG 3": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460692759
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783461097628
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783461290850
+      }
+    ],
+    "4. Escribir test de exploración de la condición de bug — Conteos y Recuperable estáticos (Bug 4)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460692854
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783461294870
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783461443498
+      }
+    ],
+    "5. Escribir test de exploración de la condición de bug — Estado ABANDONO (Bug 5)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460692940
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783461450103
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783461550198
+      }
+    ],
+    "6. Escribir test de exploración de la condición de bug — Nota Final = 5 para REGULARIZA (Bug 6)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693029
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783461554307
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783461654119
+      }
+    ],
+    "7. Escribir tests de preservación (property-based) — ANTES de todos los fixes": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693120
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783461664160
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783462097253
+      }
+    ],
+    "8.1 Agregar el enum, la columna del modelo y la migración": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693212
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783462104545
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463307530
+      }
+    ],
+    "8.2 Exponer `tipo_actividad` en schemas y service": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693282
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463311946
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463441502
+      }
+    ],
+    "8.3 Resolver el link de Moodle por tipo de actividad": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693387
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463445548
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463523516
+      }
+    ],
+    "8.4 Seleccionar la fuente de notas por tipo de actividad": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693458
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463527839
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463640631
+      }
+    ],
+    "8.5 Frontend — Select \"Actividad de Moodle\" en el ABM de exámenes": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693546
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463644804
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463767773
+      }
+    ],
+    "8.6 Verificar que el test de exploración de Bug 1 ahora pasa": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693616
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463773807
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463910871
+      }
+    ],
+    "8.7 Verificar que los tests de preservación siguen pasando (Bug 1)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693693
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463915797
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463974696
+      }
+    ],
+    "9.1 Agregar el valor de enum ABANDONO, `total_abandono` y la migración": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693773
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463982079
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464100597
+      }
+    ],
+    "9.2 Implementar la rama ABANDONO en `calcular_estado_cierre` (Bug 5)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693851
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464105057
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464179269
+      }
+    ],
+    "9.3 Implementar Nota Final = 5 para REGULARIZA (Bug 6)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460693960
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464186799
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464453665
+      }
+    ],
+    "9.4 Extender conteos y persistencia de totales en el service (Bug 5)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694042
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464459757
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464542723
+      }
+    ],
+    "9.5 Verificar que los tests de exploración de Bug 5 y Bug 6 ahora pasan": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694116
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464548857
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464665637
+      }
+    ],
+    "9.6 Verificar que los tests de preservación siguen pasando (Bugs 5/6)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694209
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464672472
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464858229
+      }
+    ],
+    "10.1 Refactor de `generar_excel_cierre` a orquestador de dos hojas (Bug 2)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694290
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464863426
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783465010461
+      }
+    ],
+    "10.2 Escribir la hoja \"Crudo\" (Bug 2)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694368
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783465016992
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783465207947
+      }
+    ],
+    "10.3 Columna/fórmula \"Recuperable\" por fila en ambas hojas (Bug 4)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694452
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783465212601
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783465496696
+      }
+    ],
+    "10.4 Conteos del resumen como fórmulas nativas en ambas hojas (Bug 4)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694537
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783465502557
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783465743174
+      }
+    ],
+    "10.5 Verificar que los tests de exploración de Bug 2 y Bug 4 ahora pasan": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694624
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783465748176
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783465849646
+      }
+    ],
+    "10.6 Verificar que los tests de preservación siguen pasando (Bugs 2/4)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694715
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783465858909
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466016997
+      }
+    ],
+    "11.1 Agregar `get_course_groups` y `get_group_members` en MoodleService": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694790
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466024172
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466217707
+      }
+    ],
+    "11.2 Construir el mapa autoritativo `uid → grupos`": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694874
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466222483
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466319679
+      }
+    ],
+    "11.3 Usar el mapa autoritativo en `CierreCursadaService`": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460694955
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466326410
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466492554
+      }
+    ],
+    "11.4 Usar el mapa autoritativo en GestionService": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460695030
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466499158
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466695512
+      }
+    ],
+    "11.5 Fallback ante WS deshabilitado": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460695107
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466700876
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466787978
+      }
+    ],
+    "11.6 Verificar que el test de exploración de Bug 3 ahora pasa": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460695206
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466792845
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466856872
+      }
+    ],
+    "11.7 Verificar que los tests de preservación siguen pasando (Bug 3)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460695295
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466861824
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466953306
+      }
+    ],
+    "12. Checkpoint - Asegurar que todos los tests pasan (6 bugs)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783460695375
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466960079
+      },
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783467509196
+      }
+    ],
+    "8. Fix — Tipo de actividad ASSIGN vs QUIZ (Bug 1)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783463974809
+      }
+    ],
+    "9. Fix — Estado ABANDONO (Bug 5) y Nota Final = 5 para REGULARIZA (Bug 6)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783464858348
+      }
+    ],
+    "10. Fix — Excel de dos hojas (Bug 2) y fórmulas nativas (Bug 4)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466017110
+      }
+    ],
+    "11. Fix — Exploración/sincronización de grupos de Moodle (Bug 3)": [
+      {
+        "executionId": "d3a76cd1-37d8-4df0-85de-6d8ae939222d",
+        "chatSessionId": "sess_3601de53-2775-48d4-8811-e90757788a8c",
+        "timestamp": 1783466953392
+      }
+    ]
+  }
+}

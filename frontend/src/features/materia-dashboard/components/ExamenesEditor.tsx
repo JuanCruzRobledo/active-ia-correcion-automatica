@@ -12,6 +12,7 @@ import type {
   ExamenInput,
   ExamenMateria,
   ModoAprobacion,
+  TipoActividadMoodle,
   TipoExamen,
 } from '../types';
 import { TIPOS_RESCATE } from '../types';
@@ -33,9 +34,20 @@ const MODO_OPTIONS: SelectOption[] = [
   { value: 'NUMERICO', label: 'Numérico (nota ≥ mínimo)' },
 ];
 
+const ACTIVIDAD_OPTIONS: SelectOption[] = [
+  { value: 'assign', label: 'Tarea' },
+  { value: 'quiz', label: 'Cuestionario' },
+];
+
+const ACTIVIDAD_LABEL: Record<TipoActividadMoodle, string> = {
+  assign: 'Tarea',
+  quiz: 'Cuestionario',
+};
+
 interface FormState {
   tipo: TipoExamen;
   cmid: string;
+  actividad: TipoActividadMoodle;
   modo: ModoAprobacion;
   notaMinima: string;
   recupera: string;
@@ -44,6 +56,7 @@ interface FormState {
 const FORM_VACIO: FormState = {
   tipo: 'PARCIAL',
   cmid: '',
+  actividad: 'assign',
   modo: 'ESCALA',
   notaMinima: '',
   recupera: '',
@@ -82,6 +95,7 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
     setForm({
       tipo: e.tipo,
       cmid: String(e.moodle_cmid),
+      actividad: e.tipo_actividad ?? 'assign',
       modo: e.modo_aprobacion,
       notaMinima: e.nota_minima != null ? String(e.nota_minima) : '',
       recupera: e.recupera_examen_id != null ? String(e.recupera_examen_id) : '',
@@ -99,6 +113,7 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
     const payload: ExamenInput = {
       tipo: form.tipo,
       moodle_cmid: Number(form.cmid),
+      tipo_actividad: form.actividad,
       modo_aprobacion: form.modo,
       nota_minima: form.modo === 'NUMERICO' ? Number(form.notaMinima) : null,
       recupera_examen_id: rescate ? Number(form.recupera) : null,
@@ -130,6 +145,15 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
       key: 'cmid',
       header: 'cmid',
       render: (e) => <span className="text-muted-foreground">#{e.moodle_cmid}</span>,
+    },
+    {
+      key: 'actividad',
+      header: 'Actividad',
+      render: (e) => (
+        <span className="text-muted-foreground">
+          {ACTIVIDAD_LABEL[e.tipo_actividad ?? 'assign']}
+        </span>
+      ),
     },
     {
       key: 'aprobacion',
@@ -233,6 +257,13 @@ export const ExamenesEditor = ({ materiaId }: Props) => {
             value={form.cmid}
             onChange={(ev) => set({ cmid: ev.target.value })}
             placeholder="17459"
+            wrapperClassName="w-full"
+          />
+          <Select
+            label="Actividad de Moodle"
+            options={ACTIVIDAD_OPTIONS}
+            value={form.actividad}
+            onChange={(ev) => set({ actividad: ev.target.value as TipoActividadMoodle })}
             wrapperClassName="w-full"
           />
           <Select
