@@ -107,9 +107,9 @@ def test_headers_exactos_y_en_orden_2_parciales_1_global():
 
 def test_resumen_de_conteos_como_formulas_nativas_a2_b6():
     """Bug 4 (tarea 10.4): el resumen deja de ser 3 conteos estáticos y pasa a 5
-    conteos como FÓRMULAS nativas es-AR (`CONTAR.SI`) en A2:B6 —
-    PROMOCIONADOS/REGULARES/RECURSANTES sobre la columna Estado (F) y las nuevas filas
-    RECUPERABLES (sobre H) y ABANDONOS (sobre F). Preserva la intención original (el
+    conteos como FÓRMULAS nativas (`COUNTIF`, sintaxis de archivo en inglés + coma) en
+    A2:B6 — PROMOCIONADOS/REGULARES/RECURSANTES sobre la columna Estado (F) y las nuevas
+    filas RECUPERABLES (sobre H) y ABANDONOS (sobre F). Preserva la intención original (el
     resumen muestra los conteos) asertando la naturaleza de fórmula recalculable."""
     run = _run(
         [
@@ -121,11 +121,11 @@ def test_resumen_de_conteos_como_formulas_nativas_a2_b6():
     data, _ = generar_excel_cierre("Programación 1", run)
     ws = _wb(data).active
 
-    assert (ws["A2"].value, ws["B2"].value) == ("PROMOCIONADOS", '=CONTAR.SI(F:F;"PROMOCIONA")')
-    assert (ws["A3"].value, ws["B3"].value) == ("REGULARES", '=CONTAR.SI(F:F;"REGULARIZA")')
-    assert (ws["A4"].value, ws["B4"].value) == ("RECURSANTES", '=CONTAR.SI(F:F;"RECURSA")')
-    assert (ws["A5"].value, ws["B5"].value) == ("RECUPERABLES", '=CONTAR.SI(H:H;"RECUPERABLE*")')
-    assert (ws["A6"].value, ws["B6"].value) == ("ABANDONOS", '=CONTAR.SI(F:F;"ABANDONO")')
+    assert (ws["A2"].value, ws["B2"].value) == ("PROMOCIONADOS", '=COUNTIF(F:F,"PROMOCIONA")')
+    assert (ws["A3"].value, ws["B3"].value) == ("REGULARES", '=COUNTIF(F:F,"REGULARIZA")')
+    assert (ws["A4"].value, ws["B4"].value) == ("RECURSANTES", '=COUNTIF(F:F,"RECURSA")')
+    assert (ws["A5"].value, ws["B5"].value) == ("RECUPERABLES", '=COUNTIF(H:H,"RECUPERABLE*")')
+    assert (ws["A6"].value, ws["B6"].value) == ("ABANDONOS", '=COUNTIF(F:F,"ABANDONO")')
 
 
 def test_barra_de_bloque_mergea_c_hasta_ultima_columna():
@@ -514,17 +514,17 @@ def test_bug_hoja_crudo_tiene_columnas_comision_y_tutor():
 #   OR NOT existeColumnaRecuperable
 #   OR NOT esFormulaNativa(celda_recuperable)
 #
-# Fórmulas es-AR de la hoja "por Comisiones" (bugfix.md, confirmadas contra el modelo
-# `Cierre_Programacin_3 FIX.xlsx`): estado en F, parciales en C/D, aux Recuperable en H.
+# Fórmulas nativas de la hoja "por Comisiones" (sintaxis de archivo: inglés + coma;
+# Excel es-AR las muestra traducidas): estado en F, parciales en C/D, aux Recuperable en H.
 #   Recuperable (fila n):
-#     =SI(F{n}<>"RECURSA";"";SI(Y(SI.ERROR(VALOR(C{n});0)>=40;SI.ERROR(VALOR(D{n});0)<40);
-#      "RECUPERABLE CON PARCIAL 2";SI(Y(SI.ERROR(VALOR(D{n});0)>=40;SI.ERROR(VALOR(C{n});0)<40);
-#      "RECUPERABLE CON PARCIAL 1";"")))
-#   Promocionados: =CONTAR.SI(F:F;"PROMOCIONA")
-#   Regulares:     =CONTAR.SI(F:F;"REGULARIZA")
-#   Recursantes:   =CONTAR.SI(F:F;"RECURSA")
-#   Recuperables:  =CONTAR.SI(H:H;"RECUPERABLE*")
-#   Abandonos:     =CONTAR.SI(F:F;"ABANDONO")
+#     =IF(F{n}<>"RECURSA","",IF(AND(IFERROR(VALUE(C{n}),0)>=40,IFERROR(VALUE(D{n}),0)<40),
+#      "RECUPERABLE CON PARCIAL 2",IF(AND(IFERROR(VALUE(D{n}),0)>=40,IFERROR(VALUE(C{n}),0)<40),
+#      "RECUPERABLE CON PARCIAL 1","")))
+#   Promocionados: =COUNTIF(F:F,"PROMOCIONA")
+#   Regulares:     =COUNTIF(F:F,"REGULARIZA")
+#   Recursantes:   =COUNTIF(F:F,"RECURSA")
+#   Recuperables:  =COUNTIF(H:H,"RECUPERABLE*")
+#   Abandonos:     =COUNTIF(F:F,"ABANDONO")
 # **Validates: Requirements 1.8, 1.9, 1.10**
 
 
@@ -563,7 +563,7 @@ def _formulas(ws) -> list[str]:
 
 def test_bug_conteo_promocionados_es_formula_no_entero():
     """Bug 4: el conteo "PROMOCIONADOS" del resumen debe ser una fórmula nativa
-    `=CONTAR.SI(F:F;"PROMOCIONA")`. HOY: `_escribir_resumen` escribe `run.total_promociona`
+    `=COUNTIF(F:F,"PROMOCIONA")`. HOY: `_escribir_resumen` escribe `run.total_promociona`
     como un `int` estático (no recalcula si se edita el "Estado Alumno").
     **Validates: Requirements 1.8, 1.9**"""
     data, _ = generar_excel_cierre("Programación 3", _run_bug4())
@@ -571,13 +571,14 @@ def test_bug_conteo_promocionados_es_formula_no_entero():
 
     valor = _valor_junto_a_etiqueta(ws, "PROMOCIONADOS")
     assert isinstance(valor, str), f"esperaba una fórmula, obtuve {valor!r} (valor estático)"
-    assert valor.startswith('=CONTAR.SI(F:F;"PROMOCIONA")')
+    assert valor.startswith('=COUNTIF(F:F,"PROMOCIONA")')
 
 
 def test_bug_columna_recuperable_es_formula_por_fila():
     """Bug 4: debe existir una columna "Recuperable" cuya celda por fila sea la fórmula
-    es-AR `=SI(F{n}<>"RECURSA";"";SI(Y(...` con las referencias de la hoja "por
-    Comisiones" (estado F, parciales C/D). HOY: no existe la columna ni la fórmula.
+    nativa `=IF(F{n}<>"RECURSA","",IF(AND(...` (sintaxis de archivo: inglés + coma) con
+    las referencias de la hoja "por Comisiones" (estado F, parciales C/D). HOY: no existe
+    la columna ni la fórmula.
     **Validates: Requirements 1.10**"""
     data, _ = generar_excel_cierre("Programación 3", _run_bug4())
     ws = _wb(data).active
@@ -607,26 +608,26 @@ def test_bug_columna_recuperable_es_formula_por_fila():
     assert isinstance(celda, str) and celda.startswith("="), (
         f"la celda Recuperable no es una fórmula: {celda!r}"
     )
-    assert celda.startswith(f'=SI(F{n}<>"RECURSA";"";SI(Y(')
-    assert f"SI.ERROR(VALOR(C{n});0)>=40" in celda
-    assert f"SI.ERROR(VALOR(D{n});0)<40" in celda
+    assert celda.startswith(f'=IF(F{n}<>"RECURSA","",IF(AND(')
+    assert f"IFERROR(VALUE(C{n}),0)>=40" in celda
+    assert f"IFERROR(VALUE(D{n}),0)<40" in celda
     assert "RECUPERABLE CON PARCIAL 1" in celda
     assert "RECUPERABLE CON PARCIAL 2" in celda
 
 
 def test_bug_conteo_recuperables_y_abandonos_son_formulas():
     """Bug 4: el resumen debe incluir el conteo de recuperables
-    `=CONTAR.SI(H:H;"RECUPERABLE*")` y el de abandonos `=CONTAR.SI(F:F;"ABANDONO")`.
+    `=COUNTIF(H:H,"RECUPERABLE*")` y el de abandonos `=COUNTIF(F:F,"ABANDONO")`.
     HOY: ninguno de los dos existe (el resumen sólo tiene 3 conteos estáticos).
     **Validates: Requirements 1.10**"""
     data, _ = generar_excel_cierre("Programación 3", _run_bug4())
     ws = _wb(data).active
 
     formulas = _formulas(ws)
-    assert any(f.startswith('=CONTAR.SI(H:H;"RECUPERABLE*")') for f in formulas), (
+    assert any(f.startswith('=COUNTIF(H:H,"RECUPERABLE*")') for f in formulas), (
         f"falta el conteo de recuperables; fórmulas halladas: {formulas!r}"
     )
-    assert any(f.startswith('=CONTAR.SI(F:F;"ABANDONO")') for f in formulas), (
+    assert any(f.startswith('=COUNTIF(F:F,"ABANDONO")') for f in formulas), (
         f"falta el conteo de abandonos; fórmulas halladas: {formulas!r}"
     )
 
