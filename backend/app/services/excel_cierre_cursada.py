@@ -18,14 +18,16 @@ Columnas dinámicas, derivadas de `run.examenes_snapshot` (config de exámenes c
 en la corrida): `Nombre y Apellido | Email | Parcial n… | Global TPI | Estado Alumno |
 Nota Final`. Sin columnas de TPs y sin gráfico de dona (a diferencia del sistema viejo).
 
-Dependencia de locale (es-AR):
+Fórmulas nativas y locale:
     Las fórmulas nativas que este módulo escribe (columna "Recuperable" por fila y los
-    conteos del resumen) usan la sintaxis de Excel en **español** — funciones `SI`,
-    `COUNTIF`, `Y`, `VALOR`, `SI.ERROR` — y el punto y coma `;` como separador de
-    argumentos. El archivo está pensado para abrirse en un Excel configurado en español
-    (es-AR): en un Excel en inglés estas fórmulas no resolverían (esperaría `IF`,
-    `COUNTIF`, `AND`, `VALUE`, `IFERROR` y `,` como separador). Se persisten con openpyxl
-    como fórmulas nativas escribiendo un string que empieza con `=` en `cell.value`.
+    conteos del resumen) usan la sintaxis del **formato de archivo** de Excel, que es
+    siempre en inglés (`IF`, `AND`, `IFERROR`, `VALUE`, `COUNTIF`) y con coma `,` como
+    separador de argumentos, independientemente del idioma del Excel del usuario. Es lo
+    que openpyxl persiste literalmente en el XML de la celda (string que empieza con `=`
+    en `cell.value`). Escribirlas en español (`SI`/`Y`/`VALOR`/`SI.ERROR`) o con `;`
+    hace que Excel las rechace con `#NAME?` en cualquier locale. Al abrir el archivo,
+    un Excel es-AR las **muestra** traducidas (`SI`/`Y`/`VALOR`/`SI.ERROR`, `;`), pero en
+    disco quedan siempre en inglés + coma.
 """
 
 import io
@@ -72,15 +74,17 @@ def _formula_recuperable(estado_col: str, p1_col: str, p2_col: str, fila: int) -
 
     Las columnas se reciben como letras (`estado_col`/`p1_col`/`p2_col`) para que la
     fórmula quede correcta en ambas hojas ("por Comisiones": F/C/D; "Crudo": H/E/F). Usa
-    la sintaxis es-AR (`SI`/`Y`/`VALOR`/`SI.ERROR`, `;` como separador) — ver la nota de
-    locale del módulo.
+    la sintaxis nativa de Excel (formato de archivo): nombres de función en inglés
+    (`IF`/`AND`/`IFERROR`/`VALUE`) y coma `,` como separador — ver la nota de locale del
+    módulo. Excel la mostrará traducida (`SI`/`Y`/`VALOR`/`SI.ERROR`, `;`) en un Excel
+    es-AR.
     """
     return (
-        f'=IF({estado_col}{fila}<>"RECURSA";"";'
-        f"IF(AND(IFERROR(VALOR({p1_col}{fila});0)>=40;IFERROR(VALOR({p2_col}{fila});0)<40);"
-        f'"RECUPERABLE CON PARCIAL 2";'
-        f"IF(AND(IFERROR(VALOR({p2_col}{fila});0)>=40;IFERROR(VALOR({p1_col}{fila});0)<40);"
-        f'"RECUPERABLE CON PARCIAL 1";"")))'
+        f'=IF({estado_col}{fila}<>"RECURSA","",'
+        f"IF(AND(IFERROR(VALUE({p1_col}{fila}),0)>=40,IFERROR(VALUE({p2_col}{fila}),0)<40),"
+        f'"RECUPERABLE CON PARCIAL 2",'
+        f"IF(AND(IFERROR(VALUE({p2_col}{fila}),0)>=40,IFERROR(VALUE({p1_col}{fila}),0)<40),"
+        f'"RECUPERABLE CON PARCIAL 1","")))'
     )
 
 
@@ -93,10 +97,10 @@ def _formulas_conteo_resumen(
     Los estados se cuentan sobre la columna Estado (`estado_letra`) y los recuperables
     sobre la columna auxiliar `Recuperable` (`recuperable_letra`). El criterio de
     recuperable cambia por hoja: `"RECUPERABLE*"` en "por Comisiones", `"RECUPERABLE CON*"`
-    en "Crudo" (`recuperable_criterio`). Sintaxis es-AR (`COUNTIF`, `;` como separador)
-    — ver la nota de locale del módulo (2.11, 2.12, 2.15)."""
+    en "Crudo" (`recuperable_criterio`). Sintaxis nativa de Excel: `COUNTIF` (inglés) y
+    coma `,` como separador — ver la nota de locale del módulo (2.11, 2.12, 2.15)."""
     def _por_estado(patron: str) -> str:
-        return f'=COUNTIF({estado_letra}:{estado_letra};"{patron}")'
+        return f'=COUNTIF({estado_letra}:{estado_letra},"{patron}")'
 
     return [
         ("PROMOCIONADOS", _por_estado("PROMOCIONA")),
@@ -104,7 +108,7 @@ def _formulas_conteo_resumen(
         ("RECURSANTES", _por_estado("RECURSA")),
         (
             "RECUPERABLES",
-            f'=COUNTIF({recuperable_letra}:{recuperable_letra};"{recuperable_criterio}")',
+            f'=COUNTIF({recuperable_letra}:{recuperable_letra},"{recuperable_criterio}")',
         ),
         ("ABANDONOS", _por_estado("ABANDONO")),
     ]
