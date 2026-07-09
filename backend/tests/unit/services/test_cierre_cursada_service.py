@@ -383,3 +383,96 @@ def test_excel_cierre_usa_paleta_y_bordes_de_excel_estilos():
     # Fila de datos (fila_datos): borde en cada celda.
     dato_cell = next(c for row in ws.iter_rows() for c in row if c.value == "Gómez, Ana")
     assert dato_cell.border.left.style == "thin"
+
+
+# ===================== Bug 3 exploration (tarea 3, ANTES del fix) =====================
+#
+# Property 3: Bug Condition — Comisiones resueltas por mapa autoritativo (design.md,
+# spec cierre-cursada-quiz-recuperables-fix).
+# CRITICAL: este test DEBE FALLAR sobre el código sin arreglar — la falla confirma que
+# el Bug 3 existe.
+# **Validates: Requirements 1.6, 1.7**
+#
+# Bug Condition: existeGrupoComision(grupos_reales) AND NOT existeGrupoComision(grupos_devueltos)
+#   El alumno 9001 pertenece REALMENTE a M25 C3-01 (grupo de comisión válido), pero el
+#   `groups[]` embebido que devuelve `core_enrol_get_enrolled_users` NO lo incluye
+#   (grupos separados, groupmode=1). Hoy `generar` le pasa a `_resolver_comision` ese
+#   `groups[]` embebido incompleto → "Sin comisión asignada". El fix arma un mapa
+#   autoritativo `uid → grupos` con `core_group_get_course_groups` +
+#   `core_group_get_group_members` y se lo pasa a `_resolver_comision`.
+
+
+def test_bug_alumno_grupo_separado_se_resuelve_por_mapa_autoritativo():
+    """Bug 3: con grupos separados, el `groups[]` embebido del alumno 9001 viene VACÍO
+    (Moodle oculta M25 C3-01 al consultante sin `moodle/site:accessallgroups`), pero el
+    mapa autoritativo (`core_group_*`) SÍ lo lista. Resolviendo con el grupo del mapa
+    autoritativo, `_resolver_comision` asocia al alumno a su comisión real (comision_id=1).
+
+    HOY: no existe el mapa autoritativo (`construir_mapa_uid_grupos` no está en
+    `moodle_service`) → ImportError; el código sólo dispone del `groups[]` embebido
+    (vacío) que resuelve "Sin comisión asignada". La falla confirma el Bug 3."""
+    from app.services.moodle_service import construir_mapa_uid_grupos
+
+    comisiones = [_comision(1, "M25 C3-01", moodle_group_code=None, moodle_group_id=501)]
+
+    # groups[] embebido que Moodle devuelve para el alumno 9001 con grupos separados:
+    # SIN el grupo de comisión (esto es lo que hoy recibe _resolver_comision).
+    groups_embebido = []
+
+    # Fuente autoritativa (core_group_get_course_groups + core_group_get_group_members):
+    groups_curso = [{"id": 501, "name": "M25 C3-01"}]
+    members_por_group = {501: [9001]}
+
+    mapa = construir_mapa_uid_grupos(groups_curso, members_por_group)
+    grupos_reales_9001 = mapa.get(9001, groups_embebido)
+
+    cid, nombre, tutor = CierreCursadaService._resolver_comision(grupos_reales_9001, comisiones)
+
+    # Con el mapa autoritativo, el alumno queda asociado a su comisión real.
+    assert (cid, nombre) == (1, "M25 C3-01")
+    # Y el groups[] embebido, por sí solo, hoy NO lo resolvería (documenta la Bug Condition).
+    assert CierreCursadaService._resolver_comision(groups_embebido, comisiones) == (
+        None, "Sin comisión asignada", None,
+    )
+
+
+# =====================================================================
+# Property 7 (Preservación) — spec cierre-cursada-quiz-recuperables-fix
+# =====================================================================
+#
+# 3.7: un alumno realmente SIN grupo de comisión válido, o con mapeo AMBIGUO (>1 comisión
+# distinta), sigue quedando "Sin comisión asignada" sin romper la corrida — tanto antes
+# como después del fix de Bug 3. El fix cambia de DÓNDE salen los grupos del alumno (mapa
+# autoritativo `core_group_*` en vez del `groups[]` embebido), pero NO la lógica de
+# resolución de `_resolver_comision` sobre esos grupos. Property-based sobre mapas de
+# grupos aleatorios: se verifica que la resolución (match único por `moodle_group_id`,
+# ambiguo/ausente -> "Sin comisión asignada") se preserva para todo input.
+# **Validates: Requirements 3.7**
+
+from hypothesis import given, strategies as st  # noqa: E402
+
+
+@given(ids_grupos=st.lists(st.sampled_from([100, 200, 300, 999, None]), min_size=0, max_size=6))
+def test_prop7_resolver_comision_por_mapa_de_grupos_aleatorio(ids_grupos):
+    """Mapas de grupos aleatorios contra dos comisiones reales (group_id 100 y 200):
+    exactamente 1 comisión distinta matcheada -> se asocia; 0 o >1 -> "Sin comisión
+    asignada". Nunca lanza excepción. Los nombres de grupo NO tienen formato de comisión
+    (`Grupo_XX`), así que sólo el puente por `moodle_group_id` está activo."""
+    comisiones = [
+        _comision(1, "Comisión 1", None, moodle_group_id=100),
+        _comision(2, "Comisión 2", None, moodle_group_id=200),
+    ]
+    grupos = [{"id": gid, "name": "Grupo_XX"} for gid in ids_grupos]
+
+    por_group_id = {100: 1, 200: 2}
+    comisiones_matcheadas = {por_group_id[gid] for gid in ids_grupos if gid in por_group_id}
+
+    cid, nombre, tutor = CierreCursadaService._resolver_comision(grupos, comisiones)
+
+    if len(comisiones_matcheadas) == 1:
+        (esperada,) = comisiones_matcheadas
+        assert cid == esperada
+        assert nombre == f"Comisión {esperada}"
+        assert tutor is None  # comisiones sin tutores en este fixture
+    else:
+        assert (cid, nombre, tutor) == (None, "Sin comisión asignada", None)

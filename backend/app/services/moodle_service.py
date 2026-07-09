@@ -116,6 +116,38 @@ def parse_submission_timemod_map(data: dict) -> dict[int, int]:
     return out
 
 
+def construir_mapa_uid_grupos(
+    groups: list[dict],
+    members_por_group: dict[int, list[int]],
+) -> dict[int, list[dict]]:
+    """Mapa autoritativo `{uid: [{id, name}, ...]}` de grupos por usuario.
+
+    Fuente independiente del `groups[]` embebido en core_enrol_get_enrolled_users
+    (que puede venir incompleto en cursos con grupos separados). Se arma cruzando
+    los grupos del curso (`core_group_get_course_groups`) con sus miembros
+    (`core_group_get_group_members`).
+
+    - `groups`: `[{"id": <int>, "name": <str>}, ...]` de TODOS los grupos del curso.
+    - `members_por_group`: `{group_id: [userid, ...]}` de cada grupo.
+
+    Para cada grupo, cada uid listado en `members_por_group[group_id]` recibe el dict
+    `{"id", "name"}` de ese grupo. Un uid en varios grupos acumula varios dicts (en el
+    orden de `groups`). Un grupo sin entrada en `members_por_group` no aporta nada.
+    Entradas faltantes/None se ignoran (mapa vacío ante inputs vacíos).
+    """
+    mapa: dict[int, list[dict]] = {}
+    for g in groups or []:
+        if not isinstance(g, dict) or g.get("id") is None:
+            continue
+        group_id = g["id"]
+        group_dict = {"id": group_id, "name": g.get("name", "") or ""}
+        for uid in (members_por_group or {}).get(group_id, []) or []:
+            if uid is None:
+                continue
+            mapa.setdefault(uid, []).append(group_dict)
+    return mapa
+
+
 @dataclass
 class AssignmentGradeConfig:
     """Configuración de calificación de un assignment de Moodle.
@@ -153,6 +185,10 @@ class MoodleService:
         self._enrolled_cache: dict[tuple[int, bool], list] = {}
         # Contenidos (secciones + módulos) por course_id — el snapshot lo usa 1 vez para N alumnos.
         self._contents_cache: dict[int, list] = {}
+        # Grupos autoritativos del curso (core_group_get_course_groups) por course_id → [{id, name}].
+        self._course_groups_cache: dict[int, list[dict]] = {}
+        # Miembros autoritativos por group_id (core_group_get_group_members) → [userid].
+        self._group_userids_cache: dict[int, list[int]] = {}
 
     async def get_token(
         self,
@@ -373,6 +409,102 @@ class MoodleService:
             if isinstance(u, dict):
                 u["suspendido"] = u.get("id") not in activos_ids
         return todos
+
+    async def get_course_groups(
+        self,
+        token: str,
+        moodle_host: str,
+        course_id: int,
+        *,
+        client: "httpx.AsyncClient | None" = None,
+    ) -> list[dict]:
+        """Lista TODOS los grupos del curso vía core_group_get_course_groups.
+
+        Fuente autoritativa de grupos (comisiones), independiente del `groups[]` embebido
+        en core_enrol_get_enrolled_users, que puede venir incompleto cuando el curso usa
+        grupos separados (`groupmode=1`) y el token no tiene `moodle/site:accessallgroups`.
+        Devuelve `[{"id": <int>, "name": <str>}]`. Cacheado por course_id.
+        """
+        if course_id in self._course_groups_cache:
+            return self._course_groups_cache[course_id]
+
+        url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
+        params = {
+            "wstoken": token,
+            "wsfunction": "core_group_get_course_groups",
+            "moodlewsrestformat": "json",
+            "courseid": course_id,
+        }
+        data = await self._ws_get_json(
+            url, params, timeout=30.0, descripcion="obteniendo grupos del curso", client=client
+        )
+
+        if isinstance(data, dict) and "exception" in data:
+            if "invalidtoken" in str(data).lower():
+                raise MoodleAuthError("Token Moodle inválido")
+            raise MoodleConnectionError(
+                f"Error Moodle al obtener grupos del curso: {data.get('message', '')}"
+            )
+
+        if not isinstance(data, list):
+            raise MoodleConnectionError("Respuesta inesperada de core_group_get_course_groups")
+
+        grupos = [
+            {"id": g["id"], "name": g.get("name", "") or ""}
+            for g in data
+            if isinstance(g, dict) and "id" in g
+        ]
+        self._course_groups_cache[course_id] = grupos
+        return grupos
+
+    async def get_group_members(
+        self,
+        token: str,
+        moodle_host: str,
+        group_id: int,
+        *,
+        client: "httpx.AsyncClient | None" = None,
+    ) -> list[int]:
+        """Lista los user_ids de un grupo vía core_group_get_group_members.
+
+        El WS devuelve `[{"groupid": <int>, "userids": [<int>, ...]}]` (una entrada por
+        cada groupid pedido). Devolvemos la lista de `userids` del grupo solicitado; si
+        el grupo no aparece en la respuesta, `[]`. Cacheado por group_id.
+        """
+        if group_id in self._group_userids_cache:
+            return self._group_userids_cache[group_id]
+
+        url = f"{moodle_host.rstrip('/')}/webservice/rest/server.php"
+        params = {
+            "wstoken": token,
+            "wsfunction": "core_group_get_group_members",
+            "moodlewsrestformat": "json",
+            "groupids[0]": group_id,
+        }
+        data = await self._ws_get_json(
+            url, params, timeout=30.0, descripcion="obteniendo miembros del grupo", client=client
+        )
+
+        if isinstance(data, dict) and "exception" in data:
+            if "invalidtoken" in str(data).lower():
+                raise MoodleAuthError("Token Moodle inválido")
+            raise MoodleConnectionError(
+                f"Error Moodle al obtener miembros del grupo: {data.get('message', '')}"
+            )
+
+        if not isinstance(data, list):
+            raise MoodleConnectionError("Respuesta inesperada de core_group_get_group_members")
+
+        userids: list[int] = []
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("groupid") == group_id:
+                userids = [uid for uid in entry.get("userids", []) if uid is not None]
+                break
+
+        self._group_userids_cache[group_id] = userids
+        return userids
 
     async def _ws_get_json(
         self,

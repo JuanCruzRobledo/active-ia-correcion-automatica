@@ -38,6 +38,7 @@ from app.services.moodle_service import (
     MoodleAuthError,
     MoodleConnectionError,
     MoodleService,
+    construir_mapa_uid_grupos,
 )
 
 logger = logging.getLogger(__name__)
@@ -162,14 +163,14 @@ class GestionService:
         materia = await self._resolver_curso(materia_id)
         token, host = await self._token(usuario)
         users = await self.moodle.get_enrolled_users_full(token, host, materia.moodle_course_id)
+        mapa = await self._mapa_uid_grupos(token, host, materia.moodle_course_id)
 
         regionales: set[str] = set()
         comisiones: set[str] = set()
         for u in users:
             if not isinstance(u, dict):
                 continue
-            for g in u.get("groups", []):
-                nombre = g.get("name", "")
+            for nombre in self._grupos_nombres(u, mapa):
                 r = parse_regional(nombre)
                 if r:
                     regionales.add(r)
@@ -199,6 +200,7 @@ class GestionService:
         materia = await self._resolver_curso(materia_id)
         token, host = await self._token(usuario)
         users = await self.moodle.get_enrolled_users_with_status(token, host, materia.moodle_course_id)
+        mapa = await self._mapa_uid_grupos(token, host, materia.moodle_course_id)
 
         items: list[AlumnoGestion] = []
         for u in users:
@@ -217,8 +219,8 @@ class GestionService:
             if filtros.estatus == "inactivo" and not suspendido:
                 continue
 
-            # --- Regional / Comisión (de los grupos) ---
-            group_names = [g.get("name", "") for g in u.get("groups", [])]
+            # --- Regional / Comisión (de los grupos autoritativos) ---
+            group_names = self._grupos_nombres(u, mapa)
             regional, comision = resolver_grupos_alumno(group_names)
             if filtros.regionales and regional not in filtros.regionales:
                 continue
@@ -305,6 +307,11 @@ class GestionService:
 
         # 1 consulta: de acá salen los alumnos, sus datos, su comisión y su tutor.
         enrolled = await self.moodle.get_enrolled_users_full(token, host, course_id)
+        # Mapa autoritativo `uid → grupos` (Bug 3): prioriza los grupos reales del curso
+        # sobre el `groups[]` embebido (que puede omitir comisiones con grupos separados).
+        # Los dicts del mapa también traen "id", así que el puente comisión↔tutor por
+        # moodle_group_id sigue funcionando igual.
+        mapa = await self._mapa_uid_grupos(token, host, course_id)
         info_por_user: dict[int, dict] = {}
         alumno_ids: set[int] = set()
         for u in enrolled:
@@ -312,7 +319,7 @@ class GestionService:
                 continue
             comision = SIN_COMISION
             tutor = ""
-            for g in u.get("groups", []):
+            for g in (mapa.get(u["id"]) or u.get("groups", [])):
                 if parse_comision(g.get("name", "")):
                     comision = parse_comision(g.get("name", ""))
                     tutor = tutor_por_group.get(g.get("id"), "")
@@ -381,6 +388,42 @@ class GestionService:
         return datetime.fromtimestamp(timemodified).strftime("%d/%m/%Y %H:%M")
 
     # --- helpers privados -----------------------------------------------------
+
+    async def _mapa_uid_grupos(self, token, host, course_id) -> dict[int, list[dict]]:
+        """Mapa autoritativo `uid → [{id, name}]` de grupos del curso (Bug 3).
+
+        El `groups[]` embebido en `core_enrol_get_enrolled_users` puede venir incompleto
+        en cursos con grupos separados (`groupmode=1`) → se arma una fuente autoritativa
+        cruzando TODOS los grupos del curso (`core_group_get_course_groups`) con sus
+        miembros (`core_group_get_group_members`).
+
+        GestionService (rol GESTOR) es el punto más probable de toparse con
+        `nopermissions` al pedir los grupos: si el WS falla o está deshabilitado se
+        degrada devolviendo `{}`, de modo que los callers caen al `groups[]` embebido
+        (comportamiento actual) sin romper la corrida. Esa degradación segura cubre lo
+        pedido por la tarea 11.5 para GestionService.
+        """
+        try:
+            grupos_curso = await self.moodle.get_course_groups(token, host, course_id)
+            members_por_group = {
+                g["id"]: await self.moodle.get_group_members(token, host, g["id"])
+                for g in grupos_curso
+            }
+            return construir_mapa_uid_grupos(grupos_curso, members_por_group)
+        except (MoodleConnectionError, MoodleAuthError) as e:
+            logger.warning(
+                "Gestión: grupos autoritativos no disponibles (course_id=%s); "
+                "se degrada al groups[] embebido: %s",
+                course_id, e,
+            )
+            return {}
+
+    @staticmethod
+    def _grupos_nombres(u: dict, mapa: dict[int, list[dict]]) -> list[str]:
+        """Nombres de grupo de un alumno, priorizando el mapa autoritativo y cayendo
+        al `groups[]` embebido cuando el mapa no tiene entrada para ese uid."""
+        grupos = mapa.get(u.get("id")) or u.get("groups", [])
+        return [g.get("name", "") for g in grupos]
 
     async def _resolver_curso(self, materia_id: int):
         materia = await self.materia_repo.get_by_id(materia_id)

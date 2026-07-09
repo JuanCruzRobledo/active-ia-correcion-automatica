@@ -159,6 +159,21 @@ class TipoExamenEnum(str, Enum):
     GLOBAL = "GLOBAL"
 
 
+class TipoActividadMoodleEnum(str, Enum):
+    """Tipo de actividad de Moodle subyacente a un examen de la materia.
+
+    Distingue si el examen es una Tarea (`assign`) o un Cuestionario (`quiz`).
+    Los valores van en minúscula para comparar directo con el `modname` que
+    devuelve Moodle. `assign` es el default (comportamiento histórico): resuelve
+    el link a `/mod/assign/view.php` y usa el grade estructural
+    (`mod_assign_get_grades`); `quiz` resuelve a `/mod/quiz/view.php` y toma la
+    nota del calificador por texto.
+    """
+
+    ASSIGN = "assign"
+    QUIZ = "quiz"
+
+
 class ModoAprobacionEnum(str, Enum):
     """Cómo se interpreta la nota de un examen para decidir aprobado/desaprobado.
 
@@ -186,8 +201,14 @@ class CategoriaItemCierreEnum(str, Enum):
 
 
 class EstadoCierreEnum(str, Enum):
-    """Veredicto de cierre de cursada de un alumno en una materia."""
+    """Veredicto de cierre de cursada de un alumno en una materia.
+
+    ABANDONO se distingue de RECURSA: un alumno ABANDONO no rindió ningún
+    examen ni el global (todo en `N/E`); RECURSA sí rindió algo pero no
+    alcanzó promoción ni regularización. Ver `calcular_estado_cierre`.
+    """
 
     PROMOCIONA = "PROMOCIONA"
     REGULARIZA = "REGULARIZA"
     RECURSA = "RECURSA"
+    ABANDONO = "ABANDONO"

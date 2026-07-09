@@ -527,3 +527,48 @@ async def test_count_recalificado_despues_de_la_entrega_es_corregido(service):
 
     assert counts["corregidos"] == 1
     assert counts["espera"] == 0
+
+
+# ===================== Bug 3 exploration (tarea 3, ANTES del fix) =====================
+#
+# Property 3: Bug Condition — Comisiones resueltas por mapa autoritativo (design.md).
+# CRITICAL: estos tests DEBEN FALLAR sobre el código sin arreglar — la falla confirma
+# que el Bug 3 existe.
+# **Validates: Requirements 1.6, 1.7**
+#
+# Diagnóstico (causa raíz CONFIRMADA a nivel de código):
+#   - `cierre_cursada_service.generar` resuelve la comisión con
+#     `self._resolver_comision(u.get("groups") or [], comisiones)` — el `groups[]`
+#     EMBEBIDO que devuelve `core_enrol_get_enrolled_users`.
+#   - `gestion_service.opciones_filtros/consultar/exportar_pendientes_excel` también
+#     dependen 100% de `u.get("groups", [])`.
+#   - En `moodle_service.py` NO existe ninguna llamada a `core_group_get_course_groups`
+#     ni a `core_group_get_group_members`: no hay fuente autoritativa de grupos, sólo el
+#     `groups[]` embebido. Con grupos separados (`groupmode=1`) sin
+#     `moodle/site:accessallgroups`, Moodle omite del `groups[]` de cada usuario los
+#     grupos que el consultante no puede ver → comisiones enteras desaparecen (Prog 3:
+#     M25 C3-01/02/15) y alumnos con comisión válida quedan "Sin comisión" (Prog 1).
+#   - `_resolver_comision` resuelve BIEN si se le pasa el grupo real; el defecto está
+#     AGUAS ARRIBA (la lista embebida incompleta que se le pasa). El fix construye el
+#     mapa autoritativo `uid → grupos` con `core_group_*` y lo usa como fuente primaria.
+
+
+def test_bug_construir_mapa_uid_grupos_separados():
+    """Bug 3: el mapa autoritativo `uid → grupos` se arma desde
+    `core_group_get_course_groups` (todos los grupos del curso) +
+    `core_group_get_group_members` (miembros por grupo), independiente del `groups[]`
+    embebido que oculta M25 C3-01 con grupos separados.
+
+    Esperado (tras el fix): `construir_mapa_uid_grupos` mapea cada uid al grupo de
+    comisión aunque el `groups[]` embebido no lo trajera. HOY: el helper NO existe en
+    `moodle_service` (ImportError) → confirma que no hay fuente autoritativa y el código
+    depende del `groups[]` embebido incompleto."""
+    from app.services.moodle_service import construir_mapa_uid_grupos
+
+    groups = [{"id": 501, "name": "M25 C3-01"}]  # core_group_get_course_groups
+    members_por_group = {501: [9001, 9002]}       # core_group_get_group_members
+
+    mapa = construir_mapa_uid_grupos(groups, members_por_group)
+
+    assert mapa[9001] == [{"id": 501, "name": "M25 C3-01"}]
+    assert mapa[9002] == [{"id": 501, "name": "M25 C3-01"}]

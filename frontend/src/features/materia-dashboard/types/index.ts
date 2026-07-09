@@ -93,6 +93,9 @@ export type TipoExamen =
   | 'GLOBAL';
 export type ModoAprobacion = 'ESCALA' | 'NUMERICO';
 
+/** Actividad de Moodle subyacente de un examen: Tarea (assign) o Cuestionario (quiz). */
+export type TipoActividadMoodle = 'assign' | 'quiz';
+
 /** Tipos cuyo resultado se rescata vinculándose a un PARCIAL o GLOBAL. */
 export const TIPOS_RESCATE: TipoExamen[] = [
   'RECUPERATORIO',
@@ -109,6 +112,8 @@ export interface ExamenMateria {
   /** Etiqueta visible, ej. 'Parcial 2'. */
   etiqueta: string;
   moodle_cmid: number;
+  /** Actividad de Moodle: 'assign' (Tarea) o 'quiz' (Cuestionario). */
+  tipo_actividad: TipoActividadMoodle;
   modo_aprobacion: ModoAprobacion;
   nota_minima: number | null;
   recupera_examen_id: number | null;
@@ -119,6 +124,7 @@ export interface ExamenMateria {
 export interface ExamenInput {
   tipo: TipoExamen;
   moodle_cmid: number;
+  tipo_actividad: TipoActividadMoodle;
   modo_aprobacion: ModoAprobacion;
   nota_minima: number | null;
   recupera_examen_id: number | null;

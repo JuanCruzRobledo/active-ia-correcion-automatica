@@ -8,14 +8,24 @@ Layout = modelo `docs/modelos/modelo planilla de cierre CORREGIDO.xlsx` (ver dis
 sección "Layout exacto del modelo CORREGIDO") + una columna `Nota Final` agregada al
 final:
   R1: "TOTAL MATERIA {NOMBRE}" (merge A1:B1, mayúsculas)
-  R2-R4: resumen PROMOCIONADOS/REGULARES/RECURSANTES con conteo (A=etiqueta, B=conteo)
-  R5: vacía (separador)
-  R6+: por comisión, barra "{comisión} — Tutor: {tutor}" (merge desde la columna C hasta
+  R2-R6: resumen PROMOCIONADOS/REGULARES/RECURSANTES/RECUPERABLES/ABANDONOS con el conteo
+         como fórmula nativa `CONTAR.SI` (A=etiqueta, B=fórmula)
+  R7: vacía (separador)
+  R8+: por comisión, barra "{comisión} — Tutor: {tutor}" (merge desde la columna C hasta
        la última) + encabezados + filas de alumnos.
 
 Columnas dinámicas, derivadas de `run.examenes_snapshot` (config de exámenes congelada
 en la corrida): `Nombre y Apellido | Email | Parcial n… | Global TPI | Estado Alumno |
 Nota Final`. Sin columnas de TPs y sin gráfico de dona (a diferencia del sistema viejo).
+
+Dependencia de locale (es-AR):
+    Las fórmulas nativas que este módulo escribe (columna "Recuperable" por fila y los
+    conteos del resumen) usan la sintaxis de Excel en **español** — funciones `SI`,
+    `CONTAR.SI`, `Y`, `VALOR`, `SI.ERROR` — y el punto y coma `;` como separador de
+    argumentos. El archivo está pensado para abrirse en un Excel configurado en español
+    (es-AR): en un Excel en inglés estas fórmulas no resolverían (esperaría `IF`,
+    `COUNTIF`, `AND`, `VALUE`, `IFERROR` y `,` como separador). Se persisten con openpyxl
+    como fórmulas nativas escribiendo un string que empieza con `=` en `cell.value`.
 """
 
 import io
@@ -51,6 +61,70 @@ def _fmt_nota_final(valor: int | None) -> str | int:
     return "" if valor is None else valor
 
 
+def _formula_recuperable(estado_col: str, p1_col: str, p2_col: str, fila: int) -> str:
+    """Fórmula nativa es-AR "Recuperable" para la fila `fila` (1-based, número de fila de
+    Excel del alumno).
+
+    Marca "RECUPERABLE CON PARCIAL 2" (falta rendir el parcial 2) o "RECUPERABLE CON
+    PARCIAL 1" (falta el parcial 1) sólo para alumnos RECURSA con un parcial `>=40` y el
+    otro `<40`/N/E (los `N/E` se tratan como 0 vía `SI.ERROR(VALOR(...);0)`); vacío en
+    cualquier otro caso.
+
+    Las columnas se reciben como letras (`estado_col`/`p1_col`/`p2_col`) para que la
+    fórmula quede correcta en ambas hojas ("por Comisiones": F/C/D; "Crudo": H/E/F). Usa
+    la sintaxis es-AR (`SI`/`Y`/`VALOR`/`SI.ERROR`, `;` como separador) — ver la nota de
+    locale del módulo.
+    """
+    return (
+        f'=SI({estado_col}{fila}<>"RECURSA";"";'
+        f"SI(Y(SI.ERROR(VALOR({p1_col}{fila});0)>=40;SI.ERROR(VALOR({p2_col}{fila});0)<40);"
+        f'"RECUPERABLE CON PARCIAL 2";'
+        f"SI(Y(SI.ERROR(VALOR({p2_col}{fila});0)>=40;SI.ERROR(VALOR({p1_col}{fila});0)<40);"
+        f'"RECUPERABLE CON PARCIAL 1";"")))'
+    )
+
+
+def _formulas_conteo_resumen(
+    estado_letra: str, recuperable_letra: str, recuperable_criterio: str
+) -> list[tuple[str, str]]:
+    """[(etiqueta, fórmula `CONTAR.SI`)] del resumen — conteos como fórmulas nativas es-AR
+    (no enteros estáticos), que recalculan al editar la columna "Estado Alumno".
+
+    Los estados se cuentan sobre la columna Estado (`estado_letra`) y los recuperables
+    sobre la columna auxiliar `Recuperable` (`recuperable_letra`). El criterio de
+    recuperable cambia por hoja: `"RECUPERABLE*"` en "por Comisiones", `"RECUPERABLE CON*"`
+    en "Crudo" (`recuperable_criterio`). Sintaxis es-AR (`CONTAR.SI`, `;` como separador)
+    — ver la nota de locale del módulo (2.11, 2.12, 2.15)."""
+    def _por_estado(patron: str) -> str:
+        return f'=CONTAR.SI({estado_letra}:{estado_letra};"{patron}")'
+
+    return [
+        ("PROMOCIONADOS", _por_estado("PROMOCIONA")),
+        ("REGULARES", _por_estado("REGULARIZA")),
+        ("RECURSANTES", _por_estado("RECURSA")),
+        (
+            "RECUPERABLES",
+            f'=CONTAR.SI({recuperable_letra}:{recuperable_letra};"{recuperable_criterio}")',
+        ),
+        ("ABANDONOS", _por_estado("ABANDONO")),
+    ]
+
+
+def _recuperable_para_fila(estado_letra: str, cols_parciales: list[int], fila: int) -> str:
+    """Valor de la celda `Recuperable` de la fila `fila`: la fórmula nativa cuando hay al
+    menos dos parciales (usa los dos primeros como P1/P2), o `""` si la materia no tiene
+    dos parciales (no aplica la lógica de recuperable). `cols_parciales` son los índices
+    1-based de columna de los parciales, en orden."""
+    if len(cols_parciales) < 2:
+        return ""
+    return _formula_recuperable(
+        estado_letra,
+        get_column_letter(cols_parciales[0]),
+        get_column_letter(cols_parciales[1]),
+        fila,
+    )
+
+
 def _parciales_y_global(
     examenes_snapshot: list[dict] | None,
 ) -> tuple[list[dict], dict | None]:
@@ -65,11 +139,15 @@ def _parciales_y_global(
 
 
 def _headers(parciales: list[dict], global_examen: dict | None) -> list[str]:
+    """Encabezados de la hoja "por Comisiones". Incluye la columna auxiliar `Recuperable`
+    al final (col H en el layout estándar 2 parciales + 1 global): A Nombre y Apellido |
+    B Email | C Parcial 1 | D Parcial 2 | E Global TPI | F Estado Alumno | G Nota Final |
+    H Recuperable. La fórmula por fila de `Recuperable` la escribe `_escribir_detalle`."""
     headers = ["Nombre y Apellido", "Email"]
     headers += [f"Parcial {i}" for i in range(1, len(parciales) + 1)]
     if global_examen is not None:
         headers.append("Global TPI")
-    headers += ["Estado Alumno", "Nota Final"]
+    headers += ["Estado Alumno", "Nota Final", "Recuperable"]
     return headers
 
 
@@ -126,19 +204,17 @@ def _agrupar_por_comision(alumnos: list[CierreCursadaAlumno]) -> dict[str, list[
     }
 
 
-def _escribir_resumen(ws, materia_nombre: str, run: CierreCursadaRun) -> None:
-    """R1: título (merge A1:B1, mayúsculas). R2-R4: conteo PROMOCIONADOS/REGULARES/
-    RECURSANTES en A:B. R5 queda vacía (separador antes del primer bloque)."""
+def _escribir_resumen(ws, materia_nombre: str, estado_letra: str, recuperable_letra: str) -> None:
+    """R1: título (merge A1:B1, mayúsculas). R2-R6: conteo PROMOCIONADOS/REGULARES/
+    RECURSANTES/RECUPERABLES/ABANDONOS en A:B, con la celda de conteo (col B) como
+    fórmula nativa `CONTAR.SI` (no un entero estático) que recalcula al editar la columna
+    "Estado Alumno". En el layout estándar Estado es F y Recuperable H (2.11, 2.12, 2.15)."""
     banda_titulo(ws, f"TOTAL MATERIA {materia_nombre.upper()}", ncols=2)
 
-    resumen = [
-        ("PROMOCIONADOS", run.total_promociona),
-        ("REGULARES", run.total_regulariza),
-        ("RECURSANTES", run.total_recursa),
-    ]
-    for fila, (etiqueta, conteo) in enumerate(resumen, start=2):
+    resumen = _formulas_conteo_resumen(estado_letra, recuperable_letra, "RECUPERABLE*")
+    for fila, (etiqueta, formula) in enumerate(resumen, start=2):
         ws.cell(fila, 1, etiqueta).font = FONT_SECCION
-        celda_conteo = ws.cell(fila, 2, conteo)
+        celda_conteo = ws.cell(fila, 2, formula)
         celda_conteo.alignment = CENTER
 
 
@@ -150,9 +226,18 @@ def _escribir_detalle(
     headers: list[str],
     fila_inicio: int,
 ) -> int:
-    """Escribe los bloques por comisión desde `fila_inicio`. Devuelve la última fila usada."""
+    """Escribe los bloques por comisión desde `fila_inicio`. Devuelve la última fila usada.
+
+    La última columna es `Recuperable`: en cada fila de alumno se escribe la fórmula
+    nativa es-AR (`_formula_recuperable`) referenciando la fila de Excel de ese alumno,
+    con las letras de columna calculadas del layout (estado, primeros dos parciales,
+    recuperable) → en el layout estándar F/C/D/H (2.13, 2.14)."""
     ncols = len(headers)
-    col_estado = ncols - 1  # Estado Alumno: penúltima columna (Nota Final es la última).
+    # Layout: …, Estado Alumno (antepenúltima), Nota Final (penúltima), Recuperable (última).
+    col_estado = ncols - 2
+    # Parciales arrancan en la col 3 (tras Nombre y Apellido / Email).
+    cols_parciales = [3 + i for i in range(len(parciales))]
+    estado_letra = get_column_letter(col_estado)
     fila = fila_inicio
     for titulo, del_grupo in _agrupar_por_comision(alumnos).items():
         fila += 1
@@ -169,6 +254,7 @@ def _escribir_detalle(
                 valores.append(_fmt_valor(a.global_valor))
             valores.append(estado)
             valores.append(_fmt_nota_final(a.nota_final))
+            valores.append(_recuperable_para_fila(estado_letra, cols_parciales, fila))
             fila_datos(
                 ws, fila, valores,
                 zebra=(i % 2 == 1),
@@ -180,20 +266,144 @@ def _escribir_detalle(
     return fila
 
 
-def generar_excel_cierre(materia_nombre: str, run: CierreCursadaRun) -> tuple[bytes, str]:
-    """(bytes, filename) del .xlsx de un cierre ya generado. `run.alumnos` debe venir cargado."""
-    wb = Workbook()
-    ws = wb.active
-    ws.title = excel_estilos.sheet_title(materia_nombre, default="Cierre")
+def _headers_crudo(parciales: list[dict], global_examen: dict | None) -> list[str]:
+    """Encabezados de la hoja "Crudo": agrega `Comision`/`Tutor` (C/D) respecto de la
+    hoja "por Comisiones" y una columna `Recuperable` al final.
 
+    Layout (2 parciales + 1 global): A Nombre y Apellido | B Email | C Comision |
+    D Tutor | E Parcial 1 | F Parcial 2 | G Global TPI | H Estado Alumno | I Nota Final |
+    J Recuperable (coincide con `docs/modelos/Cierre_Programacin_3 FIX.xlsx`)."""
+    headers = ["Nombre y Apellido", "Email", "Comision", "Tutor"]
+    headers += [f"Parcial {i}" for i in range(1, len(parciales) + 1)]
+    if global_examen is not None:
+        headers.append("Global TPI")
+    headers += ["Estado Alumno", "Nota Final", "Recuperable"]
+    return headers
+
+
+def _escribir_resumen_crudo(ws, materia_nombre: str, estado_letra: str, recuperable_letra: str) -> None:
+    """R1: título (merge A1:B1, mayúsculas). R2-R6: conteo PROMOCIONADOS/REGULARES/
+    RECURSANTES/RECUPERABLES/ABANDONOS en A:B, con la celda de conteo (col B) como
+    fórmula nativa `CONTAR.SI` que recalcula al editar la columna "Estado Alumno". En el
+    layout estándar Estado es H y Recuperable J; el criterio de recuperable es
+    `"RECUPERABLE CON*"`. Reutiliza `banda_titulo`/`FONT_SECCION` (estilos de la casa →
+    3.10) (2.11, 2.12, 2.15)."""
+    banda_titulo(ws, f"TOTAL MATERIA {materia_nombre.upper()}", ncols=2)
+
+    resumen = _formulas_conteo_resumen(estado_letra, recuperable_letra, "RECUPERABLE CON*")
+    for fila, (etiqueta, formula) in enumerate(resumen, start=2):
+        ws.cell(fila, 1, etiqueta).font = FONT_SECCION
+        celda_conteo = ws.cell(fila, 2, formula)
+        celda_conteo.alignment = CENTER
+
+
+def _escribir_hoja_cruda(
+    ws,
+    materia_nombre: str,
+    run: CierreCursadaRun,
+    parciales: list[dict],
+    global_examen: dict | None,
+) -> None:
+    """Hoja 2 "Crudo": resumen (R1-R6) + lista PLANA de TODOS los alumnos ordenados
+    alfabéticamente por `(apellido, nombre)` — sin cuadros por comisión —, agregando las
+    columnas `Comision` ("Sin comisión asignada" si aplica) y `Tutor` del alumno.
+
+    Las columnas de examen muestran `N/E` cuando no hay nota (`_fmt_valor` → 3.8) y se
+    usan los helpers de `excel_estilos.py` (`banda_titulo`/`celda_header`/`fila_datos`
+    → 3.10). La columna `Recuperable` lleva la fórmula nativa es-AR por fila
+    (`_formula_recuperable`) y los conteos del resumen quedan como placeholders
+    (tarea 10.4).
+    """
+    headers = _headers_crudo(parciales, global_examen)
+    ncols = len(headers)
+    # Estado Alumno es la antepenúltima columna (le siguen Nota Final y Recuperable).
+    col_estado = ncols - 2
+    estado_letra = get_column_letter(col_estado)
+    # Parciales arrancan en la col 5 (tras Nombre y Apellido / Email / Comision / Tutor).
+    cols_parciales = [5 + i for i in range(len(parciales))]
+
+    _escribir_resumen_crudo(ws, materia_nombre, estado_letra, get_column_letter(ncols))
+
+    fila_header = 8  # R7 queda como separador entre el resumen y la tabla plana.
+    for col, h in enumerate(headers, 1):
+        celda_header(ws, fila_header, col, h)
+
+    alumnos_ordenados = sorted(
+        run.alumnos, key=lambda x: (x.apellido or "", x.nombre or "")
+    )
+    fila = fila_header + 1
+    for i, a in enumerate(alumnos_ordenados):
+        estado = a.estado.value
+        valores = [
+            f"{a.apellido}, {a.nombre}".strip(", "),
+            a.email,
+            a.comision_nombre or _SIN_COMISION,
+            a.tutor_nombre or "",
+        ]
+        valores += [_fmt_valor(_valor_parcial(a, p["id"])) for p in parciales]
+        if global_examen is not None:
+            valores.append(_fmt_valor(a.global_valor))
+        valores.append(estado)
+        valores.append(_fmt_nota_final(a.nota_final))
+        # Recuperable: fórmula nativa es-AR por fila (col J en el layout estándar; estado
+        # H, parciales E/F). Se referencia la fila de Excel `fila` del alumno (2.13, 2.14).
+        valores.append(_recuperable_para_fila(estado_letra, cols_parciales, fila))
+        fila_datos(
+            ws, fila, valores,
+            zebra=(i % 2 == 1),
+            resaltar_col=col_estado if estado == "RECURSA" else None,
+            center_cols=tuple(range(5, ncols + 1)),
+        )
+        fila += 1
+
+    for col in range(1, ncols + 1):
+        ws.column_dimensions[get_column_letter(col)].width = 26 if col <= 2 else 16
+
+
+def _escribir_hoja_por_comisiones(ws, materia_nombre: str, run: CierreCursadaRun) -> None:
+    """Hoja 1 "por Comisiones": resumen (R1-R4) + bloques por comisión (R6+) sobre `ws`.
+
+    Concentra el layout histórico del cierre (resumen + detalle agrupado por comisión) y
+    reutiliza los helpers de la casa (`banda_titulo`/`celda_header`/`fila_datos`, vía
+    `_escribir_resumen`/`_escribir_detalle`) → preserva estilos y orden (3.6, 3.10).
+    """
     parciales, global_examen = _parciales_y_global(run.examenes_snapshot)
     headers = _headers(parciales, global_examen)
+    ncols = len(headers)
+    # Layout: …, Estado (ncols-2), Nota Final (ncols-1), Recuperable (ncols) → estándar F/H.
+    estado_letra = get_column_letter(ncols - 2)
+    recuperable_letra = get_column_letter(ncols)
 
-    _escribir_resumen(ws, materia_nombre, run)
-    _escribir_detalle(ws, run.alumnos, parciales, global_examen, headers, fila_inicio=5)
+    _escribir_resumen(ws, materia_nombre, estado_letra, recuperable_letra)
+    # Resumen ocupa R1 (título) + R2-R6 (5 conteos); R7 queda como separador y los
+    # bloques por comisión arrancan en R8 (bar) — igual patrón "una fila en blanco" que
+    # el layout original de 3 conteos.
+    _escribir_detalle(ws, run.alumnos, parciales, global_examen, headers, fila_inicio=7)
 
     for col in range(1, len(headers) + 1):
         ws.column_dimensions[get_column_letter(col)].width = 26 if col <= 2 else 16
+
+
+def generar_excel_cierre(materia_nombre: str, run: CierreCursadaRun) -> tuple[bytes, str]:
+    """(bytes, filename) del .xlsx de un cierre ya generado. `run.alumnos` debe venir cargado.
+
+    Orquesta DOS hojas (modelo `docs/modelos/Cierre_Programacin_3 FIX.xlsx`):
+      - Hoja 1 "{materia} por Comisiones": cuadros por comisión (ver
+        `_escribir_hoja_por_comisiones`).
+      - Hoja 2 "{materia} Crudo": lista plana alfabética con columnas Comision/Tutor
+        (contenido en `_escribir_hoja_cruda`, tarea 10.2). Acá se crea la hoja con el
+        nombre correcto para dejar el orquestador cableado.
+    """
+    wb = Workbook()
+    parciales, global_examen = _parciales_y_global(run.examenes_snapshot)
+
+    ws1 = wb.active
+    ws1.title = excel_estilos.sheet_title(f"{materia_nombre} por Comisiones", default="Cierre")
+    _escribir_hoja_por_comisiones(ws1, materia_nombre, run)
+
+    # Hoja 2 "Crudo": lista plana alfabética con columnas Comision/Tutor (tarea 10.2).
+    ws2 = wb.create_sheet(excel_estilos.sheet_title(f"{materia_nombre} Crudo", default="Crudo"))
+    _escribir_hoja_cruda(ws2, materia_nombre, run, parciales, global_examen)
 
     buffer = io.BytesIO()
     wb.save(buffer)

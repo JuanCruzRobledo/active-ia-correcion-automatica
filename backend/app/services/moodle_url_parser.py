@@ -14,6 +14,8 @@ Lógica PURA (sin I/O). Formato típico:
 
 from urllib.parse import parse_qs, urlparse
 
+from app.models.enums import TipoActividadMoodleEnum
+
 
 def _int_o_none(valores: list[str] | None) -> int | None:
     if not valores:
@@ -46,3 +48,26 @@ def construir_url_entrega(host: str | None, cmid: int | None, userid: int | None
     if not host or cmid is None or userid is None:
         return None
     return f"{host.rstrip('/')}/mod/assign/view.php?id={cmid}&userid={userid}"
+
+
+def construir_url_actividad(
+    host: str | None,
+    cmid: int | None,
+    tipo_actividad: TipoActividadMoodleEnum | str | None,
+) -> str | None:
+    """(host, cmid, tipo_actividad) → URL de la actividad de Moodle según su tipo.
+
+    Resuelve el recurso correcto por tipo de actividad:
+    - `quiz`  → ``/mod/quiz/view.php?id={cmid}``
+    - `assign`→ ``/mod/assign/view.php?id={cmid}``
+
+    Acepta `tipo_actividad` como str ("quiz"/"assign") o como
+    `TipoActividadMoodleEnum`. Cualquier valor distinto de `quiz` se resuelve
+    como `assign` (comportamiento histórico por defecto). Devuelve None si falta
+    el host o el cmid. Lógica PURA (sin I/O).
+    """
+    if not host or cmid is None:
+        return None
+    tipo = getattr(tipo_actividad, "value", tipo_actividad)
+    modulo = "quiz" if tipo == TipoActividadMoodleEnum.QUIZ.value else "assign"
+    return f"{host.rstrip('/')}/mod/{modulo}/view.php?id={cmid}"

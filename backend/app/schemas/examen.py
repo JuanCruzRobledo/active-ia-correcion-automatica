@@ -9,7 +9,11 @@ se DERIVA en el response (no se persiste).
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.models.enums import ModoAprobacionEnum, TipoExamenEnum
+from app.models.enums import (
+    ModoAprobacionEnum,
+    TipoActividadMoodleEnum,
+    TipoExamenEnum,
+)
 
 # Tipos cuyo resultado se rescata vinculándose a un PARCIAL o GLOBAL.
 TIPOS_RESCATE = {
@@ -24,6 +28,10 @@ class ExamenMateriaCreate(BaseModel):
 
     tipo: TipoExamenEnum
     moodle_cmid: int = Field(..., description="cmid de la actividad de Moodle del examen")
+    tipo_actividad: TipoActividadMoodleEnum = Field(
+        default=TipoActividadMoodleEnum.ASSIGN,
+        description="Actividad de Moodle: assign (Tarea) | quiz (Cuestionario)",
+    )
     modo_aprobacion: ModoAprobacionEnum
     nota_minima: float | None = Field(
         None, description="Mínimo para aprobar (requerido si modo NUMERICO)"
@@ -53,6 +61,10 @@ class ExamenMateriaUpdate(BaseModel):
 
     tipo: TipoExamenEnum
     moodle_cmid: int
+    tipo_actividad: TipoActividadMoodleEnum = Field(
+        default=TipoActividadMoodleEnum.ASSIGN,
+        description="Actividad de Moodle: assign (Tarea) | quiz (Cuestionario)",
+    )
     modo_aprobacion: ModoAprobacionEnum
     nota_minima: float | None = None
     recupera_examen_id: int | None = None
@@ -83,6 +95,10 @@ class ExamenMateriaResponse(BaseModel):
     numero: int = Field(..., description="Número derivado por tipo (Parcial 1, 2…)")
     etiqueta: str = Field(..., description="Etiqueta visible, ej. 'Parcial 2'")
     moodle_cmid: int
+    tipo_actividad: TipoActividadMoodleEnum = Field(
+        default=TipoActividadMoodleEnum.ASSIGN,
+        description="Actividad de Moodle: assign (Tarea) | quiz (Cuestionario)",
+    )
     modo_aprobacion: ModoAprobacionEnum
     nota_minima: float | None = None
     recupera_examen_id: int | None = None

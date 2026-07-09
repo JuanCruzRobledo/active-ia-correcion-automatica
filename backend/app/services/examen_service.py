@@ -81,6 +81,7 @@ class ExamenService:
             numero=numero,
             etiqueta=etiqueta,
             moodle_cmid=examen.moodle_cmid,
+            tipo_actividad=examen.tipo_actividad,
             modo_aprobacion=examen.modo_aprobacion,
             nota_minima=examen.nota_minima,
             recupera_examen_id=examen.recupera_examen_id,
@@ -109,6 +110,7 @@ class ExamenService:
             materia_id=materia_id,
             tipo=data.tipo,
             moodle_cmid=data.moodle_cmid,
+            tipo_actividad=data.tipo_actividad,
             modo_aprobacion=data.modo_aprobacion,
             nota_minima=data.nota_minima,
             recupera_examen_id=data.recupera_examen_id,
@@ -140,6 +142,7 @@ class ExamenService:
         await self._validar_vinculo(examen.materia_id, data.recupera_examen_id)
         examen.tipo = data.tipo
         examen.moodle_cmid = data.moodle_cmid
+        examen.tipo_actividad = data.tipo_actividad
         examen.modo_aprobacion = data.modo_aprobacion
         examen.nota_minima = data.nota_minima
         examen.recupera_examen_id = data.recupera_examen_id

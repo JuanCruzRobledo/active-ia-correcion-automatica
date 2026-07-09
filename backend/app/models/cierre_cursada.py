@@ -74,6 +74,9 @@ class CierreCursadaRun(Base, TimestampMixin):
     total_promociona: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_regulariza: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_recursa: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_abandono: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     materia: Mapped["Materia"] = relationship("Materia")
     cuatrimestre: Mapped["Cuatrimestre"] = relationship("Cuatrimestre")
