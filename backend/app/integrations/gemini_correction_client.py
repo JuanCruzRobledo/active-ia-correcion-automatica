@@ -317,8 +317,8 @@ class GeminiCorrectionClient:
     """Direct Gemini API client — replaces N8N as AI intermediary."""
 
     def __init__(self):
-        self.model = getattr(settings, "GEMINI_MODEL", "gemini-2.5-flash")
-        self.correction_timeout = float(getattr(settings, "GEMINI_TIMEOUT_SECONDS", 90))
+        self.model = settings.GEMINI_MODEL
+        self.correction_timeout = float(settings.GEMINI_TIMEOUT_SECONDS)
         self.rubric_timeout = 120.0
 
     def _generate_url(self, api_key: str) -> str:
