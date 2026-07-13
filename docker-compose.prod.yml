@@ -2,7 +2,7 @@
 # Active-IA - Docker Compose (Producción VPS)
 # ============================================
 # Modo: Producción completa en VPS
-# Servicios: backend, frontend, n8n, postgres, nginx
+# Servicios: backend, frontend, postgres, nginx
 # Uso: docker-compose -f docker-compose.prod.yml up -d
 # ============================================
 
@@ -48,21 +48,17 @@ services:
       # Base de datos local
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
 
-      # Seguridad - IMPORTANTE: Usar valores fuertes del .env
-      SECRET_KEY: ${SECRET_KEY}
+      # Seguridad - IMPORTANTE: Usar valores fuertes del .env.
+      # La sintaxis :? aborta `docker compose up` si la variable no esta
+      # definida. Sin esto, compose inyectaria un string vacio y la app
+      # arrancaria con una clave HS256 vacia (tan forjable como el default).
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY requerido}
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_DAYS: ${ACCESS_TOKEN_EXPIRE_DAYS:-7}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY requerido}
 
       # CORS - Configurar con tu dominio
       CORS_ORIGINS: ${CORS_ORIGINS}
-
-      # N8N (URLs internas de Docker)
-      N8N_BASE_URL: http://n8n:5678
-      N8N_WEBHOOK_CORRECCION: http://n8n:5678/webhook/corregir
-      N8N_WEBHOOK_RUBRICA: http://n8n:5678/webhook/generar-rubrica
-      N8N_WEBHOOK_HEALTH: http://n8n:5678/webhook/health
-      N8N_TIMEOUT_SECONDS: 90
 
       # Archivos
       UPLOAD_DIR: /app/uploads
@@ -80,8 +76,6 @@ services:
       - active-ia-network
     depends_on:
       postgres:
-        condition: service_healthy
-      n8n:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/api/v1/health"]
@@ -121,47 +115,6 @@ services:
       - "80"
 
   # ==========================================
-  # N8N (Workflows de IA)
-  # ==========================================
-  n8n:
-    image: juancruzrobledo/n8n-active-ia:latest
-    container_name: active-ia-n8n
-    restart: always
-    environment:
-      # Autenticación - IMPORTANTE: Usar credenciales fuertes
-      N8N_BASIC_AUTH_ACTIVE: true
-      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER}
-      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD}
-
-      # Red
-      N8N_HOST: 0.0.0.0
-      N8N_PORT: 5678
-      WEBHOOK_URL: ${WEBHOOK_URL}
-
-      # Configuración
-      GENERIC_TIMEZONE: America/Argentina/Buenos_Aires
-      N8N_LOG_LEVEL: info
-
-      # Persistencia de ejecuciones
-      EXECUTIONS_DATA_PRUNE: true
-      EXECUTIONS_DATA_MAX_AGE: 168  # 7 días
-      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
-    volumes:
-      - n8n_data:/home/node/.n8n
-      - ./n8n/workflows:/workflows:ro
-    networks:
-      - active-ia-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5678/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
-    # No exponer puerto públicamente, solo a través de nginx
-    expose:
-      - "5678"
-
-  # ==========================================
   # Nginx Reverse Proxy
   # ==========================================
   nginx:
@@ -181,7 +134,6 @@ services:
     depends_on:
       - frontend
       - backend
-      - n8n
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
       interval: 30s
@@ -198,8 +150,6 @@ volumes:
     name: active-ia_backend_uploads
   backend_backups:
     name: active-ia_backend_backups
-  n8n_data:
-    name: active-ia_n8n_data
 
 # ==========================================
 # Red interna

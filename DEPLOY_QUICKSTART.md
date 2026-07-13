@@ -1,5 +1,10 @@
 # 🚀 Deploy Rápido - Active-IA en VPS Hostinger
 
+> ℹ️ **Vía self-hosted (alternativa).** El deploy vigente es **backend en EasyPanel**
+> (app service construido desde `backend/Dockerfile`) + **frontend en Vercel** (sin Docker).
+> Ver **[EASYPANEL_DEPLOY.md](./EASYPANEL_DEPLOY.md)**.
+> Esta guía es para levantar todo el stack con Docker Compose en un VPS propio.
+
 ## Quick Start (5 minutos)
 
 ### 1. En tu VPS:
@@ -29,7 +34,6 @@ nano .env.production
 - `ENCRYPTION_KEY` → Generar con Python/Fernet
 - `CORS_ORIGINS` → Tu IP/dominio
 - `VITE_API_URL` → `http://TU_IP/api/v1`
-- `N8N_BASIC_AUTH_PASSWORD` → Contraseña fuerte
 
 ### 3. Iniciar servicios:
 ```bash
@@ -56,7 +60,9 @@ curl http://localhost/
 ### 5. Acceder:
 - **Frontend**: `http://TU_IP_VPS/`
 - **API Docs**: `http://TU_IP_VPS/api/v1/docs`
-- **N8N**: `http://TU_IP_VPS/n8n/`
+
+> La IA no necesita ningún servicio extra: el backend llama directo a Gemini/OpenRouter
+> con la API key que cada usuario carga en su perfil (cifrada con AES-256).
 
 ---
 
