@@ -27,5 +27,5 @@
 - [x] 4.1 TRIANGULATE: confirmar que hay al menos happy-path + edge case por comportamiento y que ningún test es tautológico
 - [x] 4.2 REFACTOR si aplica (nombres/duplicación) manteniendo los tests en verde
 - [x] 4.3 Correr la suite completa de backend (`pytest`) y confirmar que no se rompió nada preexistente
-- [ ] 4.4 Verificar/actualizar que `.env.example` documente la generación de `SECRET_KEY` y `ENCRYPTION_KEY`
+- [x] 4.4 Verificar/actualizar que `.env.example` documente la generación de `SECRET_KEY` y `ENCRYPTION_KEY`
 - [x] 4.5 Verificación manual: intentar arrancar con `DEBUG=False` y defaults → la app debe abortar con el mensaje accionable
