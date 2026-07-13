@@ -10,8 +10,23 @@ Ref: docs/specs/11-SEGURIDAD.md
 from functools import lru_cache
 from typing import List
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Valores default públicos de los secretos. Viven en el repositorio, así que un
+# despliegue de producción que los conserve es explotable (SEC-003): permiten
+# forjar JWT de ADMIN y descifrar las API keys y contraseñas almacenadas.
+# Son una única fuente de verdad: el default del campo y el validador de
+# arranque leen de acá.
+_DEFAULT_SECRET_KEY = "change-me-in-production-use-openssl-rand-hex-32"
+_DEFAULT_ENCRYPTION_KEY = "change-me-in-production-use-fernet-generate-key"
+
+# Todo secreto que empiece así es un placeholder público del repositorio: el
+# default de arriba, o el de .env.example ("change-me-in-production"). Se
+# rechazan por prefijo porque el operador que copia .env.example sin tocarlo es
+# el vector real de SEC-003, y ese valor NO coincide con el default de acá.
+_PREFIJO_SECRETO_INSEGURO = "change-me-in-production"
 
 
 class Settings(BaseSettings):
@@ -50,7 +65,7 @@ class Settings(BaseSettings):
     # =========================================
     # Seguridad - JWT
     # =========================================
-    SECRET_KEY: str = "change-me-in-production-use-openssl-rand-hex-32"
+    SECRET_KEY: str = _DEFAULT_SECRET_KEY
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_DAYS: int = 7
 
@@ -59,7 +74,7 @@ class Settings(BaseSettings):
     # =========================================
     # Key para encriptar API Keys de Gemini (Fernet/AES-256)
     # Generar con: from cryptography.fernet import Fernet; Fernet.generate_key()
-    ENCRYPTION_KEY: str = "change-me-in-production-use-fernet-generate-key"
+    ENCRYPTION_KEY: str = _DEFAULT_ENCRYPTION_KEY
 
     # =========================================
     # Seguridad - Bloqueo de cuenta
@@ -152,6 +167,41 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [ext.strip() for ext in v.split(",")]
         return v
+
+    @model_validator(mode="after")
+    def rechazar_secretos_default_en_produccion(self) -> "Settings":
+        """Aborta el arranque si en producción (DEBUG=False) los secretos siguen
+        siendo los defaults públicos del repositorio (SEC-003)."""
+        if self.DEBUG:
+            return self
+
+        candidatos = (
+            (
+                "SECRET_KEY",
+                self.SECRET_KEY,
+                "openssl rand -hex 32",
+            ),
+            (
+                "ENCRYPTION_KEY",
+                self.ENCRYPTION_KEY,
+                'python -c "from cryptography.fernet import Fernet; '
+                'print(Fernet.generate_key().decode())"',
+            ),
+        )
+        # Mensaje sin acentos a proposito: se lee en logs de deploy y consolas
+        # sin UTF-8 (Windows/cp1252), donde los acentos salen corruptos.
+        inseguras = [
+            f"  - {nombre}: conserva un valor placeholder. Genera uno real con: {comando}"
+            for nombre, valor, comando in candidatos
+            if valor.startswith(_PREFIJO_SECRETO_INSEGURO)
+        ]
+        if inseguras:
+            raise ValueError(
+                "Arranque abortado: hay secretos con valor placeholder en produccion "
+                "(DEBUG=False). Configura estas variables en el .env antes de "
+                "desplegar:\n" + "\n".join(inseguras)
+            )
+        return self
 
 
 @lru_cache

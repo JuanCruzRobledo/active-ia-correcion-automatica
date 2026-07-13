@@ -37,9 +37,19 @@ Nivel de gobernanza **CRÍTICO** (JR Stack): "Analysis only; no code written wit
 Se usará un `model_validator(mode="after")` en `Settings` porque la regla depende de **tres campos a la vez** (`DEBUG`, `SECRET_KEY`, `ENCRYPTION_KEY`). Un `field_validator` por campo no tiene acceso garantizado a `DEBUG` ya validado y obligaría a duplicar la lógica. `mode="after"` corre cuando todos los campos ya están poblados y tipados.
 - **Alternativa considerada:** `field_validator` con `ValidationInfo.data` para leer `DEBUG` — descartada por orden de evaluación frágil (depende de que `DEBUG` se declare antes) y por duplicación entre las dos claves.
 
-### D2: Comparación contra el valor default literal, no heurística
-Se comparan `SECRET_KEY`/`ENCRYPTION_KEY` exactamente contra las constantes default. Es determinístico, sin falsos positivos sobre claves reales que "parezcan" débiles, y cubre exactamente el riesgo de SEC-003 (default público conocido). Las constantes default se extraen a nombres reutilizables (p. ej. `_DEFAULT_SECRET_KEY`, `_DEFAULT_ENCRYPTION_KEY`) para que default y validación sean una sola fuente de verdad.
+### D2: Rechazo por prefijo `change-me-in-production`, no por igualdad literal
+
+> **Revisado durante apply.** La versión original de D2 exigía comparar contra el valor default literal de `config.py`. Al implementarlo se descubrió que **`.env.example` usa `change-me-in-production`, que NO coincide con los defaults de `config.py`** (`change-me-in-production-use-openssl-rand-hex-32` / `...-use-fernet-generate-key`). Con igualdad literal, el vector de ataque más probable de SEC-003 —el operador copia `.env.example` a `.env` y despliega sin tocar las claves— **pasaba el validador y arrancaba**. La comparación literal cerraba el caso improbable y dejaba abierto el real.
+
+Se rechaza cualquier `SECRET_KEY`/`ENCRYPTION_KEY` que **empiece con** `_PREFIJO_SECRETO_INSEGURO = "change-me-in-production"`. Cubre de una vez los defaults de `config.py`, el placeholder de `.env.example` y cualquier variante futura del mismo prefijo.
+
+Es técnicamente una heurística, pero **el falso positivo que la D2 original quería evitar tiene probabilidad cero**: ninguna clave generada con `openssl rand -hex 32` (hex) ni con `Fernet.generate_key()` (base64) puede empezar con `change-me-in-production`. No hay clave real legítima que este prefijo rechace.
+
+- **Alternativa considerada:** igualdad literal contra ambos valores (default + placeholder de `.env.example`) — descartada por frágil: cada nuevo placeholder que alguien agregue a un `.env.*` habría que recordar sumarlo a la lista. El prefijo los cubre a todos por construcción.
 - **Alternativa considerada:** validar entropía/longitud mínima — mayor alcance, riesgo de romper entornos legítimos, fuera del objetivo puntual del hallazgo.
+
+### D5: Mensaje de error sin acentos (ASCII)
+El mensaje del `ValueError` se redacta sin tildes (`produccion`, `Configura`, `Genera`). Se lee en logs de deploy (EasyPanel), contenedores con locale mínimo y consolas Windows (cp1252), donde los acentos UTF-8 salen corruptos. El spec exige que el operador pueda remediar la falla **leyendo únicamente el mensaje**: un mensaje ilegible en el entorno donde efectivamente se lo lee no cumple ese requisito.
 
 ### D3: Gate por `DEBUG=False` (producción)
 La validación solo aborta cuando `DEBUG=False`. `DEBUG` ya es la señal de entorno del proyecto (default `False`). Esto mantiene DX local y hace estricta la producción.
