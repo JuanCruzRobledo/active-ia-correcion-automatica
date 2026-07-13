@@ -27,7 +27,7 @@
 
 ## 5. Corrección de la spec docker-local-env
 
-- [ ] 5.1 Editar `openspec/specs/docker-local-env/spec.md`: quitar `active-ia-n8n` del escenario de "Levantamiento Unificado" y toda mención a persistencia de configuraciones de n8n en "Persistencia de Datos Locales" (según el delta en `specs/docker-local-env/spec.md` de este change).
+- [x] 5.1 Editar `openspec/specs/docker-local-env/spec.md`: quitar `active-ia-n8n` del escenario de "Levantamiento Unificado" y toda mención a persistencia de configuraciones de n8n en "Persistencia de Datos Locales" (según el delta en `specs/docker-local-env/spec.md` de este change).
 
 ## 6. Actualización de documentación de deploy
 
