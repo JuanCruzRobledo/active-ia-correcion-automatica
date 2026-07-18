@@ -13,6 +13,7 @@ import toast from 'react-hot-toast';
 import { AxiosError } from 'axios';
 import * as correccionesService from '../services/correcciones-service';
 import { invalidateStoredApiKey } from '@/features/auth/services/auth-service';
+import { entregasKeys } from '@/features/entregas/hooks/useEntregas';
 import type { Correccion, CorreccionUpdate } from '../types';
 
 /**
@@ -130,8 +131,10 @@ export const useCorregirEntrega = () => {
   return useMutation<Correccion, Error, number>({
     mutationFn: correccionesService.corregirEntrega,
     onSuccess: (correccion) => {
-      // Invalidate entregas list to update estado
-      queryClient.invalidateQueries({ queryKey: ['entregas'] });
+      // PERF-018: invalidar SOLO las listas (para reflejar el nuevo estado),
+      // no ['entregas'] entero que tira abajo tambien los detalles y los
+      // contenidos pesados (PDF/codigo) y se superpone con el polling del batch.
+      queryClient.invalidateQueries({ queryKey: entregasKeys.lists() });
 
       // Set the new corrección in cache
       queryClient.setQueryData(
@@ -189,8 +192,8 @@ export const useUpdateCorreccion = () => {
         updatedCorreccion
       );
 
-      // Invalidate entregas list to show "editado_manualmente"
-      queryClient.invalidateQueries({ queryKey: ['entregas'] });
+      // PERF-018: solo las listas (para mostrar "editado_manualmente").
+      queryClient.invalidateQueries({ queryKey: entregasKeys.lists() });
 
       toast.success('Corrección actualizada exitosamente');
     },
@@ -214,8 +217,8 @@ export const useRecorregirEntrega = () => {
   return useMutation<Correccion, Error, number>({
     mutationFn: correccionesService.recorregirEntrega,
     onSuccess: (correccion) => {
-      // Invalidate entregas list
-      queryClient.invalidateQueries({ queryKey: ['entregas'] });
+      // PERF-018: solo las listas.
+      queryClient.invalidateQueries({ queryKey: entregasKeys.lists() });
 
       // Update corrección in cache
       queryClient.setQueryData(
