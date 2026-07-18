@@ -9,7 +9,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
 
 import base64
 import hashlib
-import os
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import BinaryIO, Literal
@@ -38,7 +38,10 @@ from app.schemas.entrega import (
     HistorialResponse,
 )
 from app.services.consolidacion_service import ConsolidacionService
+from app.services.correccion_service import _limpiar_entrega_error
 from app.services.historial_service import HistorialService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -198,6 +201,9 @@ class EntregaService:
             entrega_existente.hash_sha256 = hash_sha256
             entrega_existente.estado = EstadoEntregaEnum.SUBIDA
             entrega_existente.subido_por_id = subido_por_id
+            # Al sobrescribir con un archivo nuevo, el error de la corrida anterior
+            # (error_code/error_mensaje/error_at) ya no aplica: se limpia (BUG-013).
+            _limpiar_entrega_error(entrega_existente)
             # Vínculo a Moodle desde la URL pegada (item #4); solo si vino uno nuevo.
             if moodle_user_id is not None:
                 entrega_existente.moodle_user_id = moodle_user_id
@@ -315,8 +321,17 @@ class EntregaService:
         except HTTPException as e:
             detalle = e.detail if isinstance(e.detail, str) else str(e.detail)
             return ResultadoImportEntrega(status="error", detalle=detalle)
-        except Exception as e:  # noqa: BLE001 — robustez: una entrega no debe romper el lote
-            return ResultadoImportEntrega(status="error", detalle=str(e))
+        except Exception:  # noqa: BLE001 — robustez: una entrega no debe romper el lote
+            # El str(e) (jerga de librería) va SOLO al log; el importador recibe
+            # un mensaje legible (ERR-013).
+            logger.exception(
+                "Error procesando la entrega importada de '%s' (%s)",
+                alumno_nombre, archivo_nombre,
+            )
+            return ResultadoImportEntrega(
+                status="error",
+                detalle="No se pudo procesar la entrega. Revisá el contenido del archivo.",
+            )
 
         hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
         archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo_nombre}"
@@ -713,7 +728,6 @@ class EntregaService:
         """
         import io
         import zipfile
-        import tempfile
 
         # Barrera temprana de tamaño (PERF-008): rechazar el ZIP contenedor por su
         # tamaño declarado antes de cualquier trabajo de DB.
@@ -834,19 +848,20 @@ class EntregaService:
                             else:
                                 archivo_tipo = "individual"
                         else:
-                            # Multiple loose files - create a ZIP from them
-                            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
-                                with zipfile.ZipFile(tmp_zip, "w") as new_zip:
-                                    for file_path in alumno_files:
-                                        # Remove student folder prefix
-                                        arcname = "/".join(file_path.split("/")[1:])
-                                        if arcname:  # Skip empty paths
-                                            new_zip.writestr(arcname, zip_file.read(normalized_to_original[file_path]))
+                            # Multiple loose files - create a ZIP from them in memory.
+                            # io.BytesIO en vez de NamedTemporaryFile(delete=False): no
+                            # deja archivos temporales huérfanos en disco (BUG-011).
+                            buffer_zip = io.BytesIO()
+                            with zipfile.ZipFile(buffer_zip, "w") as new_zip:
+                                for file_path in alumno_files:
+                                    # Remove student folder prefix
+                                    arcname = "/".join(file_path.split("/")[1:])
+                                    if arcname:  # Skip empty paths
+                                        new_zip.writestr(arcname, zip_file.read(normalized_to_original[file_path]))
 
-                                tmp_zip.seek(0)
-                                contenido_bytes_alumno = tmp_zip.read()
-                                archivo_nombre = f"{alumno_folder}_consolidado.zip"
-                                archivo_tipo = "zip"
+                            contenido_bytes_alumno = buffer_zip.getvalue()
+                            archivo_nombre = f"{alumno_folder}_consolidado.zip"
+                            archivo_tipo = "zip"
 
                         # Calculate hash
                         hash_sha256 = hashlib.sha256(contenido_bytes_alumno).hexdigest()
@@ -912,6 +927,8 @@ class EntregaService:
                             entrega_existente.hash_sha256 = hash_sha256
                             entrega_existente.estado = EstadoEntregaEnum.SUBIDA
                             entrega_existente.subido_por_id = subido_por_id
+                            # Limpiar el error de la corrida anterior al sobrescribir (BUG-013).
+                            _limpiar_entrega_error(entrega_existente)
                             entrega_existente.archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo_nombre}"
 
                             updated_entrega = await self.entrega_repo.update(entrega_existente)
@@ -951,7 +968,7 @@ class EntregaService:
                             )
                         )
 
-                    except Exception as e:
+                    except Exception:
                         # Roll back the session so the next student can still be processed.
                         # Without this, a DB-level error (e.g. null bytes in content)
                         # leaves the SQLAlchemy session in an invalid state and every
@@ -961,11 +978,17 @@ class EntregaService:
                             await self.db.rollback()
                         except Exception:
                             pass
+                        # El str(e) (jerga SQLAlchemy/encoding) va SOLO al log; el tutor
+                        # recibe un mensaje legible por alumno (ERR-013).
+                        logger.exception(
+                            "Error procesando la entrega masiva de '%s' (carpeta '%s')",
+                            alumno_nombre, alumno_folder,
+                        )
                         errores.append(
                             EntregaError(
                                 alumno_nombre=alumno_nombre,
                                 archivo_nombre=alumno_folder,
-                                error=str(e),
+                                error="No se pudo procesar la entrega de este alumno. Revisá el contenido del archivo.",
                             )
                         )
 

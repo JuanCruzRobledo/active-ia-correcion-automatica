@@ -31,12 +31,12 @@ Fórmulas nativas y locale:
 """
 
 import io
-from datetime import datetime
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment
 from openpyxl.utils import get_column_letter
 
+from app.core.fecha import ahora_ar
 from app.models.cierre_cursada import CierreCursadaAlumno, CierreCursadaRun
 from app.services import excel_estilos
 from app.services.excel_estilos import (
@@ -411,6 +411,6 @@ def generar_excel_cierre(materia_nombre: str, run: CierreCursadaRun) -> tuple[by
 
     buffer = io.BytesIO()
     wb.save(buffer)
-    fecha = datetime.utcnow().strftime("%Y%m%d")
+    fecha = ahora_ar().strftime("%Y%m%d")
     filename = excel_estilos.sanitize_filename(f"Cierre_{materia_nombre}_{fecha}.xlsx")
     return buffer.getvalue(), filename

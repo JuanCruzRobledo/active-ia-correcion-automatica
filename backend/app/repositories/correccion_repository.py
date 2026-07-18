@@ -16,7 +16,13 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.comision import Comision, ComisionTutor
 from app.models.correccion import Correccion
+from app.models.entrega import Entrega
+from app.models.enums import EstadoEntregaEnum, MoodleSyncEstado
+from app.models.materia import Materia
+from app.models.moodle_sync import MoodleSync
+from app.models.rubrica import Rubrica
 
 
 class CorreccionRepository:
@@ -66,9 +72,6 @@ class CorreccionRepository:
         Returns:
             Correccion object with relations if found, None otherwise.
         """
-        from app.models.entrega import Entrega
-        from app.models.comision import Comision
-
         result = await self.db.execute(
             select(Correccion)
             .options(
@@ -114,9 +117,6 @@ class CorreccionRepository:
         Returns:
             Correccion object with relations if found, None otherwise.
         """
-        from app.models.entrega import Entrega
-        from app.models.comision import Comision
-
         result = await self.db.execute(
             select(Correccion)
             .options(
@@ -152,12 +152,6 @@ class CorreccionRepository:
         Returns:
             Tuple of (list of correcciones, total count).
         """
-        # Import here to avoid circular dependency
-        from app.models.entrega import Entrega
-
-        # Base query with nested relations for PDF generation
-        from app.models.comision import Comision
-
         query = select(Correccion).options(
             selectinload(Correccion.entrega).selectinload(Entrega.comision).selectinload(Comision.materia),
             selectinload(Correccion.entrega).selectinload(Entrega.rubrica),
@@ -269,9 +263,6 @@ class CorreccionRepository:
         Returns:
             Dictionary with statistics (avg_nota, min_nota, max_nota, count).
         """
-        # Import here to avoid circular dependency
-        from app.models.entrega import Entrega
-
         result = await self.db.execute(
             select(
                 func.avg(Correccion.nota).label("avg_nota"),
@@ -307,9 +298,6 @@ class CorreccionRepository:
         Returns:
             List of Correccion objects.
         """
-        from app.models.entrega import Entrega
-        from app.models.comision import Comision
-
         result = await self.db.execute(
             select(Correccion)
             .options(
@@ -342,13 +330,6 @@ class CorreccionRepository:
             Lista de Correccion con entrega/comision/materia/rubrica cargadas,
             ordenada por materia, rúbrica y alumno.
         """
-        from app.models.comision import Comision, ComisionTutor
-        from app.models.entrega import Entrega
-        from app.models.enums import EstadoEntregaEnum, MoodleSyncEstado
-        from app.models.materia import Materia
-        from app.models.moodle_sync import MoodleSync
-        from app.models.rubrica import Rubrica
-
         enviado_exists = (
             select(MoodleSync.id)
             .where(
@@ -409,13 +390,6 @@ class CorreccionRepository:
         Returns:
             Cantidad de correcciones no vinculadas a Moodle.
         """
-        from app.models.comision import Comision, ComisionTutor
-        from app.models.entrega import Entrega
-        from app.models.enums import EstadoEntregaEnum, MoodleSyncEstado
-        from app.models.materia import Materia
-        from app.models.moodle_sync import MoodleSync
-        from app.models.rubrica import Rubrica
-
         enviado_exists = (
             select(MoodleSync.id)
             .where(
@@ -470,10 +444,6 @@ class CorreccionRepository:
         Returns:
             List of Correccion objects with relations loaded (only CORREGIDA entregas).
         """
-        from app.models.entrega import Entrega
-        from app.models.comision import Comision
-        from app.models.enums import EstadoEntregaEnum
-
         result = await self.db.execute(
             select(Correccion)
             .options(

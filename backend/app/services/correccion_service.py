@@ -194,10 +194,15 @@ class CorreccionService:
         # Decrypt API key
         try:
             api_key = decrypt_api_key(api_key_encrypted)
-        except Exception as e:
+        except Exception:
+            # No exponemos el detalle de crypto al cliente (posible rotación de
+            # ENCRYPTION_KEY): va al log; el usuario recibe un mensaje accionable.
+            logger.exception(
+                "Error al desencriptar la API Key del usuario %s", corregido_por_id
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Error al desencriptar API Key: {str(e)}",
+                detail="No se pudo procesar tu API Key. Reconfigurala en tu perfil.",
             )
 
         # Build payload for N8N and call appropriate webhook before updating state
@@ -218,6 +223,10 @@ class CorreccionService:
             else:
                 result = await self._call_ia_with_retry(payload, provider=provider)
         except N8NTimeoutError:
+            logger.warning(
+                f"Timeout de {provider} corrigiendo entrega {entrega_id}",
+                exc_info=True,
+            )
             _marcar_entrega_error(entrega, ERROR_N8N_TIMEOUT, provider)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
@@ -287,22 +296,32 @@ class CorreccionService:
                 },
             )
         except N8NError as e:
+            # El str(e) puede traer el body crudo del proveedor: va SOLO al log.
+            logger.warning(
+                f"Error del proveedor {provider} corrigiendo entrega {entrega_id}: {e}",
+                exc_info=True,
+            )
             _marcar_entrega_error(entrega, ERROR_N8N, provider)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"{mensaje_error(ERROR_N8N, provider)} ({str(e)})",
+                detail=mensaje_error(ERROR_N8N, provider),
             )
 
         # Parse and validate Gemini response
         try:
             gemini_response = self._parse_gemini_response(result)
         except ValidationError as e:
+            # El detalle de validación Pydantic (potencialmente enorme) va SOLO al log.
+            logger.warning(
+                f"Respuesta inválida de {provider} corrigiendo entrega {entrega_id}: {e.message}",
+                exc_info=True,
+            )
             _marcar_entrega_error(entrega, ERROR_IA_RESPUESTA_INVALIDA, provider)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"{mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, provider)} ({e.message})",
+                detail=mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, provider),
             )
 
         # Check if correction already exists (re-correction case)
@@ -890,8 +909,15 @@ async def procesar_lote_background(
                         fallidas += 1
                         stop_batch = True
                         remaining = len(entrega_ids) - exitosas - fallidas
+                        # 402 puede ser API_KEY_INVALID o SIN_CREDITOS (OpenRouter):
+                        # logueamos el error_code real para no confundir el diagnóstico.
+                        error_code = (
+                            e.detail.get("error_code")
+                            if isinstance(e.detail, dict)
+                            else e.detail
+                        )
                         logger.error(
-                            f"[BG] API Key inválida. Deteniendo lote. "
+                            f"[BG] Lote detenido por 402 ({error_code}). "
                             f"{remaining} entregas no procesadas."
                         )
                         break
