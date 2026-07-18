@@ -71,11 +71,11 @@ Shared reusable code lives in `frontend/src/shared/`.
 
 ```
 Entrega upload → Code consolidation (ZIP/TXT → string)
-  → N8N webhook → Gemini API (model: gemini-2.0-flash)
+  → Direct AI call (Gemini / OpenRouter, model from settings.GEMINI_MODEL)
   → Correccion record (nota + JSONB criteria scores)
 ```
 
-N8N runs at `http://n8n:5678`. Each user stores their Gemini API key encrypted with AES-256 (`app/core/security.py`).
+The backend calls the AI provider directly (no N8N intermediary): `app/integrations/gemini_correction_client.py` / `openrouter_client.py`, routed by `ia_provider.py`. The model name comes from `settings.GEMINI_MODEL` (single source of truth). Each user stores their AI API key encrypted with AES-256 (`app/core/security.py`).
 
 ## Critical Rules
 

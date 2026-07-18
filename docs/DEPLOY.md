@@ -75,11 +75,11 @@ nano .env  # o usar tu editor preferido
 DATABASE_URL=postgresql://user:password@host:5432/dbname
 
 # Seguridad (generar valores fuertes)
-JWT_SECRET=$(openssl rand -hex 32)
+SECRET_KEY=$(openssl rand -hex 32)
 ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 
 # CORS (usar dominio real en producción)
-CORS_ORIGIN=http://tu-dominio.com
+CORS_ORIGINS=http://tu-dominio.com
 
 # URLs del frontend (cambiar si usas dominio)
 VITE_API_URL=http://tu-dominio.com:5000
@@ -168,11 +168,11 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 
 # Seguridad (usar valores de desarrollo)
-JWT_SECRET=dev-secret-change-in-production
+SECRET_KEY=dev-secret-change-in-production
 ENCRYPTION_KEY=dev-encryption-key-32-chars!!
 
 # CORS
-CORS_ORIGIN=http://localhost:3000
+CORS_ORIGINS=http://localhost:3000
 
 # URLs
 VITE_API_URL=http://localhost:5000
@@ -472,9 +472,9 @@ docker-compose up --no-healthcheck
 
 ### Checklist de seguridad
 
-- [ ] Cambiar `JWT_SECRET` por valor fuerte (32+ caracteres)
+- [ ] Cambiar `SECRET_KEY` por valor fuerte (32+ caracteres)
 - [ ] Cambiar `ENCRYPTION_KEY` (usar comando de generación)
-- [ ] Configurar `CORS_ORIGIN` solo con dominio permitido
+- [ ] Configurar `CORS_ORIGINS` solo con dominio permitido
 - [ ] Usar HTTPS en producción (certificado SSL/TLS)
 - [ ] No exponer puerto de PostgreSQL (5432) al exterior
 - [ ] Configurar firewall: permitir solo puertos 80/443
@@ -485,7 +485,7 @@ docker-compose up --no-healthcheck
 ### Generar valores seguros
 
 ```bash
-# JWT_SECRET (32 bytes = 64 caracteres hex)
+# SECRET_KEY (32 bytes = 64 caracteres hex)
 openssl rand -hex 32
 
 # ENCRYPTION_KEY (Fernet compatible)
