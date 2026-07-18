@@ -7,6 +7,7 @@ Business logic for student submission (entrega) management operations.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
 """
 
+import asyncio
 import base64
 import hashlib
 import logging
@@ -1031,6 +1032,37 @@ class EntregaService:
 
         Returns:
             Tuple of (consolidated_content, list_of_files).
+
+        PERF-005: la consolidación (descompresión del ZIP + armado del string
+        consolidado) es CPU-pura y bloquea el event loop cuando la carga masiva
+        la corre inline por cada alumno. Se delega a un thread con
+        ``asyncio.to_thread``. Solo entran bytes/strings puros al thread: NO se
+        toca la AsyncSession ni el ORM ahí adentro (las queries y commits siguen
+        fuera, en el código async). El resultado consolidado es idéntico —
+        cambia dónde corre, no qué se consolida.
+        """
+        return await asyncio.to_thread(
+            self._consolidar_archivo_sync,
+            contenido_bytes,
+            archivo_tipo,
+            modo,
+            filename,
+            extensiones_personalizadas,
+        )
+
+    def _consolidar_archivo_sync(
+        self,
+        contenido_bytes: bytes,
+        archivo_tipo: str,
+        modo: str,
+        filename: str,
+        extensiones_personalizadas: list[str] | None,
+    ) -> tuple[str, list[str]]:
+        """Parte CPU-pura de la consolidación (corre en un thread vía to_thread).
+
+        ⚠️ NO debe acceder a la AsyncSession ni a atributos ORM lazy: solo
+        opera sobre bytes/strings a través de ``consolidacion_service``, que es
+        stateless y no tiene sesión.
         """
         import io
 
