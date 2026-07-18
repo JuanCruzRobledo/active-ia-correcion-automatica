@@ -201,6 +201,7 @@ class RubricaService:
             activa=True,
             modo_consolidacion=data.modo_consolidacion,
             extensiones_personalizadas=data.extensiones_personalizadas,
+            schema_version=data.schema_version,
         )
 
         created_rubrica = await self.rubrica_repo.create(rubrica)
@@ -282,6 +283,7 @@ class RubricaService:
                     num_entregas=num_entregas,
                     modo_consolidacion=rubrica.modo_consolidacion,
                     extensiones_personalizadas=rubrica.extensiones_personalizadas,
+                    schema_version=rubrica.schema_version,
                     activa=rubrica.activa,
                     created_at=rubrica.created_at,
                 )
@@ -350,6 +352,7 @@ class RubricaService:
             moodle_assign_id=rubrica.moodle_assign_id,
             modo_consolidacion=rubrica.modo_consolidacion,
             extensiones_personalizadas=rubrica.extensiones_personalizadas,
+            schema_version=rubrica.schema_version,
             created_at=rubrica.created_at,
             updated_at=rubrica.updated_at,
             materia=materia_info,
@@ -420,6 +423,9 @@ class RubricaService:
 
         if data.extensiones_personalizadas is not None:
             rubrica.extensiones_personalizadas = data.extensiones_personalizadas
+
+        if data.schema_version is not None:
+            rubrica.schema_version = data.schema_version
 
         updated_rubrica = await self.rubrica_repo.update(rubrica)
 
@@ -576,6 +582,7 @@ class RubricaService:
                 list(rubrica_original.extensiones_personalizadas)
                 if rubrica_original.extensiones_personalizadas else None
             ),
+            schema_version=rubrica_original.schema_version,
         )
 
         created_rubrica = await self.rubrica_repo.create(rubrica_nueva)
