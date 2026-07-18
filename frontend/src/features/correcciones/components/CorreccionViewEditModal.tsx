@@ -823,6 +823,33 @@ function CriterioCard({ criterio, isViewMode, onChange }: CriterioCardProps) {
           }
         />
       </div>
+
+      {/* Desglose por subcriterio (rúbricas schema_version >= 2). Tolerante a su
+          ausencia: correcciones viejas o de rúbricas v1 no traen el campo y no
+          se muestra nada acá, igual que hoy (peso-por-subcriterio D8). */}
+      {(criterio.subcriterios_evaluados?.length ?? 0) > 0 && (
+        <div className="border-t border-border/50 pt-3 mt-1 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            Desglose por subcriterio
+          </p>
+          {(criterio.subcriterios_evaluados || []).map((sub) => (
+            <div
+              key={sub.id}
+              className="rounded-md bg-background/60 border border-border/50 p-2.5 text-xs space-y-1"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-foreground">{sub.id}</span>
+                <span className="text-muted-foreground">
+                  {sub.puntaje_obtenido} / {sub.puntaje_maximo} — {sub.estado}
+                </span>
+              </div>
+              {sub.feedback && (
+                <p className="text-muted-foreground">{sub.feedback}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

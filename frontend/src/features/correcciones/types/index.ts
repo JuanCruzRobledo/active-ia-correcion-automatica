@@ -10,6 +10,18 @@
 export type EstadoCriterio = 'OK' | 'WARNING' | 'ERROR';
 
 /**
+ * Subcriterio evaluado dentro de un criterio (rúbricas schema_version >= 2).
+ * Ausente/`undefined` en correcciones viejas o de rúbricas schema_version = 1.
+ */
+export interface SubcriterioEvaluado {
+  id: string;
+  puntaje_obtenido: number;
+  puntaje_maximo: number;
+  estado: EstadoCriterio;
+  feedback: string;
+}
+
+/**
  * Criterio evaluado en una corrección.
  */
 export interface CriterioEvaluado {
@@ -19,6 +31,12 @@ export interface CriterioEvaluado {
   puntaje_maximo: number;
   estado: EstadoCriterio;
   feedback: string;
+  /**
+   * Desglose por subcriterio (rúbricas schema_version >= 2). Opcional: las
+   * correcciones viejas o de rúbricas v1 no lo traen — el frontend debe
+   * tolerar su ausencia y mostrar la corrección igual que hoy.
+   */
+  subcriterios_evaluados?: SubcriterioEvaluado[] | null;
 }
 
 /**
