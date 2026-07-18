@@ -45,9 +45,13 @@ class DashboardLecturaService:
     async def materias_configuradas(self) -> list[MateriaConfiguradaItem]:
         """Materias listas para snapshot, con la fecha/total de su último snapshot."""
         materias = await self.materia_repo.get_configuradas_dashboard()
+        # PERF-011: el último snapshot de TODAS las materias en UNA query (antes:
+        # get_ultimo_snapshot por materia en loop).
+        snapshots = await self.avance_repo.get_ultimos_snapshots([m.id for m in materias])
+        snap_por_materia = {s.materia_id: s for s in snapshots}
         items: list[MateriaConfiguradaItem] = []
         for m in materias:
-            snap = await self.avance_repo.get_ultimo_snapshot(m.id)
+            snap = snap_por_materia.get(m.id)
             items.append(
                 MateriaConfiguradaItem(
                     materia_id=m.id,
@@ -62,11 +66,20 @@ class DashboardLecturaService:
     async def obtener_arbol(self) -> list[CohorteArbol]:
         """Árbol cohorte → cuatrimestre → materias para los selectores encadenados."""
         cohortes = await self.cohorte_repo.get_all(include_inactive=False)
+        # PERF-011: las materias de TODOS los cuatrimestres del árbol en UNA query
+        # (antes: get_by_cuatrimestre por cuatrimestre en loop anidado), reagrupadas
+        # por cuatrimestre_id preservando el orden por nombre.
+        cuatri_ids = [cuatri.id for cohorte in cohortes for cuatri in cohorte.cuatrimestres]
+        materias_todas = await self.materia_repo.get_by_cuatrimestres(cuatri_ids)
+        materias_por_cuatri: dict[int, list] = {}
+        for m in materias_todas:
+            materias_por_cuatri.setdefault(m.cuatrimestre_id, []).append(m)
+
         arbol: list[CohorteArbol] = []
         for cohorte in cohortes:
             cuatrimestres: list[CuatrimestreArbol] = []
             for cuatri in cohorte.cuatrimestres:
-                materias = await self.materia_repo.get_by_cuatrimestre(cuatri.id)
+                materias = materias_por_cuatri.get(cuatri.id, [])
                 cuatrimestres.append(
                     CuatrimestreArbol(
                         id=cuatri.id,
@@ -96,12 +109,10 @@ class DashboardLecturaService:
         return await self.materia_repo.get_by_cuatrimestre(cuatrimestre_id)
 
     async def _ultimos_snapshots(self, materias) -> list[AvanceSnapshot]:
-        snapshots: list[AvanceSnapshot] = []
-        for materia in materias:
-            snap = await self.avance_repo.get_ultimo_snapshot(materia.id)
-            if snap is not None:
-                snapshots.append(snap)
-        return snapshots
+        # PERF-011: último snapshot de cada materia en UNA query (antes:
+        # get_ultimo_snapshot por materia en loop). Las materias sin snapshot no
+        # vienen en la lista, igual que el `if snap is not None` del loop viejo.
+        return await self.avance_repo.get_ultimos_snapshots([m.id for m in materias])
 
     async def _get_cuatrimestre_or_404(self, cuatrimestre_id: int):
         cuatrimestre = await self.cuatrimestre_repo.get_by_id(cuatrimestre_id)

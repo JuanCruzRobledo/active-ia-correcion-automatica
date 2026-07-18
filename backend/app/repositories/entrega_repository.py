@@ -111,42 +111,53 @@ class EntregaRepository:
         Returns:
             Tuple of (list of entregas, total count).
         """
-        # Base query
-        query = select(Entrega).options(
-            selectinload(Entrega.comision),
-            selectinload(Entrega.rubrica),
-            selectinload(Entrega.subido_por),
-            selectinload(Entrega.correccion),
-        )
+        # Build filter conditions once, so the data query and the count query
+        # stay in sync from a single source of truth.
+        conditions = []
 
-        # Apply filters
         if comision_id is not None:
-            query = query.where(Entrega.comision_id == comision_id)
+            conditions.append(Entrega.comision_id == comision_id)
 
         if rubrica_id is not None:
-            query = query.where(Entrega.rubrica_id == rubrica_id)
+            conditions.append(Entrega.rubrica_id == rubrica_id)
 
         if estado is not None:
-            query = query.where(Entrega.estado == estado)
+            conditions.append(Entrega.estado == estado)
 
         # Archive filter: solo_archivadas takes priority over include_archivadas
         if solo_archivadas:
-            query = query.where(Entrega.archivado == True)  # noqa: E712
+            conditions.append(Entrega.archivado == True)  # noqa: E712
         elif not include_archivadas:
-            query = query.where(Entrega.archivado == False)  # noqa: E712
+            conditions.append(Entrega.archivado == False)  # noqa: E712
 
         # Date range filter
         if fecha_desde:
             start = datetime(fecha_desde.year, fecha_desde.month, fecha_desde.day, 0, 0, 0)
-            query = query.where(Entrega.created_at >= start)
+            conditions.append(Entrega.created_at >= start)
         if fecha_hasta:
             end = datetime(fecha_hasta.year, fecha_hasta.month, fecha_hasta.day, 23, 59, 59)
-            query = query.where(Entrega.created_at <= end)
+            conditions.append(Entrega.created_at <= end)
 
-        # Count total
-        count_query = select(func.count()).select_from(query.subquery())
+        # Count total (PERF-002): COUNT(id) con los MISMOS filtros, SIN envolver la
+        # query de columnas en un subquery — así el count no arrastra las columnas
+        # pesadas (contenido_consolidado / pdf_contenido_b64) ni los selectinload.
+        count_query = (
+            select(func.count(Entrega.id)).select_from(Entrega).where(*conditions)
+        )
         total_result = await self.db.execute(count_query)
         total = total_result.scalar() or 0
+
+        # Data query: columnas + relaciones eager, mismos filtros.
+        query = (
+            select(Entrega)
+            .options(
+                selectinload(Entrega.comision),
+                selectinload(Entrega.rubrica),
+                selectinload(Entrega.subido_por),
+                selectinload(Entrega.correccion),
+            )
+            .where(*conditions)
+        )
 
         # Apply pagination and ordering
         query = query.order_by(Entrega.created_at.desc())

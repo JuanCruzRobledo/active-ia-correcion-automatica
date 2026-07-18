@@ -208,7 +208,11 @@ class DashboardService:
             )
         )
 
-        # Get details of each comision
+        # Get details of each comision.
+        # PERF-010: los pendientes por comisión se agregan en ESTA misma query con un
+        # COUNT condicional (case), en vez de un SELECT COUNT extra por comisión en loop.
+        # count(case(...)) ignora los NULL, así que sobre el outerjoin cuenta sólo las
+        # entregas SUBIDA/PENDIENTE — resultado idéntico al COUNT filtrado del loop viejo.
         details_query = (
             select(
                 Comision.id,
@@ -216,6 +220,16 @@ class DashboardService:
                 Comision.nombre,
                 Comision.anio,
                 func.count(Entrega.id).label("total_alumnos"),
+                func.count(
+                    case(
+                        (
+                            Entrega.estado.in_(
+                                [EstadoEntregaEnum.SUBIDA, EstadoEntregaEnum.PENDIENTE]
+                            ),
+                            Entrega.id,
+                        )
+                    )
+                ).label("pendientes"),
             )
             .join(Materia, Comision.materia_id == Materia.id)
             .outerjoin(Entrega, Comision.id == Entrega.comision_id)
@@ -226,26 +240,16 @@ class DashboardService:
         details_result = await db.execute(details_query)
         details_rows = details_result.fetchall()
 
-        # Para cada comision, contar pendientes manualmente
-        comisiones_details = []
-        for row in details_rows:
-            # Count pendientes for this comision
-            pendientes_comision = await db.scalar(
-                select(func.count(Entrega.id)).where(
-                    Entrega.comision_id == row.id,
-                    Entrega.estado.in_([EstadoEntregaEnum.SUBIDA, EstadoEntregaEnum.PENDIENTE]),
-                )
+        comisiones_details = [
+            ComisionDetailItem(
+                id=row.id,
+                nombre=row.materia_nombre,
+                comision=f"{row.nombre} - {row.anio}",
+                alumnos=row.total_alumnos or 0,
+                pendientes=row.pendientes or 0,
             )
-            
-            comisiones_details.append(
-                ComisionDetailItem(
-                    id=row.id,
-                    nombre=row.materia_nombre,
-                    comision=f"{row.nombre} - {row.anio}",
-                    alumnos=row.total_alumnos or 0,
-                    pendientes=pendientes_comision or 0,
-                )
-            )
+            for row in details_rows
+        ]
 
         return TutorStatsResponse(
             comisiones=comisiones_count,

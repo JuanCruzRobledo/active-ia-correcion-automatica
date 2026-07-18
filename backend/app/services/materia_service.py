@@ -162,14 +162,16 @@ class MateriaService:
             coordinador_id=coordinador_id,
         )
 
+        # PERF-012: conteo de coordinadores de TODAS las materias de la página en UNA
+        # query agregada (antes: get_coordinadores_for_materia por materia en loop).
+        coord_counts = await self.coord_materia_repo.contar_por_materias(
+            [materia.id for materia in materias]
+        )
+
         # Build list items with counts
         items = []
         for materia in materias:
-            # Count coordinadores
-            coordinadores = await self.coord_materia_repo.get_coordinadores_for_materia(
-                materia.id
-            )
-            num_coordinadores = len(coordinadores)
+            num_coordinadores = coord_counts.get(materia.id, 0)
 
             # Count active comisiones
             num_comisiones = len(

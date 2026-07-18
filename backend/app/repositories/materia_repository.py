@@ -191,6 +191,34 @@ class MateriaRepository:
         )
         return list(result.scalars().all())
 
+    async def get_by_cuatrimestres(
+        self, cuatrimestre_ids: list[int]
+    ) -> list[Materia]:
+        """Materias activas de VARIOS cuatrimestres en UNA query (árbol del dashboard).
+
+        Reemplaza el N+1 de ``get_by_cuatrimestre(id)`` por cuatrimestre en el loop
+        de ``obtener_arbol``. Mismo orden (nombre asc) que ``get_by_cuatrimestre``, de
+        modo que al reagrupar por ``cuatrimestre_id`` cada cuatrimestre conserva el
+        orden idéntico al del loop viejo.
+
+        Args:
+            cuatrimestre_ids: IDs de cuatrimestres.
+
+        Returns:
+            Lista de materias activas de esos cuatrimestres, ordenadas por nombre.
+        """
+        if not cuatrimestre_ids:
+            return []
+        result = await self.db.execute(
+            select(Materia)
+            .where(
+                Materia.cuatrimestre_id.in_(cuatrimestre_ids),
+                Materia.activa == True,  # noqa: E712
+            )
+            .order_by(Materia.nombre.asc())
+        )
+        return list(result.scalars().all())
+
     async def get_configuradas_dashboard(self) -> list[Materia]:
         """Materias listas para el snapshot de avance (Dashboard de Gestores).
 
@@ -439,6 +467,29 @@ class CoordinadorMateriaRepository:
             db: Async database session.
         """
         self.db = db
+
+    async def contar_por_materias(self, materia_ids: list[int]) -> dict[int, int]:
+        """Nº de coordinadores por materia en UNA query agregada (GROUP BY).
+
+        Reemplaza el N+1 de ``listar_materias`` (``get_coordinadores_for_materia``
+        por materia sólo para contar). Devuelve el mismo número que
+        ``len(get_coordinadores_for_materia(id))``; las materias sin coordinadores
+        no aparecen en el dict (se interpretan como 0).
+
+        Args:
+            materia_ids: IDs de las materias a contar.
+
+        Returns:
+            dict {materia_id: num_coordinadores}.
+        """
+        if not materia_ids:
+            return {}
+        result = await self.db.execute(
+            select(CoordinadorMateria.materia_id, func.count(CoordinadorMateria.id))
+            .where(CoordinadorMateria.materia_id.in_(materia_ids))
+            .group_by(CoordinadorMateria.materia_id)
+        )
+        return {mid: int(n) for mid, n in result.all()}
 
     async def get_coordinadores_for_materia(
         self,

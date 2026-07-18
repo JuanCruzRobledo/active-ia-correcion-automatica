@@ -39,6 +39,51 @@ class AvanceRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_ultimos_snapshots(
+        self, materia_ids: list[int]
+    ) -> list[AvanceSnapshot]:
+        """El snapshot MÁS RECIENTE de cada materia dada, en UNA sola query.
+
+        Reemplaza el N+1 de llamar ``get_ultimo_snapshot(materia_id)`` por cada
+        materia (Dashboard de Gestores). Devuelve a lo sumo un snapshot por materia
+        —el de ``generado_en`` más alto—, exactamente lo que devolvía
+        ``get_ultimo_snapshot`` para cada una; las materias sin snapshot simplemente
+        no aparecen en la lista (equivalente al ``if snap is not None`` del loop).
+
+        Implementación con una ventana ``row_number()`` particionada por materia
+        (``PostgreSQL`` y ``SQLite >= 3.25``); se prefiere sobre ``DISTINCT ON`` de
+        Postgres para que sea portable y testeable en el harness SQLite. En empate de
+        ``generado_en`` se devuelve una sola fila (igual que ``ORDER BY ... LIMIT 1``).
+
+        Args:
+            materia_ids: IDs de materias.
+
+        Returns:
+            Lista de snapshots (uno por materia con datos), orden no garantizado.
+        """
+        if not materia_ids:
+            return []
+
+        rn = (
+            func.row_number()
+            .over(
+                partition_by=AvanceSnapshot.materia_id,
+                order_by=AvanceSnapshot.generado_en.desc(),
+            )
+            .label("rn")
+        )
+        ranked = (
+            select(AvanceSnapshot.id.label("sid"), rn)
+            .where(AvanceSnapshot.materia_id.in_(materia_ids))
+            .subquery()
+        )
+        ids_ultimos = select(ranked.c.sid).where(ranked.c.rn == 1)
+
+        result = await self.db.execute(
+            select(AvanceSnapshot).where(AvanceSnapshot.id.in_(ids_ultimos))
+        )
+        return list(result.scalars().all())
+
     async def contar_por_estado(
         self, snapshot_ids: list[int]
     ) -> dict[EstadoAvanceEnum, int]:

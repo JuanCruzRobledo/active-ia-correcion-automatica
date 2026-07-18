@@ -13,10 +13,12 @@ from datetime import datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from app.models.comision import Comision, ComisionTutor
+from app.models.entrega import Entrega
 from app.models.materia import CoordinadorMateria
+from app.models.usuario import Usuario
 from app.utils.orden_natural import orden_natural_sql
 
 
@@ -61,11 +63,16 @@ class ComisionRepository:
         Returns:
             Comision object with relations if found, None otherwise.
         """
+        # PERF-012: se eager-loadea también el usuario de cada tutor (con load_only de
+        # las columnas que usa la respuesta), para que el service NO haga un
+        # get_by_id(tutor_id) por tutor en loop.
         result = await self.db.execute(
             select(Comision)
             .options(
                 selectinload(Comision.materia),
-                selectinload(Comision.tutores),
+                selectinload(Comision.tutores)
+                .selectinload(ComisionTutor.tutor)
+                .load_only(Usuario.id, Usuario.username, Usuario.nombre),
             )
             .where(Comision.id == comision_id)
         )
@@ -133,6 +140,43 @@ class ComisionRepository:
         comisiones = list(result.scalars().all())
 
         return comisiones, total
+
+    async def contar_tutores_entregas(
+        self, comision_ids: list[int]
+    ) -> dict[int, tuple[int, int]]:
+        """(num_tutores, num_entregas) por comisión en UNA sola query agregada.
+
+        Reemplaza el N+1 de ``listar_comisiones`` (una query de tutores + la
+        materialización de la colección ``entregas`` selectin por cada comisión).
+
+        Se hacen dos ``outerjoin`` (a comision_tutor y a entregas) y se cuenta con
+        ``COUNT(DISTINCT ...)`` para que la multiplicación cartesiana de ambos joins
+        NO infle los conteos: el resultado es idéntico al del loop viejo
+        (``len(get_tutores_for_comision(id))`` y ``len(comision.entregas)``). Las
+        comisiones sin tutores ni entregas quedan en (0, 0).
+
+        Args:
+            comision_ids: IDs de las comisiones a contar.
+
+        Returns:
+            dict {comision_id: (num_tutores, num_entregas)}.
+        """
+        if not comision_ids:
+            return {}
+
+        result = await self.db.execute(
+            select(
+                Comision.id,
+                func.count(func.distinct(ComisionTutor.id)),
+                func.count(func.distinct(Entrega.id)),
+            )
+            .select_from(Comision)
+            .outerjoin(ComisionTutor, ComisionTutor.comision_id == Comision.id)
+            .outerjoin(Entrega, Entrega.comision_id == Comision.id)
+            .where(Comision.id.in_(comision_ids))
+            .group_by(Comision.id)
+        )
+        return {cid: (int(nt), int(ne)) for cid, nt, ne in result.all()}
 
     async def get_by_materia(self, materia_id: int) -> list[Comision]:
         """

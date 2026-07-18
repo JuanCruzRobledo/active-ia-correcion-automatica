@@ -31,8 +31,9 @@ async def test_obtener_arbol_arma_cohorte_cuatrimestre_materias():
     cohorte = MagicMock(id=10, codigo="M25", nombre=None)
     cohorte.cuatrimestres = [MagicMock(id=1, numero=1, nombre=None)]
     service.cohorte_repo.get_all.return_value = [cohorte]
-    service.materia_repo.get_by_cuatrimestre.return_value = [
-        MagicMock(id=5, codigo="P1", nombre="Programación 1")
+    # PERF-011: obtener_arbol ahora batchea las materias por cuatrimestre.
+    service.materia_repo.get_by_cuatrimestres.return_value = [
+        MagicMock(id=5, codigo="P1", nombre="Programación 1", cuatrimestre_id=1)
     ]
 
     arbol = await service.obtener_arbol()
@@ -49,9 +50,9 @@ async def test_avance_materia_puntual_titulo_y_conteos():
     service.cuatrimestre_repo.get_by_id.return_value = MagicMock(id=1, cohorte_id=10, numero=1)
     service.cohorte_repo.get_by_id.return_value = MagicMock(codigo="M25")
     service.materia_repo.get_by_id.return_value = MagicMock(id=5, nombre="Programación 1")
-    service.avance_repo.get_ultimo_snapshot.return_value = MagicMock(
-        id=99, generado_en=datetime(2026, 6, 3, 3, 0)
-    )
+    service.avance_repo.get_ultimos_snapshots.return_value = [
+        MagicMock(id=99, materia_id=5, generado_en=datetime(2026, 6, 3, 3, 0))
+    ]
     service.avance_repo.contar_por_estado.return_value = {
         EstadoAvanceEnum.AL_DIA: 10,
         EstadoAvanceEnum.RIESGO_ALTO: 3,
@@ -74,10 +75,9 @@ async def test_avance_todos_titulo_cohorte_cuatrimestre():
     service.materia_repo.get_by_cuatrimestre.return_value = [
         MagicMock(id=5), MagicMock(id=6)
     ]
-    # una materia con snapshot, otra sin
-    service.avance_repo.get_ultimo_snapshot.side_effect = [
-        MagicMock(id=99, generado_en=datetime(2026, 6, 3)),
-        None,
+    # una materia con snapshot, otra sin: get_ultimos_snapshots devuelve sólo la que tiene
+    service.avance_repo.get_ultimos_snapshots.return_value = [
+        MagicMock(id=99, materia_id=5, generado_en=datetime(2026, 6, 3)),
     ]
     service.avance_repo.contar_por_estado.return_value = {EstadoAvanceEnum.SIN_ACTIVIDAD: 5}
 
@@ -94,7 +94,7 @@ async def test_avance_sin_snapshots_devuelve_ceros():
     service.cuatrimestre_repo.get_by_id.return_value = MagicMock(id=1, cohorte_id=10, numero=1)
     service.cohorte_repo.get_by_id.return_value = MagicMock(codigo="M25")
     service.materia_repo.get_by_cuatrimestre.return_value = [MagicMock(id=5)]
-    service.avance_repo.get_ultimo_snapshot.return_value = None
+    service.avance_repo.get_ultimos_snapshots.return_value = []
     service.avance_repo.contar_por_estado.return_value = {}
 
     r = await service.avance(1)
@@ -121,7 +121,9 @@ async def test_detalle_mapea_alumnos():
     service.materia_repo.get_by_id.return_value = MagicMock(
         id=5, nombre="PYE", etiqueta_unidad="Semana"
     )
-    service.avance_repo.get_ultimo_snapshot.return_value = MagicMock(id=99, materia_id=5)
+    service.avance_repo.get_ultimos_snapshots.return_value = [
+        MagicMock(id=99, materia_id=5)
+    ]
     alumno = AvanceAlumno(
         snapshot_id=99,
         moodle_user_id=1, nombre="Ana", apellido="Gómez", email="ana@x.com",
