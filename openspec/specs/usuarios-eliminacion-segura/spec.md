@@ -1,7 +1,7 @@
 # usuarios-eliminacion-segura Specification
 
 ## Purpose
-TBD - created by archiving change confirmar-eliminar-usuario. Update Purpose after archive.
+Asegurar que el borrado de un usuario desde la UI de administración exija una confirmación explícita en un diálogo destructivo y provea feedback de éxito y de error, evitando borrados accidentales y fallos silenciosos.
 ## Requirements
 ### Requirement: Confirmación explícita antes de eliminar un usuario
 

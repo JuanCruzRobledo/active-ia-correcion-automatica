@@ -1,7 +1,7 @@
 # manejo-errores-generacion-rubrica-ia Specification
 
 ## Purpose
-TBD - created by archiving change capturar-errores-gemini-rubrica-ia. Update Purpose after archive.
+Traducir las excepciones del proveedor de IA (jerarquía `GeminiError`) en el flujo de generación de rúbrica desde PDF a respuestas HTTP accionables del catálogo de errores (402/429/503), marcando la API key como inválida cuando corresponde, en lugar de propagar un HTTP 500 crudo.
 ## Requirements
 ### Requirement: Manejo de API key inválida en generación de rúbrica IA
 

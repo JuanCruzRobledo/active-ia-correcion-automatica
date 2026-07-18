@@ -1,7 +1,7 @@
 # rubrica-peso-subcriterio Specification
 
 ## Purpose
-TBD - created by archiving change peso-por-subcriterio. Update Purpose after archive.
+Definir el peso por subcriterio en las rúbricas versión 2 (los subcriterios de cada criterio suman exactamente su `peso`), el versionado mediante `schema_version`, la compatibilidad total de las rúbricas v1 y la migración asistida v1→v2 con reparto de pesos por resto mayor.
 ## Requirements
 ### Requirement: Peso por subcriterio en la rúbrica
 

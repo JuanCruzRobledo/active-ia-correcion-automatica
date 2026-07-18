@@ -1,7 +1,7 @@
 # auth-error-feedback Specification
 
 ## Purpose
-TBD - created by archiving change no-expirar-sesion-en-login. Update Purpose after archive.
+Diferenciar el 401 de un endpoint de autenticación (login / cambio de contraseña) del 401 de sesión expirada en otros endpoints, para que un login fallido muestre el mensaje real del backend (con intentos restantes) sin limpiar la sesión ni redirigir a `/login`.
 ## Requirements
 ### Requirement: Clasificación del 401 por origen de endpoint
 

@@ -1,7 +1,7 @@
 # correccion-desglose-subcriterio Specification
 
 ## Purpose
-TBD - created by archiving change peso-por-subcriterio. Update Purpose after archive.
+Definir la corrección con IA de rúbricas `schema_version = 2` con puntaje desglosado por subcriterio —prompt, esquema de respuesta, persistencia en la columna JSONB `criterios_json` y visualización tolerante a su ausencia— para Gemini y OpenRouter, preservando el comportamiento de las rúbricas v1.
 ## Requirements
 ### Requirement: Puntaje desglosado por subcriterio en la corrección con IA (v2)
 

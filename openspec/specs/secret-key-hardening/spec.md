@@ -1,7 +1,7 @@
 # secret-key-hardening Specification
 
 ## Purpose
-TBD - created by archiving change harden-secret-keys-arranque. Update Purpose after archive.
+Garantizar que la aplicación no pueda arrancar en producción (`DEBUG=False`) con `SECRET_KEY` o `ENCRYPTION_KEY` en sus valores placeholder públicos del repositorio: falla de forma temprana (fail-fast) durante la construcción de `Settings`, con un mensaje de remediación accionable, mientras se preserva el arranque con defaults en desarrollo (`DEBUG=True`).
 ## Requirements
 ### Requirement: Fail-fast ante SECRET_KEY o ENCRYPTION_KEY default en producción
 

@@ -1,7 +1,7 @@
 # upload-size-limits Specification
 
 ## Purpose
-TBD - created by archiving change limitar-tamano-uploads-y-zip-bomb. Update Purpose after archive.
+Acotar el tamaño de las subidas (individual y masiva) contra `MAX_UPLOAD_SIZE` y proteger el pipeline de descompresión contra ZIP-bombs —por tamaño descomprimido acumulado y por cantidad de entradas— rechazando con mensajes accionables antes de materializar contenido peligroso en memoria.
 ## Requirements
 ### Requirement: Límite de tamaño en subida individual
 

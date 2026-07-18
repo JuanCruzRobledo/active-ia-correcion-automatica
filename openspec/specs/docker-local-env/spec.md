@@ -1,7 +1,7 @@
 # docker-local-env Specification
 
 ## Purpose
-TBD - created by archiving change docker-local-setup. Update Purpose after archive.
+Definir el entorno de desarrollo local levantado con `docker-compose.local.yml`: PostgreSQL, backend FastAPI y frontend React en una red aislada de Docker, con persistencia de datos y configuración parametrizada vía `.env`.
 ## Requirements
 ### Requirement: Levantamiento Unificado de Servicios
 El sistema MUST permitir levantar todos los servicios necesarios para el desarrollo local (PostgreSQL, FastAPI Backend y React Frontend) utilizando un único comando de Docker Compose.

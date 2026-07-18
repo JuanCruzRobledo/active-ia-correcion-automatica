@@ -1,7 +1,7 @@
 # gemini-model-config Specification
 
 ## Purpose
-TBD - created by archiving change unificar-modelo-gemini. Update Purpose after archive.
+Establecer `settings.GEMINI_MODEL` como única fuente de verdad del nombre de modelo Gemini en todo el backend (validación de API key, corrección y generación de rúbricas), sin literales hardcodeados ni fallbacks muertos, de modo que si una API key valida, el modelo contra el que se validó sea el mismo que se usa al corregir.
 ## Requirements
 ### Requirement: Fuente única del modelo Gemini
 
