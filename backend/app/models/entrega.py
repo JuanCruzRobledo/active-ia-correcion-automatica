@@ -114,6 +114,12 @@ class Entrega(Base, TimestampMixin):
             "alumno_nombre",
             unique=True,
         ),
+        # PERF-016: el listado de entregas ordena por created_at DESC
+        # (entrega_repository.py:152); sin índice es un seq scan + sort.
+        Index(
+            "ix_entregas_created_at",
+            "created_at",
+        ),
     )
 
     # Relationships
