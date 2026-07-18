@@ -1,55 +1,62 @@
 ---
 name: correccion-ia
 description: >
-  Flujo de corrección automática de trabajos prácticos con Google Gemini vía N8N.
+  Flujo de corrección automática de trabajos prácticos con IA nativa en el backend
+  (Gemini Studio u OpenRouter, llamadas HTTP directas).
   Trigger: Cuando trabajes con corrección de entregas, integración con IA, o el flujo
   de evaluación automática.
 metadata:
   author: Active-IA Team
-  version: "1.0"
+  version: "2.0"
   scope: [root, backend]
   auto_invoke:
     - "Implementing correction flow"
     - "Integrating with Gemini API"
     - "Processing AI evaluations"
-    - "Handling N8N webhooks"
+    - "Calling the AI provider directly"
 ---
 
 # Corrección IA Skill
 
+> ⚠️ **Arquitectura actualizada — N8N fue removido.** La corrección/generación con IA es NATIVA en el backend: `backend/app/integrations/ia_provider.py` rutea a `gemini_correction_client.py` (Gemini Studio) o `openrouter_client.py` (OpenRouter) con llamadas HTTP directas. NO existe `n8n_client.py` ni `settings.N8N_WEBHOOK_URL`. Los ejemplos de este skill fueron corregidos a esa realidad; si ves referencias residuales a N8N, la fuente de verdad es el código en `backend/app/integrations/`.
+
 ## When to Use
 
 - Implementando el flujo de corrección automática
-- Integrando con N8N webhooks
-- Procesando respuestas de Gemini
+- Integrando con los clientes de IA (`gemini_correction_client`, `openrouter_client`) vía el dispatcher `ia_provider`
+- Procesando respuestas de Gemini / OpenRouter
 - Manejando errores de IA
 - Optimizando prompts de evaluación
 
 ## Architecture Overview
 
 ```
-┌─────────────┐     ┌─────────┐     ┌─────────────┐
-│   Active-IA │────▶│   N8N   │────▶│   Gemini    │
-│   Backend   │◀────│ Workflow│◀────│   API       │
-└─────────────┘     └─────────┘     └─────────────┘
+┌─────────────┐   ia_provider   ┌──────────────────────────┐     ┌─────────────┐
+│   Active-IA │────normaliza────▶│ GeminiCorrectionClient   │────▶│  Gemini API │
+│   Backend   │    provider      │   (HTTP directo)         │◀────│  (Studio)   │
+│ (Service)   │◀─────────────────│  ó openrouter_client     │     │  ó OpenRouter│
+└─────────────┘                  └──────────────────────────┘     └─────────────┘
        │
        ▼
 ┌─────────────┐
 │  PostgreSQL │
-│  (Correccion)│
+│ (Correccion)│
 └─────────────┘
 ```
+
+No hay servicio N8N intermediario: el backend llama directamente a la API del proveedor
+elegido por el tutor (`usuario.correction_provider` → `gemini` por defecto, u `openrouter`).
 
 ## Critical Patterns
 
 ### ALWAYS
-- Validar API Key antes de enviar a N8N
-- Incluir timeout en llamadas a N8N (90 segundos)
-- Parsear respuesta JSON de Gemini con validación
+- Validar API Key contra el proveedor activo antes de corregir (`ia_provider.validar_api_key`)
+- Incluir timeout en la llamada al cliente de IA (`settings.GEMINI_TIMEOUT_SECONDS`, ~90 s)
+- Parsear respuesta JSON del proveedor con validación (Pydantic)
 - Guardar estado ERROR si falla la corrección
-- Encriptar API Keys con AES-256
+- Encriptar API Keys con Fernet (AES-128-CBC + HMAC-SHA256) — `app/core/security.py`
 - Log de cada corrección (entrada y salida)
-- Retry con backoff exponencial (max 3 intentos)
+- Retry acotado ante timeout / error transitorio (el service reintenta 1 vez con backoff)
 
 ### NEVER
 - Exponer API Key del usuario en logs
@@ -64,11 +71,13 @@ metadata:
 
 | Error | Acción |
 |-------|--------|
-| API Key inválida | Marcar entrega como ERROR, notificar usuario |
-| Timeout N8N | Retry 1 vez, luego ERROR |
-| Respuesta malformada | Intentar parseo parcial, si falla → ERROR |
-| Rate limit Gemini | Queue con delay, retry en 60s |
-| Error 500 N8N | Retry con backoff, max 3 intentos |
+| API Key inválida (`APIKeyInvalidError`) | Marcar entrega como ERROR, marcar key inválida, notificar usuario |
+| Timeout del proveedor (`N8NTimeoutError`) | Retry 1 vez, luego ERROR |
+| Respuesta malformada | Validar con Pydantic, si falla → ERROR |
+| Rate limit (`QuotaExceededError`) | 429 al usuario; el lote reintenta con backoff |
+| Error del proveedor (`N8NError`) | Retry con backoff, luego ERROR |
+
+> Nota histórica: `N8NError` / `N8NTimeoutError` (y los códigos `N8N_TIMEOUT` / `N8N_ERROR`) se conservan como NOMBRES HISTÓRICOS —persistidos en datos y en el catálogo de errores— pero hoy los LANZAN los clientes de Gemini/OpenRouter. No implican que exista un servicio N8N.
 
 ### ¿Cuándo re-corregir?
 
@@ -85,179 +94,205 @@ metadata:
 
 ```python
 # services/correccion_service.py
+from app.integrations import openrouter_client
+from app.integrations.gemini_correction_client import GeminiCorrectionClient
+from app.core.security import decrypt_api_key
+from app.core.exceptions import N8NError, N8NTimeoutError, APIKeyInvalidError
+
 
 class CorreccionService:
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
         self.entrega_repo = EntregaRepository(db)
         self.correccion_repo = CorreccionRepository(db)
         self.rubrica_repo = RubricaRepository(db)
-        self.n8n_client = N8NClient()
+        # Cliente directo a Gemini Studio (sin N8N intermediario).
+        self.gemini_client = GeminiCorrectionClient()
 
-    async def corregir(
+    async def corregir_individual(
         self,
         entrega_id: int,
-        user_api_key_encrypted: str
-    ) -> Correccion:
-        # 1. Obtener entrega
-        entrega = self.entrega_repo.get_by_id(entrega_id)
+        api_key_encrypted: str,
+        corregido_por_id: int,
+        provider: str = "gemini",  # "gemini" | "openrouter"
+    ) -> CorreccionResponse:
+        # 1. Obtener entrega + rúbrica
+        entrega = await self.entrega_repo.get_by_id_with_relations(entrega_id)
         if not entrega:
             raise HTTPException(404, "Entrega no encontrada")
-
-        if not entrega.codigo_consolidado:
-            raise HTTPException(400, "La entrega no tiene código")
-
-        # 2. Obtener rúbrica
-        rubrica = self._get_rubrica_for_entrega(entrega)
+        rubrica = await self.rubrica_repo.get_active_by_id(entrega.rubrica_id)
         if not rubrica:
-            raise HTTPException(400, "No hay rúbrica configurada")
+            raise HTTPException(404, "Rúbrica no encontrada o inactiva")
 
-        # 3. Desencriptar API Key
-        api_key = decrypt_api_key(user_api_key_encrypted)
+        # 2. Desencriptar API Key (Fernet)
+        api_key = decrypt_api_key(api_key_encrypted)
 
-        # 4. Preparar payload para N8N
+        # 3. Construir payload y marcar entrega PENDIENTE
         payload = self._build_correction_payload(entrega, rubrica, api_key)
+        entrega.estado = EstadoEntregaEnum.PENDIENTE
+        await self.entrega_repo.update(entrega)
 
-        # 5. Enviar a N8N
+        # 4. Llamar DIRECTAMENTE al proveedor de IA (Gemini o OpenRouter),
+        #    con 1 retry ante timeout/error transitorio.
         try:
-            result = await self.n8n_client.trigger_correction(payload)
-        except N8NTimeoutError:
-            self._mark_as_error(entrega, "Timeout en corrección")
-            raise HTTPException(502, "Timeout en servicio de IA")
+            result = await self._call_ia_with_retry(payload, provider=provider)
+        except N8NTimeoutError:  # nombre histórico: lo lanza el cliente de IA
+            _marcar_entrega_error(entrega, ERROR_N8N_TIMEOUT, provider)
+            await self.entrega_repo.update(entrega)
+            raise HTTPException(502, "Timeout en el servicio de IA")
         except N8NError as e:
-            self._mark_as_error(entrega, str(e))
-            raise HTTPException(502, f"Error en servicio de IA: {e}")
+            _marcar_entrega_error(entrega, ERROR_N8N, provider)
+            await self.entrega_repo.update(entrega)
+            raise HTTPException(502, f"Error en el servicio de IA: {e}")
 
-        # 6. Parsear y validar respuesta
-        correccion_data = self._parse_gemini_response(result)
+        # 5. Parsear/validar respuesta y persistir la corrección
+        gemini_response = self._parse_gemini_response(result)
+        correccion = await self._save_correccion(entrega, gemini_response, corregido_por_id)
 
-        # 7. Guardar corrección
-        correccion = self._save_correccion(entrega, correccion_data)
+        # 6. Actualizar estado de entrega
+        entrega.estado = EstadoEntregaEnum.CORREGIDA
+        await self.entrega_repo.update(entrega)
+        return await self._build_correccion_response(correccion)
 
-        # 8. Actualizar estado de entrega
-        entrega.estado = EstadoEntrega.CORREGIDA
-        self.entrega_repo.update(entrega)
 
-        return correccion
+async def _call_ia_with_retry(self, payload: dict, provider: str = "gemini", max_retries: int = 1):
+    """Llama al proveedor elegido; reintenta 1 vez ante timeout/N8NError."""
+    for attempt in range(max_retries + 1):
+        try:
+            if provider == "openrouter":
+                return await openrouter_client.corregir(payload)
+            return await self.gemini_client.corregir_codigo(payload)
+        except (APIKeyInvalidError, QuotaExceededError):
+            raise  # nunca reintentar errores de key / rate limit
+        except (N8NTimeoutError, N8NError):
+            if attempt < max_retries:
+                await asyncio.sleep(2 ** attempt)  # backoff exponencial
+                continue
+            raise
 ```
 
-### 2. Payload para N8N
+### 2. Payload de corrección
+
+El payload es el que consumen los clientes de IA (`GeminiCorrectionClient.corregir_codigo`
+y `openrouter_client.corregir`). NO lleva `model` — cada cliente usa el modelo de su
+configuración (`settings.GEMINI_MODEL` / `settings.OPENROUTER_MODEL`).
 
 ```python
 def _build_correction_payload(
     self,
     entrega: Entrega,
     rubrica: Rubrica,
-    api_key: str
+    api_key: str,
 ) -> dict:
+    codigo = entrega.contenido_consolidado or entrega.contenido_preview
     return {
-        "api_key": api_key,
-        "model": "gemini-2.0-flash",
-        "entrega": {
-            "id": entrega.id,
-            "alumno": entrega.alumno,
-            "codigo": entrega.codigo_consolidado,
-        },
+        "codigo": codigo,
         "rubrica": {
-            "nombre": rubrica.nombre,
-            "tipo": rubrica.tipo,
-            "criterios": rubrica.criterios,  # JSONB
+            "titulo": rubrica.titulo,
+            "descripcion": rubrica.descripcion or "",
+            "tipo": rubrica.tipo.value,
+            "puntaje_maximo": rubrica.puntaje_maximo,
+            "metadata": rubrica.metadata_json or {},
+            "criterios": rubrica.criterios_json or [],   # JSONB
+            "penalizaciones": rubrica.penalizaciones_json or [],
+            "condiciones_desaprobacion": rubrica.condiciones_desaprobacion_json or [],
+            "schema_version": rubrica.schema_version,
         },
-        "instrucciones": self._get_system_prompt(),
+        "api_key": api_key,
+        "contexto": {
+            "materia": entrega.comision.materia.nombre,
+            "alumno": entrega.alumno_nombre,
+        },
     }
-
-def _get_system_prompt(self) -> str:
-    return """
-Eres un evaluador de código para estudiantes universitarios de programación.
-Tu tarea es evaluar el código según la rúbrica proporcionada.
-
-INSTRUCCIONES:
-1. Evalúa cada criterio de la rúbrica
-2. Asigna un puntaje de 0 al máximo permitido por criterio
-3. Proporciona feedback específico y constructivo
-4. Identifica fortalezas del código
-5. Sugiere mejoras concretas
-
-FORMATO DE RESPUESTA (JSON estricto):
-{
-  "nota": <número 0-100>,
-  "criterios": [
-    {
-      "id": "<id del criterio>",
-      "puntaje_obtenido": <número>,
-      "estado": "OK" | "WARNING" | "ERROR",
-      "feedback": "<feedback específico>"
-    }
-  ],
-  "fortalezas": ["<fortaleza 1>", "<fortaleza 2>"],
-  "recomendaciones": ["<recomendación 1>", "<recomendación 2>"],
-  "comentario_general": "<comentario de cierre>"
-}
-
-REGLAS:
-- La nota debe ser la suma de los puntajes de criterios
-- El estado es OK si puntaje >= 70% del máximo, WARNING si >= 40%, ERROR si < 40%
-- El feedback debe ser específico al código del alumno
-- Las fortalezas deben destacar lo positivo
-- Las recomendaciones deben ser accionables
-"""
 ```
 
-### 3. N8N Client
+El prompt de sistema/usuario y el `responseSchema` estricto los arma cada cliente
+internamente (ver `gemini_correction_client._build_criterios_texto` y el prompt de
+`corregir_codigo`), con `temperature=0` y `responseMimeType="application/json"`.
+
+### 3. Cliente de IA directo (Gemini Studio / OpenRouter)
+
+El dispatcher `ia_provider` normaliza el proveedor elegido por el tutor y valida la key
+contra ESE proveedor. La corrección se hace con llamadas HTTP directas — NO hay N8N.
 
 ```python
-# integrations/n8n_client.py
-import httpx
-from typing import Any
+# integrations/ia_provider.py
+from app.integrations import gemini_studio_client, openrouter_client
 
-from app.config import settings
-from app.core.exceptions import N8NError, N8NTimeoutError
+PROVIDER_GEMINI = "gemini"
+PROVIDER_OPENROUTER = "openrouter"
+PROVIDERS_VALIDOS = frozenset({PROVIDER_GEMINI, PROVIDER_OPENROUTER})
 
 
-class N8NClient:
-    def __init__(self):
-        self.base_url = settings.N8N_WEBHOOK_URL
-        self.timeout = 90.0  # 90 segundos
+def normalizar_provider(provider: str | None) -> str:
+    """Normaliza el provider; cae a Gemini Studio si es vacío/desconocido."""
+    if not provider:
+        return PROVIDER_GEMINI
+    limpio = provider.strip().lower()
+    return limpio if limpio in PROVIDERS_VALIDOS else PROVIDER_GEMINI
 
-    async def trigger_correction(self, payload: dict) -> dict[str, Any]:
-        """Dispara el workflow de corrección en N8N."""
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.base_url}/webhook/correccion",
-                    json=payload,
-                    timeout=self.timeout,
-                )
-                response.raise_for_status()
-                return response.json()
 
-            except httpx.TimeoutException:
-                raise N8NTimeoutError("Timeout esperando respuesta de N8N")
-
-            except httpx.HTTPStatusError as e:
-                raise N8NError(f"Error HTTP {e.response.status_code}")
-
-            except httpx.RequestError as e:
-                raise N8NError(f"Error de conexión: {e}")
-
-    async def trigger_rubric_generation(self, payload: dict) -> dict[str, Any]:
-        """Dispara el workflow de generación de rúbrica desde PDF."""
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    f"{self.base_url}/webhook/generar-rubrica",
-                    json=payload,
-                    timeout=120.0,  # 2 minutos para PDFs
-                )
-                response.raise_for_status()
-                return response.json()
-
-            except httpx.TimeoutException:
-                raise N8NTimeoutError("Timeout generando rúbrica")
-
-            except httpx.HTTPStatusError as e:
-                raise N8NError(f"Error HTTP {e.response.status_code}")
+async def validar_api_key(provider: str, api_key: str) -> bool:
+    if normalizar_provider(provider) == PROVIDER_OPENROUTER:
+        return await openrouter_client.validar_api_key(api_key)
+    return await gemini_studio_client.validar_api_key(api_key)
 ```
+
+```python
+# integrations/gemini_correction_client.py  (cliente directo — reemplaza a N8N)
+import httpx
+from app.core.config import settings
+from app.core.exceptions import N8NError, N8NTimeoutError  # nombres históricos
+
+_GEMINI_GENERATE_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    "{model}:generateContent?key={api_key}"
+)
+
+
+class GeminiCorrectionClient:
+    """Cliente directo a Gemini — hace POST a generativelanguage, sin intermediario."""
+
+    def __init__(self):
+        self.model = settings.GEMINI_MODEL  # "gemini-3.5-flash"
+        self.correction_timeout = float(settings.GEMINI_TIMEOUT_SECONDS)
+
+    def _generate_url(self, api_key: str) -> str:
+        return _GEMINI_GENERATE_URL.format(model=self.model, api_key=api_key)
+
+    async def corregir_codigo(self, payload: dict) -> dict:
+        """Corrige código con Gemini directo. payload: {codigo, rubrica, api_key, contexto}."""
+        body = {
+            "generationConfig": {
+                "temperature": 0,
+                "topK": 1,
+                "topP": 1,
+                "candidateCount": 1,
+                "responseMimeType": "application/json",
+                "responseSchema": _SCHEMA_CORRECCION_CODIGO,  # JSON estricto
+            },
+            "contents": [{"role": "user", "parts": [{"text": self._build_prompt(payload)}]}],
+        }
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    self._generate_url(payload["api_key"]),
+                    json=body,
+                    headers={"Content-Type": "application/json"},
+                    timeout=self.correction_timeout,  # ~90 s
+                )
+                if response.status_code != 200:
+                    _handle_non_200(response)  # → APIKeyInvalidError / QuotaExceededError / N8NError
+                return {"success": True, "correccion": _parse_candidate_json(response.json())}
+            except httpx.TimeoutException:
+                raise N8NTimeoutError("Timeout esperando respuesta de Gemini")
+            except httpx.RequestError as e:
+                raise N8NError(f"Error de conexión con Gemini: {e}")
+```
+
+Para PDF, el mismo cliente usa la Files API + Vision (`corregir_pdf`); OpenRouter usa
+`POST {settings.OPENROUTER_BASE_URL}/chat/completions` con `Authorization: Bearer` y
+`response_format` JSON (ver `openrouter_client.corregir`).
 
 ### 4. Parsear Respuesta
 
@@ -282,10 +317,12 @@ class CorreccionGeminiSchema(BaseModel):
 
 
 def _parse_gemini_response(self, response: dict) -> CorreccionGeminiSchema:
-    """Parsea y valida la respuesta de Gemini."""
+    """Parsea y valida la respuesta del proveedor de IA."""
     try:
-        # Extraer el JSON de la respuesta de N8N
-        gemini_output = response.get("output", {})
+        # El cliente devuelve {"success": True, "correccion": {...}, "metadata": {...}}
+        if not response.get("success"):
+            raise ValidationError("El proveedor de IA retornó error")
+        gemini_output = response.get("correccion", {})
 
         # Validar con Pydantic
         correccion = CorreccionGeminiSchema.model_validate(gemini_output)
@@ -426,27 +463,23 @@ class CorreccionUpdate(BaseModel):
 
 ## Error Handling
 
+Las excepciones viven centralizadas en `app/core/exceptions.py` y sus mensajes/códigos
+en `app/core/error_catalog.py`. `N8NError` / `N8NTimeoutError` son **nombres históricos**
+(persistidos en datos y en el catálogo con los códigos `N8N_ERROR` / `N8N_TIMEOUT`), pero
+hoy los LANZAN los clientes de Gemini/OpenRouter ante fallos HTTP o timeout — no implican
+que exista un servicio N8N. NO redefinas estas clases en el flujo de corrección;
+importalas del módulo central.
+
 ```python
-# core/exceptions.py
-
-class N8NError(Exception):
-    """Error genérico de N8N."""
-    pass
-
-
-class N8NTimeoutError(N8NError):
-    """Timeout esperando respuesta de N8N."""
-    pass
-
-
-class GeminiError(Exception):
-    """Error de la API de Gemini."""
-    pass
-
-
-class APIKeyInvalidError(Exception):
-    """API Key de Gemini inválida."""
-    pass
+# core/exceptions.py (fuente de verdad — no redefinir)
+from app.core.exceptions import (
+    APIKeyInvalidError,      # key inválida/expirada del proveedor activo
+    InsufficientCreditsError, # sin créditos (OpenRouter)
+    ModelOverloadedError,     # modelo sobrecargado (503)
+    N8NError,                 # error genérico del proveedor de IA (nombre histórico)
+    N8NTimeoutError,          # timeout del proveedor de IA (nombre histórico)
+    QuotaExceededError,       # rate limit (429)
+)
 ```
 
 ## API Endpoints
@@ -515,5 +548,6 @@ def editar_correccion(
 ## Resources
 
 - [Google Gemini API](https://ai.google.dev/docs)
-- [N8N Documentation](https://docs.n8n.io/)
+- [OpenRouter API](https://openrouter.ai/docs)
 - [httpx Async Client](https://www.python-httpx.org/async/)
+- Clientes reales: `backend/app/integrations/gemini_correction_client.py`, `openrouter_client.py`, `ia_provider.py`
