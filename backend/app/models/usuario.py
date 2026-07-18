@@ -121,20 +121,25 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
         back_populates="tutor",
         lazy="selectin",
     )
+    # PERF-001: estas 3 colecciones se precargaban con selectin en CADA query de
+    # Usuario (actividades_realizadas es un audit log sin techo) pero NINGUN codigo
+    # ni schema las lee. lazy="raise" corta la precarga inutil y, si en el futuro
+    # alguien las accede sin selectinload() explicito, falla con un error claro en
+    # los tests (no un MissingGreenlet silencioso en produccion).
     entregas_subidas: Mapped[list["Entrega"]] = relationship(
         "Entrega",
         back_populates="subido_por",
-        lazy="selectin",
+        lazy="raise",
     )
     correcciones_realizadas: Mapped[list["Correccion"]] = relationship(
         "Correccion",
         back_populates="corregido_por",
-        lazy="selectin",
+        lazy="raise",
     )
     actividades_realizadas: Mapped[list["Actividad"]] = relationship(
         "Actividad",
         back_populates="usuario",
-        lazy="selectin",
+        lazy="raise",
     )
 
     def __repr__(self) -> str:
