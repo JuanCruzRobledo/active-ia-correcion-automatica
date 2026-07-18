@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
+import toast from 'react-hot-toast';
 import { Pencil, Key, Trash2, RotateCcw, MoreVertical } from 'lucide-react';
 import { useUsuarios, useDeleteUsuario, useRestoreUsuario } from '../hooks';
 import { UsuarioForm, ResetPasswordModal } from '../components';
@@ -23,11 +24,30 @@ import {
   HelpButton,
   EmptyState,
   Dropdown,
+  ConfirmDialog,
   type TableColumn,
   type SelectOption,
 } from '@/shared/components/ui';
 import { helpContent } from '@/shared/content/helpContent';
 import { formatDate } from '@/shared/utils';
+
+// Textos del diálogo de confirmación de borrado (extraídos para un único punto
+// de edición). El borrado es soft delete → se puede restaurar luego.
+const ELIMINAR_DIALOG = {
+  title: 'Eliminar usuario',
+  message:
+    '¿Seguro que querés eliminar a este usuario? Podés restaurarlo luego desde el filtro de eliminados.',
+  confirmLabel: 'Eliminar',
+} as const;
+
+// Estado del diálogo de confirmación, alineado con el patrón de EntregasPage.
+type ConfirmState = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  variant: 'primary' | 'destructive' | 'success';
+  onConfirm: () => void | Promise<void>;
+};
 
 // Mapeo de rol -> variante/label de Badge, reutilizado en la tabla (desktop)
 // y en la tarjeta mobile.
@@ -79,6 +99,43 @@ export const UsuariosPage = () => {
   const { data, isLoading, error } = useUsuarios(filters);
   const deleteMutation = useDeleteUsuario();
   const restoreMutation = useRestoreUsuario();
+
+  // Confirm dialog state (reemplazo de borrado directo sin confirmación)
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmState | null>(null);
+  const [isConfirmLoading, setIsConfirmLoading] = useState(false);
+
+  const handleConfirmAccept = async () => {
+    if (!confirmDialog) return;
+    setIsConfirmLoading(true);
+    try {
+      await confirmDialog.onConfirm();
+    } finally {
+      setIsConfirmLoading(false);
+      setConfirmDialog(null);
+    }
+  };
+
+  // Borrado real: await para poder cerrar el diálogo al terminar y toast de
+  // éxito contextual. El error lo maneja el onError del hook (catch vacío).
+  const runEliminar = async (id: number) => {
+    try {
+      await deleteMutation.mutateAsync(id);
+      toast.success('Usuario eliminado');
+    } catch {
+      // El feedback de error ya lo emite useDeleteUsuario (onError → toast.error).
+    }
+  };
+
+  // El ítem "Eliminar" del dropdown ahora abre la confirmación destructiva.
+  const askEliminar = (usuario: UsuarioListItem) => {
+    setConfirmDialog({
+      title: ELIMINAR_DIALOG.title,
+      message: ELIMINAR_DIALOG.message,
+      confirmLabel: ELIMINAR_DIALOG.confirmLabel,
+      variant: 'destructive',
+      onConfirm: () => runEliminar(usuario.id),
+    });
+  };
 
   // Modal handlers
   const handleCreate = () => {
@@ -145,7 +202,7 @@ export const UsuariosPage = () => {
         usuario.activo
           ? {
             label: 'Eliminar',
-            onClick: () => deleteMutation.mutate(usuario.id),
+            onClick: () => askEliminar(usuario),
             icon: <Trash2 className="w-4 h-4" />,
             variant: 'danger' as const,
           }
@@ -428,6 +485,22 @@ export const UsuariosPage = () => {
           onClose={handleCloseResetPassword}
           usuarioId={resetPasswordUser.id}
           usuarioNombre={resetPasswordUser.nombre}
+        />
+      )}
+
+      {/* Confirm Dialog (reemplazo del borrado directo sin confirmación) */}
+      {confirmDialog && (
+        <ConfirmDialog
+          isOpen={true}
+          onClose={() => {
+            if (!isConfirmLoading) setConfirmDialog(null);
+          }}
+          onConfirm={handleConfirmAccept}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmLabel={confirmDialog.confirmLabel}
+          variant={confirmDialog.variant}
+          isLoading={isConfirmLoading}
         />
       )}
     </div>

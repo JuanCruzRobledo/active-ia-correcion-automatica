@@ -7,7 +7,9 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import toast from 'react-hot-toast';
 import { usuariosService } from '../services/usuarios-service';
+import { getErrorMessage } from '@/shared/types';
 import type {
   UsuarioCreate,
   UsuarioUpdate,
@@ -95,6 +97,11 @@ export const useDeleteUsuario = () => {
     onSuccess: () => {
       // Invalidate all usuario queries to refetch
       queryClient.invalidateQueries({ queryKey: usuariosKeys.all });
+    },
+    onError: (error) => {
+      // Feedback de error propio del hook (reutilizable por cualquier consumidor);
+      // el toast de éxito lo pone la página que dispara el borrado.
+      toast.error(getErrorMessage(error), { duration: 5000 });
     },
   });
 };
