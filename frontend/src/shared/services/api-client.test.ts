@@ -141,4 +141,34 @@ describe('handleResponseError (interceptor de response de axios)', () => {
       'Error de conexión. Verifica tu conexión a internet.'
     );
   });
+
+  // ERR-005: el interceptor ahora entiende detail objeto { error_code, message }.
+  it('503 con detail objeto { error_code, message }: toastea el message del catálogo', async () => {
+    const config: InternalAxiosRequestConfig = { url: '/correcciones', headers: new AxiosHeaders() };
+    const response: AxiosResponse = {
+      status: 503,
+      statusText: '',
+      data: {
+        detail: {
+          error_code: 'GEMINI_OVERLOADED',
+          message: 'El modelo de Gemini está sobrecargado. Reintentá en unos minutos.',
+        },
+      },
+      headers: {},
+      config,
+    };
+    const error = new AxiosError(
+      'Request failed with status code 503',
+      'ERR_BAD_RESPONSE',
+      config,
+      undefined,
+      response
+    );
+
+    await expect(handleResponseError(error)).rejects.toBe(error);
+
+    expect(toast.error).toHaveBeenCalledWith(
+      'El modelo de Gemini está sobrecargado. Reintentá en unos minutos.'
+    );
+  });
 });

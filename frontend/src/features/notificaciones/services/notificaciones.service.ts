@@ -1,13 +1,12 @@
 // Servicio de notificaciones por email (config, disparo, prueba, historial, preview)
 import { apiClient } from '@/shared/services/api-client';
+import { fetchWithAuth } from '@/shared/services/fetchWithAuth';
 import type {
   CorridaResumen,
   EnvioEmailLog,
   NotifCronConfig,
   NotifCronConfigUpdate,
 } from '../types';
-
-const TOKEN_KEY = 'auth_token';
 
 export const notificacionesService = {
   getConfig: async (): Promise<NotifCronConfig> => {
@@ -55,11 +54,7 @@ export const notificacionesService = {
 
 /** Abre en una pestaña nueva la muestra (HTML/PDF/Excel) del tipo indicado, con auth. */
 export async function abrirPreview(tipo: 'alumno' | 'tutor' | 'nexo'): Promise<void> {
-  const base = apiClient.defaults.baseURL ?? '/api/v1';
-  const token = localStorage.getItem(TOKEN_KEY);
-  const resp = await fetch(`${base}/notificaciones/preview/${tipo}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
+  const resp = await fetchWithAuth(`/notificaciones/preview/${tipo}`);
   if (!resp.ok) throw new Error(`Error ${resp.status} al generar la vista previa`);
   const blob = await resp.blob();
   const url = URL.createObjectURL(blob);

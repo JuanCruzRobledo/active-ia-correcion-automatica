@@ -14,6 +14,7 @@ import axios from 'axios';
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import toast from 'react-hot-toast';
 import { isAuthEndpoint } from './auth-endpoints';
+import { extractDetailMessage, type ApiErrorDetailShape } from '../utils/apiError';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -73,7 +74,7 @@ apiClient.interceptors.request.use(
  * with this exact function.
  */
 export function handleResponseError(
-  error: AxiosError<{ message?: string; detail?: string | Array<{ msg?: string }> }>
+  error: AxiosError<{ message?: string; detail?: ApiErrorDetailShape }>
 ): Promise<never> {
   const status = error.response?.status;
 
@@ -83,14 +84,11 @@ export function handleResponseError(
     return Promise.reject(error);
   }
 
-  const rawDetail = error.response?.data?.detail;
+  // ERR-005: el `detail` puede ser string, array de validación (Pydantic) u
+  // objeto { error_code, message } (errores de IA). Un único extractor los cubre.
   const message =
     error.response?.data?.message ||
-    (Array.isArray(rawDetail)
-      ? rawDetail.map((e) => e.msg).filter(Boolean).join('; ')
-      : typeof rawDetail === 'string'
-        ? rawDetail
-        : undefined);
+    extractDetailMessage(error.response?.data?.detail);
 
   // Handle different error status codes
   switch (status) {

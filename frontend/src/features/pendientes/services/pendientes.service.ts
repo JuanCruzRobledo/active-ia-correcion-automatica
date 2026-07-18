@@ -1,4 +1,5 @@
 import { apiClient } from '@/shared/services/api-client';
+import { fetchWithAuth } from '@/shared/services/fetchWithAuth';
 import type {
   ImportarMoodleRequest,
   ImportarMoodleResponse,
@@ -32,23 +33,18 @@ export interface ImportStreamHandlers {
 
 /**
  * Importación con progreso en vivo (Server-Sent Events).
- * Usa fetch (axios no streamea bien): manda el JWT por header y lee el body por chunks.
+ * Usa fetch (axios no streamea bien) vía el helper compartido fetchWithAuth,
+ * que resuelve baseURL + JWT; acá solo se lee el body por chunks.
  */
 export async function importarMoodleStream(
   req: ImportarMoodleRequest,
   handlers: ImportStreamHandlers,
 ): Promise<void> {
-  const baseURL = apiClient.defaults.baseURL ?? '/api/v1';
-  const token = localStorage.getItem('auth_token');
-
   let resp: Response;
   try {
-    resp = await fetch(`${baseURL}/moodle/importar/stream`, {
+    resp = await fetchWithAuth('/moodle/importar/stream', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(req),
     });
   } catch {

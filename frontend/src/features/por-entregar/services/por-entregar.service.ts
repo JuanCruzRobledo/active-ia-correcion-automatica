@@ -1,4 +1,5 @@
 import { apiClient } from '@/shared/services/api-client';
+import { fetchWithAuth } from '@/shared/services/fetchWithAuth';
 import type { EntregaMasivaResumen, PorEntregarResponse } from '../types';
 
 export async function getPorEntregar(): Promise<PorEntregarResponse> {
@@ -15,20 +16,15 @@ export interface EntregarTodoHandlers {
 
 /**
  * Subida masiva con progreso en vivo (Server-Sent Events).
- * Usa fetch (axios no streamea bien): manda el JWT por header y lee el body por chunks.
+ * Usa fetch (axios no streamea bien) vía el helper compartido fetchWithAuth,
+ * que resuelve baseURL + JWT; acá solo se lee el body por chunks.
  */
 export async function entregarTodoStream(handlers: EntregarTodoHandlers): Promise<void> {
-  const baseURL = apiClient.defaults.baseURL ?? '/api/v1';
-  const token = localStorage.getItem('auth_token');
-
   let resp: Response;
   try {
-    resp = await fetch(`${baseURL}/por-entregar/entregar/stream`, {
+    resp = await fetchWithAuth('/por-entregar/entregar/stream', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { 'Content-Type': 'application/json' },
     });
   } catch {
     handlers.onError('No se pudo conectar con el servidor.');

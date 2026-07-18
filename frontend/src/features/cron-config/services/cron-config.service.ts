@@ -1,5 +1,6 @@
 // Servicio de config del cron de snapshots + disparo manual
 import { apiClient } from '@/shared/services/api-client';
+import { fetchWithAuth } from '@/shared/services/fetchWithAuth';
 import type {
   CronConfig,
   CronConfigUpdate,
@@ -50,27 +51,20 @@ export interface ProgresoEvento {
   detalle?: string;
 }
 
-const TOKEN_KEY = 'auth_token';
-
 /**
  * Dispara el snapshot consumiendo el stream SSE de progreso. Usa fetch (no
- * EventSource) para poder mandar el header Authorization. Llama onEvent por cada
- * evento (progreso por alumno, done, error).
+ * EventSource) para poder mandar el header Authorization, vía el helper compartido
+ * fetchWithAuth. Llama onEvent por cada evento (progreso por alumno, done, error).
  */
 export async function dispararSnapshotStream(
   materiaIds: number[],
   onEvent: (e: ProgresoEvento) => void,
   signal?: AbortSignal
 ): Promise<void> {
-  const base = apiClient.defaults.baseURL ?? '/api/v1';
-  const token = localStorage.getItem(TOKEN_KEY);
   const qs = materiaIds.map((id) => `materia_ids=${id}`).join('&');
-  const url = `${base}/gestion/dashboard/snapshot/stream${qs ? `?${qs}` : ''}`;
+  const path = `/gestion/dashboard/snapshot/stream${qs ? `?${qs}` : ''}`;
 
-  const resp = await fetch(url, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    signal,
-  });
+  const resp = await fetchWithAuth(path, { signal });
   if (!resp.ok || !resp.body) {
     throw new Error(`Error ${resp.status} al iniciar el snapshot`);
   }

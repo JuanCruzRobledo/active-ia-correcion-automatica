@@ -73,10 +73,3 @@ export interface CorreccionUpdate {
   recomendaciones?: string[];
   comentario_general?: string;
 }
-
-/**
- * Request para corrección en lote.
- */
-export interface CorregirLoteRequest {
-  entrega_ids: number[];
-}

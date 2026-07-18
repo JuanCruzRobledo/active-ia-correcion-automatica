@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { FileSpreadsheet } from 'lucide-react';
 import {
+  Alert,
   Button,
   HelpButton,
   LoadingState,
@@ -18,14 +19,14 @@ import { formatFechaHoraArg } from '@/shared/utils/fecha';
 const fmtFecha = (iso: string | null) => (iso ? formatFechaHoraArg(iso) : null);
 
 export const DashboardGestorPage = () => {
-  const { data: arbol, isLoading: loadingArbol } = useArbol();
+  const { data: arbol, isLoading: loadingArbol, isError: errorArbol } = useArbol();
 
   const [cohorteId, setCohorteId] = useState<number | null>(null);
   const [cuatrimestreId, setCuatrimestreId] = useState<number | null>(null);
   const [materiaId, setMateriaId] = useState<number | null>(null);
   const [estadoModal, setEstadoModal] = useState<EstadoAvance | null>(null);
 
-  const { data: avance, isFetching: fetchingAvance } = useAvance(cuatrimestreId, materiaId);
+  const { data: avance, isFetching: fetchingAvance, isError: errorAvance } = useAvance(cuatrimestreId, materiaId);
   const descargarExcel = useDescargarExcel();
 
   const cohorteSel = arbol?.find((c) => c.id === cohorteId) ?? null;
@@ -67,6 +68,14 @@ export const DashboardGestorPage = () => {
         <HelpButton title="Ayuda — Avance académico" content={helpContent.dashboardGestor} />
       </div>
 
+      {/* UI-004: si falla el árbol de cohortes, los selects quedarían vacíos sin
+          explicación (indistinguible de "no hay cohortes"). Avisamos. */}
+      {errorArbol && (
+        <Alert variant="destructive" title="No se pudieron cargar las cohortes">
+          <p>Hubo un problema al consultar el servidor. Revisá tu conexión e intentá recargar la página.</p>
+        </Alert>
+      )}
+
       {/* Selectores */}
       <div className="rounded-lg border border-border bg-card p-4">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -86,6 +95,11 @@ export const DashboardGestorPage = () => {
           <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
             <Spinner /> Cargando avance…
           </div>
+        ) : errorAvance ? (
+          // UI-004: el error de la query de avance ya no se descarta en silencio.
+          <p className="py-12 text-center text-sm text-destructive">
+            No se pudo cargar el avance. Revisá tu conexión e intentá de nuevo.
+          </p>
         ) : avance ? (
           <>
             <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">

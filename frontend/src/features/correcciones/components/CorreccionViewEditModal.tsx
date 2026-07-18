@@ -522,7 +522,7 @@ export default function CorreccionViewEditModal({
                 <ul className="space-y-2">
                   {fortalezas.map((fortaleza, index) => (
                     <li
-                      key={index}
+                      key={fortaleza}
                       className="flex items-start justify-between bg-success/5 rounded-md p-3 border border-success/20"
                     >
                       <span className="flex items-start gap-2 flex-1 text-sm text-foreground">
@@ -595,7 +595,7 @@ export default function CorreccionViewEditModal({
                 <ol className="space-y-2">
                   {recomendaciones.map((recomendacion, index) => (
                     <li
-                      key={index}
+                      key={recomendacion}
                       className="flex items-start justify-between bg-warning/5 rounded-md p-3 border border-warning/20"
                     >
                       <span className="flex items-start gap-3 flex-1 text-sm text-foreground">

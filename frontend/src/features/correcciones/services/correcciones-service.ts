@@ -6,8 +6,9 @@
  * Ref: skills/correccion-ia/SKILL.md - API Endpoints
  */
 
+import { isAxiosError } from 'axios';
 import { apiClient } from '@/shared/services/api-client';
-import type { Correccion, CorreccionUpdate, CorregirLoteRequest } from '../types';
+import type { Correccion, CorreccionUpdate } from '../types';
 
 /**
  * Corrige una entrega individual con IA.
@@ -19,21 +20,6 @@ export const corregirEntrega = async (entregaId: number): Promise<Correccion> =>
   const response = await apiClient.post<Correccion>(
     `/entregas/${entregaId}/corregir`
   );
-  return response.data;
-};
-
-/**
- * Corrige múltiples entregas en lote.
- *
- * @param entregaIds - Array de IDs de entregas a corregir (máximo 50)
- * @returns Promise con array de correcciones generadas
- */
-export const corregirEntregasLote = async (
-  entregaIds: number[]
-): Promise<Correccion[]> => {
-  const response = await apiClient.post<Correccion[]>('/entregas/corregir-lote', {
-    entrega_ids: entregaIds,
-  } as CorregirLoteRequest);
   return response.data;
 };
 
@@ -63,8 +49,14 @@ export const getCorreccionByEntregaId = async (
     );
     return response.data;
   } catch (error) {
-    // Si no existe corrección, retornar null
-    return null;
+    // ERR-006: null SOLO cuando el backend confirma que no hay corrección (404).
+    // Cualquier otro error (500, 403, timeout, red caída) se re-lanza para que
+    // React Query lo exponga como isError y la UI distinga "sin corrección" de
+    // "no pude consultar".
+    if (isAxiosError(error) && error.response?.status === 404) {
+      return null;
+    }
+    throw error;
   }
 };
 

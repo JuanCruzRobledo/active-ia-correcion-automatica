@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { isAxiosError } from 'axios';
+import toast from 'react-hot-toast';
 import { Code, Upload, Database, ListChecks, AlertTriangle, XCircle, FileText } from 'lucide-react';
+import { getErrorMessage } from '@/shared/types';
 
 import { Modal } from '@/shared/components/ui/Modal';
 import { Button } from '@/shared/components/ui/Button';
@@ -350,7 +353,7 @@ export function RubricaEditor({
       });
     } catch (error) {
       console.error('Error generando preview PDF:', error);
-      alert('Error al generar la vista previa del PDF. Por favor, verifica que todos los campos requeridos estén completos.');
+      toast.error('Error al generar la vista previa del PDF. Verificá que todos los campos requeridos estén completos.');
     }
   };
 
@@ -379,7 +382,7 @@ export function RubricaEditor({
       });
     } catch (error) {
       console.error('Error generando preview de guía para estudiantes:', error);
-      alert('Error al generar la vista previa de la guía para estudiantes.');
+      toast.error('Error al generar la vista previa de la guía para estudiantes.');
     }
   };
 
@@ -461,13 +464,16 @@ export function RubricaEditor({
 
       reset();
       onClose();
-    } catch (error: any) {
-      console.error('❌ Error guardando rúbrica:', error);
-      console.error('❌ Detalle de respuesta:', error?.response?.data);
-      // Mostrar error al usuario
-      if (error?.response?.data?.detail) {
-        alert(`Error: ${JSON.stringify(error.response.data.detail, null, 2)}`);
-      }
+    } catch (error) {
+      // UI-002: SIEMPRE notificar (antes fallaba en silencio si no había detail, o
+      // mostraba un alert con el JSON crudo de Pydantic). El extractor compartido
+      // traduce detail string | array | { error_code, message } a un texto legible.
+      console.error('Error guardando rúbrica:', error);
+      const msg =
+        isAxiosError(error) && error.response?.data
+          ? getErrorMessage(error.response.data)
+          : 'No se pudo guardar la rúbrica. Revisá tu conexión e intentá nuevamente.';
+      toast.error(msg, { duration: 8000 });
     }
   };
 

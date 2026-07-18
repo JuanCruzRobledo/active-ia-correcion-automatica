@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { Play } from 'lucide-react';
-import { Button, Checkbox, HelpButton, LoadingState, Spinner } from '@/shared/components/ui';
+import { Alert, Button, Checkbox, HelpButton, LoadingState, Spinner } from '@/shared/components/ui';
 import { helpContent } from '@/shared/content/helpContent';
 import { useUsuarios } from '@/features/usuarios/hooks';
 import { CronConfigForm } from '../components/CronConfigForm';
@@ -21,15 +21,23 @@ const fmtFecha = (iso: string | null) =>
   iso ? formatFechaHoraArg(iso) : 'Nunca generado';
 
 export const CronConfigPage = () => {
-  const { data: config, isLoading: loadingConfig } = useCronConfig();
-  const { data: usuariosData, isLoading: loadingUsuarios } = useUsuarios({
+  const { data: config, isLoading: loadingConfig, isError: errorConfig } = useCronConfig();
+  const {
+    data: usuariosData,
+    isLoading: loadingUsuarios,
+    isError: errorUsuarios,
+  } = useUsuarios({
     rol: 'TODOS',
     activo: true,
     search: '',
     page: 1,
     per_page: 100,
   });
-  const { data: materias, isLoading: loadingMaterias } = useMateriasConfiguradas();
+  const {
+    data: materias,
+    isLoading: loadingMaterias,
+    isError: errorMaterias,
+  } = useMateriasConfiguradas();
 
   const qc = useQueryClient();
   const [seleccionadas, setSeleccionadas] = useState<number[]>([]);
@@ -107,6 +115,13 @@ export const CronConfigPage = () => {
         </p>
       </div>
 
+      {/* UI-004: aviso si fallan las queries que alimentan el form de config. */}
+      {(errorConfig || errorUsuarios) && (
+        <Alert variant="destructive" title="No se pudo cargar la configuración">
+          <p>Hubo un problema al consultar el servidor. Revisá tu conexión e intentá recargar la página.</p>
+        </Alert>
+      )}
+
       {/* Form de config */}
       {config && <CronConfigForm config={config} usuarios={usuariosData?.items ?? []} />}
 
@@ -137,6 +152,11 @@ export const CronConfigPage = () => {
             <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
               <Spinner /> Cargando materias…
             </div>
+          ) : errorMaterias ? (
+            // UI-004: no confundir "falló la carga" con "no hay materias configuradas".
+            <p className="py-6 text-center text-sm text-destructive">
+              No se pudieron cargar las materias. Revisá tu conexión e intentá recargar la página.
+            </p>
           ) : (materias ?? []).length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">
               No hay materias configuradas. Configurá cohorte, unidad actual y unidades en cada materia.

@@ -13,6 +13,11 @@
  * Ref: docs/specs/06-MODELO-DATOS.md
  */
 
+import {
+  extractDetailMessage,
+  type ApiErrorObjectDetail,
+} from '../utils/apiError';
+
 // ===== ENUMS (using union types for erasableSyntaxOnly compatibility) =====
 
 /**
@@ -232,7 +237,7 @@ export interface ApiResponse<T> {
  * Standardized error format from FastAPI exception handlers.
  */
 export interface ApiError {
-  detail: string | ApiErrorDetail[];
+  detail: string | ApiErrorDetail[] | ApiErrorObjectDetail;
   message?: string;
   status_code?: number;
 }
@@ -277,11 +282,10 @@ export function isApiError(error: unknown): error is ApiError {
  */
 export function getErrorMessage(error: unknown): string {
   if (isApiError(error)) {
-    if (typeof error.detail === 'string') {
-      return error.detail;
-    }
-    if (Array.isArray(error.detail) && error.detail.length > 0) {
-      return error.detail.map((e) => e.msg).join(', ');
+    // ERR-005: un único extractor cubre detail string | array | { error_code, message }.
+    const fromDetail = extractDetailMessage(error.detail);
+    if (fromDetail) {
+      return fromDetail;
     }
     if (error.message) {
       return error.message;

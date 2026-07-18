@@ -38,6 +38,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useNovedades } from '@/shared/hooks/useNovedades';
 import { mensajeNovedades } from '@/shared/utils/novedades';
 import { helpContent } from '@/shared/content/helpContent';
+import { resumenErrores } from '@/shared/utils/erroresResumen';
 import { EmptyState } from '@/shared/components/ui/EmptyState';
 import { Dropdown } from '@/shared/components/ui/Dropdown';
 import { Alert } from '@/shared/components/ui/Alert';
@@ -75,6 +76,15 @@ export const EntregasPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { data: profile } = useProfile();
+
+  // UI-013: el banner de "key inválida" debe evaluar la key del proveedor ACTIVO
+  // (Gemini u OpenRouter), no siempre la de Gemini. Misma lógica que PerfilPage.
+  const activeProvider = profile?.correction_provider ?? 'gemini';
+  const isOpenRouter = activeProvider === 'openrouter';
+  const keyValid = isOpenRouter
+    ? profile?.openrouter_api_key_valid
+    : profile?.gemini_api_key_valid;
+  const providerLabel = isOpenRouter ? 'OpenRouter' : 'Gemini';
 
   // Selectors state
   const [selectedComisionId, setSelectedComisionId] = useState<number | null>(
@@ -147,11 +157,11 @@ export const EntregasPage = () => {
 
   // Fetch comisiones (tutors see only their assigned comisiones)
   // per_page=100 para traer todas sin paginación (backend máx: 100)
-  const { data: comisionesData, isLoading: isLoadingComisiones } = useComisiones({ per_page: 100 });
+  const { data: comisionesData, isLoading: isLoadingComisiones, isError: errorComisiones } = useComisiones({ per_page: 100 });
 
   // Fetch rubricas for selected comision's materia
   const selectedComision = comisionesData?.items.find(c => c.id === selectedComisionId);
-  const { data: rubricasData, isLoading: isLoadingRubricas } = useRubricas(
+  const { data: rubricasData, isLoading: isLoadingRubricas, isError: errorRubricas } = useRubricas(
     selectedComision?.materia_id ? { materia_id: selectedComision.materia_id } : undefined
   );
   const selectedRubrica = rubricasData?.items?.find((r) => r.id === selectedRubricaId);
@@ -232,18 +242,40 @@ export const EntregasPage = () => {
     });
 
     if (newErrors.length > 0) {
-      // Backend stops batch on first error — remaining untouched won't be processed.
       const successCount = batchItems.filter(e => e.estado === 'CORREGIDA').length;
       const totalExpected = batchTotalCount.current;
       const unprocessedCount = totalExpected - successCount - newErrors.length;
       setBatchEntregaIds([]);
-      toast.error(
-        `⚠️ La corrección en lote se detuvo. ` +
-        `${successCount} completada(s), ${newErrors.length} con error` +
-        (unprocessedCount > 0 ? `, ${unprocessedCount} sin procesar` : '') +
-        `. Revisá si tu API Key de Gemini es válida o esperá unos minutos si se alcanzó el límite de uso.`,
-        { duration: 12000 }
+
+      // ERR-012: usar el error_code REAL persistido en cada entrega fallida (no un
+      // texto adivinado hardcodeado a "Gemini"). Agrupamos por código y lo traducimos
+      // con el mismo helper que la corrección global.
+      const erroresPorCodigo: Record<string, number> = {};
+      for (const e of newErrors) {
+        const code = e.error_code ?? 'OTROS';
+        erroresPorCodigo[code] = (erroresPorCodigo[code] ?? 0) + 1;
+      }
+      const detalle = resumenErrores(erroresPorCodigo);
+
+      // El backend SOLO corta el lote en 402/429 (key inválida, sin créditos, rate
+      // limit). Con errores genéricos (502) el lote sigue: no afirmamos "sin procesar".
+      const codigosDeCorte = new Set([
+        'GEMINI_API_KEY_INVALID',
+        'GEMINI_RATE_LIMIT',
+        'SIN_CREDITOS',
+      ]);
+      const huboCorte = newErrors.some(
+        (e) => e.error_code != null && codigosDeCorte.has(e.error_code)
       );
+
+      const encabezado = huboCorte
+        ? `⚠️ La corrección en lote se detuvo. ${successCount} completada(s), ${newErrors.length} con error` +
+          (unprocessedCount > 0 ? `, ${unprocessedCount} sin procesar` : '')
+        : `⚠️ La corrección en lote terminó con errores. ${successCount} completada(s), ${newErrors.length} con error`;
+
+      toast.error(detalle ? `${encabezado}. Detalle: ${detalle}.` : `${encabezado}.`, {
+        duration: 12000,
+      });
       return;
     }
 
@@ -847,12 +879,27 @@ export const EntregasPage = () => {
           }}
         />
       )}
-      {/* API Key Invalid Banner */}
-      {profile && !profile.gemini_api_key_valid && (
-        <Alert variant="warning" title="⚠️ API Key de Gemini inválida">
+      {/* UI-004: las queries de comisiones/rúbricas alimentan los selects; si fallan,
+          los dropdowns quedarían vacíos sin explicación. Avisamos con un Alert. */}
+      {(errorComisiones || errorRubricas) && (
+        <Alert variant="destructive" title="No se pudieron cargar las opciones">
+          <p>
+            {errorComisiones
+              ? 'Hubo un problema al cargar las comisiones. '
+              : 'Hubo un problema al cargar las rúbricas de esta comisión. '}
+            Revisá tu conexión e intentá recargar la página.
+          </p>
+        </Alert>
+      )}
+
+      {/* API Key Invalid Banner (UI-013: proveedor activo, no siempre Gemini) */}
+      {profile && !keyValid && (
+        <Alert variant="warning" title={`⚠️ API Key de ${providerLabel} inválida`}>
           <p className="mb-3">
-            Tu API Key de Gemini expiró o es inválida. Las correcciones automáticas no funcionarán hasta que configures una nueva.
-            Por favor generá una nueva en Google AI Studio con otra cuenta de Google y actualizala en tu perfil.
+            Tu API Key de {providerLabel} expiró o es inválida. Las correcciones automáticas no funcionarán hasta que configures una nueva.
+            {isOpenRouter
+              ? ' Generá una nueva en OpenRouter y actualizala en tu perfil.'
+              : ' Por favor generá una nueva en Google AI Studio con otra cuenta de Google y actualizala en tu perfil.'}
           </p>
           <Button
             variant="primary"

@@ -282,7 +282,7 @@ export default function CorreccionDetailModal({
           <ul className="space-y-2">
             {fortalezas.map((fortaleza, index) => (
               <li
-                key={index}
+                key={fortaleza}
                 className="flex items-start justify-between bg-muted/50 rounded-md p-3"
               >
                 <span className="flex-1 text-sm">• {fortaleza}</span>
@@ -336,7 +336,7 @@ export default function CorreccionDetailModal({
           <ol className="space-y-2">
             {recomendaciones.map((recomendacion, index) => (
               <li
-                key={index}
+                key={recomendacion}
                 className="flex items-start justify-between bg-muted/50 rounded-md p-3"
               >
                 <span className="flex-1 text-sm">

@@ -162,54 +162,6 @@ export const useCorregirEntrega = () => {
 };
 
 /**
- * Hook to correct multiple entregas in batch.
- *
- * Invalidates entregas list on success.
- *
- * @returns Mutation hook for batch correction
- */
-export const useCorregirEntregasLote = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation<Correccion[], Error, number[]>({
-    mutationFn: correccionesService.corregirEntregasLote,
-    onSuccess: (correcciones) => {
-      // Invalidate entregas list to update estados
-      queryClient.invalidateQueries({ queryKey: ['entregas'] });
-
-      // Set each corrección in cache
-      correcciones.forEach((correccion) => {
-        queryClient.setQueryData(
-          correccionesKeys.detail(correccion.id),
-          correccion
-        );
-        queryClient.setQueryData(
-          correccionesKeys.byEntrega(correccion.entrega_id),
-          correccion
-        );
-      });
-
-      toast.success(
-        `${correcciones.length} entrega(s) corregida(s) exitosamente`
-      );
-    },
-    onError: (error) => {
-      if (isGeminiApiKeyError(error)) {
-        handleGeminiApiKeyError(queryClient);
-        return;
-      }
-      if (isGeminiRateLimitError(error)) {
-        handleGeminiRateLimitError();
-        return;
-      }
-      const msg = getErrorMessage(error, 'Error al corregir las entregas. Intenta nuevamente.');
-      console.error('Error al corregir entregas en lote:', error);
-      toast.error(msg, { duration: 6000 });
-    },
-  });
-};
-
-/**
  * Hook to update/edit an existing corrección.
  *
  * Invalidates corrección cache on success.

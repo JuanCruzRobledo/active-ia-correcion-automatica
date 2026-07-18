@@ -1,4 +1,4 @@
-import { forwardRef, type InputHTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from 'react';
 import { Info } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
@@ -75,7 +75,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     },
     ref
   ) => {
-    const inputId = id || `input-${Math.random().toString(36).substr(2, 9)}`;
+    // UI-010: useId() da un id estable entre renders (Math.random() lo regeneraba
+    // en cada render, rompiendo password managers, autofill y selectores de test).
+    const generatedId = useId();
+    const inputId = id || generatedId;
     const hasError = Boolean(error);
 
     return (
