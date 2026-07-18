@@ -96,6 +96,7 @@ async def corregir(payload: dict) -> dict[str, Any]:
         {"success": True, "correccion": {...}, "metadata": {...}}
     """
     from app.integrations.gemini_correction_client import (
+        _SCHEMA_CORRECCION_CODIGO_V2,
         _build_condiciones_texto,
         _build_criterios_texto,
         _build_metadata_texto,
@@ -106,8 +107,9 @@ async def corregir(payload: dict) -> dict[str, Any]:
     rubrica: dict = payload["rubrica"]
     api_key: str = payload["api_key"]
     contexto: dict = payload.get("contexto") or {}
+    schema_version: int = rubrica.get("schema_version") or 1
 
-    criterios_texto = _build_criterios_texto(rubrica.get("criterios") or [])
+    criterios_texto = _build_criterios_texto(rubrica.get("criterios") or [], schema_version)
     metadata_texto = _build_metadata_texto(rubrica.get("metadata") or {})
     penalizaciones_texto = _build_penalizaciones_texto(rubrica.get("penalizaciones") or [])
     condiciones_texto = _build_condiciones_texto(rubrica.get("condiciones_desaprobacion") or [])
@@ -191,6 +193,18 @@ async def corregir(payload: dict) -> dict[str, Any]:
         '}}'
     )
 
+    response_format = (
+        {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "correccion_v2",
+                "schema": _SCHEMA_CORRECCION_CODIGO_V2,
+            },
+        }
+        if schema_version >= 2
+        else {"type": "json_object"}
+    )
+
     url = f"{settings.OPENROUTER_BASE_URL.rstrip('/')}/chat/completions"
     headers = _construir_headers(api_key)
     body = {
@@ -199,7 +213,7 @@ async def corregir(payload: dict) -> dict[str, Any]:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        "response_format": {"type": "json_object"},
+        "response_format": response_format,
     }
 
     start_ms = int(time.time() * 1000)

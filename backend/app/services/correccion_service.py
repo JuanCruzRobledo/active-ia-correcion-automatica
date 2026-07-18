@@ -83,6 +83,31 @@ def _limpiar_entrega_error(entrega) -> None:
     entrega.error_at = None
 
 
+def _subcriterios_para_json(subcriterios) -> list[dict] | None:
+    """Serializa `subcriterios_evaluados` para `criterios_json` (JSONB).
+
+    Convierte los Decimal de puntaje a float (igual que se hace al nivel de
+    criterio) para que el dict sea JSON-serializable. Devuelve None si no hay
+    desglose (rubricas v1 o corrección vieja) — no se persiste una lista vacía
+    ni una clave con valor engañoso.
+    """
+    if not subcriterios:
+        return None
+    resultado = []
+    for sub in subcriterios:
+        sub_dict = dict(sub) if isinstance(sub, dict) else sub
+        resultado.append(
+            {
+                "id": sub_dict["id"],
+                "puntaje_obtenido": float(sub_dict["puntaje_obtenido"]),
+                "puntaje_maximo": float(sub_dict["puntaje_maximo"]),
+                "estado": sub_dict["estado"],
+                "feedback": sub_dict["feedback"],
+            }
+        )
+    return resultado
+
+
 class CorreccionService:
     """Service for AI-powered correction operations."""
 
@@ -290,8 +315,25 @@ class CorreccionService:
             await self.correccion_repo.delete(existing_correccion)
 
         # Convert CriterioGeminiSchema to CriterioEvaluado
-        from app.schemas.correccion import CriterioEvaluado
+        from app.schemas.correccion import CriterioEvaluado, SubcriterioEvaluado
         from decimal import Decimal as Dec
+
+        def _subcriterios_evaluados_de(c) -> list[SubcriterioEvaluado] | None:
+            """Convierte subcriterios_evaluados (RoundedInt, nivel Gemini) a
+            SubcriterioEvaluado (Decimal, nivel API/persistencia). Ausente en
+            rubricas v1 o si la IA lo omite — no rompe el parseo (D6)."""
+            if not c.subcriterios_evaluados:
+                return None
+            return [
+                SubcriterioEvaluado(
+                    id=sub.id,
+                    puntaje_obtenido=Dec(str(sub.puntaje_obtenido)),
+                    puntaje_maximo=Dec(str(sub.puntaje_maximo)),
+                    estado=sub.estado,
+                    feedback=sub.feedback,
+                )
+                for sub in c.subcriterios_evaluados
+            ]
 
         criterios_evaluados = [
             CriterioEvaluado(
@@ -300,7 +342,8 @@ class CorreccionService:
                 puntaje_obtenido=Dec(str(c.puntaje_obtenido)),
                 puntaje_maximo=Dec(str(c.puntaje_maximo)),
                 estado=c.estado,
-                feedback=c.feedback
+                feedback=c.feedback,
+                subcriterios_evaluados=_subcriterios_evaluados_de(c),
             )
             for i, c in enumerate(gemini_response.criterios)
         ]
@@ -334,6 +377,9 @@ class CorreccionService:
             criterio_dict = dict(c) if isinstance(c, dict) else c
             criterio_dict['puntaje_obtenido'] = float(criterio_dict['puntaje_obtenido'])
             criterio_dict['puntaje_maximo'] = float(criterio_dict['puntaje_maximo'])
+            criterio_dict['subcriterios_evaluados'] = _subcriterios_para_json(
+                criterio_dict.get('subcriterios_evaluados')
+            )
             criterios_for_json.append(criterio_dict)
 
         data_dict['criterios_json'] = {
@@ -440,6 +486,9 @@ class CorreccionService:
                     "puntaje_maximo": float(c["puntaje_maximo"]),
                     "estado": c["estado"],
                     "feedback": c["feedback"],
+                    "subcriterios_evaluados": _subcriterios_para_json(
+                        c.get("subcriterios_evaluados")
+                    ),
                 }
                 for c in criterios_list
             ]
@@ -552,6 +601,7 @@ class CorreccionService:
                 "criterios": rubrica.criterios_json or [],
                 "penalizaciones": rubrica.penalizaciones_json or [],
                 "condiciones_desaprobacion": rubrica.condiciones_desaprobacion_json or [],
+                "schema_version": rubrica.schema_version,
             },
             "api_key": api_key,
             "contexto": {
@@ -592,6 +642,7 @@ class CorreccionService:
                 "criterios": rubrica.criterios_json or [],
                 "penalizaciones": rubrica.penalizaciones_json or [],
                 "condiciones_desaprobacion": rubrica.condiciones_desaprobacion_json or [],
+                "schema_version": rubrica.schema_version,
             },
             "api_key": api_key,
             "contexto": {

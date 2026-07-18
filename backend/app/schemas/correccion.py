@@ -33,6 +33,36 @@ def _round_to_int(v) -> int:
 RoundedInt = Annotated[int, BeforeValidator(_round_to_int)]
 
 
+class SubcriterioEvaluado(BaseModel):
+    """Schema for an evaluated subcriterion within a correction (API/persistence level).
+
+    Only populated for rubricas `schema_version = 2` (peso-por-subcriterio):
+    the subcriterios desglosan el puntaje del criterio, no lo alteran (el
+    puntaje_obtenido del criterio sigue siendo la suma de sus subcriterios).
+    Uses `Decimal`, coherente con `CriterioEvaluado.puntaje_obtenido`.
+    """
+
+    id: str = Field(..., description="Subcriterion ID from rubric (ej: 'C1.1')")
+    puntaje_obtenido: Decimal = Field(..., ge=0, description="Points obtained")
+    puntaje_maximo: Decimal = Field(..., ge=1, description="Maximum points for subcriterion")
+    estado: Literal["OK", "WARNING", "ERROR"] = Field(..., description="Subcriterion status")
+    feedback: str = Field(..., min_length=1, description="Specific feedback for this subcriterion")
+
+
+class SubcriterioGeminiSchema(BaseModel):
+    """Schema for parsing subcriterion evaluation from the raw Gemini/OpenRouter response.
+
+    Mirrors `CriterioGeminiSchema`: uses `RoundedInt` because the AI sometimes
+    returns decimal scores. Only present for rubricas `schema_version = 2`.
+    """
+
+    id: str = Field(..., description="Subcriterion ID from rubric (ej: 'C1.1')")
+    puntaje_obtenido: RoundedInt = Field(ge=0)
+    puntaje_maximo: RoundedInt = Field(ge=1)
+    estado: Literal["OK", "WARNING", "ERROR"]
+    feedback: str = Field(min_length=1)
+
+
 class CriterioEvaluado(BaseModel):
     """Schema for an evaluated criterion in a correction."""
 
@@ -42,6 +72,13 @@ class CriterioEvaluado(BaseModel):
     puntaje_maximo: Decimal = Field(..., ge=1, description="Maximum points for criterion")
     estado: Literal["OK", "WARNING", "ERROR"] = Field(..., description="Criterion status")
     feedback: str = Field(..., min_length=1, description="Specific feedback for this criterion")
+    subcriterios_evaluados: Optional[list[SubcriterioEvaluado]] = Field(
+        default=None,
+        description=(
+            "Desglose de puntaje por subcriterio (solo rubricas schema_version=2). "
+            "Ausente en correcciones viejas o de rubricas v1 — no rompe el parseo."
+        ),
+    )
 
 
 class CriterioGeminiSchema(BaseModel):
@@ -58,6 +95,13 @@ class CriterioGeminiSchema(BaseModel):
     puntaje_maximo: RoundedInt = Field(ge=1)
     estado: Literal["OK", "WARNING", "ERROR"]
     feedback: str = Field(min_length=1)
+    subcriterios_evaluados: Optional[list[SubcriterioGeminiSchema]] = Field(
+        default=None,
+        description=(
+            "Desglose de puntaje por subcriterio devuelto por la IA (solo "
+            "rubricas schema_version=2). Ausente en v1 o si el modelo lo omite."
+        ),
+    )
 
 
 class GeminiResponse(BaseModel):

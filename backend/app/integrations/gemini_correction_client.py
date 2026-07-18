@@ -42,8 +42,22 @@ _GEMINI_UPLOAD_URL = (
 # Prompt builders — replicating exactly the JS logic from the N8N workflows
 # ---------------------------------------------------------------------------
 
-def _build_criterios_texto(criterios: list) -> str:
-    """Build criterios block — mirrors correccion-codigo-workflow-FIXED.json."""
+_INSTRUCCION_SCORING_SUBCRITERIOS_V2 = (
+    "  Asigná un puntaje a CADA subcriterio (no solo al criterio); el "
+    "puntaje_obtenido del criterio DEBE ser la suma exacta de los puntajes "
+    "de sus subcriterios.\n"
+)
+
+
+def _build_criterios_texto(criterios: list, schema_version: int = 1) -> str:
+    """Build criterios block — mirrors correccion-codigo-workflow-FIXED.json.
+
+    v1 (default, `schema_version=1`): salida EXACTAMENTE igual a la anterior
+    a `peso-por-subcriterio` (subcriterios como checklist de evidencias, sin
+    puntos). v2: cada subcriterio se imprime con su ID y su peso en puntos
+    (`[C1.1] (N pts) <descripción>`), y se agrega la instrucción de asignar
+    puntaje por subcriterio.
+    """
     texto = ""
     for criterio in criterios:
         texto += f"- ID: {criterio.get('id', '')}\n"
@@ -57,18 +71,33 @@ def _build_criterios_texto(criterios: list) -> str:
             )
         subcriterios = criterio.get("subcriterios") or []
         if subcriterios:
-            texto += "  Evidencias esperadas (checklist verificable en el código):\n"
-            for sub in subcriterios:
-                if sub.get("descripcion"):
-                    texto += f"  - {sub['descripcion']}\n"
-                for ev in sub.get("evidencias") or []:
-                    texto += f"    * {ev}\n"
+            if schema_version >= 2:
+                texto += (
+                    "  Subcriterios (con su peso en puntos y evidencias "
+                    "verificables en el código):\n"
+                )
+                texto += _INSTRUCCION_SCORING_SUBCRITERIOS_V2
+                for sub in subcriterios:
+                    peso_sub = sub.get("peso", 0)
+                    texto += f"  - [{sub.get('id', '')}] ({peso_sub} pts) {sub.get('descripcion', '')}\n"
+                    for ev in sub.get("evidencias") or []:
+                        texto += f"    * {ev}\n"
+            else:
+                texto += "  Evidencias esperadas (checklist verificable en el código):\n"
+                for sub in subcriterios:
+                    if sub.get("descripcion"):
+                        texto += f"  - {sub['descripcion']}\n"
+                    for ev in sub.get("evidencias") or []:
+                        texto += f"    * {ev}\n"
         texto += "\n"
     return texto
 
 
-def _build_criterios_pdf_texto(criterios: list) -> str:
-    """Build criterios block — mirrors correccion-pdf-workflow-FIXED.json."""
+def _build_criterios_pdf_texto(criterios: list, schema_version: int = 1) -> str:
+    """Build criterios block — mirrors correccion-pdf-workflow-FIXED.json.
+
+    Mismo branch v1/v2 que `_build_criterios_texto` (ver docstring ahí).
+    """
     texto = ""
     for criterio in criterios:
         puntaje_max = criterio.get("puntaje_maximo") or criterio.get("peso") or 0
@@ -82,10 +111,19 @@ def _build_criterios_pdf_texto(criterios: list) -> str:
                 f"  Instrucciones de puntuación (TOPES/REGLAS OBLIGATORIAS): "
                 f"{criterio['instrucciones_puntuacion']}\n"
             )
-        for sub in criterio.get("subcriterios") or []:
-            texto += f"  * {sub.get('descripcion', '')}\n"
-            for ev in sub.get("evidencias") or []:
-                texto += f"    - [ ] {ev}\n"
+        subcriterios = criterio.get("subcriterios") or []
+        if schema_version >= 2 and subcriterios:
+            texto += _INSTRUCCION_SCORING_SUBCRITERIOS_V2
+            for sub in subcriterios:
+                peso_sub = sub.get("peso", 0)
+                texto += f"  * [{sub.get('id', '')}] ({peso_sub} pts) {sub.get('descripcion', '')}\n"
+                for ev in sub.get("evidencias") or []:
+                    texto += f"    - [ ] {ev}\n"
+        else:
+            for sub in subcriterios:
+                texto += f"  * {sub.get('descripcion', '')}\n"
+                for ev in sub.get("evidencias") or []:
+                    texto += f"    - [ ] {ev}\n"
     return texto
 
 
@@ -308,6 +346,92 @@ _SCHEMA_CORRECCION_PDF = {
     ],
 }
 
+# ---------------------------------------------------------------------------
+# Response schemas V2 — rubricas schema_version=2 (peso-por-subcriterio):
+# cada criterio gana el nivel anidado `subcriterios_evaluados[]`.
+# ---------------------------------------------------------------------------
+
+_SCHEMA_SUBCRITERIOS_EVALUADOS_ITEM = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "string"},
+        "puntaje_obtenido": {"type": "number"},
+        "puntaje_maximo": {"type": "number"},
+        "estado": {"type": "string", "enum": ["OK", "WARNING", "ERROR"]},
+        "feedback": {"type": "string"},
+    },
+    "required": ["id", "puntaje_obtenido", "puntaje_maximo", "estado", "feedback"],
+}
+
+_SCHEMA_CORRECCION_CODIGO_V2 = {
+    "type": "object",
+    "properties": {
+        "nota": {"type": "number"},
+        "criterios": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "nombre": {"type": "string"},
+                    "puntaje_obtenido": {"type": "number"},
+                    "puntaje_maximo": {"type": "number"},
+                    "estado": {"type": "string", "enum": ["OK", "WARNING", "ERROR"]},
+                    "feedback": {"type": "string"},
+                    "subcriterios_evaluados": {
+                        "type": "array",
+                        "items": _SCHEMA_SUBCRITERIOS_EVALUADOS_ITEM,
+                    },
+                },
+                "required": [
+                    "id", "nombre", "puntaje_obtenido", "puntaje_maximo",
+                    "estado", "feedback", "subcriterios_evaluados",
+                ],
+            },
+        },
+        "fortalezas": {"type": "array", "items": {"type": "string"}},
+        "recomendaciones": {"type": "array", "items": {"type": "string"}},
+        "comentario_general": {"type": "string"},
+    },
+    "required": [
+        "nota", "criterios", "fortalezas", "recomendaciones", "comentario_general",
+    ],
+}
+
+_SCHEMA_CORRECCION_PDF_V2 = {
+    "type": "object",
+    "properties": {
+        "nota": {"type": "number"},
+        "criterios": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "nombre": {"type": "string"},
+                    "puntaje_obtenido": {"type": "number"},
+                    "puntaje_maximo": {"type": "number"},
+                    "estado": {"type": "string", "enum": ["OK", "WARNING", "ERROR"]},
+                    "feedback": {"type": "string"},
+                    "subcriterios_evaluados": {
+                        "type": "array",
+                        "items": _SCHEMA_SUBCRITERIOS_EVALUADOS_ITEM,
+                    },
+                },
+                "required": [
+                    "nombre", "puntaje_obtenido", "puntaje_maximo", "estado",
+                    "feedback", "subcriterios_evaluados",
+                ],
+            },
+        },
+        "fortalezas": {"type": "array", "items": {"type": "string"}},
+        "recomendaciones": {"type": "array", "items": {"type": "string"}},
+        "comentario_general": {"type": "string"},
+    },
+    "required": [
+        "nota", "criterios", "fortalezas", "recomendaciones", "comentario_general",
+    ],
+}
+
 
 # ---------------------------------------------------------------------------
 # Main client
@@ -345,8 +469,9 @@ class GeminiCorrectionClient:
         rubrica: dict = payload["rubrica"]
         api_key: str = payload["api_key"]
         contexto: dict = payload.get("contexto") or {}
+        schema_version: int = rubrica.get("schema_version") or 1
 
-        criterios_texto = _build_criterios_texto(rubrica.get("criterios") or [])
+        criterios_texto = _build_criterios_texto(rubrica.get("criterios") or [], schema_version)
         metadata_texto = _build_metadata_texto(rubrica.get("metadata") or {})
         penalizaciones_texto = _build_penalizaciones_texto(rubrica.get("penalizaciones") or [])
         condiciones_texto = _build_condiciones_texto(rubrica.get("condiciones_desaprobacion") or [])
@@ -449,6 +574,9 @@ class GeminiCorrectionClient:
             '- NO incluyas texto antes o después del JSON'
         )
 
+        response_schema = (
+            _SCHEMA_CORRECCION_CODIGO_V2 if schema_version >= 2 else _SCHEMA_CORRECCION_CODIGO
+        )
         body = {
             "generationConfig": {
                 "temperature": 0,
@@ -456,7 +584,7 @@ class GeminiCorrectionClient:
                 "topP": 1,
                 "candidateCount": 1,
                 "responseMimeType": "application/json",
-                "responseSchema": _SCHEMA_CORRECCION_CODIGO,
+                "responseSchema": response_schema,
             },
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
         }
@@ -537,8 +665,10 @@ class GeminiCorrectionClient:
 
         file_uri = await self._upload_pdf(pdf_bytes, api_key)
 
+        schema_version: int = rubrica.get("schema_version") or 1
+
         # Build prompt — mirrors correccion-pdf-workflow-FIXED.json
-        criterios_texto = _build_criterios_pdf_texto(rubrica.get("criterios") or [])
+        criterios_texto = _build_criterios_pdf_texto(rubrica.get("criterios") or [], schema_version)
         metadata_texto = _build_metadata_texto(rubrica.get("metadata") or {})
         penalizaciones_texto = _build_penalizaciones_texto(rubrica.get("penalizaciones") or [])
         condiciones_texto = _build_condiciones_texto(rubrica.get("condiciones_desaprobacion") or [])
@@ -614,6 +744,9 @@ class GeminiCorrectionClient:
             '- NO uses markdown code blocks, solo JSON puro.'
         )
 
+        response_schema = (
+            _SCHEMA_CORRECCION_PDF_V2 if schema_version >= 2 else _SCHEMA_CORRECCION_PDF
+        )
         body = {
             "generationConfig": {
                 "temperature": 0.2,
@@ -621,7 +754,7 @@ class GeminiCorrectionClient:
                 "topP": 0.95,
                 "candidateCount": 1,
                 "responseMimeType": "application/json",
-                "responseSchema": _SCHEMA_CORRECCION_PDF,
+                "responseSchema": response_schema,
             },
             "contents": [
                 {
