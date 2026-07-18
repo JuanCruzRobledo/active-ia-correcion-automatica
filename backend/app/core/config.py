@@ -108,6 +108,15 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 104857600  # 100 MB en bytes
     ALLOWED_EXTENSIONS: List[str] = [".zip", ".txt"]
 
+    # Anti ZIP-bomb (SEC-005 / PERF-008): topes al descomprimir/consolidar ZIPs.
+    # - MAX_ZIP_EXPANDED_SIZE: tamaño DESCOMPRIMIDO acumulado permitido
+    #   (suma de ZipInfo.file_size). Se alinea con MAX_UPLOAD_SIZE (100 MB): una
+    #   entrega legítima descomprimida no debería superar el propio tope de subida.
+    # - MAX_ZIP_ENTRIES: cantidad máxima de entradas del ZIP; corta las bombas de
+    #   "muchos archivos diminutos" que el tope de tamaño no atrapa.
+    MAX_ZIP_EXPANDED_SIZE: int = MAX_UPLOAD_SIZE  # 100 MB descomprimido acumulado
+    MAX_ZIP_ENTRIES: int = 5000
+
     # =========================================
     # CORS
     # =========================================

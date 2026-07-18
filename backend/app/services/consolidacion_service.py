@@ -16,6 +16,8 @@ from typing import BinaryIO
 
 from fastapi import HTTPException, status
 
+from app.core.upload_limits import validar_zip_bomb
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -267,6 +269,11 @@ class ConsolidacionService:
         conserva ese `\\` literal, y leer con el path normalizado a `/` provoca
         ``KeyError "There is no item named '...' in the archive"``.
         """
+        # Anti ZIP-bomb (SEC-005): cortar por tamaño descomprimido acumulado
+        # (ZipInfo.file_size) y por cantidad de entradas ANTES de leer/descomprimir
+        # nada. Se valida sobre todo el filelist, no solo lo filtrado por extensión.
+        validar_zip_bomb(zf.filelist)
+
         archivos_info = self._scan_zip(zf, extensiones)
 
         if not archivos_info:

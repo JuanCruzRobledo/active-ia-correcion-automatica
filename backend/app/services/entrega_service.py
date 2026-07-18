@@ -17,6 +17,7 @@ from typing import BinaryIO, Literal
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.upload_limits import validar_tamano_upload, validar_zip_bomb
 from app.models.entrega import Entrega
 from app.models.enums import EstadoEntregaEnum
 from app.repositories.comision_repository import ComisionRepository
@@ -102,7 +103,12 @@ class EntregaService:
             HTTPException 404: Comision or Rubrica not found.
             HTTPException 409: Entrega already exists and sobrescribir=False.
             HTTPException 400: Invalid file type.
+            HTTPException 413: File exceeds MAX_UPLOAD_SIZE.
         """
+        # Barrera temprana de tamaño (PERF-008): rechazar por el tamaño declarado
+        # (UploadFile.size / Content-Length) antes de cualquier trabajo de DB.
+        validar_tamano_upload(getattr(archivo, "size", None))
+
         # Validate comision exists
         comision = await self.comision_repo.get_active_by_id(data.comision_id)
         if not comision:
@@ -135,6 +141,10 @@ class EntregaService:
         # Read file content
         contenido_bytes = await archivo.read()
         archivo_tamanio = len(contenido_bytes)
+
+        # Barrera definitiva de tamaño (PERF-008): el header es falsificable/ausente,
+        # así que se valida el largo real antes de consolidar.
+        validar_tamano_upload(archivo_tamanio)
 
         # Calculate hash
         hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
@@ -705,6 +715,10 @@ class EntregaService:
         import zipfile
         import tempfile
 
+        # Barrera temprana de tamaño (PERF-008): rechazar el ZIP contenedor por su
+        # tamaño declarado antes de cualquier trabajo de DB.
+        validar_tamano_upload(getattr(archivo_zip, "size", None))
+
         # Validate comision exists
         comision = await self.comision_repo.get_active_by_id(comision_id)
         if not comision:
@@ -731,11 +745,18 @@ class EntregaService:
         # Read ZIP content
         contenido_bytes = await archivo_zip.read()
 
+        # Barrera definitiva de tamaño del ZIP contenedor (PERF-008), antes de abrirlo.
+        validar_tamano_upload(len(contenido_bytes))
+
         exitosas: list[EntregaCreada] = []
         errores: list[EntregaError] = []
 
         try:
             with zipfile.ZipFile(io.BytesIO(contenido_bytes), "r") as zip_file:
+                # Anti ZIP-bomb (SEC-005): cortar por tamaño descomprimido acumulado
+                # y por cantidad de entradas ANTES de leer/descomprimir carpetas.
+                validar_zip_bomb(zip_file.filelist)
+
                 # Normalize all paths: Windows ZIPs may use backslashes.
                 # Build a mapping so we can read entries using the original name.
                 original_names = zip_file.namelist()
