@@ -9,7 +9,7 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { FileText, MoreVertical, Pencil, Copy, Trash2, RotateCcw, Download, FileDown } from 'lucide-react';
+import { FileText, MoreVertical, Pencil, Copy, Trash2, RotateCcw, Download, FileDown, AlertTriangle } from 'lucide-react';
 import {
   useRubricas,
   useRubrica,
@@ -264,7 +264,15 @@ export const RubricasPage = () => {
       header: 'Nombre',
       render: (rubrica) => (
         <div>
-          <div className="font-medium text-foreground">{rubrica.titulo}</div>
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-foreground">{rubrica.titulo}</span>
+            {rubrica.schema_version < 2 && (
+              <Badge variant="warning" title="Rúbrica desactualizada — actualizar al nuevo modelo">
+                <AlertTriangle className="h-3 w-3 mr-1 inline" />
+                Desactualizada
+              </Badge>
+            )}
+          </div>
           <div className="text-xs text-muted-foreground">
             #{rubrica.numero} - {rubrica.anio}
           </div>
@@ -523,6 +531,12 @@ export const RubricasPage = () => {
                   <Badge variant={rubrica.activa ? 'success' : 'default'}>
                     {rubrica.activa ? 'Activa' : 'Inactiva'}
                   </Badge>
+                  {rubrica.schema_version < 2 && (
+                    <Badge variant="warning">
+                      <AlertTriangle className="h-3 w-3 mr-1 inline" />
+                      Desactualizada
+                    </Badge>
+                  )}
                 </div>
 
                 {/* Stats */}

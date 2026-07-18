@@ -41,6 +41,12 @@ export interface Subcriterio {
   id: string; // Format: "C1.1", "C2.3"
   descripcion: string;
   evidencias: string[]; // Checklist de evidencias para la IA
+  /**
+   * Peso en puntos absolutos (rúbricas schema_version >= 2).
+   * `sum(subcriterio.peso)` de un criterio debe ser exactamente `criterio.peso`.
+   * Opcional: las rúbricas schema_version = 1 no lo tienen.
+   */
+  peso?: number;
 }
 
 /**
@@ -120,6 +126,12 @@ export interface Rubrica {
   moodle_assign_id: number | null;
   modo_consolidacion: ModoConsolidacion;
   extensiones_personalizadas: string[] | null;
+  /**
+   * Versión del schema de la rúbrica. v1 = comportamiento previo (sin peso por
+   * subcriterio); v2 = exige peso por subcriterio con suma exacta al peso del
+   * criterio contenedor. Default 1 para compatibilidad hacia atrás.
+   */
+  schema_version: number;
   created_at: string;
   updated_at: string;
 }
@@ -144,6 +156,8 @@ export interface RubricaListItem {
   modo_consolidacion: ModoConsolidacion;
   extensiones_personalizadas: string[] | null;
   activa: boolean;
+  /** Ver `Rubrica.schema_version`. */
+  schema_version: number;
   created_at: string;
 }
 
@@ -175,6 +189,8 @@ export interface RubricaCreate {
   moodle_assign_id?: number | null;
   modo_consolidacion?: ModoConsolidacion;
   extensiones_personalizadas?: string[] | null;
+  /** Default 1 en el backend si se omite (compatibilidad hacia atrás). */
+  schema_version?: number;
 }
 
 export interface RubricaUpdate {
@@ -187,6 +203,7 @@ export interface RubricaUpdate {
   moodle_assign_id?: number | null;
   modo_consolidacion?: ModoConsolidacion;
   extensiones_personalizadas?: string[] | null;
+  schema_version?: number;
 }
 
 export interface RubricaDuplicar {
