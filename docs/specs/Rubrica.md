@@ -8,6 +8,21 @@ Este esquema define la estructura de una **rúbrica de evaluación** que permite
 
 ---
 
+## 🆕 Versionado del esquema (`schema_version`)
+
+Toda rúbrica tiene una columna `schema_version` (entero, `NOT NULL`, default `1`) que versiona el contrato de su estructura JSONB:
+
+| `schema_version` | Comportamiento |
+| ----------------- | -------------- |
+| `1` (default)      | Comportamiento histórico: los subcriterios son un checklist de evidencias, **sin peso propio** — el reparto de puntaje dentro del criterio queda implícito. |
+| `2`                | Los subcriterios tienen **peso propio en puntos absolutos** que deben sumar exactamente el `peso` del criterio contenedor. La IA devuelve y persiste el puntaje desglosado por subcriterio. |
+
+- Las rúbricas existentes quedan en `schema_version = 1` sin backfill manual; siguen siendo válidas, editables y corregibles exactamente igual que antes.
+- No hay migración automática v1 → v2: el docente decide migrar una rúbrica puntual desde el editor (ver "Migrar al nuevo modelo" más abajo). Mientras no lo haga, la rúbrica sigue viendo/corrigiendo en v1.
+- El campo se expone en las respuestas de detalle y de listado de rúbricas para que el frontend pueda mostrar el indicador de "rúbrica desactualizada" cuando corresponda.
+
+---
+
 ## 📐 Estructura del Esquema
 
 ```jsonc
@@ -56,6 +71,7 @@ Este esquema define la estructura de una **rúbrica de evaluación** que permite
           "id": "string",
           "descripcion": "string",
           "evidencias": ["string"],
+          "peso": "number | null", // Solo en schema_version = 2 (obligatorio ahí); ausente/null en v1. sum(subcriterios[].peso) == criterios[].peso
         },
       ],
     },
@@ -317,6 +333,42 @@ Este esquema define la estructura de una **rúbrica de evaluación** que permite
 
 ---
 
+## 🆕 Ejemplo de criterio con peso por subcriterio (`schema_version = 2`)
+
+```json
+{
+  "id": "C2",
+  "nombre": "Endpoints CRUD",
+  "descripcion": "Implementación completa de Create, Read, Update y Delete.",
+  "peso": 40,
+  "subcriterios": [
+    { "id": "C2.1", "descripcion": "POST /productos", "evidencias": ["..."], "peso": 10 },
+    { "id": "C2.2", "descripcion": "GET /productos", "evidencias": ["..."], "peso": 10 },
+    { "id": "C2.3", "descripcion": "GET /productos/:id", "evidencias": ["..."], "peso": 8 },
+    { "id": "C2.4", "descripcion": "PUT /productos/:id", "evidencias": ["..."], "peso": 8 },
+    { "id": "C2.5", "descripcion": "DELETE /productos/:id", "evidencias": ["..."], "peso": 4 }
+  ]
+}
+```
+
+`10 + 10 + 8 + 8 + 4 = 40 = peso del criterio C2`. Si la suma no cierra, la rúbrica se rechaza con un error que indica el criterio y la discrepancia.
+
+### Migración v1 → v2 (reparto de pesos iguales)
+
+Al migrar un criterio existente al nuevo modelo, el frontend pre-carga un reparto **igual** entre sus subcriterios usando el método del resto mayor (Hamilton), que garantiza que la suma cierre exacto con enteros:
+
+```
+base  = floor(peso_criterio / n)
+resto = peso_criterio - base * n        // 0 <= resto < n
+// los primeros `resto` subcriterios reciben base + 1; el resto, base
+```
+
+Ejemplo: criterio de peso 25 con 3 subcriterios → `base = 8`, `resto = 1` → pesos precargados `[9, 8, 8]` (suma 25). El reparto es un punto de partida **editable**: el docente puede reasignar los pesos a mano siempre que la suma final siga cerrando contra el peso del criterio.
+
+Caso borde: si el criterio tiene más subcriterios que puntos (`peso_criterio < n`), no todos pueden recibir al menos 1 punto — el pre-cargado deja algunos en 0 y la validación exige ajustar antes de guardar. No es un error silencioso: guía al docente a repartir manualmente.
+
+---
+
 ## 🚀 Guía de Uso
 
 ### 1️⃣ Creación Manual
@@ -361,8 +413,11 @@ La IA extrae automáticamente del PDF de la consigna:
 | `criterios[].id`                         | Únicos (C1, C2, ..., Cn)   |
 | `subcriterios[].id`                      | Únicos dentro del criterio |
 | `subcriterios[].evidencias`              | Array no vacío             |
+| `subcriterios[].peso` (solo `schema_version = 2`) | Entre 1 y 100; obligatorio en todos los subcriterios del criterio; `sum(subcriterios[].peso) == criterios[].peso` |
 | `penalizaciones[].descuento_porcentaje`  | Entre 0 y 100              |
 | `condiciones_desaprobacion[].nota_final` | Entre 0 y 100              |
+
+En rúbricas `schema_version = 1` no se exige `peso` en los subcriterios (compatibilidad total con el comportamiento previo).
 
 ---
 
@@ -458,20 +513,56 @@ La IA utiliza este esquema para:
 
 **Resultado:** corrección objetiva, consistente y trazable.
 
+### 🆕 Desglose por subcriterio en la corrección (`schema_version = 2`)
+
+Al corregir una entrega de una rúbrica `schema_version = 2` (con Gemini o con OpenRouter — ambos proveedores comparten el mismo constructor de prompt), la IA:
+
+- Recibe cada subcriterio con su identificador y su peso en puntos, ej. `[C2.1] (10 pts) POST /productos - Crear producto`, además de sus evidencias.
+- Asigna puntaje **por subcriterio**, y el `puntaje_obtenido` del criterio es la suma de sus subcriterios.
+- Devuelve, dentro de cada criterio evaluado, un arreglo `subcriterios_evaluados` con `id`, `puntaje_obtenido`, `puntaje_maximo`, `estado` (`OK`/`WARNING`/`ERROR`) y `feedback`.
+
+```json
+{
+  "criterios": [
+    {
+      "id": "C2",
+      "nombre": "Endpoints CRUD",
+      "puntaje_obtenido": 36,
+      "puntaje_maximo": 40,
+      "estado": "OK",
+      "feedback": "Todos los endpoints implementados correctamente.",
+      "subcriterios_evaluados": [
+        { "id": "C2.1", "puntaje_obtenido": 10, "puntaje_maximo": 10, "estado": "OK", "feedback": "..." },
+        { "id": "C2.2", "puntaje_obtenido": 10, "puntaje_maximo": 10, "estado": "OK", "feedback": "..." },
+        { "id": "C2.3", "puntaje_obtenido": 8, "puntaje_maximo": 8, "estado": "OK", "feedback": "..." },
+        { "id": "C2.4", "puntaje_obtenido": 8, "puntaje_maximo": 8, "estado": "OK", "feedback": "..." },
+        { "id": "C2.5", "puntaje_obtenido": 0, "puntaje_maximo": 4, "estado": "ERROR", "feedback": "No implementa DELETE." }
+      ]
+    }
+  ]
+}
+```
+
+- `subcriterios_evaluados` se persiste dentro de cada criterio en la columna JSONB `criterios_json` de la corrección — **sin migración de tabla**.
+- La nota final **no cambia** por el desglose: sigue calculándose como la suma de `puntaje_obtenido` de los criterios; los subcriterios solo desglosan, no alteran el cálculo.
+- Rúbricas `schema_version = 1`, o cualquier respuesta que omita el campo, siguen parseando y mostrándose exactamente igual que antes — `subcriterios_evaluados` es opcional en todo el pipeline (schema de IA, persistencia y frontend) y su ausencia nunca es un error.
+
 ---
 
 ## 📌 Resumen Rápido
 
-- **Rúbrica** = Título + Metadata + Criterios + Penalizaciones + Condiciones
+- **Rúbrica** = Título + Metadata + Criterios + Penalizaciones + Condiciones + `schema_version`
 - **Criterio** = Nombre + Peso + Subcriterios
-- **Subcriterio** = Descripción + Evidencias (checklist para la IA)
+- **Subcriterio** = Descripción + Evidencias (checklist para la IA) + Peso opcional (`schema_version = 2`)
 
-✅ Suma de pesos = 100  
+✅ Suma de pesos de criterios = 100  
+✅ En `schema_version = 2`: suma de pesos de subcriterios = peso del criterio  
 ✅ Evidencias claras y verificables  
-✅ Instrucciones de puntuación opcionales pero recomendadas
+✅ Instrucciones de puntuación opcionales pero recomendadas  
+✅ Rúbricas `schema_version = 1` siguen funcionando exactamente igual que antes
 
 ---
 
-**Versión:** 1.0  
-**Última actualización:** Febrero 2026  
+**Versión:** 2.0  
+**Última actualización:** Julio 2026 — peso por subcriterio y `schema_version` (ver `openspec/changes/archive/*-peso-por-subcriterio/`)  
 **Proyecto:** Active-IA
