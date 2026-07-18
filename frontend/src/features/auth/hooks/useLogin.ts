@@ -11,6 +11,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { AxiosError } from 'axios';
 import { login } from '../services/auth-service';
 import type { LoginRequest, LoginResponse } from '@/shared/types';
 import { getErrorMessage } from '@/shared/types';
@@ -65,9 +66,21 @@ export function useLogin() {
     },
 
     onError: (error) => {
-      // Error handling is done by api-client interceptor
-      // But we can show additional context if needed
-      const message = getErrorMessage(error);
+      // getErrorMessage sabe extraer `detail` (string o array) del CUERPO de la
+      // respuesta; le pasamos `error.response.data`, no el AxiosError crudo (cuyo
+      // `.message` sería "Request failed with status code 401").
+      const responseData =
+        error instanceof AxiosError ? error.response?.data : undefined;
+      const message = getErrorMessage(responseData ?? error);
+
+      // ERR-004: para el 401 de credenciales el interceptor global ya NO notifica
+      // (lo deja pasar), así que lo surfaceamos acá con el mensaje real del backend.
+      // El resto de los estados (403 cuenta bloqueada, 422, 5xx, red) los notifica
+      // el interceptor, así que NO duplicamos el toast.
+      if (error instanceof AxiosError && error.response?.status === 401) {
+        toast.error(message);
+      }
+
       console.error('[Login Error]', message);
     },
   });
