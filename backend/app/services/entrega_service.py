@@ -650,8 +650,10 @@ class EntregaService:
             HTTPException 404: Entrega not found.
             HTTPException 400: Content not available.
         """
-        # Get entrega
-        entrega = await self.entrega_repo.get_by_id(entrega_id)
+        # Get entrega. load_contenido=True: este endpoint devuelve el contenido crudo
+        # (contenido_consolidado o pdf_contenido_b64), columnas deferidas por
+        # PERF-002/PERF-006 → hay que cargarlas explícitamente con undefer acá.
+        entrega = await self.entrega_repo.get_by_id(entrega_id, load_contenido=True)
         if not entrega:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

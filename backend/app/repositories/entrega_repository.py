@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, undefer
 
 from app.models.comision import Comision
 from app.models.entrega import Entrega
@@ -43,41 +43,61 @@ class EntregaRepository:
         max_updated_at, count = result.one()
         return max_updated_at, count or 0
 
-    async def get_by_id(self, entrega_id: int) -> Entrega | None:
+    async def get_by_id(
+        self, entrega_id: int, *, load_contenido: bool = False
+    ) -> Entrega | None:
         """
         Get entrega by ID.
 
         Args:
             entrega_id: Entrega's database ID.
+            load_contenido: Si True, carga explícitamente las columnas GIGANTES
+                deferidas (contenido_consolidado / pdf_contenido_b64) con undefer().
+                PERF-002/PERF-006: por defecto False para no arrastrarlas; los
+                flujos que SÍ leen el contenido (obtener_contenido) lo piden en True.
 
         Returns:
             Entrega object if found, None otherwise.
         """
-        result = await self.db.execute(
-            select(Entrega).where(Entrega.id == entrega_id)
-        )
+        query = select(Entrega).where(Entrega.id == entrega_id)
+        if load_contenido:
+            query = query.options(
+                undefer(Entrega.contenido_consolidado),
+                undefer(Entrega.pdf_contenido_b64),
+            )
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def get_by_id_with_relations(self, entrega_id: int) -> Entrega | None:
+    async def get_by_id_with_relations(
+        self, entrega_id: int, *, load_contenido: bool = False
+    ) -> Entrega | None:
         """
         Get entrega by ID with all relations loaded.
 
         Args:
             entrega_id: Entrega's database ID.
+            load_contenido: Si True, carga explícitamente las columnas GIGANTES
+                deferidas (contenido_consolidado / pdf_contenido_b64) con undefer().
+                PERF-002/PERF-006: la corrección (que arma el payload para la IA con
+                el contenido) lo pide en True; el detalle de la entrega no lo necesita.
 
         Returns:
             Entrega object with relations if found, None otherwise.
         """
+        options = [
+            selectinload(Entrega.comision).selectinload(Comision.materia),
+            selectinload(Entrega.rubrica),
+            selectinload(Entrega.subido_por),
+            selectinload(Entrega.correccion),
+            selectinload(Entrega.historial),
+        ]
+        if load_contenido:
+            options.extend([
+                undefer(Entrega.contenido_consolidado),
+                undefer(Entrega.pdf_contenido_b64),
+            ])
         result = await self.db.execute(
-            select(Entrega)
-            .options(
-                selectinload(Entrega.comision).selectinload(Comision.materia),
-                selectinload(Entrega.rubrica),
-                selectinload(Entrega.subido_por),
-                selectinload(Entrega.correccion),
-                selectinload(Entrega.historial),
-            )
-            .where(Entrega.id == entrega_id)
+            select(Entrega).options(*options).where(Entrega.id == entrega_id)
         )
         return result.scalar_one_or_none()
 

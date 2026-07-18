@@ -92,9 +92,15 @@ class Correccion(Base, TimestampMixin):
     editado_manualmente: Mapped[bool] = mapped_column(
         default=False,
     )
+    # PERF-006: respuesta cruda de Gemini (JSONB grande). Sólo se ESCRIBE al crear la
+    # corrección; ningún schema de respuesta la serializa, así que no se lee nunca en la
+    # app → deferred=True para que no se arrastre en cada select(Correccion) (listados de
+    # correcciones, PDF, Moodle). Si algún día hace falta leerla, cargar con
+    # undefer(Correccion.raw_response) en esa query puntual.
     raw_response: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB,
         nullable=True,
+        deferred=True,
     )
     corregido_por_id: Mapped[int | None] = mapped_column(
         ForeignKey("usuarios.id"),

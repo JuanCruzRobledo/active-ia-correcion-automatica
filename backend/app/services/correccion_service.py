@@ -150,8 +150,12 @@ class CorreccionService:
             HTTPException 400: Invalid entrega state or missing data.
             HTTPException 502: N8N/Gemini error.
         """
-        # Get entrega with relations
-        entrega = await self.entrega_repo.get_by_id_with_relations(entrega_id)
+        # Get entrega with relations. load_contenido=True: la corrección arma el payload
+        # para la IA leyendo contenido_consolidado / pdf_contenido_b64 (columnas deferidas
+        # por PERF-002/PERF-006), así que hay que cargarlas con undefer en esta query.
+        entrega = await self.entrega_repo.get_by_id_with_relations(
+            entrega_id, load_contenido=True
+        )
         if not entrega:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
