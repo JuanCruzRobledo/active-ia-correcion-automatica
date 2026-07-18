@@ -46,6 +46,7 @@ async def listar_entregas(
     solo_archivadas: bool = Query(False, description="Mostrar solo entregas archivadas"),
     fecha_desde: date | None = Query(None, description="Filtrar desde esta fecha (YYYY-MM-DD, inclusive)"),
     fecha_hasta: date | None = Query(None, description="Filtrar hasta esta fecha (YYYY-MM-DD, inclusive)"),
+    search: str | None = Query(None, description="Buscar por nombre del alumno (parcial, case-insensitive)"),
     page: int = Query(1, ge=1, description="Número de página"),
     per_page: int = Query(20, ge=1, le=100, description="Items por página"),
     current_user: Usuario = Depends(get_current_user),
@@ -80,6 +81,7 @@ async def listar_entregas(
         solo_archivadas=solo_archivadas,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
+        search=search,
         page=page,
         per_page=per_page,
     )

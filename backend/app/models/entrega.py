@@ -130,6 +130,15 @@ class Entrega(Base, TimestampMixin):
             "ix_entregas_created_at",
             "created_at",
         ),
+        # PERF-015: el polling de novedades (EntregaRepository.version) hace
+        # MAX(updated_at)+COUNT(id) sobre entregas cada ~45s por cliente; sin índice
+        # es un scan completo. El TimestampMixin (base.py) NO indexa updated_at —
+        # está COMPARTIDO por muchas tablas, así que el índice se declara SCOPED acá,
+        # solo para entregas (mismo patrón que ix_entregas_created_at).
+        Index(
+            "ix_entregas_updated_at",
+            "updated_at",
+        ),
     )
 
     # Relationships

@@ -111,6 +111,7 @@ class EntregaRepository:
         solo_archivadas: bool = False,
         fecha_desde: date | None = None,
         fecha_hasta: date | None = None,
+        search: str | None = None,
         page: int = 1,
         per_page: int = 20,
     ) -> tuple[list[Entrega], int]:
@@ -125,6 +126,8 @@ class EntregaRepository:
             solo_archivadas: If True, show only archived entregas (overrides include_archivadas).
             fecha_desde: Filter by created_at >= this date (inclusive).
             fecha_hasta: Filter by created_at <= this date (inclusive, end of day).
+            search: PERF-013: filtro por nombre del alumno (ILIKE parcial,
+                case-insensitive). None o cadena vacía/espacios = sin búsqueda.
             page: Page number (1-indexed).
             per_page: Items per page.
 
@@ -157,6 +160,12 @@ class EntregaRepository:
         if fecha_hasta:
             end = datetime(fecha_hasta.year, fecha_hasta.month, fecha_hasta.day, 23, 59, 59)
             conditions.append(Entrega.created_at <= end)
+
+        # PERF-013: búsqueda por nombre del alumno (ILIKE parcial, case-insensitive).
+        # Se suma a la MISMA lista `conditions` que comparten datos y count, así el
+        # total refleja el filtro igual que las filas. Cadena vacía/espacios = sin filtro.
+        if search and search.strip():
+            conditions.append(Entrega.alumno_nombre.ilike(f"%{search.strip()}%"))
 
         # Count total (PERF-002): COUNT(id) con los MISMOS filtros, SIN envolver la
         # query de columnas en un subquery — así el count no arrastra las columnas

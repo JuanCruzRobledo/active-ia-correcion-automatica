@@ -428,6 +428,7 @@ class EntregaService:
         solo_archivadas: bool = False,
         fecha_desde: date | None = None,
         fecha_hasta: date | None = None,
+        search: str | None = None,
         page: int = 1,
         per_page: int = 20,
     ) -> EntregaList:
@@ -442,6 +443,7 @@ class EntregaService:
             solo_archivadas: If True, show only archived entregas.
             fecha_desde: Filter from this date (inclusive).
             fecha_hasta: Filter to this date (inclusive).
+            search: PERF-013: filter by alumno_nombre (partial, case-insensitive).
             page: Page number (1-indexed).
             per_page: Items per page.
 
@@ -456,6 +458,7 @@ class EntregaService:
             solo_archivadas=solo_archivadas,
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
+            search=search,
             page=page,
             per_page=per_page,
         )
