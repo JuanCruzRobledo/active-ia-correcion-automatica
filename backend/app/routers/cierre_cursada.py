@@ -9,6 +9,8 @@
 ADMIN: acceso total. COORDINADOR: solo materias que coordina (verificar_acceso_materia).
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -74,7 +76,12 @@ async def descargar_excel(
     await verificar_acceso_materia(db, current_user, run.materia_id)
 
     materia = await MateriaRepository(db).get_by_id(run.materia_id)
-    data, filename = generar_excel_cierre(materia.nombre if materia else "Materia", run)
+    # PERF-004: render openpyxl (CPU-bound) en un thread para no bloquear el event loop.
+    # `run.alumnos` ya viene eager-loaded (selectinload en get_run), así que el builder
+    # no dispara lazy loads dentro del thread.
+    data, filename = await asyncio.to_thread(
+        generar_excel_cierre, materia.nombre if materia else "Materia", run
+    )
     return StreamingResponse(
         iter([data]),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

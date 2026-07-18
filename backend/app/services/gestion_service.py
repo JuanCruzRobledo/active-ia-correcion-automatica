@@ -267,7 +267,11 @@ class GestionService:
         """
         materia = await self._resolver_curso(materia_id)
         resultado = await self.consultar(usuario, materia_id, filtros, now=now)
-        return self.excel.exportar_gestion(resultado, materia.nombre, agrupar_por=agrupar_por)
+        # PERF-004: el render openpyxl (CPU-bound) corre en un thread para no bloquear el
+        # event loop. `resultado` ya viene materializado (dataclasses simples, sin ORM).
+        return await asyncio.to_thread(
+            self.excel.exportar_gestion, resultado, materia.nombre, agrupar_por=agrupar_por
+        )
 
     async def exportar_pendientes_excel(
         self,
@@ -360,7 +364,11 @@ class GestionService:
                     fecha_entrega=self._fmt_fecha(getattr(s, "timemodified", None)),
                 ))
 
-        return self.excel.exportar_pendientes(pendientes, materia.nombre, agrupar_por=agrupar_por)
+        # PERF-004: render openpyxl (CPU-bound) en un thread. `pendientes` es una lista
+        # plana de EntregaPendiente ya materializada (sin ORM ni relaciones lazy).
+        return await asyncio.to_thread(
+            self.excel.exportar_pendientes, pendientes, materia.nombre, agrupar_por=agrupar_por
+        )
 
     async def _submissions_pendientes(self, token, host, instance_id, alumno_ids, titulo):
         """Submissions pendientes de una rúbrica, con reintentos ante ConnectTimeout

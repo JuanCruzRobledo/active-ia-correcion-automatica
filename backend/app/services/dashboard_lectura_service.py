@@ -7,6 +7,8 @@ Sirve el árbol de selectores (cohorte→cuatrimestre→materia), el gráfico de
 Ref: PLAN_DASHBOARD_GESTORES.md §7, §8 (T7).
 """
 
+import asyncio
+
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -188,8 +190,17 @@ class DashboardLecturaService:
                 {"id": e.id, "tipo": e.tipo.value, "orden": e.orden}
                 for e in (materias[0].examenes or [])
             ])
-        contenido = construir_excel_avance(
-            titulo, conteos, alumnos_por_estado, etiqueta, unidad_actual, corte_examen
+        # PERF-004: render openpyxl (CPU-bound) en un thread para no bloquear el event
+        # loop. `alumnos_por_estado` son AvanceAlumno ya consultados; el builder sólo lee
+        # columnas (sin relaciones lazy), así que no dispara MissingGreenlet en el thread.
+        contenido = await asyncio.to_thread(
+            construir_excel_avance,
+            titulo,
+            conteos,
+            alumnos_por_estado,
+            etiqueta,
+            unidad_actual,
+            corte_examen,
         )
 
         codigo = cohorte.codigo if cohorte else "cohorte"
