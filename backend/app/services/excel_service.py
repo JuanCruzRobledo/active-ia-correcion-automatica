@@ -55,12 +55,13 @@ class ExcelService:
         """
         from fastapi import HTTPException, status
 
-        # Get all entregas for this comision and rubrica
-        entregas_list, _ = await self.entrega_repo.get_all(
+        # PERF-009: traemos TODAS las entregas, sin el viejo tope de per_page=1000 que
+        # truncaba el acta en silencio. Una comisión con más de 1000 entregas exportaba
+        # incompleta. get_all_for_export itera en lotes hasta agotar el conjunto (y sigue
+        # excluyendo las archivadas, igual que get_all).
+        entregas_list = await self.entrega_repo.get_all_for_export(
             comision_id=comision_id,
             rubrica_id=rubrica_id,
-            page=1,
-            per_page=1000,  # Get all
         )
 
         if not entregas_list:

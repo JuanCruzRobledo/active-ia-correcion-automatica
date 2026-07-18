@@ -8,9 +8,11 @@ Uses ReportLab to create professional-looking PDFs with grades, criteria, and fe
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 10
 """
 
+import asyncio
 import io
 import zipfile
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any
 
 from reportlab.lib import colors
@@ -87,7 +89,64 @@ class PDFService:
                 detail=f"Corrección {correccion_id} no encontrada",
             )
 
-        # Generate PDF
+        # PERF-003: materializamos el ORM a un snapshot plano ANTES de entrar al thread
+        # y renderizamos el PDF (reportlab, CPU-bound) vía asyncio.to_thread para no
+        # bloquear el event loop.
+        snapshot = self._snapshot_correccion(correccion)
+        return await asyncio.to_thread(self._render_pdf_bytes, snapshot)
+
+    def _snapshot_correccion(self, correccion: Correccion) -> SimpleNamespace:
+        """PERF-003: aplana una Correccion ORM (+ relaciones ya eager-cargadas) a un
+        snapshot de objetos planos (``SimpleNamespace``), leyendo cada atributo AHORA, en
+        contexto async.
+
+        El snapshot expone exactamente los mismos nombres de atributo que ``_build_pdf_content``
+        consume, así el builder corre sin cambios pero SIN tocar el ORM: puede ejecutarse
+        dentro de ``asyncio.to_thread`` sin riesgo de MissingGreenlet (no hay acceso lazy ni
+        a relaciones ni a columnas dentro del thread).
+        """
+        entrega = correccion.entrega
+        comision = entrega.comision
+        materia = comision.materia
+        rubrica = entrega.rubrica
+        return SimpleNamespace(
+            nota=correccion.nota,
+            condicion_desaprobacion_aplicada=correccion.condicion_desaprobacion_aplicada,
+            nota_antes_penalizaciones=correccion.nota_antes_penalizaciones,
+            penalizaciones_aplicadas=correccion.penalizaciones_aplicadas,
+            criterios_json=correccion.criterios_json,
+            fortalezas=correccion.fortalezas,
+            recomendaciones=correccion.recomendaciones,
+            comentario_general=correccion.comentario_general,
+            editado_manualmente=correccion.editado_manualmente,
+            entrega=SimpleNamespace(
+                alumno_nombre=entrega.alumno_nombre,
+                comision=SimpleNamespace(
+                    nombre=comision.nombre,
+                    anio=comision.anio,
+                    materia=SimpleNamespace(
+                        codigo=materia.codigo,
+                        nombre=materia.nombre,
+                    ),
+                ),
+                rubrica=SimpleNamespace(
+                    titulo=rubrica.titulo,
+                    tipo=rubrica.tipo,
+                    numero=rubrica.numero,
+                    condiciones_desaprobacion_json=rubrica.condiciones_desaprobacion_json,
+                    penalizaciones_json=rubrica.penalizaciones_json,
+                ),
+            ),
+        )
+
+    def _render_pdf_bytes(self, correccion: Any) -> bytes:
+        """PERF-003: parte pura-CPU del render de una devolución (armado del documento
+        reportlab + ``doc.build`` a bytes).
+
+        Recibe un snapshot ya materializado (``_snapshot_correccion``) — no toca el ORM ni
+        la sesión async — por lo que es seguro invocarla dentro de ``asyncio.to_thread``.
+        La salida es byte-idéntica a la del render inline anterior.
+        """
         pdf_buffer = io.BytesIO()
         doc = SimpleDocTemplate(
             pdf_buffer,
@@ -98,13 +157,9 @@ class PDFService:
             bottomMargin=0.75 * inch,
         )
 
-        # Build PDF content
         story = self._build_pdf_content(correccion)
-
-        # Generate PDF
         doc.build(story)
 
-        # Get PDF bytes
         pdf_bytes = pdf_buffer.getvalue()
         pdf_buffer.close()
 
@@ -130,12 +185,11 @@ class PDFService:
         """
         from fastapi import HTTPException, status
 
-        # Get all corrections for this comision and rubrica
-        correcciones_list, total = await self.correccion_repo.get_all(
+        # PERF-009: traemos TODAS las correcciones sin el viejo tope de per_page=1000, que
+        # truncaba el ZIP oficial en silencio (más de 1000 → devoluciones faltantes).
+        correcciones_list = await self.correccion_repo.get_all_for_export(
             comision_id=comision_id,
             rubrica_id=rubrica_id,
-            page=1,
-            per_page=1000,  # Get all
         )
 
         if not correcciones_list:
@@ -144,47 +198,69 @@ class PDFService:
                 detail="No hay correcciones para esta comisión y rúbrica",
             )
 
-        import re
-        import unicodedata
+        # PERF-003: aplanamos cada corrección a un snapshot plano AHORA (contexto async).
+        # Evita el N+1 anterior —el loop re-consultaba get_by_id_with_relations por cada
+        # corrección— y deja el render 100% puro-CPU para el thread (sin acceso lazy).
+        snapshots = [self._snapshot_correccion(c) for c in correcciones_list]
 
-        def _sanitize_part(text: str) -> str:
-            """Strip accents, replace spaces with hyphens, remove invalid filename chars."""
-            # Decompose unicode and strip diacritics
-            text = unicodedata.normalize("NFD", text)
-            text = "".join(c for c in text if unicodedata.category(c) != "Mn")
-            # Replace spaces with hyphens, remove anything not alphanumeric/hyphen/underscore
-            text = re.sub(r"\s+", "-", text)
-            text = re.sub(r"[^a-zA-Z0-9\-_]", "", text)
-            text = re.sub(r"-{2,}", "-", text).strip("-")
-            return text
-
-        # Get rubrica tipo/numero from first correction (same for all)
-        first_correccion = correcciones_list[0]
-        rubrica = first_correccion.entrega.rubrica
+        # Nombre de rúbrica del primer snapshot (igual para todas): sale del fallback.
+        rubrica = snapshots[0].entrega.rubrica
         rubrica_tipo = rubrica.tipo.value if hasattr(rubrica.tipo, "value") else str(rubrica.tipo)
         rubrica_part = f"{rubrica_tipo}-{rubrica.numero}"
 
-        # Create ZIP in memory
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for correccion in correcciones_list:
-                # Generate PDF for this correction
-                pdf_bytes = await self.generar_pdf_devolucion(correccion.id)
-
-                # Build PDF filename: AlumnoNombre-Devolucion-TP-1.pdf
-                alumno_safe = _sanitize_part(correccion.entrega.alumno_nombre)
-                pdf_filename = f"{alumno_safe}-Devolucion-{rubrica_part}.pdf"
-                zip_file.writestr(pdf_filename, pdf_bytes)
-
-        # Get ZIP bytes
-        zip_bytes = zip_buffer.getvalue()
-        zip_buffer.close()
+        # PERF-003: render reportlab de cada PDF + armado del ZIP (CPU-bound) en un thread
+        # para no congelar el event loop con 100+ PDFs.
+        zip_bytes = await asyncio.to_thread(self._build_zip_pdfs_sync, snapshots)
 
         # ZIP filename is built by the frontend (has comision name context)
         # Return a sensible fallback used only if frontend doesn't override it
         zip_filename = f"Devoluciones-{rubrica_part}.zip"
 
         return zip_bytes, zip_filename
+
+    @staticmethod
+    def _sanitize_part(text: str) -> str:
+        """Strip accents, replace spaces with hyphens, remove invalid filename chars."""
+        import re
+        import unicodedata
+
+        # Decompose unicode and strip diacritics
+        text = unicodedata.normalize("NFD", text)
+        text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+        # Replace spaces with hyphens, remove anything not alphanumeric/hyphen/underscore
+        text = re.sub(r"\s+", "-", text)
+        text = re.sub(r"[^a-zA-Z0-9\-_]", "", text)
+        text = re.sub(r"-{2,}", "-", text).strip("-")
+        return text
+
+    def _build_zip_pdfs_sync(self, snapshots: list) -> bytes:
+        """PERF-003: parte pura-CPU del ZIP de devoluciones (render reportlab de cada PDF
+        + armado del ZIP en memoria).
+
+        Recibe SÓLO snapshots ya materializados (``_snapshot_correccion``) — no toca el ORM
+        ni la sesión async —, por lo que corre en un thread vía ``asyncio.to_thread`` sin
+        riesgo de MissingGreenlet. Cada PDF se renderiza con los datos YA cargados; no se
+        re-consulta ninguna corrección por id (se eliminó el N+1).
+        """
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for snap in snapshots:
+                pdf_bytes = self._render_pdf_bytes(snap)
+
+                rubrica = snap.entrega.rubrica
+                rubrica_tipo = (
+                    rubrica.tipo.value if hasattr(rubrica.tipo, "value") else str(rubrica.tipo)
+                )
+                rubrica_part = f"{rubrica_tipo}-{rubrica.numero}"
+
+                # Build PDF filename: AlumnoNombre-Devolucion-TP-1.pdf
+                alumno_safe = self._sanitize_part(snap.entrega.alumno_nombre)
+                pdf_filename = f"{alumno_safe}-Devolucion-{rubrica_part}.pdf"
+                zip_file.writestr(pdf_filename, pdf_bytes)
+
+        zip_bytes = zip_buffer.getvalue()
+        zip_buffer.close()
+        return zip_bytes
 
     async def generar_zip_pdfs_seleccionados(
         self,
@@ -203,8 +279,6 @@ class PDFService:
             HTTPException 404: None of the requested entregas are CORREGIDA.
         """
         from fastapi import HTTPException, status
-        import re
-        import unicodedata
 
         correcciones_list = await self.correccion_repo.get_by_entrega_ids_corregidas(entrega_ids)
 
@@ -214,29 +288,15 @@ class PDFService:
                 detail="Ninguna de las entregas seleccionadas tiene estado CORREGIDA",
             )
 
-        def _sanitize_part(text: str) -> str:
-            text = unicodedata.normalize("NFD", text)
-            text = "".join(c for c in text if unicodedata.category(c) != "Mn")
-            text = re.sub(r"\s+", "-", text)
-            text = re.sub(r"[^a-zA-Z0-9\-_]", "", text)
-            text = re.sub(r"-{2,}", "-", text).strip("-")
-            return text
+        # PERF-003: mismo patrón que generar_zip_pdfs. Snapshot AHORA (async), sin re-consultar
+        # por id (se eliminó el N+1), y render + ZIP puro-CPU en un thread.
+        snapshots = [self._snapshot_correccion(c) for c in correcciones_list]
 
-        first = correcciones_list[0]
-        rubrica = first.entrega.rubrica
+        rubrica = snapshots[0].entrega.rubrica
         rubrica_tipo = rubrica.tipo.value if hasattr(rubrica.tipo, "value") else str(rubrica.tipo)
         rubrica_part = f"{rubrica_tipo}-{rubrica.numero}"
 
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-            for correccion in correcciones_list:
-                pdf_bytes = await self.generar_pdf_devolucion(correccion.id)
-                alumno_safe = _sanitize_part(correccion.entrega.alumno_nombre)
-                pdf_filename = f"{alumno_safe}-Devolucion-{rubrica_part}.pdf"
-                zip_file.writestr(pdf_filename, pdf_bytes)
-
-        zip_bytes = zip_buffer.getvalue()
-        zip_buffer.close()
+        zip_bytes = await asyncio.to_thread(self._build_zip_pdfs_sync, snapshots)
         return zip_bytes, f"Devoluciones-Seleccionados-{rubrica_part}.zip"
 
     def _build_pdf_content(self, correccion: Correccion) -> list:

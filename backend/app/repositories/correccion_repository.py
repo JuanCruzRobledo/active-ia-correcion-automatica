@@ -190,6 +190,48 @@ class CorreccionRepository:
 
         return correcciones, total
 
+    async def get_all_for_export(
+        self,
+        *,
+        comision_id: int | None = None,
+        rubrica_id: int | None = None,
+        batch_size: int = 500,
+    ) -> list[Correccion]:
+        """PERF-009: devuelve TODAS las correcciones que matchean el filtro, SIN el tope
+        de ``per_page`` de ``get_all``.
+
+        El ZIP de devoluciones es un artefacto OFICIAL: debe ser COMPLETO. Con
+        ``get_all(per_page=1000)`` cualquier comisión con más de 1000 correcciones salía
+        truncada en silencio. Acá iteramos en lotes reutilizando ``get_all`` (mismos
+        filtros y eager loads ya testeados) hasta agotar el conjunto, así el resultado
+        refleja el total real (si hay 1500, trae 1500).
+
+        Args:
+            comision_id: Filtra por comisión (vía entrega).
+            rubrica_id: Filtra por rúbrica (vía entrega).
+            batch_size: Tamaño de lote por página. Parametrizable para poder ejercitar la
+                iteración multi-página en tests sin sembrar miles de filas.
+
+        Returns:
+            Lista COMPLETA de correcciones con relaciones eager cargadas.
+        """
+        todas: list[Correccion] = []
+        page = 1
+        while True:
+            lote, _ = await self.get_all(
+                comision_id=comision_id,
+                rubrica_id=rubrica_id,
+                page=page,
+                per_page=batch_size,
+            )
+            if not lote:
+                break
+            todas.extend(lote)
+            if len(lote) < batch_size:
+                break
+            page += 1
+        return todas
+
     async def exists_by_entrega_id(self, entrega_id: int) -> bool:
         """
         Check if a correccion exists for a given entrega.

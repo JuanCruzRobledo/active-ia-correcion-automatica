@@ -198,6 +198,48 @@ class EntregaRepository:
 
         return entregas, total
 
+    async def get_all_for_export(
+        self,
+        *,
+        comision_id: int | None = None,
+        rubrica_id: int | None = None,
+        batch_size: int = 500,
+    ) -> list[Entrega]:
+        """PERF-009: devuelve TODAS las entregas que matchean el filtro, SIN el tope de
+        ``per_page`` de ``get_all``.
+
+        El Excel de notas es un acta OFICIAL de calificaciones: debe ser COMPLETO. Con
+        ``get_all(per_page=1000)`` una comisión con más de 1000 entregas salía truncada en
+        silencio. Acá iteramos en lotes reutilizando ``get_all`` (que ya excluye las
+        archivadas por defecto y comparte los filtros/eager loads testeados) hasta agotar
+        el conjunto, así el acta refleja el total real (si hay 1500, trae 1500).
+
+        Args:
+            comision_id: Filtra por comisión.
+            rubrica_id: Filtra por rúbrica.
+            batch_size: Tamaño de lote por página. Parametrizable para ejercitar la
+                iteración multi-página en tests sin sembrar miles de filas.
+
+        Returns:
+            Lista COMPLETA de entregas (no archivadas) con relaciones eager cargadas.
+        """
+        todas: list[Entrega] = []
+        page = 1
+        while True:
+            lote, _ = await self.get_all(
+                comision_id=comision_id,
+                rubrica_id=rubrica_id,
+                page=page,
+                per_page=batch_size,
+            )
+            if not lote:
+                break
+            todas.extend(lote)
+            if len(lote) < batch_size:
+                break
+            page += 1
+        return todas
+
     async def get_by_rubrica_alumno(
         self,
         rubrica_id: int,
