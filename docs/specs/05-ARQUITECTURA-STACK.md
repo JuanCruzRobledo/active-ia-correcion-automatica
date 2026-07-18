@@ -1,5 +1,7 @@
 # 05 - Arquitectura y Stack Tecnológico
 
+> ⚠️ **Sección/spec parcialmente obsoleta:** la integración de IA ya NO usa N8N. La corrección es nativa en el backend (`backend/app/integrations/`: `ia_provider.py` rutea a `gemini_correction_client.py` / `openrouter_client.py`, llamada HTTP directa a Gemini Studio / OpenRouter). Las menciones a N8N a continuación son históricas.
+
 ---
 
 ## 1. Resumen del Stack
@@ -10,7 +12,7 @@
 | **Backend** | Python 3.11 + FastAPI |
 | **Base de Datos** | PostgreSQL 15+ |
 | **ORM** | SQLAlchemy 2.0 + Alembic |
-| **Integración IA** | N8N + Google Gemini API |
+| **Integración IA** | Llamada HTTP directa del backend a Gemini Studio / OpenRouter (sin N8N) |
 | **PDFs** | ReportLab |
 | **Contenedores** | Docker + Docker Compose |
 | **Servidor Web** | Nginx |
@@ -95,10 +97,10 @@ frontend/
 |----------|-----------|
 | **python-jose[cryptography]** | Generación y validación de JWT |
 | **passlib[bcrypt]** | Hash de contraseñas con bcrypt |
-| **cryptography** | Encriptación AES-256 para API Keys |
+| **cryptography** | Encriptación Fernet (AES-128-CBC + HMAC-SHA256) para API Keys |
 | **python-multipart** | Manejo de uploads de archivos |
 | **aiofiles** | Operaciones de archivo asíncronas |
-| **httpx** | Cliente HTTP async para llamadas a N8N |
+| **httpx** | Cliente HTTP async para llamadas directas a los proveedores de IA (Gemini Studio / OpenRouter) |
 | **reportlab** | Generación de PDFs |
 | **openpyxl** | Generación de archivos Excel |
 | **python-dotenv** | Variables de entorno |
@@ -372,7 +374,7 @@ Retornar: {
 
 | Aspecto | Especificación |
 |---------|----------------|
-| **Modelo** | gemini-2.0-flash (o versión disponible) |
+| **Modelo** | gemini-3.5-flash (`settings.GEMINI_MODEL`) |
 | **API** | generativelanguage.googleapis.com |
 | **Autenticación** | API Key por usuario (almacenada encriptada) |
 | **Límites** | Según cuota del usuario |
@@ -739,24 +741,25 @@ server {
 4. Backend recupera:
    - Contenido consolidado de la entrega
    - Rúbrica con criterios
-   - API Key Gemini del usuario (desencriptada)
+   - API Key del proveedor del usuario (desencriptada con Fernet)
    │
    ▼
-5. Backend envía POST a N8N webhook con:
+5. Backend rutea con ia_provider.py según usuario.correction_provider
+   y llama directo por HTTP al proveedor (gemini_correction_client /
+   openrouter_client) con:
    {
      codigo: "...",
-     rubrica: {...},
-     api_key: "AIza..."
+     rubrica: {...}
    }
    │
    ▼
-6. N8N construye prompt y llama a Gemini API
+6. El proveedor de IA (Gemini Studio / OpenRouter) construye el prompt y evalúa
    │
    ▼
-7. Gemini procesa y retorna evaluación
+7. El proveedor procesa y retorna evaluación (JSON estricto)
    │
    ▼
-8. N8N parsea respuesta y retorna JSON a Backend
+8. El cliente de integración parsea la respuesta y la devuelve al Backend
    │
    ▼
 9. Backend almacena corrección en PostgreSQL
@@ -819,7 +822,7 @@ DATABASE_URL=postgresql+asyncpg://user:password@host:5432/activeai
 SECRET_KEY=tu-clave-secreta-de-256-bits-minimo
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_DAYS=7
-ENCRYPTION_KEY=clave-para-aes-256-encriptacion
+ENCRYPTION_KEY=clave-fernet-generada-con-Fernet.generate_key  # 44 chars base64 url-safe
 
 # N8N
 N8N_WEBHOOK_URL=http://n8n:5678/webhook
@@ -866,7 +869,7 @@ N8N_PASSWORD=tu-password-n8n
 | **ORM** | SQLAlchemy 2.0 + Alembic | Maduro, flexible, migraciones robustas |
 | **Base de datos** | PostgreSQL 15+ | Relacional robusto, JSONB, escalable |
 | **Autenticación** | JWT con python-jose | Estándar, stateless, flexible |
-| **Integración IA** | N8N → Gemini | Prompts editables sin código |
+| **Integración IA** | Backend → Gemini Studio / OpenRouter (HTTP directo) | Corrección nativa, sin intermediario |
 | **PDFs** | ReportLab | Librería Python madura, control total |
 | **Contenedores** | Docker Compose | Entorno reproducible, fácil despliegue |
 | **Servidor web** | Nginx | Proxy reverso eficiente, sirve estáticos |

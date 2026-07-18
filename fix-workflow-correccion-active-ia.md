@@ -1,5 +1,7 @@
 # Propuesta de fix — workflow de corrección de código
 
+> 📜 **HISTÓRICO / OBSOLETO — N8N fue removido.** Este documento pertenece a la etapa en que la corrección pasaba por N8N. Hoy la corrección/generación con IA es nativa en el backend (`backend/app/integrations/`: `ia_provider.py` → `gemini_correction_client.py` / `openrouter_client.py`, llamada HTTP directa). Se conserva solo como registro; NO refleja la arquitectura actual y sus pasos/pendientes de N8N ya no aplican.
+
 > Estado: **APLICADO AL ARCHIVO VERSIONADO** (junio 2026). El fix (evidencias +
 > `instrucciones_puntuacion` + metadata) ya está en
 > `n8n/workflows/correccion-workflow.json`. **FALTA re-importar a la instancia de
@@ -106,6 +108,6 @@ python scripts/simular_correccion.py --rubrica rub.json --codigo entrega.txt \
 3. ⬜ **Re-importar manualmente** el workflow en la instancia de n8n (el MCP no puede
    hacerlo). El fix NO surte efecto en producción hasta importar. OJO: en la instancia
    todos los flujos están en UN workflow ("Correcion Automatica"); reemplazar solo el
-   nodo "Construir Body Gemini", no pisar los demás.
+   nodo "Construir Body Gemini", no pisar los demás. (N/A — N8N removido)
 4. ⬜ Probar con `scripts/simular_correccion.py` sobre una entrega de referencia y
    comparar contra la corrección real de n8n.

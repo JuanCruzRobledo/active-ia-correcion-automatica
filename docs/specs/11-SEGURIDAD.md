@@ -1,5 +1,7 @@
 # 11 - Seguridad
 
+> ⚠️ **Sección/spec parcialmente obsoleta:** la integración de IA ya NO usa N8N. La corrección es nativa en el backend (`backend/app/integrations/`: `ia_provider.py` rutea a `gemini_correction_client.py` / `openrouter_client.py`, llamada HTTP directa a Gemini Studio / OpenRouter). Las menciones a N8N / webhooks entrantes a continuación son históricas.
+
 ---
 
 ## 1. Resumen de Seguridad
@@ -10,7 +12,7 @@
 | **Passwords** | bcrypt hash + política (8+ chars, 1 número) |
 | **Primer login** | Forzar cambio de password temporal |
 | **Bloqueo cuenta** | 5 intentos fallidos → 15 min bloqueado |
-| **Encriptación** | AES-256 para API Keys Gemini |
+| **Encriptación** | Fernet (AES-128-CBC + HMAC-SHA256) para API Keys de IA |
 | **Rate Limiting** | Por IP y por usuario |
 | **Auditoría** | Log de acciones críticas |
 | **Uploads** | Validación extensión + MIME + tamaño |
@@ -482,9 +484,9 @@ class User(Base):
 | Dato | Método | Ubicación |
 |------|--------|-----------|
 | **Contraseñas** | bcrypt hash | `password_hash` |
-| **API Keys Gemini** | AES-256-CBC | `gemini_api_key_encrypted` |
+| **API Keys de IA** | Fernet (AES-128-CBC + HMAC-SHA256) | `gemini_api_key_encrypted` |
 
-### 5.2 Encriptación AES-256
+### 5.2 Encriptación Fernet (AES-128-CBC + HMAC-SHA256)
 
 ```python
 # app/core/encryption.py
@@ -544,7 +546,7 @@ print(f"ENCRYPTION_KEY={key.decode()}")
 # ENCRYPTION_KEY=ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg=
 ```
 
-**Importante:** La `ENCRYPTION_KEY` debe:
+**Importante:** La `ENCRYPTION_KEY` es una **clave Fernet**: 32 bytes aleatorios codificados en base64 url-safe = **44 caracteres**, generada con `Fernet.generate_key()`. Debe:
 - Almacenarse en variables de entorno (nunca en código)
 - Ser única por ambiente (dev, staging, prod)
 - Tener backup seguro (si se pierde, las API Keys no se pueden recuperar)
@@ -1128,7 +1130,7 @@ CORS_ORIGINS=["http://localhost:3000"]
 | **Passwords** | bcrypt + mínimo 8 chars + 1 número |
 | **Primer login** | Forzar cambio de password temporal |
 | **Bloqueo** | 5 intentos → 15 min bloqueo automático |
-| **Encriptación** | AES-256 (Fernet) solo para API Keys |
+| **Encriptación** | Fernet (AES-128-CBC + HMAC-SHA256) solo para API Keys |
 | **Auditoría** | Log de acciones críticas |
 | **Uploads** | Validar extensión + MIME + tamaño (100MB) |
 | **Webhooks** | Header X-Webhook-Secret + red interna |

@@ -1,5 +1,7 @@
 # 14. Glosario y Referencias
 
+> ⚠️ **Sección/spec parcialmente obsoleta:** la integración de IA ya NO usa N8N. La corrección es nativa en el backend (`backend/app/integrations/`: `ia_provider.py` rutea a `gemini_correction_client.py` / `openrouter_client.py`, llamada HTTP directa a Gemini Studio / OpenRouter). Las menciones a N8N a continuación son históricas.
+
 ## Introducción
 
 Este documento proporciona definiciones de términos técnicos utilizados en la especificación del sistema de corrección automática, así como referencias a documentación externa relevante para el desarrollo del proyecto.
@@ -88,7 +90,7 @@ Archivo de texto que contiene instrucciones para construir una imagen Docker.
 ### E
 
 **Encriptación**
-Proceso de convertir datos legibles en formato cifrado. En este proyecto se usa AES-256/Fernet para encriptar API Keys de Gemini.
+Proceso de convertir datos legibles en formato cifrado. En este proyecto se usa Fernet (AES-128-CBC + HMAC-SHA256) para encriptar las API Keys de IA.
 
 **Entrega (Submission)**
 Archivo ZIP subido por un tutor que contiene el código de un alumno para ser corregido.
@@ -105,7 +107,7 @@ Herramienta de linting para JavaScript/TypeScript que identifica problemas de c�
 Framework web moderno de Python para construir APIs REST de alto rendimiento con validación automática de datos.
 
 **Fernet**
-Esquema de encriptación simétrica de Python (parte de cryptography) que implementa AES-256 en modo CBC.
+Esquema de encriptación simétrica de Python (parte de cryptography) que implementa AES-128 en modo CBC con autenticación HMAC-SHA256. Es el mecanismo usado para encriptar las API Keys de IA.
 
 **Frontend**
 Capa de presentación de la aplicación que corre en el navegador del usuario. Implementada con React y TypeScript.
@@ -116,7 +118,7 @@ Lista de aspectos positivos identificados por la IA en el código del alumno dur
 ### G
 
 **Gemini**
-Modelo de inteligencia artificial de Google utilizado para la corrección automática de código. Específicamente se usa `gemini-2.0-flash`.
+Modelo de inteligencia artificial de Google utilizado para la corrección automática de código. Específicamente se usa `gemini-3.5-flash` (`settings.GEMINI_MODEL`) en Gemini Studio y `google/gemini-3.5-flash` (`settings.OPENROUTER_MODEL`) vía OpenRouter.
 
 **Gzip**
 Algoritmo de compresión utilizado por Nginx para reducir el tamaño de archivos transferidos al navegador.
@@ -178,8 +180,8 @@ Técnica de Docker que usa múltiples etapas en un Dockerfile para optimizar el 
 
 ### N
 
-**N8N**
-Plataforma de automatización de workflows de código abierto. Actúa como intermediario entre el backend y Google Gemini.
+**N8N** *(histórico)*
+Plataforma de automatización de workflows de código abierto. **Ya NO se usa:** históricamente actuaba como intermediario entre el backend y Google Gemini; hoy el backend llama directo al proveedor de IA (`app/integrations/`).
 
 **Nginx**
 Servidor web y proxy reverso de alto rendimiento. Usado para servir el frontend y como proxy al backend.
@@ -318,10 +320,10 @@ Mecanismo de persistencia de datos en Docker que sobrevive al ciclo de vida de l
 Estándares internacionales para hacer contenido web accesible. Este proyecto cumple WCAG 2.1 nivel AA.
 
 **Webhook**
-Endpoint HTTP que recibe notificaciones automáticas cuando ocurre un evento. N8N expone webhooks para corrección.
+Endpoint HTTP que recibe notificaciones automáticas cuando ocurre un evento. *(Histórico: N8N exponía webhooks para corrección; hoy la corrección es una llamada HTTP saliente directa del backend al proveedor de IA.)*
 
 **Workflow**
-Flujo de trabajo automatizado en N8N que define una secuencia de pasos para completar una tarea.
+Flujo de trabajo automatizado en N8N que define una secuencia de pasos para completar una tarea. *(Histórico: los workflows de corrección/generación ya no existen; esa lógica vive en el backend.)*
 
 ### X
 
@@ -653,8 +655,8 @@ Esta especificación está dividida en 14 documentos. A continuación, la refere
 ### Fase 6: Integraciones y Seguridad
 
 10. **[10-INTEGRACIONES.md](./10-INTEGRACIONES.md)**
-    - Integración con Google Gemini
-    - Workflows de N8N
+    - Integración con Google Gemini Studio / OpenRouter (HTTP directo)
+    - Ruteo de proveedor y clientes de IA en el backend
     - Prompts de IA
     - Manejo de errores
 

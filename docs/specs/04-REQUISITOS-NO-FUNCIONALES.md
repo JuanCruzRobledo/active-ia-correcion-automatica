@@ -1,5 +1,7 @@
 # 04 - Requisitos No Funcionales
 
+> ⚠️ **Sección/spec parcialmente obsoleta:** la integración de IA ya NO usa N8N. La corrección es nativa en el backend (`backend/app/integrations/`: `ia_provider.py` rutea a `gemini_correction_client.py` / `openrouter_client.py`, llamada HTTP directa a Gemini Studio / OpenRouter). Las menciones a N8N a continuación son históricas.
+
 ---
 
 ## 1. Resumen
@@ -88,7 +90,7 @@ Este documento define los requisitos no funcionales del sistema Active-IA, inclu
 | Dato Sensible | Protección |
 |---------------|------------|
 | **Contraseñas** | Hash bcrypt, nunca en texto plano, no en logs ni respuestas |
-| **API Keys Gemini** | Encriptación AES-256-CBC antes de almacenar |
+| **API Keys de IA** | Encriptación Fernet (AES-128-CBC + HMAC-SHA256) antes de almacenar |
 | **Tokens JWT** | No almacenar en servidor, solo validar firma |
 | **Archivos de entregas** | Acceso solo con autenticación válida y permisos |
 
@@ -97,15 +99,14 @@ Este documento define los requisitos no funcionales del sistema Active-IA, inclu
 ```
 Proceso de almacenamiento:
 1. Usuario ingresa API Key
-2. Sistema valida con llamada de prueba a Gemini
+2. Sistema valida con llamada de prueba al proveedor de IA
 3. Si válida:
-   a. Genera IV aleatorio (16 bytes)
-   b. Encripta con AES-256-CBC usando clave maestra del servidor
-   c. Almacena: IV + datos encriptados (base64)
+   a. Encripta con Fernet (AES-128-CBC + HMAC-SHA256) usando ENCRYPTION_KEY
+   b. Fernet genera internamente el IV y el token autenticado (base64 url-safe)
+   c. Almacena el token Fernet resultante
 4. Para usar:
-   a. Extrae IV y datos encriptados
-   b. Desencripta con clave maestra
-   c. Usa API Key en memoria (nunca en logs)
+   a. Desencripta el token con la ENCRYPTION_KEY (Fernet valida el HMAC)
+   b. Usa la API Key en memoria (nunca en logs)
 ```
 
 ### 3.4 Rate Limiting
@@ -264,7 +265,7 @@ El sistema opera en un modelo **híbrido**:
 | Escenario | Comportamiento |
 |-----------|----------------|
 | **Timeout de IA** | Reintentar 1 vez, luego marcar como ERROR con mensaje descriptivo |
-| **Error de N8N** | Registrar error, marcar entrega como ERROR, notificar al usuario |
+| **Error del proveedor de IA** | Registrar error, marcar entrega como ERROR, notificar al usuario (código histórico `N8N_ERROR`) |
 | **Fallo en carga masiva** | Continuar con las demás entregas, reportar errores al final |
 | **Error de BD** | Mostrar mensaje amigable, registrar error técnico |
 | **Sesión expirada** | Redirigir a login, preservar URL de retorno |
@@ -399,7 +400,7 @@ El sistema opera en un modelo **híbrido**:
 | **Frontend** | 3000 | Sí |
 | **Backend** | 5000 | Sí |
 | **PostgreSQL (si local)** | 5432 | Sí |
-| **N8N** | 5678 | Sí |
+| **N8N** *(histórico, ya no se usa)* | 5678 | — |
 
 ### 8.3 Conexiones Externas
 

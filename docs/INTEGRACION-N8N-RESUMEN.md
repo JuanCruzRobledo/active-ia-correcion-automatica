@@ -1,5 +1,7 @@
 # Integración N8N - Resumen de Implementación
 
+> 📜 **HISTÓRICO / OBSOLETO — N8N fue removido.** Este documento pertenece a la etapa en que la corrección pasaba por N8N. Hoy la corrección/generación con IA es nativa en el backend (`backend/app/integrations/`: `ia_provider.py` → `gemini_correction_client.py` / `openrouter_client.py`, llamada HTTP directa). Se conserva solo como registro; NO refleja la arquitectura actual y sus pasos/pendientes de N8N ya no aplican.
+
 ## ✅ Estado de la Integración
 
 **Fecha:** 2026-02-06
