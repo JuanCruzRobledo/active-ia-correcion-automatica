@@ -11,12 +11,16 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 10
 import re
 import unicodedata
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_any_authenticated
+from app.core.permissions import (
+    filtrar_entregas_accesibles,
+    verificar_acceso_comision_o_materia,
+    verificar_acceso_correccion,
+)
 from app.models.usuario import Usuario
 from app.schemas.entrega import EntregaDescargarPDFsRequest
 from app.services.excel_service import ExcelService
@@ -58,7 +62,8 @@ async def descargar_pdf_correccion(
 
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-01
     """
-    require_any_authenticated(current_user)
+    # SEC-004: el guard va ANTES de generar el PDF de devolución del alumno.
+    await verificar_acceso_correccion(db, current_user, correccion_id)
 
     # Generate PDF
     pdf_service = PDFService(db)
@@ -104,7 +109,8 @@ async def descargar_pdfs_lote(
 
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-02
     """
-    require_any_authenticated(current_user)
+    # SEC-004: el ZIP contiene las devoluciones de toda la comisión.
+    await verificar_acceso_comision_o_materia(db, current_user, comision_id)
 
     pdf_service = PDFService(db)
     zip_bytes, zip_filename = await pdf_service.generar_zip_pdfs(
@@ -139,13 +145,23 @@ async def descargar_pdfs_seleccionados(
 
     Only CORREGIDA entregas are included; others are silently skipped.
 
-    **Authorization:** Any authenticated user
+    **Authorization:** Admin, o tutor/coordinador de las entregas. El ZIP incluye
+    solo las accesibles; las omitidas se listan en el header `X-Entregas-Omitidas`.
     """
-    require_any_authenticated(current_user)
+    # SEC-004: partición. El ZIP se arma solo con las accesibles; los omitidos
+    # viajan en un header (la respuesta es binaria, no hay JSON donde ponerlos).
+    permitidos, denegados = await filtrar_entregas_accesibles(
+        db, current_user, data.entrega_ids
+    )
+    if not permitidos:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés acceso a ninguna de las entregas solicitadas",
+        )
 
     pdf_service = PDFService(db)
     zip_bytes, zip_filename = await pdf_service.generar_zip_pdfs_seleccionados(
-        entrega_ids=data.entrega_ids,
+        entrega_ids=sorted(permitidos),
     )
 
     zip_filename = _ascii_filename(zip_filename)
@@ -153,7 +169,10 @@ async def descargar_pdfs_seleccionados(
     return StreamingResponse(
         iter([zip_bytes]),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+        headers={
+            "Content-Disposition": f'attachment; filename="{zip_filename}"',
+            "X-Entregas-Omitidas": ",".join(str(i) for i in sorted(denegados)),
+        },
     )
 
 
@@ -174,7 +193,8 @@ async def exportar_notas_excel(
 
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-03
     """
-    require_any_authenticated(current_user)
+    # SEC-004: el Excel es el acta OFICIAL de notas completa de la comisión.
+    await verificar_acceso_comision_o_materia(db, current_user, comision_id)
 
     excel_service = ExcelService(db)
     excel_bytes, excel_filename = await excel_service.exportar_notas_excel(

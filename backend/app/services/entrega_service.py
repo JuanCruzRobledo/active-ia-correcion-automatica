@@ -423,6 +423,7 @@ class EntregaService:
         self,
         *,
         comision_id: int | None = None,
+        comisiones_visibles: list[int] | None = None,
         rubrica_id: int | None = None,
         estado: str | None = None,
         include_archivadas: bool = False,
@@ -453,6 +454,7 @@ class EntregaService:
         """
         entregas, total = await self.entrega_repo.get_all(
             comision_id=comision_id,
+            comisiones_visibles=comisiones_visibles,
             rubrica_id=rubrica_id,
             estado=estado,
             include_archivadas=include_archivadas,

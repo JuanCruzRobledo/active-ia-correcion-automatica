@@ -10,7 +10,7 @@ Ref: .claude/rules/backend.md
 """
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Usuario
@@ -513,4 +513,215 @@ async def verificar_acceso_comision(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="No tenés acceso a esta comisión",
         )
+
+
+# =========================================
+# Guards de pertenencia combinados (SEC-001 / SEC-002 / SEC-004)
+# =========================================
+#
+# Los guards de arriba cubren ejes MUTUAMENTE EXCLUYENTES:
+#   verificar_acceso_comision            -> solo ComisionTutor (el coordinador recibe 403)
+#   verificar_acceso_materia_de_comision -> solo CoordinadorMateria (el tutor recibe 403)
+# Los flujos de entregas/correcciones/documentos necesitan la UNION de ambos.
+# No se modifican los existentes: los usan otros routers con su semantica actual.
+
+
+async def verificar_acceso_comision_o_materia(
+    db: AsyncSession, usuario: Usuario, comision_id: int
+) -> None:
+    """Acceso si: ADMIN | tutor asignado a la comision | coordinador de su materia.
+
+    Una sola query: el LEFT JOIN a las dos tablas puente permite distinguir
+    404 (no hay fila de Comision) de 403 (hay comision pero ninguna pertenencia)
+    sin pagar un segundo round-trip.
+
+    Lanza 404 si la comision no existe, 403 si no hay pertenencia.
+    """
+    if usuario.rol == RolEnum.ADMIN:
+        return
+
+    from app.models.comision import Comision, ComisionTutor
+    from app.models.materia import CoordinadorMateria
+
+    result = await db.execute(
+        select(Comision.id, ComisionTutor.id, CoordinadorMateria.id)
+        .select_from(Comision)
+        .outerjoin(
+            ComisionTutor,
+            and_(
+                ComisionTutor.comision_id == Comision.id,
+                ComisionTutor.tutor_id == usuario.id,
+            ),
+        )
+        .outerjoin(
+            CoordinadorMateria,
+            and_(
+                CoordinadorMateria.materia_id == Comision.materia_id,
+                CoordinadorMateria.coordinador_id == usuario.id,
+            ),
+        )
+        .where(Comision.id == comision_id)
+        .limit(1)
+    )
+    fila = result.first()
+    if fila is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Comisión no encontrada",
+        )
+
+    _, es_tutor, es_coordinador = fila
+    if es_tutor is None and es_coordinador is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés acceso a esta comisión",
+        )
+
+
+async def verificar_acceso_entrega(
+    db: AsyncSession, usuario: Usuario, entrega_id: int
+) -> None:
+    """Resuelve Entrega -> comision_id y delega en el guard combinado.
+
+    Selecciona SOLO las columnas de clave: contenido_consolidado y
+    pdf_contenido_b64 son deferred=True (PERF-002/006) y un select(Entrega)
+    arrastraria el codigo fuente del alumno en CADA verificacion de permisos.
+    """
+    if usuario.rol == RolEnum.ADMIN:
+        return
+
+    from app.models.entrega import Entrega
+
+    result = await db.execute(
+        select(Entrega.id, Entrega.comision_id)
+        .where(Entrega.id == entrega_id)
+        .limit(1)
+    )
+    fila = result.first()
+    if fila is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entrega no encontrada",
+        )
+
+    await verificar_acceso_comision_o_materia(db, usuario, fila[1])
+
+
+async def verificar_acceso_correccion(
+    db: AsyncSession, usuario: Usuario, correccion_id: int
+) -> None:
+    """Resuelve Correccion -> Entrega -> comision_id y delega en el guard combinado."""
+    if usuario.rol == RolEnum.ADMIN:
+        return
+
+    from app.models.correccion import Correccion
+    from app.models.entrega import Entrega
+
+    result = await db.execute(
+        select(Correccion.id, Entrega.comision_id)
+        .join(Entrega, Correccion.entrega_id == Entrega.id)
+        .where(Correccion.id == correccion_id)
+        .limit(1)
+    )
+    fila = result.first()
+    if fila is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Corrección no encontrada",
+        )
+
+    await verificar_acceso_comision_o_materia(db, usuario, fila[1])
+
+
+async def filtrar_entregas_accesibles(
+    db: AsyncSession, usuario: Usuario, entrega_ids: list[int]
+) -> tuple[set[int], set[int]]:
+    """Particiona un lote de IDs en (permitidos, denegados) con UNA sola query.
+
+    Los IDs inexistentes caen en denegados a proposito: no distinguir "no existe"
+    de "no tenes acceso" en un lote evita convertir el endpoint en un oraculo de
+    enumeracion de IDs. Los endpoints de recurso unico si distinguen 404 de 403,
+    porque ahi el 404 ya es observable por otras vias.
+    """
+    solicitados = set(entrega_ids)
+    if not solicitados:
+        return set(), set()
+    if usuario.rol == RolEnum.ADMIN:
+        return solicitados, set()
+
+    from app.models.comision import Comision, ComisionTutor
+    from app.models.entrega import Entrega
+    from app.models.materia import CoordinadorMateria
+
+    result = await db.execute(
+        select(Entrega.id)
+        .select_from(Entrega)
+        .join(Comision, Entrega.comision_id == Comision.id)
+        .outerjoin(
+            ComisionTutor,
+            and_(
+                ComisionTutor.comision_id == Comision.id,
+                ComisionTutor.tutor_id == usuario.id,
+            ),
+        )
+        .outerjoin(
+            CoordinadorMateria,
+            and_(
+                CoordinadorMateria.materia_id == Comision.materia_id,
+                CoordinadorMateria.coordinador_id == usuario.id,
+            ),
+        )
+        .where(
+            Entrega.id.in_(solicitados),
+            or_(
+                ComisionTutor.id.is_not(None),
+                CoordinadorMateria.id.is_not(None),
+            ),
+        )
+    )
+    permitidos = set(result.scalars().all())
+    return permitidos, solicitados - permitidos
+
+
+async def comisiones_visibles_para(
+    db: AsyncSession, usuario: Usuario
+) -> list[int] | None:
+    """IDs de comisiones que el usuario puede ver. None = ADMIN, sin filtro.
+
+    Para el scoping de GET /entregas/: ahi un 403 no aplica, hay que FILTRAR.
+    El filtro debe entrar antes del count, para que el total paginado no
+    revele la cantidad global.
+    """
+    if usuario.rol == RolEnum.ADMIN:
+        return None
+
+    from app.models.comision import Comision, ComisionTutor
+    from app.models.materia import CoordinadorMateria
+
+    result = await db.execute(
+        select(Comision.id)
+        .select_from(Comision)
+        .outerjoin(
+            ComisionTutor,
+            and_(
+                ComisionTutor.comision_id == Comision.id,
+                ComisionTutor.tutor_id == usuario.id,
+            ),
+        )
+        .outerjoin(
+            CoordinadorMateria,
+            and_(
+                CoordinadorMateria.materia_id == Comision.materia_id,
+                CoordinadorMateria.coordinador_id == usuario.id,
+            ),
+        )
+        .where(
+            or_(
+                ComisionTutor.id.is_not(None),
+                CoordinadorMateria.id.is_not(None),
+            )
+        )
+        .order_by(Comision.id)
+    )
+    return list(result.scalars().all())
 

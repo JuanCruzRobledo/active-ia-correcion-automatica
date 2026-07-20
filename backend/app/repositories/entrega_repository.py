@@ -105,6 +105,7 @@ class EntregaRepository:
         self,
         *,
         comision_id: int | None = None,
+        comisiones_visibles: list[int] | None = None,
         rubrica_id: int | None = None,
         estado: str | None = None,
         include_archivadas: bool = False,
@@ -140,6 +141,13 @@ class EntregaRepository:
 
         if comision_id is not None:
             conditions.append(Entrega.comision_id == comision_id)
+
+        # SEC-002: scoping por pertenencia. None = ADMIN (sin filtro). Lista vacía =
+        # el usuario no tiene comisiones y no ve nada, que es el comportamiento correcto.
+        # Va a la MISMA lista `conditions` que comparten datos y count, así el total
+        # paginado no revela cuántas entregas hay en todo el sistema.
+        if comisiones_visibles is not None:
+            conditions.append(Entrega.comision_id.in_(comisiones_visibles))
 
         if rubrica_id is not None:
             conditions.append(Entrega.rubrica_id == rubrica_id)
@@ -202,6 +210,7 @@ class EntregaRepository:
         self,
         *,
         comision_id: int | None = None,
+        comisiones_visibles: list[int] | None = None,
         rubrica_id: int | None = None,
         batch_size: int = 500,
     ) -> list[Entrega]:
@@ -228,6 +237,10 @@ class EntregaRepository:
         while True:
             lote, _ = await self.get_all(
                 comision_id=comision_id,
+                # SEC-002: el scoping DEBE propagarse. Este método alimenta el Excel
+                # de notas; sin esto sería una puerta trasera para leer entregas
+                # ajenas salteando el filtro del listado.
+                comisiones_visibles=comisiones_visibles,
                 rubrica_id=rubrica_id,
                 page=page,
                 per_page=batch_size,

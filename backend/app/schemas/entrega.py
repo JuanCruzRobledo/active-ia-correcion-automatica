@@ -360,3 +360,13 @@ class EntregaAccionMasivaResponse(BaseModel):
 
     procesadas: int = Field(description="Cantidad de entregas procesadas")
     ids: list[int] = Field(description="IDs de las entregas procesadas")
+    # SEC-002: el lote se ejecuta SOLO sobre las entregas accesibles. Lo omitido se
+    # informa explícitamente: un borrado que borra menos de lo pedido en silencio es
+    # indistinguible de un bug. Campos con default → contrato aditivo (backend se
+    # despliega antes que el frontend sin romperlo).
+    omitidas: int = Field(
+        default=0, description="Entregas omitidas por falta de permisos"
+    )
+    ids_omitidos: list[int] = Field(
+        default_factory=list, description="IDs omitidos por falta de permisos"
+    )

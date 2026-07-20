@@ -13,7 +13,12 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import require_any_authenticated
+from app.core.permissions import (
+    filtrar_entregas_accesibles,
+    require_any_authenticated,
+    verificar_acceso_correccion,
+    verificar_acceso_entrega,
+)
 from app.integrations import ia_provider
 from app.models.usuario import Usuario
 from app.schemas.moodle_grade import (
@@ -99,9 +104,11 @@ async def corregir_entrega(
 
     **Timeout:** 90 seconds (configurable in N8N)
 
-    **Authorization:** Tutor or Admin with API Key configured
+    **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
     """
-    require_any_authenticated(current_user)
+    # SEC-001: el guard corre ANTES de resolver credenciales de IA. Sin acceso,
+    # ni se toca la API key ni se gasta un token de LLM sobre una entrega ajena.
+    await verificar_acceso_entrega(db, current_user, entrega_id)
 
     key, provider = _resolver_credenciales_ia(current_user)
 
@@ -136,9 +143,11 @@ async def recorregir_entrega(
     - Generates new correction from scratch
     - Entrega goes through PENDIENTE → CORREGIDA again
 
-    **Authorization:** Tutor or Admin with API Key configured
+    **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
     """
-    require_any_authenticated(current_user)
+    # SEC-001 + CRUD-003: recorregir hace hard-delete de la corrección existente.
+    # El guard va primero: sin acceso, no se destruye una corrección ajena.
+    await verificar_acceso_entrega(db, current_user, entrega_id)
 
     key, provider = _resolver_credenciales_ia(current_user)
 
@@ -174,14 +183,28 @@ async def corregir_lote(
     **Limits:**
     - Maximum 50 entregas per batch (validated in schema)
 
-    **Authorization:** Tutor or Admin with API Key configured
+    **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
+    El lote se encola solo sobre las accesibles; las omitidas se informan.
     """
-    require_any_authenticated(current_user)
+    # SEC-001: partición ANTES de encolar. El background task corre después de que
+    # la respuesta ya salió: no tiene request ni usuario para re-validar. Si le
+    # pasáramos IDs ajenos, corregiría (gastando LLM) entregas de otras comisiones
+    # sin que nadie lo revise.
+    permitidos, denegados = await filtrar_entregas_accesibles(
+        db, current_user, data.entrega_ids
+    )
+    if not permitidos:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenés acceso a ninguna de las entregas solicitadas",
+        )
 
     key, provider = _resolver_credenciales_ia(current_user)
 
     service = CorreccionService(db)
-    entrega_ids = await service.encolar_lote(data)
+    entrega_ids = await service.encolar_lote(
+        CorregirLoteRequest(entrega_ids=sorted(permitidos))
+    )
 
     # Schedule background processing — runs after response is sent
     background_tasks.add_task(
@@ -192,10 +215,17 @@ async def corregir_lote(
         provider=provider,
     )
 
+    omitidas = sorted(denegados)
+    sufijo = f" ({len(omitidas)} omitidas por falta de permisos)" if omitidas else ""
     return CorregirLoteAceptadoResponse(
-        mensaje=f"Corrección iniciada para {len(entrega_ids)} entregas. Los estados se actualizarán automáticamente.",
+        mensaje=(
+            f"Corrección iniciada para {len(entrega_ids)} entregas.{sufijo} "
+            "Los estados se actualizarán automáticamente."
+        ),
         total_encoladas=len(entrega_ids),
         entrega_ids=entrega_ids,
+        omitidas=len(omitidas),
+        entrega_ids_omitidos=omitidas,
     )
 
 
@@ -217,9 +247,9 @@ async def obtener_correccion(
     - Corregido por info (nombre, email)
     - All evaluation details (nota, criterios, fortalezas, etc.)
 
-    **Authorization:** Tutor or Admin
+    **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
     """
-    require_any_authenticated(current_user)
+    await verificar_acceso_correccion(db, current_user, correccion_id)
 
     service = CorreccionService(db)
     return await service.obtener_correccion(correccion_id)
@@ -245,9 +275,9 @@ async def obtener_correccion_por_entrega(
     - Correction data if exists
     - 404 if entrega has no correction
 
-    **Authorization:** Tutor or Admin
+    **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
     """
-    require_any_authenticated(current_user)
+    await verificar_acceso_entrega(db, current_user, entrega_id)
 
     service = CorreccionService(db)
     return await service.obtener_por_entrega(entrega_id)
@@ -283,9 +313,11 @@ async def editar_correccion(
     - Fix errors in automatic correction
     - Add personalized feedback
 
-    **Authorization:** Tutor or Admin
+    **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
     """
-    require_any_authenticated(current_user)
+    # SEC-001: sin este guard, un tutor ajeno podía cambiar la NOTA de cualquier
+    # corrección iterando IDs. Era la falla de integridad de calificaciones.
+    await verificar_acceso_correccion(db, current_user, correccion_id)
 
     service = CorreccionService(db)
     return await service.editar_correccion(

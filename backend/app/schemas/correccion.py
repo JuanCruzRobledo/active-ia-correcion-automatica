@@ -280,6 +280,14 @@ class CorregirLoteAceptadoResponse(BaseModel):
     mensaje: str = Field(..., description="Status message for the user")
     total_encoladas: int = Field(..., description="Number of submissions queued for correction")
     entrega_ids: list[int] = Field(..., description="IDs of the queued submissions")
+    # SEC-001: el lote se encola SOLO sobre las entregas accesibles. Lo omitido se
+    # informa (default -> contrato aditivo, backend despliega antes que el frontend).
+    omitidas: int = Field(
+        default=0, description="Entregas omitidas por falta de permisos"
+    )
+    entrega_ids_omitidos: list[int] = Field(
+        default_factory=list, description="IDs omitidos por falta de permisos"
+    )
 
 
 class CorregirGlobalAceptadoResponse(BaseModel):
