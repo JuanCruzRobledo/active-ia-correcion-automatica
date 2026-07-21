@@ -69,6 +69,58 @@ from app.schemas.correccion import (
 from app.services.actividad_service import ActividadService
 
 
+def _techo_de_condicion(rubrica, cd_id) -> int | None:
+    """IA-001: techo (nota_maxima) de una condición de desaprobación, tomado de la
+    RÚBRICA (fuente autoritativa), no del modelo. None si no hay id o no existe en
+    la rúbrica (el modelo pudo alucinar un id)."""
+    if not cd_id:
+        return None
+    for cd in (getattr(rubrica, "condiciones_desaprobacion_json", None) or []):
+        if cd.get("id") == cd_id:
+            return cd.get("nota_maxima")
+    return None
+
+
+def _penalizaciones_validas(rubrica, ids) -> list[str]:
+    """IA-001: filtra las penalizaciones informadas por el modelo a las que existen
+    en la rúbrica (defensa contra ids alucinados). No alteran la nota (ya están en
+    los criterios); son solo auditoría/display."""
+    validos = {p.get("id") for p in (getattr(rubrica, "penalizaciones_json", None) or [])}
+    return [i for i in (ids or []) if i in validos]
+
+
+def _nota_deterministica(criterios_evaluados, gemini_response, rubrica):
+    """IA-001: calcula la nota final en el BACKEND, no confía en la aritmética del
+    modelo. Devuelve (nota_final, nota_antes_penalizaciones, condicion_aplicada,
+    penalizaciones_aplicadas).
+
+    - suma = sum(criterios) (ya refleja las penalizaciones, que el prompt aplica
+      reduciendo el puntaje del criterio afectado).
+    - si el modelo señaló una CD que existe en la rúbrica: nota = min(suma, techo),
+      con techo tomado de la rúbrica; nota_antes = suma (para mostrar el sin-capar).
+    - si no hay CD (o el id es alucinado): nota = suma, nota_antes = None.
+    """
+    from decimal import Decimal as _Dec
+
+    suma = _Dec(str(sum(float(c.puntaje_obtenido) for c in criterios_evaluados)))
+    cd_id = getattr(gemini_response, "condicion_desaprobacion_aplicada", None)
+    techo = _techo_de_condicion(rubrica, cd_id)
+
+    if techo is not None:
+        condicion_aplicada = cd_id
+        nota_antes = suma
+        nota_final = min(suma, _Dec(str(techo)))
+    else:
+        condicion_aplicada = None
+        nota_antes = None
+        nota_final = suma
+
+    penalizaciones = _penalizaciones_validas(
+        rubrica, getattr(gemini_response, "penalizaciones_aplicadas", None)
+    )
+    return nota_final, nota_antes, condicion_aplicada, penalizaciones
+
+
 def _snapshot_de_correccion(
     c: Correccion, reemplazada_por_id: int | None
 ) -> CorreccionHistorial:
@@ -431,17 +483,21 @@ class CorreccionService:
             for i, c in enumerate(gemini_response.criterios)
         ]
 
+        # IA-001: la nota final la calcula el BACKEND determinísticamente
+        # (min(suma, techo) con el techo de la RÚBRICA), no se confía en la
+        # aritmética del modelo ni en gemini_response.nota. El modelo solo identifica
+        # qué condición de desaprobación se cumple.
+        nota_final, nota_antes, condicion_aplicada, penalizaciones = _nota_deterministica(
+            criterios_evaluados, gemini_response, rubrica
+        )
+
         # Create new correction
         correccion_data = CorreccionCreate(
             entrega_id=entrega_id,
-            nota=Decimal(str(gemini_response.nota)),
-            nota_antes_penalizaciones=(
-                Decimal(str(gemini_response.nota_antes_penalizaciones))
-                if gemini_response.nota_antes_penalizaciones is not None
-                else None
-            ),
-            condicion_desaprobacion_aplicada=gemini_response.condicion_desaprobacion_aplicada,
-            penalizaciones_aplicadas=gemini_response.penalizaciones_aplicadas,
+            nota=nota_final,
+            nota_antes_penalizaciones=nota_antes,
+            condicion_desaprobacion_aplicada=condicion_aplicada,
+            penalizaciones_aplicadas=penalizaciones,
             criterios=criterios_evaluados,
             fortalezas=gemini_response.fortalezas,
             recomendaciones=gemini_response.recomendaciones,

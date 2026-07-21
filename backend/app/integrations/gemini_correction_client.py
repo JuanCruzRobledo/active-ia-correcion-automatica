@@ -159,9 +159,11 @@ def _build_condiciones_texto(condiciones: list) -> str:
     texto = "\n## CONDICIONES DE DESAPROBACIÓN AUTOMÁTICA\n"
     for c in condiciones:
         techo = c.get("nota_maxima") or c.get("nota_final") or 0
+        cid = c.get("id", "")
         texto += (
-            f"- Si: {c.get('condicion', '')} → la nota máxima permitida es {techo}. "
-            f"La nota final será min(suma_criterios, {techo}).\n"
+            f'- Si: {c.get("condicion", "")} → devolvé "{cid}" en '
+            f'"condicion_desaprobacion_aplicada". El backend capará la nota a '
+            f"min(suma_criterios, {techo}); NO la recalcules vos por eso.\n"
         )
     return texto
 
@@ -311,6 +313,8 @@ _SCHEMA_CORRECCION_CODIGO = {
         "fortalezas": {"type": "array", "items": {"type": "string"}},
         "recomendaciones": {"type": "array", "items": {"type": "string"}},
         "comentario_general": {"type": "string"},
+        "condicion_desaprobacion_aplicada": {"type": "string"},
+        "penalizaciones_aplicadas": {"type": "array", "items": {"type": "string"}},
     },
     "required": [
         "nota", "criterios", "fortalezas", "recomendaciones", "comentario_general",
@@ -340,6 +344,8 @@ _SCHEMA_CORRECCION_PDF = {
         "fortalezas": {"type": "array", "items": {"type": "string"}},
         "recomendaciones": {"type": "array", "items": {"type": "string"}},
         "comentario_general": {"type": "string"},
+        "condicion_desaprobacion_aplicada": {"type": "string"},
+        "penalizaciones_aplicadas": {"type": "array", "items": {"type": "string"}},
     },
     "required": [
         "nota", "criterios", "fortalezas", "recomendaciones", "comentario_general",
@@ -392,6 +398,8 @@ _SCHEMA_CORRECCION_CODIGO_V2 = {
         "fortalezas": {"type": "array", "items": {"type": "string"}},
         "recomendaciones": {"type": "array", "items": {"type": "string"}},
         "comentario_general": {"type": "string"},
+        "condicion_desaprobacion_aplicada": {"type": "string"},
+        "penalizaciones_aplicadas": {"type": "array", "items": {"type": "string"}},
     },
     "required": [
         "nota", "criterios", "fortalezas", "recomendaciones", "comentario_general",
@@ -426,6 +434,8 @@ _SCHEMA_CORRECCION_PDF_V2 = {
         "fortalezas": {"type": "array", "items": {"type": "string"}},
         "recomendaciones": {"type": "array", "items": {"type": "string"}},
         "comentario_general": {"type": "string"},
+        "condicion_desaprobacion_aplicada": {"type": "string"},
+        "penalizaciones_aplicadas": {"type": "array", "items": {"type": "string"}},
     },
     "required": [
         "nota", "criterios", "fortalezas", "recomendaciones", "comentario_general",
@@ -564,7 +574,9 @@ class GeminiCorrectionClient:
             '  ],\n'
             '  "fortalezas": ["<fortaleza 1>", "<fortaleza 2>"],\n'
             '  "recomendaciones": ["<recomendación 1>", "<recomendación 2>"],\n'
-            '  "comentario_general": "<comentario de 2-3 oraciones>"\n'
+            '  "comentario_general": "<comentario de 2-3 oraciones>",\n'
+            '  "condicion_desaprobacion_aplicada": "<id de la CD que se cumple, ej CD1; OMITÍ este campo si no se cumple ninguna>",\n'
+            '  "penalizaciones_aplicadas": ["<ids de las penalizaciones aplicadas, ej P1; [] si ninguna>"]\n'
             '}}\n\n'
             'IMPORTANTE:\n'
             '- CADA criterio debe tener su ID exacto de la rúbrica\n'
@@ -732,7 +744,9 @@ class GeminiCorrectionClient:
             '  ],\n'
             '  "fortalezas": ["<fortaleza 1>", "<fortaleza 2>"],\n'
             '  "recomendaciones": ["<recomendación 1>", "<recomendación 2>"],\n'
-            '  "comentario_general": "<comentario de 2-3 oraciones>"\n'
+            '  "comentario_general": "<comentario de 2-3 oraciones>",\n'
+            '  "condicion_desaprobacion_aplicada": "<id de la CD que se cumple, ej CD1; OMITÍ este campo si no se cumple ninguna>",\n'
+            '  "penalizaciones_aplicadas": ["<ids de las penalizaciones aplicadas, ej P1; [] si ninguna>"]\n'
             '}}\n\n'
             'IMPORTANTE:\n'
             '- La nota SIEMPRE es la suma exacta de puntaje_obtenido de todos los criterios'

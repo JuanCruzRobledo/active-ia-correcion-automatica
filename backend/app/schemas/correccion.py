@@ -116,19 +116,11 @@ class GeminiResponse(BaseModel):
     recomendaciones: list[str] = Field(default_factory=list, description="Recommendations")
     comentario_general: str = Field(..., description="General feedback comment")
 
-    @field_validator('nota')
-    @classmethod
-    def validate_nota_sum(cls, v, info):
-        """Validate nota matches sum of criteria ONLY when no CD or penalties apply."""
-        has_cd = info.data.get('condicion_desaprobacion_aplicada')
-        has_penalties = info.data.get('penalizaciones_aplicadas')
-        if has_cd or has_penalties:
-            return v
-        if 'criterios' in info.data:
-            suma = sum(c.puntaje_obtenido for c in info.data['criterios'])
-            if abs(v - suma) > 1:
-                return suma
-        return v
+    # IA-008: se eliminó validate_nota_sum. Era código muerto (por el orden de
+    # campos de Pydantic, `criterios` aún no está en info.data cuando corre el
+    # validador de `nota`) y además quedó irrelevante con IA-001: la nota final la
+    # calcula el backend determinísticamente (_nota_deterministica), ignorando la
+    # nota que devuelve el modelo.
 
 
 class CorreccionResponse(BaseModel):

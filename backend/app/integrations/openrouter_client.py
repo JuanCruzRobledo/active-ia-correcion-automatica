@@ -189,7 +189,9 @@ async def corregir(payload: dict) -> dict[str, Any]:
         '  ],\n'
         '  "fortalezas": ["<fortaleza 1>"],\n'
         '  "recomendaciones": ["<recomendación 1>"],\n'
-        '  "comentario_general": "<comentario>"\n'
+        '  "comentario_general": "<comentario>",\n'
+        '  "condicion_desaprobacion_aplicada": "<id de la CD que se cumple, ej CD1; OMITÍ si ninguna>",\n'
+        '  "penalizaciones_aplicadas": ["<ids de penalizaciones aplicadas; [] si ninguna>"]\n'
         '}}'
     )
 
