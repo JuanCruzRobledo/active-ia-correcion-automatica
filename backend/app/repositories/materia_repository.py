@@ -581,6 +581,21 @@ class CoordinadorMateriaRepository:
         await self.db.commit()
         return count
 
+    async def delete_all_for_coordinador(self, coordinador_id: int) -> int:
+        """
+        CRUD-013: borra todas las asignaciones de coordinación de un usuario.
+
+        Se usa al cambiar su rol AWAY de COORDINADOR, para no dejar filas huérfanas
+        (el ex-coordinador seguiría figurando como coordinador de sus materias).
+        """
+        result = await self.db.execute(
+            delete(CoordinadorMateria).where(
+                CoordinadorMateria.coordinador_id == coordinador_id
+            )
+        )
+        await self.db.commit()
+        return result.rowcount
+
     async def delete(self, coordinador_id: int, materia_id: int) -> bool:
         """
         Delete a specific coordinator-materia assignment.

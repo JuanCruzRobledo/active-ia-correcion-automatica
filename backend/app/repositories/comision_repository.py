@@ -554,6 +554,18 @@ class ComisionTutorRepository:
         await self.db.commit()
         return count
 
+    async def delete_all_for_tutor(self, tutor_id: int) -> int:
+        """
+        CRUD-013: borra todas las asignaciones de tutoría de un usuario.
+
+        Se usa al cambiar su rol AWAY de TUTOR, para no dejar filas huérfanas.
+        """
+        result = await self.db.execute(
+            delete(ComisionTutor).where(ComisionTutor.tutor_id == tutor_id)
+        )
+        await self.db.commit()
+        return result.rowcount
+
     async def delete(self, tutor_id: int, comision_id: int) -> bool:
         """
         Delete a specific tutor-comision assignment.

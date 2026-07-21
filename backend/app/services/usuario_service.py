@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import encrypt_api_key, generate_temp_password, hash_password
 from app.models import Usuario
 from app.models.enums import RolEnum, TipoActividadEnum
+from app.repositories.comision_repository import ComisionTutorRepository
+from app.repositories.materia_repository import CoordinadorMateriaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.usuario import (
     MoodleCredentialsResponse,
@@ -40,6 +42,8 @@ class UsuarioService:
         """
         self.db = db
         self.repo = UsuarioRepository(db)
+        self.coord_materia_repo = CoordinadorMateriaRepository(db)
+        self.comision_tutor_repo = ComisionTutorRepository(db)
 
     async def crear_usuario(
         self, data: UsuarioCreate, current_user_id: int | None = None
@@ -183,6 +187,7 @@ class UsuarioService:
             )
 
         # Update only provided fields
+        rol_anterior = user.rol
         if data.nombre is not None:
             user.nombre = data.nombre
         if data.rol is not None:
@@ -192,6 +197,15 @@ class UsuarioService:
             user.email = data.email
 
         updated_user = await self.repo.update(user)
+
+        # CRUD-013: al cambiar el rol, limpiar las asignaciones incompatibles con el
+        # rol nuevo, para no dejar filas huérfanas (un ex-coordinador seguía
+        # figurando como coordinador; un ex-tutor conservaba sus comisiones).
+        if data.rol is not None and data.rol != rol_anterior:
+            if data.rol != RolEnum.COORDINADOR:
+                await self.coord_materia_repo.delete_all_for_coordinador(user_id)
+            if data.rol != RolEnum.TUTOR:
+                await self.comision_tutor_repo.delete_all_for_tutor(user_id)
 
         return UsuarioResponse.model_validate(updated_user)
 
