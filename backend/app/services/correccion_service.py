@@ -115,6 +115,19 @@ def _problemas_respuesta_vs_rubrica(criterios_resp, rubrica) -> list[str]:
     return problemas
 
 
+def _metricas_ia(result) -> dict:
+    """IA-014: extrae el consumo (tokens in/out, modelo, proveedor) de la metadata de
+    la respuesta del LLM, para persistirlo en columnas queryables de la corrección en
+    vez de dejarlo enterrado solo en raw_response (JSONB deferred)."""
+    meta = (result or {}).get("metadata") or {}
+    return {
+        "tokens_entrada": meta.get("tokens_entrada"),
+        "tokens_salida": meta.get("tokens_salida"),
+        "ia_modelo": meta.get("modelo"),
+        "ia_proveedor": meta.get("modo"),
+    }
+
+
 def _truncar_codigo(codigo, limite: int):
     """IA-015: capa el código consolidado a `limite` caracteres antes de mandarlo al
     LLM, con un marcador de corte. None y códigos por debajo del límite pasan igual."""
@@ -605,7 +618,8 @@ class CorreccionService:
             "criterios": criterios_for_json  # Store as JSON structure with float values
         }
 
-        correccion = Correccion(**data_dict)
+        # IA-014: persistir el consumo (tokens/modelo/proveedor) en columnas propias.
+        correccion = Correccion(**data_dict, **_metricas_ia(result))
         created_correccion = await self.correccion_repo.create(correccion)
 
         # Update entrega state to CORREGIDA y limpiar cualquier error previo (item #1).

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from datetime import datetime
 
-from sqlalchemy import ARRAY, Boolean, DateTime, ForeignKey, Numeric, Text
+from sqlalchemy import ARRAY, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -108,6 +108,14 @@ class Correccion(Base, TimestampMixin):
         ForeignKey("usuarios.id"),
         nullable=True,
     )
+
+    # IA-014: consumo de la corrección, en columnas queryables (antes solo vivían en
+    # raw_response.metadata, JSONB deferred, sin agregación posible). Nullable: las
+    # correcciones viejas no los tienen.
+    tokens_entrada: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_salida: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ia_modelo: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ia_proveedor: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Relationships
     entrega: Mapped["Entrega"] = relationship(
