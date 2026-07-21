@@ -11,7 +11,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 6
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -180,6 +180,28 @@ class RubricaRepository:
 
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    async def desactivar_por_materia(self, materia_id: int) -> int:
+        """CRUD-006: desactiva las rúbricas ACTIVAS de una materia (propagación del
+        soft delete). Solo las activas, para que el restore reactive el mismo
+        conjunto. Devuelve cuántas se desactivaron."""
+        result = await self.db.execute(
+            update(Rubrica)
+            .where(Rubrica.materia_id == materia_id, Rubrica.activa == True)  # noqa: E712
+            .values(activa=False)
+        )
+        await self.db.commit()
+        return result.rowcount
+
+    async def reactivar_por_materia(self, materia_id: int) -> int:
+        """CRUD-006: reactiva las rúbricas inactivas de una materia (restore)."""
+        result = await self.db.execute(
+            update(Rubrica)
+            .where(Rubrica.materia_id == materia_id, Rubrica.activa == False)  # noqa: E712
+            .values(activa=True)
+        )
+        await self.db.commit()
+        return result.rowcount
 
     async def get_by_materia_tipo_numero(
         self,

@@ -11,7 +11,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 5
 
 from datetime import datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only, selectinload
 
@@ -281,6 +281,35 @@ class ComisionRepository:
         )
         count = result.scalar() or 0
         return count > 0
+
+    async def desactivar_por_materia(self, materia_id: int) -> int:
+        """
+        CRUD-006: desactiva las comisiones ACTIVAS de una materia (propagación del
+        soft delete). Solo toca las activas para que el restore reactive el mismo
+        conjunto. Devuelve cuántas se desactivaron.
+        """
+        result = await self.db.execute(
+            update(Comision)
+            .where(Comision.materia_id == materia_id, Comision.activa == True)  # noqa: E712
+            .values(activa=False)
+        )
+        await self.db.commit()
+        return result.rowcount
+
+    async def reactivar_por_materia(self, materia_id: int) -> int:
+        """CRUD-006: reactiva las comisiones inactivas de una materia (restore).
+
+        Nota: reactiva TODAS las inactivas de la materia. Si una comisión se había
+        desactivado por su cuenta antes de borrar la materia, el restore también la
+        reactivará (edge case documentado, poco frecuente).
+        """
+        result = await self.db.execute(
+            update(Comision)
+            .where(Comision.materia_id == materia_id, Comision.activa == False)  # noqa: E712
+            .values(activa=True)
+        )
+        await self.db.commit()
+        return result.rowcount
 
     async def get_by_materia_nombre_anio(
         self,

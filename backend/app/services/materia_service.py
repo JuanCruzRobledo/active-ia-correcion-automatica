@@ -374,6 +374,10 @@ class MateriaService:
                     detail="La materia ya está eliminada",
                 )
             await self.materia_repo.soft_delete(materia)
+            # CRUD-006: propagar la baja a los hijos, para que las comisiones no
+            # queden operables (crear_entrega valida comisión activa) ni visibles.
+            await self.comision_repo.desactivar_por_materia(materia_id)
+            await self.rubrica_repo.desactivar_por_materia(materia_id)
 
     async def restaurar_materia(self, materia_id: int) -> MateriaResponse:
         """
@@ -404,6 +408,9 @@ class MateriaService:
             )
 
         restored_materia = await self.materia_repo.restore(materia)
+        # CRUD-006: reactivar los hijos que se dieron de baja al eliminar la materia.
+        await self.comision_repo.reactivar_por_materia(materia_id)
+        await self.rubrica_repo.reactivar_por_materia(materia_id)
 
         return MateriaResponse.model_validate(restored_materia)
 
