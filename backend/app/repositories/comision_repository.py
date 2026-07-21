@@ -178,6 +178,27 @@ class ComisionRepository:
         )
         return {cid: (int(nt), int(ne)) for cid, nt, ne in result.all()}
 
+    async def contar_comisiones_activas_por_materia(
+        self, materia_ids: list[int]
+    ) -> dict[int, int]:
+        """CRUD-016: Nº de comisiones ACTIVAS por materia en UNA query agregada.
+
+        Reemplaza el conteo en Python sobre materia.comisiones (lazy=selectin), que
+        materializaba la colección entera de cada materia del listado solo para
+        contar. Las materias sin comisiones activas no aparecen (se interpretan 0).
+        """
+        if not materia_ids:
+            return {}
+        result = await self.db.execute(
+            select(Comision.materia_id, func.count(Comision.id))
+            .where(
+                Comision.materia_id.in_(materia_ids),
+                Comision.activa == True,  # noqa: E712
+            )
+            .group_by(Comision.materia_id)
+        )
+        return {mid: int(n) for mid, n in result.all()}
+
     async def get_by_materia(self, materia_id: int) -> list[Comision]:
         """
         Get all active comisiones for a materia.

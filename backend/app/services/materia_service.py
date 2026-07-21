@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import RolEnum, TipoActividadEnum
 from app.models.materia import Materia
+from app.repositories.comision_repository import ComisionRepository
 from app.repositories.materia_repository import (
     CoordinadorMateriaRepository,
     MateriaRepository,
 )
+from app.repositories.rubrica_repository import RubricaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.materia import (
     CoordinadoresAssign,
@@ -44,6 +46,8 @@ class MateriaService:
         self.db = db
         self.materia_repo = MateriaRepository(db)
         self.coord_materia_repo = CoordinadorMateriaRepository(db)
+        self.comision_repo = ComisionRepository(db)
+        self.rubrica_repo = RubricaRepository(db)
         self.usuario_repo = UsuarioRepository(db)
 
     async def crear_materia(
@@ -173,21 +177,21 @@ class MateriaService:
             coordinador_id=coordinador_id,
         )
 
+        materia_ids = [materia.id for materia in materias]
         # PERF-012: conteo de coordinadores de TODAS las materias de la página en UNA
         # query agregada (antes: get_coordinadores_for_materia por materia en loop).
-        coord_counts = await self.coord_materia_repo.contar_por_materias(
-            [materia.id for materia in materias]
+        coord_counts = await self.coord_materia_repo.contar_por_materias(materia_ids)
+        # CRUD-016: idem para las comisiones activas, en vez de materializar la
+        # colección materia.comisiones (lazy=selectin) de cada materia solo para contar.
+        comi_counts = await self.comision_repo.contar_comisiones_activas_por_materia(
+            materia_ids
         )
 
         # Build list items with counts
         items = []
         for materia in materias:
             num_coordinadores = coord_counts.get(materia.id, 0)
-
-            # Count active comisiones
-            num_comisiones = len(
-                [c for c in materia.comisiones if c.activa]
-            ) if materia.comisiones else 0
+            num_comisiones = comi_counts.get(materia.id, 0)
 
             items.append(
                 MateriaListItem(
