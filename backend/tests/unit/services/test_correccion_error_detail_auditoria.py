@@ -44,6 +44,10 @@ async def test_n8n_error_no_filtra_str_e_en_detail(monkeypatch):
     service.entrega_repo.update = AsyncMock()
     service.rubrica_repo = AsyncMock()
     service.rubrica_repo.get_active_by_id = AsyncMock(return_value=MagicMock())
+    # IA-002: sin secundario configurado -> el failover no se dispara y el error del
+    # primario se propaga tal cual (que es lo que este test ERR-007 valida).
+    service.usuario_repo = AsyncMock()
+    service.usuario_repo.get_by_id = AsyncMock(return_value=None)
 
     monkeypatch.setattr(correccion_mod, "decrypt_api_key", lambda k: "api-key")
     service._build_correction_payload = MagicMock(return_value={})

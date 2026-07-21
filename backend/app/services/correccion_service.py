@@ -389,11 +389,17 @@ class CorreccionService:
         entrega.estado = EstadoEntregaEnum.PENDIENTE  # reflejar en memoria
 
         # Call the appropriate AI provider directly (Gemini or OpenRouter)
+        provider_efectivo = provider
         try:
             if entrega.archivo_tipo == "pdf":
                 result = await self._call_ia_pdf_with_retry(payload)
             else:
-                result = await self._call_ia_with_retry(payload, provider=provider)
+                # IA-002: failover acotado. Ante error recuperable del primario y con
+                # key válida del secundario, cae al otro proveedor. provider_efectivo
+                # refleja quién generó REALMENTE la corrección (se persiste abajo).
+                result, provider_efectivo = await self._corregir_codigo_con_failover(
+                    payload, entrega, rubrica, provider, corregido_por_id
+                )
         except N8NTimeoutError:
             logger.warning(
                 f"Timeout de {provider} corrigiendo entrega {entrega_id}",
@@ -629,7 +635,11 @@ class CorreccionService:
         }
 
         # IA-014: persistir el consumo (tokens/modelo/proveedor) en columnas propias.
-        correccion = Correccion(**data_dict, **_metricas_ia(result))
+        # IA-002: ia_proveedor = el proveedor que REALMENTE generó la corrección
+        # (puede diferir del elegido si hubo failover).
+        metricas = _metricas_ia(result)
+        metricas["ia_proveedor"] = provider_efectivo
+        correccion = Correccion(**data_dict, **metricas)
         created_correccion = await self.correccion_repo.create(correccion)
 
         # Update entrega state to CORREGIDA y limpiar cualquier error previo (item #1).
@@ -989,6 +999,79 @@ class CorreccionService:
 
         # Should not reach here
         raise N8NError("Error inesperado en reintentos")
+
+    @staticmethod
+    def _otro_provider(provider: str) -> str:
+        """IA-002: el proveedor opuesto, para el failover acotado."""
+        return "gemini" if provider == "openrouter" else "openrouter"
+
+    async def _credencial_secundaria(
+        self, corregido_por_id: int, secundario: str
+    ) -> str | None:
+        """IA-002: API key desencriptada del proveedor secundario, SOLO si el tutor
+        la tiene configurada y marcada como válida. Devuelve None si no hay failover
+        posible (sin key o key inválida), en cuyo caso el error del primario se propaga.
+        """
+        usuario = await self.usuario_repo.get_by_id(corregido_por_id)
+        if not usuario:
+            return None
+        if secundario == "openrouter":
+            enc = getattr(usuario, "openrouter_api_key_encrypted", None)
+            valida = getattr(usuario, "openrouter_api_key_valid", False)
+        else:
+            enc = getattr(usuario, "gemini_api_key_encrypted", None)
+            valida = getattr(usuario, "gemini_api_key_valid", False)
+        if not enc or not valida:
+            return None
+        try:
+            return decrypt_api_key(enc)
+        except Exception:
+            logger.exception(
+                "IA-002: no se pudo desencriptar la key secundaria (%s) del usuario %s",
+                secundario,
+                corregido_por_id,
+            )
+            return None
+
+    async def _corregir_codigo_con_failover(
+        self,
+        payload_primario: dict[str, Any],
+        entrega: Any,
+        rubrica: Any,
+        provider: str,
+        corregido_por_id: int,
+    ) -> tuple[dict[str, Any], str]:
+        """IA-002: corrige código con failover ACOTADO entre proveedores.
+
+        Intenta el proveedor primario; ante un error RECUPERABLE (timeout / 503 / 5xx)
+        y solo si el tutor tiene key válida del secundario, cae al otro proveedor.
+        Ante errores NO recuperables (401/403 key inválida, 402 sin créditos, 429 rate
+        limit) o sin secundario válido, re-lanza el error del primario tal cual.
+
+        Solo aplica a código: la corrección de PDF es Gemini-only (OpenRouter no la
+        soporta), así que ese camino no pasa por acá.
+
+        Returns:
+            (result, provider_efectivo): la respuesta cruda y qué proveedor la generó.
+        """
+        try:
+            result = await self._call_ia_with_retry(payload_primario, provider=provider)
+            return result, provider
+        except (N8NTimeoutError, ModelOverloadedError, N8NError):
+            secundario = self._otro_provider(provider)
+            api_key_sec = await self._credencial_secundaria(corregido_por_id, secundario)
+            if api_key_sec is None:
+                # Sin secundario válido: el failover no aplica, propaga el error real.
+                raise
+            logger.warning(
+                "IA-002: failover %s -> %s corrigiendo entrega %s (error recuperable del primario)",
+                provider,
+                secundario,
+                getattr(entrega, "id", "?"),
+            )
+            payload_sec = self._build_correction_payload(entrega, rubrica, api_key_sec)
+            result = await self._call_ia_with_retry(payload_sec, provider=secundario)
+            return result, secundario
 
     async def _call_ia_pdf_with_retry(
         self,
