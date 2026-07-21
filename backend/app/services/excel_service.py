@@ -18,12 +18,8 @@ from app.services import excel_estilos
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.models.comision import Comision
-from app.models.entrega import Entrega as EntregaModel
 from app.repositories.entrega_repository import EntregaRepository
 
 
@@ -70,18 +66,10 @@ class ExcelService:
                 detail="No hay entregas para esta comisión y rúbrica",
             )
 
-        # Re-fetch first entrega with full nested relations (comision -> materia, rubrica)
+        # Re-fetch primera entrega con relaciones anidadas (comision->materia, rubrica).
+        # ARCH-001: vía repo. get_by_id_with_relations carga comision.materia + rubrica.
         first_id = entregas_list[0].id
-        stmt = (
-            select(EntregaModel)
-            .options(
-                selectinload(EntregaModel.comision).selectinload(Comision.materia),
-                selectinload(EntregaModel.rubrica),
-            )
-            .where(EntregaModel.id == first_id)
-        )
-        result = await self.db.execute(stmt)
-        first_entrega = result.scalar_one()
+        first_entrega = await self.entrega_repo.get_by_id_with_relations(first_id)
 
         materia_nombre = first_entrega.comision.materia.nombre
         materia_codigo = first_entrega.comision.materia.codigo

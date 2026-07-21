@@ -49,6 +49,16 @@ class MateriaRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_ids(self, materia_ids: list[int]) -> list[Materia]:
+        """Materias cuyos ids están en la lista dada (para resolver course_id en los
+        flujos de Moodle). Lista vacía si materia_ids es vacía."""
+        if not materia_ids:
+            return []
+        result = await self.db.execute(
+            select(Materia).where(Materia.id.in_(materia_ids))
+        )
+        return list(result.scalars().all())
+
     async def get_by_id_with_coordinadores(self, materia_id: int) -> Materia | None:
         """
         Get materia by ID with coordinadores loaded.

@@ -250,6 +250,25 @@ class RubricaRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_moodle_habilitadas_por_materias(
+        self,
+        materia_ids: list[int],
+        *,
+        rubrica_id: int | None = None,
+    ) -> list[Rubrica]:
+        """Rúbricas ACTIVAS con moodle_assign_id (cmid) de las materias dadas, para
+        los flujos de Moodle. rubrica_id acota a una sola rúbrica (import con scope).
+        """
+        stmt = select(Rubrica).where(
+            Rubrica.materia_id.in_(materia_ids),
+            Rubrica.activa == True,  # noqa: E712
+            Rubrica.moodle_assign_id.isnot(None),
+        )
+        if rubrica_id is not None:
+            stmt = stmt.where(Rubrica.id == rubrica_id)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
     async def exists(
         self,
         materia_id: int,

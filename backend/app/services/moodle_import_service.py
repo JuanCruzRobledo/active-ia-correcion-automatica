@@ -26,10 +26,11 @@ from typing import AsyncIterator
 from app.models.base import async_session_maker
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
+from app.repositories.comision_repository import ComisionRepository
+from app.repositories.materia_repository import MateriaRepository
+from app.repositories.rubrica_repository import RubricaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.services.entrega_service import EntregaService
 from app.services.moodle_url_parser import construir_url_entrega
@@ -80,6 +81,9 @@ class MoodleImportService:
         self.moodle = MoodleService(db)
         self.entrega_service = EntregaService(db)
         self.usuario_repo = UsuarioRepository(db)
+        self.comision_repo = ComisionRepository(db)
+        self.rubrica_repo = RubricaRepository(db)
+        self.materia_repo = MateriaRepository(db)
 
     async def importar(
         self,
@@ -344,10 +348,6 @@ class MoodleImportService:
         Sigue el mismo criterio que get_pendientes: sólo comisiones del tutor con
         moodle_group_id y rúbricas activas con moodle_assign_id.
         """
-        from app.models.comision import Comision, ComisionTutor
-        from app.models.materia import Materia
-        from app.models.rubrica import Rubrica
-
         if scope == "comision_unidad" and (not rubrica_id or not comision_id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -359,40 +359,23 @@ class MoodleImportService:
                 detail="scope 'materia' requiere materia_id",
             )
 
-        # Comisiones del tutor con moodle_group_id
-        com_stmt = (
-            select(Comision)
-            .join(ComisionTutor, ComisionTutor.comision_id == Comision.id)
-            .where(
-                ComisionTutor.tutor_id == user_id,
-                Comision.activa == True,  # noqa: E712
-                Comision.moodle_group_id.isnot(None),
-            )
-            .options(selectinload(Comision.materia))
+        # Comisiones del tutor con moodle_group_id (ARCH-001: vía repo, con scope opcional)
+        comisiones = await self.comision_repo.get_moodle_habilitadas_de_tutor(
+            user_id,
+            comision_id=comision_id if scope == "comision_unidad" else None,
+            materia_id=materia_id if scope == "materia" else None,
         )
-        if scope == "comision_unidad":
-            com_stmt = com_stmt.where(Comision.id == comision_id)
-        elif scope == "materia":
-            com_stmt = com_stmt.where(Comision.materia_id == materia_id)
-
-        comisiones = list((await self.db.execute(com_stmt)).scalars().all())
         if not comisiones:
             return []
 
         materia_ids = list({c.materia_id for c in comisiones})
 
-        rub_stmt = select(Rubrica).where(
-            Rubrica.materia_id.in_(materia_ids),
-            Rubrica.activa == True,  # noqa: E712
-            Rubrica.moodle_assign_id.isnot(None),
+        rubricas = await self.rubrica_repo.get_moodle_habilitadas_por_materias(
+            materia_ids,
+            rubrica_id=rubrica_id if scope == "comision_unidad" else None,
         )
-        if scope == "comision_unidad":
-            rub_stmt = rub_stmt.where(Rubrica.id == rubrica_id)
-        rubricas = list((await self.db.execute(rub_stmt)).scalars().all())
 
-        materias = (await self.db.execute(
-            select(Materia).where(Materia.id.in_(materia_ids))
-        )).scalars().all()
+        materias = await self.materia_repo.get_by_ids(materia_ids)
         materias_by_id = {m.id: m for m in materias}
 
         pares: list[_Par] = []

@@ -256,6 +256,36 @@ class ComisionRepository:
         )
         return list(result.scalars().all())
 
+    async def get_moodle_habilitadas_de_tutor(
+        self,
+        tutor_id: int,
+        *,
+        comision_id: int | None = None,
+        materia_id: int | None = None,
+    ) -> list[Comision]:
+        """Comisiones ACTIVAS del tutor con moodle_group_id configurado (con la
+        materia eager-loaded), para los flujos de Moodle (pendientes / import).
+
+        Filtros de scope opcionales: comision_id acota a una sola comisión;
+        materia_id acota a las de una materia (usados por el import con scope).
+        """
+        stmt = (
+            select(Comision)
+            .join(ComisionTutor, ComisionTutor.comision_id == Comision.id)
+            .where(
+                ComisionTutor.tutor_id == tutor_id,
+                Comision.activa == True,  # noqa: E712
+                Comision.moodle_group_id.isnot(None),
+            )
+            .options(selectinload(Comision.materia))
+        )
+        if comision_id is not None:
+            stmt = stmt.where(Comision.id == comision_id)
+        if materia_id is not None:
+            stmt = stmt.where(Comision.materia_id == materia_id)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_active_by_id(self, comision_id: int) -> Comision | None:
         """
         Get active comision by ID (not soft-deleted).
