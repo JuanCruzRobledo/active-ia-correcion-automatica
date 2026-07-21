@@ -261,106 +261,16 @@ def require_any_authenticated(user: Usuario) -> Usuario:
 
 
 # =========================================
-# Resource-Specific Validators
+# Resource-Specific Validators (guards de pertenencia REALES, con DB)
 # =========================================
-
-
-def require_coordinador_of_materia(user: Usuario, materia_id: int) -> Usuario:
-    """
-    Validate that the user is a coordinador of the specified materia.
-
-    Note: This is a placeholder. Full implementation requires checking
-    the coordinador_materia relationship in the database.
-
-    Args:
-        user: Current authenticated user.
-        materia_id: ID of the materia to check.
-
-    Returns:
-        Usuario: The same user object (for chaining).
-
-    Raises:
-        HTTPException 403: If user is not coordinador of this materia.
-
-    TODO: Implement database check in service layer.
-
-    Usage:
-        @router.get("/materias/{materia_id}/rubricas")
-        async def list_rubricas(
-            materia_id: int,
-            current_user: Usuario = Depends(get_current_user)
-        ):
-            require_coordinador_of_materia(current_user, materia_id)
-            # Only coordinador of this materia can reach here
-            pass
-    """
-    # Allow admins to bypass this check
-    if user.rol == RolEnum.ADMIN:
-        return user
-
-    # For coordinadores, we need to check the relationship
-    # This should be done in the service layer with database access
-    # For now, just check if user is a coordinador
-    if user.rol != RolEnum.COORDINADOR:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Se requiere ser coordinador de esta materia",
-        )
-
-    # TODO: Add database check:
-    # if not await coordinador_materia_repo.is_coordinador_of_materia(user.id, materia_id):
-    #     raise HTTPException(403, "No eres coordinador de esta materia")
-
-    return user
-
-
-def require_tutor_of_comision(user: Usuario, comision_id: int) -> Usuario:
-    """
-    Validate that the user is a tutor of the specified comision.
-
-    Note: This is a placeholder. Full implementation requires checking
-    the comision_tutor relationship in the database.
-
-    Args:
-        user: Current authenticated user.
-        comision_id: ID of the comision to check.
-
-    Returns:
-        Usuario: The same user object (for chaining).
-
-    Raises:
-        HTTPException 403: If user is not tutor of this comision.
-
-    TODO: Implement database check in service layer.
-
-    Usage:
-        @router.post("/comisiones/{comision_id}/entregas")
-        async def upload_entrega(
-            comision_id: int,
-            current_user: Usuario = Depends(get_current_user)
-        ):
-            require_tutor_of_comision(current_user, comision_id)
-            # Only tutor of this comision can reach here
-            pass
-    """
-    # Allow admins to bypass this check
-    if user.rol == RolEnum.ADMIN:
-        return user
-
-    # For tutores, we need to check the relationship
-    # This should be done in the service layer with database access
-    # For now, just check if user is a tutor
-    if user.rol != RolEnum.TUTOR:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Se requiere ser tutor de esta comisión",
-        )
-
-    # TODO: Add database check:
-    # if not await comision_tutor_repo.is_tutor_of_comision(user.id, comision_id):
-    #     raise HTTPException(403, "No eres tutor de esta comisión")
-
-    return user
+#
+# SEC-006: acá vivían require_coordinador_of_materia y require_tutor_of_comision,
+# dos placeholders sync que NO consultaban la DB (el chequeo real estaba comentado
+# como TODO) y solo miraban el rol. Eran código muerto — ningún router los usaba —
+# e indistinguibles de un guard real por el nombre. Se eliminaron. Los guards de
+# pertenencia de verdad son los `verificar_acceso_*` de acá abajo: todos async,
+# todos consultan la DB. El test tests/unit/core/test_permissions_invariante.py
+# impide que vuelva a colarse un placeholder sync.
 
 
 async def verificar_acceso_materia(

@@ -216,7 +216,7 @@ export const descargarPDFsSeleccionados = async (
   entregaIds: number[],
   rubrica?: RubricaContext,
   comisionNombre?: string
-): Promise<void> => {
+): Promise<{ omitidos: number[] }> => {
   const response = await apiClient.post(
     '/documentos/pdfs-seleccionados',
     { entrega_ids: entregaIds },
@@ -226,6 +226,14 @@ export const descargarPDFsSeleccionados = async (
   if (!(response.data instanceof Blob) || response.data.size === 0) {
     throw new Error('No se encontraron entregas corregidas o el archivo está vacío');
   }
+
+  // SEC-004: el backend arma el ZIP solo con las entregas accesibles y lista las
+  // omitidas por permisos en este header (la respuesta es binaria, no hay JSON).
+  const header = (response.headers?.['x-entregas-omitidas'] ?? '') as string;
+  const omitidos = header
+    .split(',')
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
 
   const rubricaPart = rubrica
     ? `${rubrica.tipo}-${rubrica.numero}`.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-_]/g, '')
@@ -238,6 +246,7 @@ export const descargarPDFsSeleccionados = async (
     : `Devoluciones-Seleccionados-${rubricaPart}.zip`;
 
   downloadBlob(response.data as Blob, filename);
+  return { omitidos };
 };
 
 /**

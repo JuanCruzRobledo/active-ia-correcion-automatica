@@ -17,7 +17,6 @@ from app.core.dependencies import get_current_user, get_db
 from app.core.permissions import (
     comisiones_visibles_para,
     filtrar_entregas_accesibles,
-    require_any_authenticated,
     verificar_acceso_comision_o_materia,
     verificar_acceso_entrega,
 )

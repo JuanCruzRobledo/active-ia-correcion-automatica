@@ -11,7 +11,7 @@ Patrón de test de referencia: `backend/tests/unit/core/test_permissions_materia
 ## 0. Preparación y safety net
 
 - [x] 0.1 Correr `pytest` completo y registrar el baseline de tests que pasan. Si algo ya falla, reportarlo como fallo preexistente y NO arreglarlo en este change.
-- [ ] 0.2 (BLOQUEADA: requiere Postgres con datos reales — la corre el usuario antes del deploy) Escribir y correr una query de auditoría (script descartable, no se commitea) que liste usuarios activos no-ADMIN sin ninguna fila en `ComisionTutor` ni en `CoordinadorMateria`. Reportar el resultado: son los usuarios que quedarían bloqueados al desplegar.
+- [x] 0.2 (VERIFICADO en Postgres real 2026-07-20: 3 cuentas fantasma bloqueadas -carmco/ramsesgir/cmut, last_login NULL, 0 actividad-; 0 usuarios con actividad real quedarian bloqueados. Deploy seguro.) Escribir y correr una query de auditoría (script descartable, no se commitea) que liste usuarios activos no-ADMIN sin ninguna fila en `ComisionTutor` ni en `CoordinadorMateria`. Reportar el resultado: son los usuarios que quedarían bloqueados al desplegar.
 - [x] 0.3 Verificar con `grep` que `require_coordinador_of_materia` y `require_tutor_of_comision` no tienen referencias fuera de `app/core/permissions.py` (esperado: 6 autorreferencias). Dejar constancia del conteo.
 
 ## 1. Guards nuevos en `permissions.py`
@@ -36,7 +36,7 @@ Patrón de test de referencia: `backend/tests/unit/core/test_permissions_materia
 - [x] 2.6 RED+GREEN: `GET /entregas/` SIN `comision_id` → scoping. Agregar el filtro por comisiones visibles en `EntregaRepository` con `JOIN` (patrón `comision_repository.py:118-124`), aplicado ANTES del `count`. Tests: tutor ve solo lo suyo, coordinador ve solo sus materias, admin ve todo, y el total paginado refleja el subconjunto (no el total global).
 - [x] 2.7 RED+GREEN: `PATCH /entregas/archivar` — particionar con `filtrar_entregas_accesibles`, operar solo sobre permitidos, 403 si ninguno es accesible. Extender `EntregaAccionMasivaResponse` en `app/schemas/entrega.py` con `omitidas: int` y `ids_omitidos: list[int]`. Tests: lote mixto archiva solo lo permitido e informa lo omitido; lote todo-denegado da 403.
 - [x] 2.8 RED+GREEN: `DELETE /entregas/masivo` — misma partición y mismo schema extendido. Tests: lote mixto borra solo lo permitido, `ids_omitidos` los lista, lote todo-denegado 403, y el service de borrado recibe SOLO los IDs permitidos (assert sobre el argumento del mock).
-- [ ] 2.9 REFACTOR: eliminar los `require_any_authenticated(current_user)` que quedaron redundantes y actualizar los docstrings "Authorization: Any authenticated user" de los 8 endpoints para que digan la regla real. Tests verdes.
+- [x] 2.9 REFACTOR: eliminar los `require_any_authenticated(current_user)` que quedaron redundantes y actualizar los docstrings "Authorization: Any authenticated user" de los 8 endpoints para que digan la regla real. Tests verdes.
 
 ## 3. Router `correcciones.py` (SEC-001 — 6 endpoints)
 
@@ -58,25 +58,25 @@ Patrón de test de referencia: `backend/tests/unit/core/test_permissions_materia
 
 ## 5. Frontend — contratos de lote
 
-- [ ] 5.1 Actualizar `frontend/src/features/entregas/types/index.ts`: `EntregaAccionMasivaResponse` suma `omitidas: number` e `ids_omitidos: number[]`; `CorregirLoteAceptadoResponse` suma `omitidas: number` y `entrega_ids_omitidos: number[]`.
-- [ ] 5.2 Actualizar `frontend/src/features/entregas/services/entregas-service.ts` — tipos de retorno de `archivar`, `deleteMasivo` y `corregirLote`.
-- [ ] 5.3 Actualizar `frontend/src/features/correcciones/services/correcciones-service.ts` — `descargarPDFsSeleccionados` lee el header `X-Entregas-Omitidas` y devuelve los omitidos en lugar de `Promise<void>`.
-- [ ] 5.4 `EntregasPage.tsx` → `runArchivarSeleccionados` y `runCorregirMasiva`: cuando `omitidas > 0`, el toast informa cuántas se omitieron por falta de permisos, además del conteo de procesadas.
-- [ ] 5.5 `EntregasPage.tsx` → `runEliminarSeleccionados`: cuando `omitidas > 0`, usar toast de **advertencia** (no de éxito) con el detalle de lo NO borrado. Requisito explícito: el reporte debe ser prominente, no un campo perdido — el borrado es irreversible.
-- [ ] 5.6 `EntregasPage.tsx` → `handleDescargarPDFsSeleccionados`: informar los PDFs omitidos en el toast (hoy usa solo el conteo local `selectedCorregidasCount`).
-- [ ] 5.7 Correr `npm run lint` y `npm run typecheck` en `frontend/`. Sin errores nuevos.
+- [x] 5.1 Actualizar `frontend/src/features/entregas/types/index.ts`: `EntregaAccionMasivaResponse` suma `omitidas: number` e `ids_omitidos: number[]`; `CorregirLoteAceptadoResponse` suma `omitidas: number` y `entrega_ids_omitidos: number[]`.
+- [x] 5.2 Actualizar `frontend/src/features/entregas/services/entregas-service.ts` — tipos de retorno de `archivar`, `deleteMasivo` y `corregirLote`.
+- [x] 5.3 Actualizar `frontend/src/features/correcciones/services/correcciones-service.ts` — `descargarPDFsSeleccionados` lee el header `X-Entregas-Omitidas` y devuelve los omitidos en lugar de `Promise<void>`.
+- [x] 5.4 `EntregasPage.tsx` → `runArchivarSeleccionados` y `runCorregirMasiva`: cuando `omitidas > 0`, el toast informa cuántas se omitieron por falta de permisos, además del conteo de procesadas.
+- [x] 5.5 `EntregasPage.tsx` → `runEliminarSeleccionados`: cuando `omitidas > 0`, usar toast de **advertencia** (no de éxito) con el detalle de lo NO borrado. Requisito explícito: el reporte debe ser prominente, no un campo perdido — el borrado es irreversible.
+- [x] 5.6 `EntregasPage.tsx` → `handleDescargarPDFsSeleccionados`: informar los PDFs omitidos en el toast (hoy usa solo el conteo local `selectedCorregidasCount`).
+- [x] 5.7 Correr `npm run lint` y `npm run typecheck` en `frontend/`. Sin errores nuevos.
 
 ## 6. Limpieza SEC-006
 
-- [ ] 6.1 Eliminar `require_coordinador_of_materia` (`permissions.py:268`) y `require_tutor_of_comision` (`:317`). Son placeholders sync que nunca consultaron la DB y son código muerto (confirmado en 0.3).
-- [ ] 6.2 Limpiar los imports y referencias internas que queden en `permissions.py` tras el borrado.
-- [ ] 6.3 `grep` en `backend/` (código y tests) confirmando cero referencias a los nombres eliminados.
-- [ ] 6.4 Test de invariante: toda función de `permissions.py` cuyo nombre refiera a pertenencia a comisión o materia es `async` y recibe una `AsyncSession` como parámetro (introspección con `inspect.signature`). Impide que vuelva a aparecer un guard placeholder.
+- [x] 6.1 Eliminar `require_coordinador_of_materia` (`permissions.py:268`) y `require_tutor_of_comision` (`:317`). Son placeholders sync que nunca consultaron la DB y son código muerto (confirmado en 0.3).
+- [x] 6.2 Limpiar los imports y referencias internas que queden en `permissions.py` tras el borrado.
+- [x] 6.3 `grep` en `backend/` (código y tests) confirmando cero referencias a los nombres eliminados.
+- [x] 6.4 Test de invariante: toda función de `permissions.py` cuyo nombre refiera a pertenencia a comisión o materia es `async` y recibe una `AsyncSession` como parámetro (introspección con `inspect.signature`). Impide que vuelva a aparecer un guard placeholder.
 
 ## 7. Red de seguridad y cierre
 
-- [ ] 7.1 Test de cobertura de authz: enumerar programáticamente las rutas de los routers `entregas`, `correcciones` y `documentos` y fallar si alguna no aparece en el inventario de endpoints con test de authz. Protege contra endpoints nuevos agregados sin guard.
-- [ ] 7.2 Correr `pytest` completo y comparar contra el baseline de 0.1: cero regresiones, más los tests nuevos.
-- [ ] 7.3 Correr `pytest --cov=app/core/permissions.py` y verificar que los guards nuevos están cubiertos.
+- [x] 7.1 Test de cobertura de authz: enumerar programáticamente las rutas de los routers `entregas`, `correcciones` y `documentos` y fallar si alguna no aparece en el inventario de endpoints con test de authz. Protege contra endpoints nuevos agregados sin guard.
+- [x] 7.2 Correr `pytest` completo y comparar contra el baseline de 0.1: cero regresiones, más los tests nuevos.
+- [x] 7.3 Correr `pytest --cov=app/core/permissions.py` y verificar que los guards nuevos están cubiertos.
 - [ ] 7.4 Revisión humana línea por línea del diff completo (gobernanza CRÍTICA) antes de mergear.
 - [ ] 7.5 Documentar en el PR el resultado de la auditoría de asignaciones (0.2) y el plan de despliegue: backend primero (campos aditivos, compatible con el frontend actual), frontend después.

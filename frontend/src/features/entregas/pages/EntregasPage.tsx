@@ -427,6 +427,13 @@ export const EntregasPage = () => {
         `Los estados se actualizarán automáticamente en segundo plano.`,
         { duration: 6000 }
       );
+      // SEC-001: informar las entregas que quedaron fuera por falta de permisos.
+      if (result.omitidas && result.omitidas > 0) {
+        toast(
+          `⚠️ ${result.omitidas} entrega(s) no se corrigieron: no tenés permisos sobre su comisión.`,
+          { icon: '⚠️', duration: 8000 }
+        );
+      }
     } catch {
       // Error notification is handled by the hook's onError handler
     }
@@ -482,6 +489,13 @@ export const EntregasPage = () => {
       const result = await archivarMutation.mutateAsync({ ids, archivado });
       setSelectedIds([]);
       toast.success(`${result.procesadas} entrega(s) ${archivado ? 'archivada(s)' : 'desarchivada(s)'}`);
+      // SEC-002: informar lo omitido por permisos.
+      if (result.omitidas && result.omitidas > 0) {
+        toast(
+          `⚠️ ${result.omitidas} entrega(s) no se ${archivado ? 'archivaron' : 'desarchivaron'}: no tenés permisos sobre su comisión.`,
+          { icon: '⚠️', duration: 8000 }
+        );
+      }
     } catch {
       // Error handled by hook
     }
@@ -506,7 +520,19 @@ export const EntregasPage = () => {
     try {
       const result = await deleteMasivoMutation.mutateAsync(ids);
       setSelectedIds([]);
-      toast.success(`${result.procesadas} entrega(s) eliminada(s)`);
+      // SEC-002 + CRUD-001: el borrado es FÍSICO e irreversible. Si algo se omitió
+      // por permisos, el aviso NO puede ser un toast de éxito con un número más:
+      // el operador tiene que saber, sin ambigüedad, qué quedó vivo.
+      if (result.omitidas && result.omitidas > 0) {
+        toast.success(`${result.procesadas} entrega(s) eliminada(s)`);
+        toast(
+          `⚠️ ${result.omitidas} entrega(s) NO se eliminaron porque no tenés permisos sobre su comisión. ` +
+          `IDs no borrados: ${(result.ids_omitidos ?? []).join(', ')}.`,
+          { icon: '⚠️', duration: 12000, style: { border: '1px solid #f59e0b', maxWidth: 520 } }
+        );
+      } else {
+        toast.success(`${result.procesadas} entrega(s) eliminada(s)`);
+      }
     } catch {
       // Error handled by hook
     }
@@ -577,14 +603,22 @@ export const EntregasPage = () => {
       const rubricaContext = selectedRubrica
         ? { tipo: selectedRubrica.tipo, numero: selectedRubrica.numero }
         : undefined;
-      await descargarPDFsSeleccionados(
+      const { omitidos } = await descargarPDFsSeleccionados(
         selectedCorregidas.map((e) => e.id),
         rubricaContext,
         selectedComision?.nombre
       );
+      const incluidos = selectedCorregidasCount - omitidos.length;
       toast.success(
-        `ZIP con ${selectedCorregidasCount} PDF${selectedCorregidasCount === 1 ? '' : 's'} descargado exitosamente`
+        `ZIP con ${incluidos} PDF${incluidos === 1 ? '' : 's'} descargado exitosamente`
       );
+      // SEC-004: informar los PDFs que quedaron fuera del ZIP por falta de permisos.
+      if (omitidos.length > 0) {
+        toast(
+          `⚠️ ${omitidos.length} PDF(s) no se incluyeron: no tenés permisos sobre su comisión.`,
+          { icon: '⚠️', duration: 8000 }
+        );
+      }
     } catch (e: any) {
       // Blob responses carry errors as Blob — parse them to get the real backend message
       let backendDetail: string | undefined;

@@ -102,6 +102,10 @@ export interface CorregirLoteAceptadoResponse {
   mensaje: string;
   total_encoladas: number;
   entrega_ids: number[];
+  // SEC-001: entregas del lote omitidas por falta de permisos. Opcionales
+  // porque el contrato es aditivo (un backend viejo no las manda).
+  omitidas?: number;
+  entrega_ids_omitidos?: number[];
 }
 
 
@@ -133,6 +137,9 @@ export interface EntregaDetail extends Entrega {
 export interface EntregaAccionMasivaResponse {
   procesadas: number;
   ids: number[];
+  // SEC-002: entregas del lote omitidas por falta de permisos (borrado/archivar).
+  omitidas?: number;
+  ids_omitidos?: number[];
 }
 
 export interface EntregaListItem {
