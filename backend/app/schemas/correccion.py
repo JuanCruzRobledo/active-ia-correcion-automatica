@@ -115,6 +115,8 @@ class GeminiResponse(BaseModel):
     fortalezas: list[str] = Field(default_factory=list, description="Strengths identified")
     recomendaciones: list[str] = Field(default_factory=list, description="Recommendations")
     comentario_general: str = Field(..., description="General feedback comment")
+    # IA-010: el modelo marca si detectó un intento de prompt injection en el código.
+    injection_detectada: bool = Field(default=False, description="True if a prompt-injection attempt was detected")
 
     # IA-008: se eliminó validate_nota_sum. Era código muerto (por el orden de
     # campos de Pydantic, `criterios` aún no está en info.data cuando corre el

@@ -496,6 +496,16 @@ class CorreccionService:
                 detail=mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, provider),
             )
 
+        # IA-010: el modelo marcó un intento de prompt injection en el código. Se
+        # registra prominente para revisión humana del tutor (la corrección con nota 0
+        # se persiste igual, pero queda el aviso en el log).
+        if getattr(gemini_response, "injection_detectada", False):
+            logger.warning(
+                "IA-010: posible PROMPT INJECTION detectado en la entrega %s "
+                "(provider=%s). Revisar manualmente.",
+                entrega_id, provider,
+            )
+
         # IA-007: validar la respuesta contra la RÚBRICA antes de persistir. Una
         # alucinación (criterio faltante/inventado, peso cambiado, puntaje inflado) no
         # debe guardarse como corrección válida.
