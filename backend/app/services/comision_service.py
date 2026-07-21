@@ -309,9 +309,10 @@ class ComisionService:
                     )
             comision.nombre = data.nombre
 
-        if data.moodle_group_id is not None:
+        # CRUD-010: nullable -> model_fields_set para poder desvincular (null explícito).
+        if "moodle_group_id" in data.model_fields_set:
             comision.moodle_group_id = data.moodle_group_id
-        if data.moodle_group_code is not None:
+        if "moodle_group_code" in data.model_fields_set:
             comision.moodle_group_code = data.moodle_group_code
 
         await self.comision_repo.update(comision)
@@ -376,9 +377,10 @@ class ComisionService:
                 detail="Comisión no encontrada",
             )
 
-        if data.moodle_group_id is not None:
+        # CRUD-010: nullable -> model_fields_set para poder desvincular (null explícito).
+        if "moodle_group_id" in data.model_fields_set:
             comision.moodle_group_id = data.moodle_group_id
-        if data.moodle_group_code is not None:
+        if "moodle_group_code" in data.model_fields_set:
             comision.moodle_group_code = data.moodle_group_code
 
         await self.comision_repo.update(comision)

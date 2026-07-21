@@ -187,7 +187,8 @@ class UsuarioService:
             user.nombre = data.nombre
         if data.rol is not None:
             user.rol = data.rol
-        if data.email is not None:
+        # CRUD-010: email es nullable -> model_fields_set para poder vaciarlo.
+        if "email" in data.model_fields_set:
             user.email = data.email
 
         updated_user = await self.repo.update(user)

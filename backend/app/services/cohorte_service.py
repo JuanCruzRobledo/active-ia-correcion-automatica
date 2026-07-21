@@ -80,7 +80,8 @@ class CohorteService:
         self, cohorte_id: int, data: CohorteUpdate
     ) -> CohorteDetailResponse:
         cohorte = await self._get_cohorte_or_404(cohorte_id)
-        if data.nombre is not None:
+        # CRUD-010: nombre es nullable -> model_fields_set para poder vaciarlo.
+        if "nombre" in data.model_fields_set:
             cohorte.nombre = data.nombre
         if data.activa is not None:
             cohorte.activa = data.activa
@@ -140,7 +141,8 @@ class CohorteService:
                     detail=f"La cohorte ya tiene el cuatrimestre {data.numero}",
                 )
             cuatrimestre.numero = data.numero
-        if data.nombre is not None:
+        # CRUD-010: nombre es nullable -> model_fields_set para poder vaciarlo.
+        if "nombre" in data.model_fields_set:
             cuatrimestre.nombre = data.nombre
         updated = await self.cuatrimestre_repo.update(cuatrimestre)
         return CuatrimestreResponse.model_validate(updated)

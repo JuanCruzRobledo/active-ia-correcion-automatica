@@ -271,12 +271,13 @@ class MateriaService:
                 detail="Materia no encontrada",
             )
 
-        # Update only provided fields
+        # Update only provided fields. CRUD-010: los nullable usan model_fields_set
+        # para distinguir "ausente" (preservar) de "null explícito" (limpiar).
         if data.nombre is not None:
             materia.nombre = data.nombre
-        if data.descripcion is not None:
+        if "descripcion" in data.model_fields_set:
             materia.descripcion = data.descripcion
-        if data.moodle_course_id is not None:
+        if "moodle_course_id" in data.model_fields_set:
             materia.moodle_course_id = data.moodle_course_id
 
         await self.materia_repo.update(materia)
