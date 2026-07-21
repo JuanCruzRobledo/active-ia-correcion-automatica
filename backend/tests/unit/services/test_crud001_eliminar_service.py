@@ -65,20 +65,6 @@ async def test_eliminar_soft_por_defecto_no_toca_correccion_y_audita():
     assert kwargs["entidad_id"] == 42
 
 
-@pytest.mark.asyncio
-async def test_eliminar_hard_cuando_flag_activo_y_audita():
-    svc = _service_con_repo(get_by_id=_entrega())
-    with patch("app.services.entrega_service.settings") as st, patch(
-        "app.services.entrega_service.ActividadService"
-    ) as MockAct:
-        st.ALLOW_HARD_DELETE = True
-        MockAct.return_value.registrar_actividad = AsyncMock()
-        await svc.eliminar_entrega(42, actor_id=5)
-
-        svc.entrega_repo.delete.assert_awaited_once()        # rama fisica
-        svc.entrega_repo.soft_delete.assert_not_called()
-        MockAct.return_value.registrar_actividad.assert_awaited_once()
-
 
 @pytest.mark.asyncio
 async def test_eliminar_doble_borrado_logico_da_400():
@@ -130,20 +116,6 @@ async def test_masivo_soft_registra_una_sola_actividad_con_ids_en_metadatos():
     assert '"ids"' in kwargs["metadatos"] and "1" in kwargs["metadatos"]
     assert kwargs["usuario_id"] == 7
 
-
-@pytest.mark.asyncio
-async def test_masivo_hard_cuando_flag_activo():
-    svc = _service_con_repo()
-    svc.entrega_repo.get_by_ids = AsyncMock(return_value=[_entrega(1), _entrega(2)])
-    svc.entrega_repo.delete_by_ids = AsyncMock(return_value=2)
-    with patch("app.services.entrega_service.settings") as st, patch(
-        "app.services.entrega_service.ActividadService"
-    ) as MockAct:
-        st.ALLOW_HARD_DELETE = True
-        MockAct.return_value.registrar_actividad = AsyncMock()
-        await svc.eliminar_entregas_masivo([1, 2], actor_id=7)
-        svc.entrega_repo.delete_by_ids.assert_awaited_once_with([1, 2])
-        svc.entrega_repo.soft_delete_by_ids.assert_not_called()
 
 
 @pytest.mark.asyncio

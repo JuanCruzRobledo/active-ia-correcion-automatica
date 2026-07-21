@@ -46,7 +46,6 @@ services:
     environment:
       # Base de datos local
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-active_ia_db}
-      ALLOW_HARD_DELETE: 'false'
       # Seguridad
       SECRET_KEY: ${SECRET_KEY:-dev-secret-change-in-production}
       ALGORITHM: HS256

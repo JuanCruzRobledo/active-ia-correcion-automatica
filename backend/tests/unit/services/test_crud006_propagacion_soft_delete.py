@@ -45,17 +45,6 @@ async def test_eliminar_materia_propaga_a_comisiones_y_rubricas():
         svc.rubrica_repo.desactivar_por_materia.assert_awaited_once_with(7)
 
 
-@pytest.mark.asyncio
-async def test_eliminar_materia_hard_no_propaga_manual():
-    """Con hard delete la cascada física ya borra todo; no se propaga soft."""
-    materia = SimpleNamespace(id=7, activa=True)
-    svc = _svc(materia)
-    svc.materia_repo.hard_delete_with_cascade = AsyncMock()
-    with patch("app.core.config.settings") as st:
-        st.ALLOW_HARD_DELETE = True
-        await svc.eliminar_materia(7)
-        svc.comision_repo.desactivar_por_materia.assert_not_called()
-
 
 @pytest.mark.asyncio
 async def test_restaurar_materia_reactiva_hijos():

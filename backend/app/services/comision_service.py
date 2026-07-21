@@ -428,25 +428,14 @@ class ComisionService:
         """
         from app.core.config import settings
 
-        if settings.ALLOW_HARD_DELETE:
-            # Hard delete: buscar sin filtro activa para poder borrar cualquiera
-            comision = await self.comision_repo.get_by_id(comision_id)
-            if not comision:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Comisión no encontrada",
-                )
-            # Hard delete con cascada completa
-            await self.comision_repo.hard_delete_with_cascade(comision)
-        else:
-            # Soft delete: baja lógica (comportamiento original)
-            comision = await self.comision_repo.get_active_by_id(comision_id)
-            if not comision:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Comisión no encontrada o ya eliminada",
-                )
-            await self.comision_repo.soft_delete(comision)
+        # CRUD-002: soft delete SIEMPRE (se eliminó el flag ALLOW_HARD_DELETE).
+        comision = await self.comision_repo.get_active_by_id(comision_id)
+        if not comision:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Comisión no encontrada o ya eliminada",
+            )
+        await self.comision_repo.soft_delete(comision)
 
     async def restaurar_comision(self, comision_id: int) -> ComisionResponse:
         """

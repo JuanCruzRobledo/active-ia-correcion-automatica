@@ -136,7 +136,7 @@ Full reference: `backend/.env.example` (derived from `backend/app/core/config.py
 - `CORS_ORIGINS` — comma-separated allowed origins
 - `RESEND_API_KEY` / `EMAIL_REMITENTE` / `EMAIL_RATE_POR_SEGUNDO` — email notifications (Resend)
 - `ACCESS_TOKEN_EXPIRE_DAYS` — JWT expiry (default: 7)
-- `ALLOW_HARD_DELETE` — if `false` (default), DELETE endpoints use soft delete
+- (CRUD-002) `ALLOW_HARD_DELETE` fue eliminado: los DELETE son SIEMPRE soft (baja lógica), nunca físico — regla dura del proyecto. Una purga física real, si se necesitara, debe ser una feature deliberada y auditada, no un toggle de env.
 
 DEBUG must be `false` in production; with `false`, the app aborts on startup if `SECRET_KEY`/`ENCRYPTION_KEY` still hold their placeholder values.
 

@@ -238,17 +238,13 @@ class UsuarioService:
                 detail="Usuario no encontrado",
             )
 
-        if settings.ALLOW_HARD_DELETE:
-            # Hard delete: eliminación física con SET NULL en referencias
-            await self.repo.hard_delete(user)
-        else:
-            # Soft delete: baja lógica (comportamiento original)
-            if not user.activo:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="El usuario ya está eliminado",
-                )
-            await self.repo.soft_delete(user)
+        # CRUD-002: soft delete SIEMPRE (se eliminó el flag ALLOW_HARD_DELETE).
+        if not user.activo:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El usuario ya está eliminado",
+            )
+        await self.repo.soft_delete(user)
 
     async def restaurar_usuario(self, user_id: int) -> UsuarioResponse:
         """

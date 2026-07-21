@@ -585,15 +585,13 @@ class EntregaService:
         # Capturar antes del borrado: el hard delete expira el objeto ORM.
         alumno = entrega.alumno_nombre
 
-        if settings.ALLOW_HARD_DELETE:
-            await self.entrega_repo.delete(entrega)
-        else:
-            if entrega.is_deleted:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="La entrega ya está eliminada",
-                )
-            await self.entrega_repo.soft_delete(entrega)
+        # CRUD-002: soft delete SIEMPRE (se eliminó el flag ALLOW_HARD_DELETE).
+        if entrega.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La entrega ya está eliminada",
+            )
+        await self.entrega_repo.soft_delete(entrega)
 
         await ActividadService(self.db).registrar_actividad(
             tipo=TipoActividadEnum.ENTREGA_ELIMINADA,
@@ -685,10 +683,8 @@ class EntregaService:
                 detail=f"Entregas no encontradas: {missing}",
             )
 
-        if settings.ALLOW_HARD_DELETE:
-            count = await self.entrega_repo.delete_by_ids(ids)
-        else:
-            count = await self.entrega_repo.soft_delete_by_ids(ids)
+        # CRUD-002: soft delete SIEMPRE (se eliminó el flag ALLOW_HARD_DELETE).
+        count = await self.entrega_repo.soft_delete_by_ids(ids)
 
         # UNA Actividad por lote (no una por entrega): el detalle vive en metadatos.
         await ActividadService(self.db).registrar_actividad(

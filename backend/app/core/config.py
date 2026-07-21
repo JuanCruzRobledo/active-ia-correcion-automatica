@@ -143,10 +143,12 @@ class Settings(BaseSettings):
     # =========================================
     # Eliminación
     # =========================================
-    # Si es True, los endpoints de DELETE eliminan el registro físicamente
-    # de la base de datos (hard delete) con cascada completa.
-    # Si es False (default), se usa baja lógica (soft delete, activo=False).
-    ALLOW_HARD_DELETE: bool = False
+    # CRUD-002: se eliminó el flag ALLOW_HARD_DELETE. Los DELETE son SIEMPRE soft
+    # (baja lógica), nunca físico — regla dura del proyecto (auditoría). Antes el
+    # flag sobrecargaba el mismo verbo DELETE con dos semánticas opuestas según
+    # config: un solo cambio de env degradaba todo el sistema a borrado destructivo
+    # (incluido el audit log). Si alguna vez se necesita purga física real, debe ser
+    # una feature deliberada y auditada (endpoint /purge explícito), no un toggle.
 
     # =========================================
     # Email / Resend (notificaciones de avance)

@@ -357,8 +357,6 @@ class MateriaService:
             HTTPException 404: Materia not found.
             HTTPException 400: (soft delete only) Materia already deleted.
         """
-        from app.core.config import settings
-
         materia = await self.materia_repo.get_by_id(materia_id)
 
         if not materia:
@@ -367,21 +365,18 @@ class MateriaService:
                 detail="Materia no encontrada",
             )
 
-        if settings.ALLOW_HARD_DELETE:
-            # Hard delete: eliminación física con cascada completa
-            await self.materia_repo.hard_delete_with_cascade(materia)
-        else:
-            # Soft delete: baja lógica (comportamiento original)
-            if not materia.activa:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="La materia ya está eliminada",
-                )
-            await self.materia_repo.soft_delete(materia)
-            # CRUD-006: propagar la baja a los hijos, para que las comisiones no
-            # queden operables (crear_entrega valida comisión activa) ni visibles.
-            await self.comision_repo.desactivar_por_materia(materia_id)
-            await self.rubrica_repo.desactivar_por_materia(materia_id)
+        # CRUD-002: soft delete SIEMPRE (se eliminó el flag ALLOW_HARD_DELETE, que
+        # sobrecargaba el mismo verbo DELETE con dos semánticas según config).
+        if not materia.activa:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La materia ya está eliminada",
+            )
+        await self.materia_repo.soft_delete(materia)
+        # CRUD-006: propagar la baja a los hijos, para que las comisiones no
+        # queden operables (crear_entrega valida comisión activa) ni visibles.
+        await self.comision_repo.desactivar_por_materia(materia_id)
+        await self.rubrica_repo.desactivar_por_materia(materia_id)
 
     async def restaurar_materia(self, materia_id: int) -> MateriaResponse:
         """
