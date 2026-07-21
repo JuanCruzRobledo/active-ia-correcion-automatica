@@ -29,12 +29,14 @@ from app.core.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+# IA-005: la key NO va en la URL (httpx loguea la URL a INFO -> fuga en logs).
+# Se pasa por el header x-goog-api-key en cada POST.
 _GEMINI_GENERATE_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "{model}:generateContent?key={api_key}"
+    "{model}:generateContent"
 )
 _GEMINI_UPLOAD_URL = (
-    "https://generativelanguage.googleapis.com/upload/v1beta/files?key={api_key}"
+    "https://generativelanguage.googleapis.com/upload/v1beta/files"
 )
 
 
@@ -456,10 +458,12 @@ class GeminiCorrectionClient:
         self.rubric_timeout = 120.0
 
     def _generate_url(self, api_key: str) -> str:
-        return _GEMINI_GENERATE_URL.format(model=self.model, api_key=api_key)
+        # IA-005: la key ya no se embebe en la URL; va por header. El parámetro se
+        # mantiene por compatibilidad de firma con los callers.
+        return _GEMINI_GENERATE_URL.format(model=self.model)
 
     def _upload_url(self, api_key: str) -> str:
-        return _GEMINI_UPLOAD_URL.format(api_key=api_key)
+        return _GEMINI_UPLOAD_URL
 
     async def corregir_codigo(self, payload: dict) -> dict[str, Any]:
         """
@@ -615,7 +619,7 @@ class GeminiCorrectionClient:
                 response = await client.post(
                     self._upload_url(api_key),
                     content=pdf_bytes,
-                    headers={"Content-Type": "application/pdf"},
+                    headers={"Content-Type": "application/pdf", "x-goog-api-key": api_key},
                     timeout=30.0,
                 )
                 if response.status_code != 200:
@@ -972,7 +976,7 @@ class GeminiCorrectionClient:
                 response = await client.post(
                     self._generate_url(api_key),
                     json=body,
-                    headers={"Content-Type": "application/json"},
+                    headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
                     timeout=self.rubric_timeout,
                 )
                 elapsed_ms = int(time.time() * 1000) - start_ms
@@ -1033,7 +1037,7 @@ class GeminiCorrectionClient:
                 response = await client.post(
                     self._generate_url(api_key),
                     json=body,
-                    headers={"Content-Type": "application/json"},
+                    headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
                     timeout=timeout,
                 )
                 elapsed_ms = int(time.time() * 1000) - start_ms

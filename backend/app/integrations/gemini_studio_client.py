@@ -2,7 +2,8 @@
 
 Corresponde al modo de corrección ``correction_provider == "gemini"``. La key es
 una API key de Google AI Studio y se valida pegándole directo a
-``generativelanguage.googleapis.com`` con ``?key=...`` (NO auth Bearer).
+``generativelanguage.googleapis.com`` con el header ``x-goog-api-key`` (IA-005:
+NO en el query string, para no filtrarla en los logs de httpx; NO auth Bearer).
 """
 
 import httpx
@@ -43,13 +44,15 @@ def api_key_valida_segun_status(status_code: int) -> bool:
 async def validar_api_key(api_key: str) -> bool:
     """Valida una API key de Gemini Studio con una llamada de prueba a Google."""
     payload = construir_payload_validacion()
-    headers = {"Content-Type": "application/json"}
+    # IA-005: la key va por header x-goog-api-key, no en el query string (httpx
+    # loguea la URL completa a INFO -> fuga latente de credenciales en logs).
+    headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
     url = construir_url_validacion(settings.GEMINI_MODEL)
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
-                f"{url}?key={api_key}",
+                url,
                 json=payload,
                 headers=headers,
             )

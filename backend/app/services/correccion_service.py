@@ -867,6 +867,14 @@ class CorreccionService:
                     continue
                 raise
 
+            except ModelOverloadedError:
+                # IA-009: 503 (modelo sobrecargado) es transitorio -> reintentar con
+                # backoff, igual que el timeout. Antes se caía al primer intento.
+                if attempt < max_retries:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                raise
+
             except N8NError as e:
                 if attempt < max_retries:
                     await asyncio.sleep(2 ** attempt)
@@ -915,6 +923,14 @@ class CorreccionService:
             except N8NTimeoutError:
                 if attempt < max_retries:
                     await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    continue
+                raise
+
+            except ModelOverloadedError:
+                # IA-009: 503 (modelo sobrecargado) es transitorio -> reintentar con
+                # backoff, igual que el timeout. Antes se caía al primer intento.
+                if attempt < max_retries:
+                    await asyncio.sleep(2 ** attempt)
                     continue
                 raise
 
