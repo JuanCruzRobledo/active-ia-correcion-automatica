@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, Enum as SQLEnum, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, SoftDeleteMixin, TimestampMixin
+from app.models.base import Base, TimestampMixin
 from app.models.enums import RolEnum
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from app.models.materia import CoordinadorMateria
 
 
-class Usuario(Base, TimestampMixin, SoftDeleteMixin):
+class Usuario(Base, TimestampMixin):
     """
     Usuario del sistema.
 
