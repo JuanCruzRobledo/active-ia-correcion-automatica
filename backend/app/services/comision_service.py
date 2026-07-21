@@ -253,7 +253,10 @@ class ComisionService:
         tutores_info = []
         for ct in comision.tutores:
             tutor = ct.tutor
-            if tutor:
+            # CRUD-017: ocultar tutores inactivos, alineado con obtener_materia
+            # (que ya oculta coordinadores inactivos). Antes un usuario deshabilitado
+            # desaparecía de una pantalla y seguía visible en la otra.
+            if tutor and tutor.activo:
                 tutores_info.append(
                     TutorInfo(
                         id=tutor.id,
