@@ -91,6 +91,13 @@ class CohorteService:
 
     async def eliminar_cohorte(self, cohorte_id: int) -> None:
         cohorte = await self._get_cohorte_or_404(cohorte_id)
+        # CRUD-007: soft delete (activa=False). Antes era físico (y reventaba con 500
+        # si la cohorte tenía cuatrimestres, por la FK NOT NULL sin ON DELETE).
+        if not cohorte.activa:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La cohorte ya está eliminada",
+            )
         materias = await self.cohorte_repo.count_materias(cohorte_id)
         if materias > 0:
             raise HTTPException(
@@ -100,7 +107,7 @@ class CohorteService:
                     "a cuatrimestres de esta cohorte"
                 ),
             )
-        await self.cohorte_repo.delete(cohorte)
+        await self.cohorte_repo.soft_delete(cohorte)
 
     # ===================== Cuatrimestre =====================
 
