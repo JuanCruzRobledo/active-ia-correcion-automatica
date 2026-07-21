@@ -66,8 +66,19 @@ class MateriaService:
         # Normalize codigo to uppercase
         codigo_upper = data.codigo.upper()
 
-        # Check if codigo already exists
-        if await self.materia_repo.exists_codigo(codigo_upper):
+        # Check if codigo already exists. CRUD-011: si el conflicto es contra una
+        # materia ELIMINADA (soft delete), decirlo y ofrecer restaurar — si no, el
+        # 409 confunde porque la materia borrada no aparece en el listado.
+        conflicto = await self.materia_repo.get_by_codigo(codigo_upper)
+        if conflicto is not None:
+            if not conflicto.activa:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Ya existe una materia con código {codigo_upper}, pero está "
+                        f"eliminada (id {conflicto.id}). Restaurala o elegí otro código."
+                    ),
+                )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="El código de materia ya existe",

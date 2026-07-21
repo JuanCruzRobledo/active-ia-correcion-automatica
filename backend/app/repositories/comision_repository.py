@@ -282,6 +282,26 @@ class ComisionRepository:
         count = result.scalar() or 0
         return count > 0
 
+    async def get_by_materia_nombre_anio(
+        self,
+        materia_id: int,
+        nombre: str,
+        anio: int,
+    ) -> Comision | None:
+        """
+        CRUD-011: devuelve la comisión que ocupa la clave única (materia+nombre+anio),
+        SIN filtrar por `activa`, para poder distinguir un conflicto contra un
+        registro eliminado y ofrecer restaurarlo.
+        """
+        result = await self.db.execute(
+            select(Comision).where(
+                Comision.materia_id == materia_id,
+                Comision.nombre == nombre,
+                Comision.anio == anio,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def create(self, comision: Comision) -> Comision:
         """
         Create a new comision.

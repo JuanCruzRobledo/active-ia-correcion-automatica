@@ -77,12 +77,23 @@ class ComisionService:
                 detail="Materia no encontrada o inactiva",
             )
 
-        # Check if comision already exists (materia + nombre + anio)
-        if await self.comision_repo.exists(
+        # Check if comision already exists (materia + nombre + anio). CRUD-011: si el
+        # conflicto es con una comisión ELIMINADA, decirlo y ofrecer restaurar.
+        conflicto = await self.comision_repo.get_by_materia_nombre_anio(
             materia_id=data.materia_id,
             nombre=data.nombre,
             anio=data.anio,
-        ):
+        )
+        if conflicto is not None:
+            if not conflicto.activa:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Ya existe una comisión '{data.nombre}' ({data.anio}) para esta "
+                        f"materia, pero está eliminada (id {conflicto.id}). Restaurala o "
+                        "usá otro nombre."
+                    ),
+                )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Ya existe una comisión con ese nombre para esta materia y año",

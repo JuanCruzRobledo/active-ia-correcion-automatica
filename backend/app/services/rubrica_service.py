@@ -167,12 +167,24 @@ class RubricaService:
             )
 
         # Check if rubrica already exists
-        if await self.rubrica_repo.exists(
+        # CRUD-011: si el conflicto es con una rúbrica ELIMINADA, decirlo y ofrecer
+        # restaurar (get_by_materia_tipo_numero no filtra por activa).
+        conflicto = await self.rubrica_repo.get_by_materia_tipo_numero(
             materia_id=data.materia_id,
             tipo=data.tipo.value,
             numero=data.numero,
             anio=data.anio,
-        ):
+        )
+        if conflicto is not None:
+            if not conflicto.activa:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Ya existe una rúbrica {data.tipo.value} N°{data.numero} "
+                        f"({data.anio}) para esta materia, pero está eliminada "
+                        f"(id {conflicto.id}). Restaurala o usá otro número."
+                    ),
+                )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Ya existe una rúbrica con ese tipo y número para esta materia y año",
