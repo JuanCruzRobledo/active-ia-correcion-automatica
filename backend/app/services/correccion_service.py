@@ -307,9 +307,15 @@ class CorreccionService:
         else:
             payload = self._build_correction_payload(entrega, rubrica, api_key)
 
-        # Update entrega state to PENDIENTE
-        entrega.estado = EstadoEntregaEnum.PENDIENTE
-        await self.entrega_repo.update(entrega)
+        # IA-003: reclamo ATÓMICO en vez de un set no atómico. Evita que un doble
+        # click / retry / lote con la misma entrega dispare DOS llamadas al LLM: el
+        # segundo request concurrente no reclama y recibe 409 (sin gastar tokens).
+        if not await self.entrega_repo.reclamar_para_correccion(entrega_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Esta entrega ya está siendo corregida (en proceso). Esperá a que termine.",
+            )
+        entrega.estado = EstadoEntregaEnum.PENDIENTE  # reflejar en memoria
 
         # Call the appropriate AI provider directly (Gemini or OpenRouter)
         try:

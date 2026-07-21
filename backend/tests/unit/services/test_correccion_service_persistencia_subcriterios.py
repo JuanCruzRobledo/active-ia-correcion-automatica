@@ -125,6 +125,7 @@ def _service_con(entrega, rubrica, gemini_result) -> tuple[CorreccionService, di
     service.entrega_repo = MagicMock()
     service.entrega_repo.get_by_id_with_relations = AsyncMock(return_value=entrega)
     service.entrega_repo.update = AsyncMock(return_value=entrega)
+    service.entrega_repo.reclamar_para_correccion = AsyncMock(return_value=True)  # IA-003
 
     service.rubrica_repo = MagicMock()
     service.rubrica_repo.get_active_by_id = AsyncMock(return_value=rubrica)

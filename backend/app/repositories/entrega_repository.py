@@ -358,6 +358,29 @@ class EntregaRepository:
         await self.db.refresh(entrega)
         return entrega
 
+    async def reclamar_para_correccion(self, entrega_id: int) -> bool:
+        """
+        IA-003: reclamo ATÓMICO de una entrega para corregirla, para no disparar dos
+        llamadas al LLM sobre la misma. UPDATE ... WHERE estado != PENDIENTE: el
+        primero gana (estado -> PENDIENTE), un segundo request concurrente encuentra
+        estado == PENDIENTE, no matchea y devuelve False (el service responde 409).
+
+        Permite reclamar desde SUBIDA/ERROR/CORREGIDA (recorregir es legítimo);
+        solo rechaza si YA está PENDIENTE (corrección en curso).
+        """
+        from app.models.enums import EstadoEntregaEnum
+
+        result = await self.db.execute(
+            update(Entrega)
+            .where(
+                Entrega.id == entrega_id,
+                Entrega.estado != EstadoEntregaEnum.PENDIENTE,
+            )
+            .values(estado=EstadoEntregaEnum.PENDIENTE)
+        )
+        await self.db.commit()
+        return result.rowcount > 0
+
     async def delete(self, entrega: Entrega) -> None:
         """
         Physically delete an entrega (hard delete).

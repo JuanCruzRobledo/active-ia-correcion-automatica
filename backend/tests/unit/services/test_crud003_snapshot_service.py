@@ -103,6 +103,7 @@ def _service(existing):
     svc.entrega_repo = MagicMock()
     svc.entrega_repo.get_by_id_with_relations = AsyncMock(return_value=entrega)
     svc.entrega_repo.update = AsyncMock(return_value=entrega)
+    svc.entrega_repo.reclamar_para_correccion = AsyncMock(return_value=True)  # IA-003
     svc.rubrica_repo = MagicMock()
     svc.rubrica_repo.get_active_by_id = AsyncMock(return_value=_fake_rubrica())
 
