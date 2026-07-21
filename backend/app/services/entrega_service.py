@@ -169,10 +169,12 @@ class EntregaService:
             extensiones_personalizadas,
         )
 
-        # Check if entrega already exists
+        # Check if entrega already exists. CRUD-005: si vamos a sobrescribir, cargar
+        # el contenido para poder snapshotearlo en el historial antes de pisarlo.
         entrega_existente = await self.entrega_repo.get_by_rubrica_alumno(
             rubrica_id=data.rubrica_id,
             alumno_nombre=data.alumno_nombre,
+            load_contenido=sobrescribir,
         )
 
         if entrega_existente:
@@ -955,10 +957,12 @@ class EntregaService:
                             archivo_nombre, extensiones_personalizadas,
                         )
 
-                        # Check if entrega already exists
+                        # Check if entrega already exists. CRUD-005: cargar el
+                        # contenido si se va a sobrescribir, para snapshotearlo.
                         entrega_existente = await self.entrega_repo.get_by_rubrica_alumno(
                             rubrica_id=rubrica_id,
                             alumno_nombre=alumno_nombre,
+                            load_contenido=sobrescribir,
                         )
 
                         sobrescrito = False

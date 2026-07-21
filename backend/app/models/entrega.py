@@ -200,6 +200,19 @@ class EntregaHistorial(Base):
         Text,
         nullable=True,
     )
+    # CRUD-005: el contenido REAL de la versión anterior (antes solo se guardaba el
+    # preview de 500 chars y el trabajo del alumno se perdía al sobrescribir).
+    # deferred=True: los listados del historial no lo necesitan.
+    contenido_consolidado: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        deferred=True,
+    )
+    pdf_contenido_b64: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        deferred=True,
+    )
     hash_sha256: Mapped[str | None] = mapped_column(
         String(64),
         nullable=True,

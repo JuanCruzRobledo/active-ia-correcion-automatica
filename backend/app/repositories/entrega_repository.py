@@ -271,6 +271,8 @@ class EntregaRepository:
         self,
         rubrica_id: int,
         alumno_nombre: str,
+        *,
+        load_contenido: bool = False,
     ) -> Entrega | None:
         """
         Get entrega by rubrica and alumno nombre.
@@ -278,15 +280,21 @@ class EntregaRepository:
         Args:
             rubrica_id: ID of the rubrica.
             alumno_nombre: Nombre del alumno.
+            load_contenido: CRUD-005: si True, undefiere contenido_consolidado y
+                pdf_contenido_b64 para poder snapshotearlos antes de sobrescribir.
 
         Returns:
             Entrega object if found, None otherwise.
         """
+        options = [selectinload(Entrega.correccion)]
+        if load_contenido:
+            options.extend([
+                undefer(Entrega.contenido_consolidado),
+                undefer(Entrega.pdf_contenido_b64),
+            ])
         result = await self.db.execute(
             select(Entrega)
-            .options(
-                selectinload(Entrega.correccion),
-            )
+            .options(*options)
             .where(
                 Entrega.rubrica_id == rubrica_id,
                 Entrega.alumno_nombre == alumno_nombre,
