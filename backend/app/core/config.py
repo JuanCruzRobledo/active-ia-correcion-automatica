@@ -115,6 +115,11 @@ class Settings(BaseSettings):
     # - MAX_ZIP_ENTRIES: cantidad máxima de entradas del ZIP; corta las bombas de
     #   "muchos archivos diminutos" que el tope de tamaño no atrapa.
     MAX_ZIP_EXPANDED_SIZE: int = MAX_UPLOAD_SIZE  # 100 MB descomprimido acumulado
+
+    # IA-015: tope de caracteres del código consolidado que se manda al LLM. Una
+    # entrega enorme podía inflar el payload sin control (costo de tokens / rechazo
+    # del modelo). ~200k chars ≈ ~50k tokens, holgado para una entrega de código.
+    MAX_CODIGO_CORRECCION_CHARS: int = 200_000
     MAX_ZIP_ENTRIES: int = 5000
 
     # =========================================

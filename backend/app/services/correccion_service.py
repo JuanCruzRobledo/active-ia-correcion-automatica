@@ -24,6 +24,7 @@ from app.models.base import async_session_maker
 logger = logging.getLogger(__name__)
 
 
+from app.core.config import settings
 from app.core.error_catalog import (
     ERROR_API_KEY_INVALID,
     ERROR_IA_RESPUESTA_INVALIDA,
@@ -67,6 +68,18 @@ from app.schemas.correccion import (
     GeminiResponse,
 )
 from app.services.actividad_service import ActividadService
+
+
+def _truncar_codigo(codigo, limite: int):
+    """IA-015: capa el código consolidado a `limite` caracteres antes de mandarlo al
+    LLM, con un marcador de corte. None y códigos por debajo del límite pasan igual."""
+    if codigo is None or len(codigo) <= limite:
+        return codigo
+    marcador = (
+        f"\n\n... [código truncado: superó el límite de {limite} caracteres; "
+        "se corrige solo la primera parte] ..."
+    )
+    return codigo[:limite] + marcador
 
 
 def _techo_de_condicion(rubrica, cd_id) -> int | None:
@@ -764,6 +777,8 @@ class CorreccionService:
         """
         # Use contenido_consolidado if available, fallback to preview for old entregas
         codigo = entrega.contenido_consolidado or entrega.contenido_preview
+        # IA-015: capar el tamaño del código antes de mandarlo al LLM.
+        codigo = _truncar_codigo(codigo, settings.MAX_CODIGO_CORRECCION_CHARS)
 
         return {
             "codigo": codigo,
