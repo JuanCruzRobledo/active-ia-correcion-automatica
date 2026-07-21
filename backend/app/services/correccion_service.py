@@ -70,6 +70,51 @@ from app.schemas.correccion import (
 from app.services.actividad_service import ActividadService
 
 
+def _problemas_respuesta_vs_rubrica(criterios_resp, rubrica) -> list[str]:
+    """IA-007: valida la respuesta del LLM contra la rúbrica. Devuelve la lista de
+    problemas (vacía = coherente): criterios faltantes/inventados, puntaje_maximo
+    distinto del peso del criterio, o puntaje_obtenido fuera de [0, maximo].
+
+    Si algún criterio de la respuesta viene sin id (caso PDF), NO se valida el set de
+    ids ni el peso (no hay con qué matchear), pero SÍ se validan los rangos siempre.
+    """
+    problemas: list[str] = []
+
+    # Rangos: siempre.
+    for c in criterios_resp:
+        obt = float(c.puntaje_obtenido)
+        maxi = float(c.puntaje_maximo)
+        if obt < 0 or obt > maxi:
+            problemas.append(
+                f"criterio {getattr(c, 'id', None)}: puntaje {obt} fuera de [0, {maxi}]"
+            )
+
+    rubrica_crits = {
+        c.get("id"): c for c in (getattr(rubrica, "criterios_json", None) or []) if c.get("id")
+    }
+    ids_resp = [getattr(c, "id", None) for c in criterios_resp]
+
+    # Set de ids + peso: solo si tanto la rúbrica como la respuesta tienen ids.
+    if rubrica_crits and all(ids_resp):
+        esperados = set(rubrica_crits.keys())
+        recibidos = set(ids_resp)
+        faltan = esperados - recibidos
+        sobran = recibidos - esperados
+        if faltan:
+            problemas.append(f"criterios faltantes en la respuesta: {sorted(faltan)}")
+        if sobran:
+            problemas.append(f"criterios inventados por el modelo: {sorted(sobran)}")
+        for c in criterios_resp:
+            rc = rubrica_crits.get(c.id)
+            if rc is not None and rc.get("peso") is not None:
+                if float(c.puntaje_maximo) != float(rc["peso"]):
+                    problemas.append(
+                        f"criterio {c.id}: puntaje_maximo {c.puntaje_maximo} "
+                        f"!= peso de la rúbrica {rc['peso']}"
+                    )
+    return problemas
+
+
 def _truncar_codigo(codigo, limite: int):
     """IA-015: capa el código consolidado a `limite` caracteres antes de mandarlo al
     LLM, con un marcador de corte. None y códigos por debajo del límite pasan igual."""
@@ -430,6 +475,22 @@ class CorreccionService:
             logger.warning(
                 f"Respuesta inválida de {provider} corrigiendo entrega {entrega_id}: {e.message}",
                 exc_info=True,
+            )
+            _marcar_entrega_error(entrega, ERROR_IA_RESPUESTA_INVALIDA, provider)
+            await self.entrega_repo.update(entrega)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, provider),
+            )
+
+        # IA-007: validar la respuesta contra la RÚBRICA antes de persistir. Una
+        # alucinación (criterio faltante/inventado, peso cambiado, puntaje inflado) no
+        # debe guardarse como corrección válida.
+        problemas = _problemas_respuesta_vs_rubrica(gemini_response.criterios, rubrica)
+        if problemas:
+            logger.warning(
+                "IA-007: respuesta de %s divergente de la rúbrica (entrega %s): %s",
+                provider, entrega_id, problemas,
             )
             _marcar_entrega_error(entrega, ERROR_IA_RESPUESTA_INVALIDA, provider)
             await self.entrega_repo.update(entrega)

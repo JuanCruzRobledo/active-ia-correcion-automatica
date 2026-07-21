@@ -29,6 +29,28 @@ logger = logging.getLogger(__name__)
 _STATUS_VALIDOS = {200, 429}
 
 
+def _strip_json_fences(text: str) -> str:
+    """IA-011: extrae el JSON de una respuesta que puede venir envuelta en fences de
+    markdown (```json ... ```) o con prosa antes/después. Red de seguridad antes de
+    json.loads, para no fallar (y reintentar, duplicando costo) por el envoltorio.
+
+    Si hay un bloque cercado, devuelve su contenido; si no, recorta desde el primer
+    '{' hasta el último '}'. Si no encuentra nada, devuelve el texto tal cual (que
+    json.loads reportará como inválido, comportamiento previo)."""
+    if not text:
+        return text
+    import re
+
+    m = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    if m:
+        return m.group(1).strip()
+    inicio = text.find("{")
+    fin = text.rfind("}")
+    if inicio != -1 and fin != -1 and fin > inicio:
+        return text[inicio : fin + 1]
+    return text
+
+
 def construir_payload_validacion(model: str) -> dict:
     """Arma el body mínimo para validar la key contra OpenRouter.
 
@@ -241,7 +263,9 @@ async def corregir(payload: dict) -> dict[str, Any]:
                 raise N8NError("OpenRouter devolvió content vacío")
 
             try:
-                correccion_data = json.loads(text_content)
+                # IA-011: limpiar fences de markdown / prosa antes de parsear, para
+                # no fallar (y reintentar, duplicando costo) por el envoltorio.
+                correccion_data = json.loads(_strip_json_fences(text_content))
             except json.JSONDecodeError as e:
                 raise N8NError(f"Respuesta de OpenRouter no es JSON válido: {e}")
 
