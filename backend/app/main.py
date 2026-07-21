@@ -72,6 +72,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception:  # noqa: BLE001 — el scheduler no debe impedir el arranque de la app
         logging.getLogger(__name__).exception("No se pudo iniciar el scheduler")
 
+    # IA-004: watchdog. Los lotes corren como BackgroundTasks in-process; si el
+    # proceso se reinició a mitad de un lote, sus entregas quedaron colgadas en
+    # PENDIENTE. Al arrancar, cualquier PENDIENTE es huérfano (el task murió con el
+    # proceso viejo): se pasa a ERROR (CORRECCION_INTERRUMPIDA) para destrabarlas.
+    try:
+        from app.models.base import async_session_maker
+        from app.repositories.entrega_repository import EntregaRepository
+
+        async with async_session_maker() as _session:
+            _destrabadas = await EntregaRepository(_session).reset_pendientes_interrumpidas()
+        if _destrabadas:
+            logging.getLogger(__name__).warning(
+                "IA-004 watchdog: %s entrega(s) colgadas en PENDIENTE pasadas a ERROR",
+                _destrabadas,
+            )
+    except Exception:  # noqa: BLE001 — el watchdog no debe impedir el arranque
+        logging.getLogger(__name__).exception("Watchdog de PENDIENTES falló")
+
     yield
 
     # Shutdown

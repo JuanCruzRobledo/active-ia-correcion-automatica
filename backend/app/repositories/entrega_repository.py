@@ -358,6 +358,34 @@ class EntregaRepository:
         await self.db.refresh(entrega)
         return entrega
 
+    async def reset_pendientes_interrumpidas(self) -> int:
+        """
+        IA-004: watchdog. Pasa a ERROR todas las entregas colgadas en PENDIENTE.
+
+        Los lotes corren como BackgroundTasks in-process (no una cola durable): si el
+        contenedor se reinicia a mitad de un lote, esas entregas quedan en PENDIENTE
+        para siempre (no había ningún job que las destrabara). Se llama al ARRANQUE:
+        tras un restart, cualquier PENDIENTE es huérfano (el task que la procesaba
+        murió con el proceso viejo). Devuelve cuántas se destrabaron.
+        """
+        from datetime import datetime as _dt
+
+        from app.core.error_catalog import ERROR_INTERRUMPIDA, mensaje_error
+        from app.models.enums import EstadoEntregaEnum
+
+        result = await self.db.execute(
+            update(Entrega)
+            .where(Entrega.estado == EstadoEntregaEnum.PENDIENTE)
+            .values(
+                estado=EstadoEntregaEnum.ERROR,
+                error_code=ERROR_INTERRUMPIDA,
+                error_mensaje=mensaje_error(ERROR_INTERRUMPIDA),
+                error_at=_dt.utcnow(),
+            )
+        )
+        await self.db.commit()
+        return result.rowcount
+
     async def reclamar_para_correccion(self, entrega_id: int) -> bool:
         """
         IA-003: reclamo ATÓMICO de una entrega para corregirla, para no disparar dos
