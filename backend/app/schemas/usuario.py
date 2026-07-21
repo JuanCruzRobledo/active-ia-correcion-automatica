@@ -190,7 +190,7 @@ class MoodleCredentialsUpdate(BaseModel):
     moodle_password: str = Field(
         ...,
         min_length=1,
-        description="Contraseña en Moodle (se cifra con AES-256)",
+        description="Contraseña en Moodle (se cifra con AES-128-CBC (Fernet))",
     )
 
 

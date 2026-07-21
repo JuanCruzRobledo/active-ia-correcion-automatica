@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     # =========================================
     # Seguridad - Encriptación
     # =========================================
-    # Key para encriptar API Keys de Gemini (Fernet/AES-256)
+    # Key para encriptar API Keys de Gemini (Fernet: AES-128-CBC + HMAC-SHA256)
     # Generar con: from cryptography.fernet import Fernet; Fernet.generate_key()
     ENCRYPTION_KEY: str = _DEFAULT_ENCRYPTION_KEY
 

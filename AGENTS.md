@@ -71,7 +71,7 @@ Usuario ─┬─> CoordinadorMateria ──> Materia
 - Seguir Clean Architecture en backend (Router → Service → Repository)
 - Usar TypeScript strict en frontend
 - Validar permisos en cada endpoint
-- Encriptar API Keys con AES-256
+- Encriptar API Keys con AES-128-CBC (Fernet)
 - Usar JSONB para criterios de rúbricas y correcciones
 - Máximo 500 LOC por archivo
 - Soft delete para auditoría

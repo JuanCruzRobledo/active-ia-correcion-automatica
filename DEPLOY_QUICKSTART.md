@@ -62,7 +62,7 @@ curl http://localhost/
 - **API Docs**: `http://TU_IP_VPS/api/v1/docs`
 
 > La IA no necesita ningún servicio extra: el backend llama directo a Gemini/OpenRouter
-> con la API key que cada usuario carga en su perfil (cifrada con AES-256).
+> con la API key que cada usuario carga en su perfil (cifrada con AES-128-CBC (Fernet)).
 
 ---
 

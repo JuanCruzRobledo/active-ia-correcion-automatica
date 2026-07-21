@@ -52,14 +52,14 @@ class Usuario(Base, TimestampMixin):
         index=True,
     )
 
-    # API Key de Gemini Studio (Google, encriptada con AES-256).
+    # API Key de Gemini Studio (Google, encriptada con AES-128-CBC (Fernet)).
     # Corresponde al modo de corrección correction_provider == "gemini".
     gemini_api_key_encrypted: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
     )
 
-    # API Key de OpenRouter (encriptada con AES-256).
+    # API Key de OpenRouter (encriptada con AES-128-CBC (Fernet)).
     # Corresponde al modo de corrección correction_provider == "openrouter".
     # Se guarda por separado de la de Gemini Studio: el tutor mantiene ambas.
     openrouter_api_key_encrypted: Mapped[str | None] = mapped_column(
@@ -67,7 +67,7 @@ class Usuario(Base, TimestampMixin):
         nullable=True,
     )
 
-    # Credenciales Moodle (password cifrado con AES-256)
+    # Credenciales Moodle (password cifrado con AES-128-CBC (Fernet))
     moodle_username: Mapped[str | None] = mapped_column(String(100), nullable=True)
     moodle_password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     moodle_host: Mapped[str | None] = mapped_column(String(255), nullable=True)

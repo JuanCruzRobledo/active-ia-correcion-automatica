@@ -237,7 +237,7 @@ N8N_TIMEOUT_SECONDS: int = 90
 ### API Keys de Gemini
 
 **Almacenamiento:**
-- ✅ Encriptadas en BD con Fernet (AES-256)
+- ✅ Encriptadas en BD con Fernet (AES-128-CBC)
 - ✅ Se desencriptan solo al momento de uso
 - ✅ Nunca se exponen en logs o respuestas
 

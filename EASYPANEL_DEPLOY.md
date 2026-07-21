@@ -11,7 +11,7 @@ Navegador
    └── Backend   → Easypanel, app service construido desde `backend/Dockerfile`
                       ├── PostgreSQL (vía DATABASE_URL)
                       └── IA: llamada DIRECTA a Gemini / OpenRouter
-                             con la API key de cada usuario (cifrada AES-256)
+                             con la API key de cada usuario (cifrada AES-128-CBC (Fernet))
 ```
 
 Puntos clave:
@@ -23,7 +23,7 @@ Puntos clave:
   (framework `vite`, build `npm run build`, output `dist`, SPA rewrite a `/index.html`).
 - **IA**: **no hay orquestador externo ni servicio intermedio**. El backend llama directo al
   proveedor (Gemini/OpenRouter) usando la API key que cada usuario carga en su perfil, guardada
-  cifrada con AES-256 (`ENCRYPTION_KEY`).
+  cifrada con AES-128-CBC (Fernet) (`ENCRYPTION_KEY`).
 - **`docker-compose.prod.yml` / `docker-compose.easypanel.yml`**: quedan como **alternativa
   self-hosted** para levantar todo el stack en un VPS propio. No son el camino principal.
   Ver [DEPLOYMENT.md](./DEPLOYMENT.md).

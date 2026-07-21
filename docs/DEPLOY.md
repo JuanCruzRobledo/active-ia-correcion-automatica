@@ -7,7 +7,7 @@ El despliegue real del proyecto **no usa Docker Compose**:
 - **Backend**: app service de **EasyPanel**, construido directo desde `backend/Dockerfile`.
 - **Frontend**: **Vercel**, sin Docker (config en `frontend/vercel.json`).
 - **IA**: el backend llama **directo** a Gemini/OpenRouter con la API key de cada usuario,
-  guardada cifrada con AES-256. No hay orquestador ni servicio intermedio.
+  guardada cifrada con AES-128-CBC (Fernet). No hay orquestador ni servicio intermedio.
 
 Los pasos de esta guía son la **alternativa self-hosted** (todo el stack con Docker Compose en
 una máquina propia), útil para desarrollo local o para un VPS. Ver `EASYPANEL_DEPLOY.md` para el
@@ -123,7 +123,7 @@ docker exec -it active-ia-backend python scripts/create_admin.py
 
 No hay nada que configurar a nivel de infraestructura: el backend llama directo a
 Gemini/OpenRouter. Cada usuario carga su propia API key desde su perfil en la app, y se guarda
-cifrada con AES-256 usando `ENCRYPTION_KEY`.
+cifrada con AES-128-CBC (Fernet) usando `ENCRYPTION_KEY`.
 
 ### Paso 7: Acceder a la aplicación
 

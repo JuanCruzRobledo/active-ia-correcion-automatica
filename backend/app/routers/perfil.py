@@ -134,7 +134,7 @@ async def update_api_key(
 
     Valida contra el proveedor correspondiente (Gemini Studio → Google;
     OpenRouter → consulta real a google/gemini-3.5-flash) ANTES de guardar.
-    Si es válida, se encripta con AES-256 en la columna propia de ese proveedor.
+    Si es válida, se encripta con AES-128-CBC (Fernet) en la columna propia de ese proveedor.
     Las keys de cada proveedor se guardan por separado.
 
     **Permissions**: All authenticated users

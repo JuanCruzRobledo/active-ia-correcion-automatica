@@ -10,7 +10,7 @@ Esta guía te ayudará a desplegar la aplicación Active-IA en tu VPS Hostinger 
 > alternativa para levantar todo el stack en un VPS propio, que es lo que documenta esta guía.
 >
 > La corrección con IA **no usa un orquestador externo**: el backend llama directo a
-> Gemini/OpenRouter con la API key de cada usuario (guardada cifrada con AES-256).
+> Gemini/OpenRouter con la API key de cada usuario (guardada cifrada con AES-128-CBC (Fernet)).
 
 ## 📋 Pre-requisitos
 
@@ -141,7 +141,7 @@ VITE_API_URL=http://TU_IP_O_DOMINIO/api/v1
 ```
 
 > La API key de IA (Gemini/OpenRouter) **no se configura acá**: la carga cada usuario desde su
-> perfil y se guarda cifrada con AES-256 usando `ENCRYPTION_KEY`.
+> perfil y se guarda cifrada con AES-128-CBC (Fernet) usando `ENCRYPTION_KEY`.
 
 ---
 
