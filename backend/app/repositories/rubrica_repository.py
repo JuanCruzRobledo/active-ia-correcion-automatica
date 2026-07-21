@@ -379,7 +379,6 @@ class RubricaRepository:
         Raises:
             Exception: Si falla alguna operación de DB o de disco.
         """
-        import os
 
         from sqlalchemy import select
 
@@ -394,12 +393,6 @@ class RubricaRepository:
         entregas = result.scalars().all()
 
         for entrega in entregas:
-            # Eliminar archivo físico del disco
-            if entrega.archivo_ruta and os.path.exists(entrega.archivo_ruta):
-                try:
-                    os.remove(entrega.archivo_ruta)
-                except OSError:
-                    pass  # Si el archivo ya no existe, continuar
 
             # Eliminar la entrega (cascade ORM elimina Correccion y EntregaHistorial)
             await self.db.delete(entrega)

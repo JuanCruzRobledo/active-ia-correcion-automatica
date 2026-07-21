@@ -365,7 +365,6 @@ class MateriaRepository:
         Raises:
             Exception: Si falla alguna operación de DB o de disco.
         """
-        import os
 
         from app.models.comision import Comision, ComisionTutor
         from app.models.entrega import Entrega
@@ -387,12 +386,6 @@ class MateriaRepository:
             entregas = result_e.scalars().all()
 
             for entrega in entregas:
-                # Eliminar archivo físico del disco
-                if entrega.archivo_ruta and os.path.exists(entrega.archivo_ruta):
-                    try:
-                        os.remove(entrega.archivo_ruta)
-                    except OSError:
-                        pass  # Si el archivo ya no existe, continuar
 
                 # Eliminar entrega (cascade ORM elimina Correccion y EntregaHistorial)
                 await self.db.delete(entrega)
@@ -427,11 +420,6 @@ class MateriaRepository:
             entregas_remanentes = result_e2.scalars().all()
 
             for entrega in entregas_remanentes:
-                if entrega.archivo_ruta and os.path.exists(entrega.archivo_ruta):
-                    try:
-                        os.remove(entrega.archivo_ruta)
-                    except OSError:
-                        pass
                 await self.db.delete(entrega)
 
             await self.db.flush()

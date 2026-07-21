@@ -88,7 +88,6 @@ async def _seed(db) -> int:
             rubrica_id=1,  # FK no forzada en SQLite
             alumno_nombre=nombre,
             archivo_nombre="tp.zip",
-            archivo_ruta=f"/tmp/tp{rid}.zip",
             archivo_tipo="zip",
             estado=EstadoEntregaEnum.SUBIDA,
             archivado=False,

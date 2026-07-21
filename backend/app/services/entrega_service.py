@@ -214,22 +214,16 @@ class EntregaService:
             if moodle_user_id is not None:
                 entrega_existente.moodle_user_id = moodle_user_id
 
-            # Note: archivo_ruta would be updated by file storage service
-            # For now, we keep the same path or generate a new one
-            entrega_existente.archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo.filename}"
 
             updated_entrega = await self.entrega_repo.update(entrega_existente)
             return EntregaResponse.model_validate(updated_entrega)
 
         # Create new entrega
-        archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo.filename}"
-
         entrega = Entrega(
             comision_id=data.comision_id,
             rubrica_id=data.rubrica_id,
             alumno_nombre=data.alumno_nombre,
             archivo_nombre=archivo.filename,
-            archivo_ruta=archivo_ruta,
             archivo_tamanio=archivo_tamanio,
             archivo_tipo=archivo_tipo,
             contenido_preview=contenido_preview,
@@ -340,14 +334,12 @@ class EntregaService:
             )
 
         hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
-        archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo_nombre}"
 
         entrega = Entrega(
             comision_id=comision_id,
             rubrica_id=rubrica_id,
             alumno_nombre=alumno_nombre,
             archivo_nombre=archivo_nombre,
-            archivo_ruta=archivo_ruta,
             archivo_tamanio=len(contenido_bytes),
             archivo_tipo=archivo_tipo,
             contenido_preview=contenido_preview,
@@ -538,7 +530,6 @@ class EntregaService:
             rubrica_id=entrega.rubrica_id,
             alumno_nombre=entrega.alumno_nombre,
             archivo_nombre=entrega.archivo_nombre,
-            archivo_ruta=entrega.archivo_ruta,
             archivo_tamanio=entrega.archivo_tamanio,
             archivo_tipo=entrega.archivo_tipo,
             contenido_preview=entrega.contenido_preview,
@@ -1007,7 +998,6 @@ class EntregaService:
                             entrega_existente.subido_por_id = subido_por_id
                             # Limpiar el error de la corrida anterior al sobrescribir (BUG-013).
                             _limpiar_entrega_error(entrega_existente)
-                            entrega_existente.archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo_nombre}"
 
                             updated_entrega = await self.entrega_repo.update(entrega_existente)
                             sobrescrito = True
@@ -1015,15 +1005,13 @@ class EntregaService:
 
                         else:
                             # Create new entrega
-                            archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo_nombre}"
-
+                    
                             entrega = Entrega(
                                 comision_id=comision_id,
                                 rubrica_id=rubrica_id,
                                 alumno_nombre=alumno_nombre,
                                 archivo_nombre=archivo_nombre,
-                                archivo_ruta=archivo_ruta,
-                                archivo_tamanio=archivo_tamanio,
+                                                    archivo_tamanio=archivo_tamanio,
                                 archivo_tipo=archivo_tipo,
                                 contenido_preview=contenido_preview,
                                 contenido_consolidado=contenido_consolidado,

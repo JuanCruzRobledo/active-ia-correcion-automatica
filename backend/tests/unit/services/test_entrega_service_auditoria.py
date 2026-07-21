@@ -141,8 +141,8 @@ async def test_individual_sobrescribir_limpia_error(service):
     def _update(e):
         return SimpleNamespace(
             id=9, comision_id=1, rubrica_id=2, alumno_nombre="Juan Perez",
-            archivo_nombre="tp.py", archivo_ruta="/x", archivo_tamanio=10,
-            archivo_tipo="individual", contenido_preview="preview",
+            archivo_nombre="tp.py", archivo_tamanio=10, archivo_tipo="individual",
+            contenido_preview="preview",
             estado=EstadoEntregaEnum.SUBIDA, archivado=False, hash_sha256="abc",
             subido_por_id=5, error_code=e.error_code, error_mensaje=e.error_mensaje,
             error_at=e.error_at, created_at=datetime(2026, 1, 1), updated_at=datetime(2026, 1, 1),

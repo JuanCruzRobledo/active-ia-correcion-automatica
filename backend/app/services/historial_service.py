@@ -67,7 +67,6 @@ class HistorialService:
             entrega_actual_id=entrega.id,
             alumno_nombre=entrega.alumno_nombre,
             archivo_nombre=entrega.archivo_nombre,
-            archivo_ruta=entrega.archivo_ruta,
             archivo_tamanio=entrega.archivo_tamanio,
             contenido_preview=entrega.contenido_preview,
             # CRUD-005: preservar el contenido REAL, no solo el preview.

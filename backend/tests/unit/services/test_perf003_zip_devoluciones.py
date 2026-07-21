@@ -95,7 +95,6 @@ async def _seed(db, *, n: int) -> dict:
             rubrica_id=rubrica.id,
             alumno_nombre=f"Alumno {i:03d}",
             archivo_nombre=f"tp{i}.zip",
-            archivo_ruta=f"/tmp/tp{i}.zip",
             archivo_tipo="zip",
             contenido_preview="print('hola')",
             estado=EstadoEntregaEnum.CORREGIDA,

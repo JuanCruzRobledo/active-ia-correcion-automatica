@@ -50,7 +50,6 @@ class Entrega(Base, TimestampMixin, SoftDeleteMixin):
     )
     alumno_nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     archivo_nombre: Mapped[str] = mapped_column(String(255), nullable=False)
-    archivo_ruta: Mapped[str] = mapped_column(String(500), nullable=False)
     archivo_tamanio: Mapped[int] = mapped_column(Integer, default=0)
     archivo_tipo: Mapped[str] = mapped_column(
         String(10),
@@ -194,7 +193,6 @@ class EntregaHistorial(Base):
     )
     alumno_nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     archivo_nombre: Mapped[str] = mapped_column(String(255), nullable=False)
-    archivo_ruta: Mapped[str] = mapped_column(String(500), nullable=False)
     archivo_tamanio: Mapped[int] = mapped_column(Integer, default=0)
     contenido_preview: Mapped[str | None] = mapped_column(
         Text,

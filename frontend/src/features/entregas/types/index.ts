@@ -115,7 +115,6 @@ export interface Entrega {
   rubrica_id: number;
   alumno_nombre: string;
   archivo_nombre: string;
-  archivo_ruta: string;
   archivo_tamanio: number;
   archivo_tipo: 'zip' | 'txt' | 'pdf' | 'individual';
   contenido_preview: string | null;

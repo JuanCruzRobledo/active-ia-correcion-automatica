@@ -66,7 +66,6 @@ async def _mk_entrega(db, comi_id=1, *, archivado=False, deleted=False) -> Entre
         # nombre unico: hay un unique (rubrica_id, alumno_nombre) en la tabla.
         alumno_nombre=f"Alumno {_contador_alumno}",
         archivo_nombre="tp.zip",
-        archivo_ruta="/tmp/tp.zip",
         archivo_tipo="zip",
         estado=EstadoEntregaEnum.SUBIDA,
         archivado=archivado,

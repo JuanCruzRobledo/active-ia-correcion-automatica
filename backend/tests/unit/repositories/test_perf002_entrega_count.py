@@ -86,7 +86,6 @@ async def _seed(db) -> tuple[int, int]:
             rubrica_id=1,  # FK no forzada en SQLite; el count no la usa
             alumno_nombre=f"Alumno {rid}",
             archivo_nombre="tp.zip",
-            archivo_ruta=f"/tmp/tp{rid}.zip",
             archivo_tipo="zip",
             estado=estado,
             archivado=archivado,

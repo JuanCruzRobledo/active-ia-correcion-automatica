@@ -70,7 +70,6 @@ async def _entrega(db, comision_id, estado, i):
             rubrica_id=1,
             alumno_nombre=f"C{comision_id}-{estado.value}-{i}",
             archivo_nombre="tp.zip",
-            archivo_ruta=f"/tmp/{comision_id}_{estado.value}_{i}.zip",
             archivo_tipo="zip",
             estado=estado,
         )

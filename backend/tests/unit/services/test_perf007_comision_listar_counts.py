@@ -82,7 +82,6 @@ async def _entregas(db, comision_id, n):
                 rubrica_id=1,
                 alumno_nombre=f"C{comision_id}-Alumno {i}",
                 archivo_nombre="tp.zip",
-                archivo_ruta=f"/tmp/c{comision_id}_{i}.zip",
                 archivo_tipo="zip",
                 estado=EstadoEntregaEnum.SUBIDA,
             )

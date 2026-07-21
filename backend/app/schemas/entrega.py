@@ -104,7 +104,6 @@ class EntregaResponse(BaseModel):
     rubrica_id: int
     alumno_nombre: str
     archivo_nombre: str
-    archivo_ruta: str
     archivo_tamanio: int
     archivo_tipo: str  # 'zip' o 'txt'
     contenido_preview: str | None
