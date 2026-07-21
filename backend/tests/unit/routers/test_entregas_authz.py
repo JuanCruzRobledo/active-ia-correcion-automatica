@@ -26,6 +26,7 @@ from app.routers.entregas import (
     listar_entregas,
     obtener_contenido_entrega,
     obtener_entrega,
+    restaurar_entrega,
 )
 from app.schemas.entrega import EntregaAccionMasivaResponse
 
@@ -148,7 +149,7 @@ async def test_eliminar_entrega_propia_ok():
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         MockSvc.return_value.eliminar_entrega = AsyncMock(return_value=None)
         await eliminar_entrega(42, current_user=TUTOR, db=db)
-        MockSvc.return_value.eliminar_entrega.assert_awaited_once_with(42)
+        MockSvc.return_value.eliminar_entrega.assert_awaited_once_with(42, actor_id=5)
 
 
 @pytest.mark.asyncio
@@ -461,3 +462,36 @@ def test_schema_omitidos_tiene_defaults_contrato_aditivo():
     r = EntregaAccionMasivaResponse(procesadas=1, ids=[1])
     assert r.omitidas == 0
     assert r.ids_omitidos == []
+
+
+# ===================== POST /entregas/{id}/restore (CRUD-001) =====================
+
+
+@pytest.mark.asyncio
+async def test_restore_con_pertenencia_ok():
+    db = _db(_ENTREGA_42, _ES_TUTOR)
+    with patch("app.routers.entregas.EntregaService") as MockSvc:
+        MockSvc.return_value.restaurar_entrega = AsyncMock(return_value=None)
+        MockSvc.return_value.obtener_entrega = AsyncMock(return_value="DETALLE")
+        res = await restaurar_entrega(42, current_user=TUTOR, db=db)
+        MockSvc.return_value.restaurar_entrega.assert_awaited_once_with(42, actor_id=5)
+    assert res == "DETALLE"
+
+
+@pytest.mark.asyncio
+async def test_restore_sin_pertenencia_403_no_restaura():
+    db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
+    with patch("app.routers.entregas.EntregaService") as MockSvc:
+        with pytest.raises(HTTPException) as exc:
+            await restaurar_entrega(42, current_user=TUTOR, db=db)
+    assert exc.value.status_code == 403
+    MockSvc.return_value.restaurar_entrega.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_restore_coordinador_de_la_materia_ok():
+    db = _db(_ENTREGA_42, _ES_COORDINADOR)
+    with patch("app.routers.entregas.EntregaService") as MockSvc:
+        MockSvc.return_value.restaurar_entrega = AsyncMock(return_value=None)
+        MockSvc.return_value.obtener_entrega = AsyncMock(return_value="DETALLE")
+        assert await restaurar_entrega(42, current_user=COORD, db=db) == "DETALLE"

@@ -301,7 +301,9 @@ async def eliminar_entregas_masivo(
         )
 
     service = EntregaService(db)
-    resultado = await service.eliminar_entregas_masivo(ids=sorted(permitidos))
+    resultado = await service.eliminar_entregas_masivo(
+        ids=sorted(permitidos), actor_id=current_user.id
+    )
     return resultado.model_copy(
         update={"omitidas": len(denegados), "ids_omitidos": sorted(denegados)}
     )
@@ -366,14 +368,37 @@ async def eliminar_entrega(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     """
-    Delete an entrega permanently.
+    Elimina una entrega.
 
-    The entrega is physically deleted from the database.
+    CRUD-001: por defecto es soft delete (deleted_at) — la entrega desaparece del
+    listado pero es recuperable vía POST /{id}/restore y queda auditada. Solo si
+    ALLOW_HARD_DELETE está activo el borrado es físico e irreversible (con cascada).
 
     **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
     """
-    # SEC-002 + CRUD-001: el borrado es físico e irreversible.
+    # SEC-002 + CRUD-001: soft delete por defecto (recuperable + auditado);
+    # físico solo si ALLOW_HARD_DELETE.
     await verificar_acceso_entrega(db, current_user, entrega_id)
 
     service = EntregaService(db)
-    await service.eliminar_entrega(entrega_id)
+    await service.eliminar_entrega(entrega_id, actor_id=current_user.id)
+
+
+@router.post("/{entrega_id}/restore", response_model=EntregaDetailResponse)
+async def restaurar_entrega(
+    entrega_id: int,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> EntregaDetailResponse:
+    """
+    Restaura una entrega eliminada (soft delete): vuelve a aparecer con su corrección.
+
+    **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
+    """
+    # CRUD-001: verificar_acceso_entrega ve las entregas borradas (no filtra
+    # deleted_at), así que sirve como guard del restore. Pertenencia, no solo-admin.
+    await verificar_acceso_entrega(db, current_user, entrega_id)
+
+    service = EntregaService(db)
+    await service.restaurar_entrega(entrega_id, actor_id=current_user.id)
+    return await service.obtener_entrega(entrega_id)

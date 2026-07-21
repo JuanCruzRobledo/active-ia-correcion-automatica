@@ -68,6 +68,9 @@ class TipoActividadEnum(str, Enum):
     SNAPSHOT_GENERADO = "SNAPSHOT_GENERADO"
     NOTIFICACIONES_ENVIADAS = "NOTIFICACIONES_ENVIADAS"
     CIERRE_CURSADA_GENERADO = "CIERRE_CURSADA_GENERADO"
+    # Soft delete: hoy es el unico dominio del sistema que audita BORRADOS.
+    ENTREGA_ELIMINADA = "ENTREGA_ELIMINADA"
+    ENTREGA_RESTAURADA = "ENTREGA_RESTAURADA"
 
 
 class MoodleSyncEstado(str, Enum):

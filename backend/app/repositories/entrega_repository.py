@@ -44,7 +44,11 @@ class EntregaRepository:
         return max_updated_at, count or 0
 
     async def get_by_id(
-        self, entrega_id: int, *, load_contenido: bool = False
+        self,
+        entrega_id: int,
+        *,
+        load_contenido: bool = False,
+        include_deleted: bool = False,
     ) -> Entrega | None:
         """
         Get entrega by ID.
@@ -55,11 +59,15 @@ class EntregaRepository:
                 deferidas (contenido_consolidado / pdf_contenido_b64) con undefer().
                 PERF-002/PERF-006: por defecto False para no arrastrarlas; los
                 flujos que SÍ leen el contenido (obtener_contenido) lo piden en True.
+            include_deleted: CRUD-001: por defecto una entrega borrada (soft delete)
+                es "no encontrada". El restore la necesita ver -> include_deleted=True.
 
         Returns:
             Entrega object if found, None otherwise.
         """
         query = select(Entrega).where(Entrega.id == entrega_id)
+        if not include_deleted:
+            query = query.where(Entrega.deleted_at.is_(None))
         if load_contenido:
             query = query.options(
                 undefer(Entrega.contenido_consolidado),
@@ -97,7 +105,9 @@ class EntregaRepository:
                 undefer(Entrega.pdf_contenido_b64),
             ])
         result = await self.db.execute(
-            select(Entrega).options(*options).where(Entrega.id == entrega_id)
+            select(Entrega)
+            .options(*options)
+            .where(Entrega.id == entrega_id, Entrega.deleted_at.is_(None))
         )
         return result.scalar_one_or_none()
 
@@ -138,6 +148,10 @@ class EntregaRepository:
         # Build filter conditions once, so the data query and the count query
         # stay in sync from a single source of truth.
         conditions = []
+
+        # CRUD-001: excluir las borradas (soft delete). Va a la lista `conditions`
+        # compartida datos+count, así el total paginado tampoco las cuenta.
+        conditions.append(Entrega.deleted_at.is_(None))
 
         if comision_id is not None:
             conditions.append(Entrega.comision_id == comision_id)
@@ -345,6 +359,44 @@ class EntregaRepository:
         """
         await self.db.delete(entrega)
         await self.db.commit()
+
+    async def soft_delete(self, entrega: Entrega) -> Entrega:
+        """
+        CRUD-001: baja logica de una entrega (setea deleted_at).
+
+        No toca la Correccion 1:1: al no hacer db.delete, la cascada
+        all,delete-orphan no dispara y la nota del alumno queda preservada
+        colgando de la entrega oculta. Patron calcado de MateriaRepository.soft_delete.
+        """
+        entrega.deleted_at = datetime.utcnow()
+        entrega.updated_at = datetime.utcnow()
+        await self.db.commit()
+        await self.db.refresh(entrega)
+        return entrega
+
+    async def restore(self, entrega: Entrega) -> Entrega:
+        """CRUD-001: restaura una entrega borrada (deleted_at = None)."""
+        entrega.deleted_at = None
+        entrega.updated_at = datetime.utcnow()
+        await self.db.commit()
+        await self.db.refresh(entrega)
+        return entrega
+
+    async def soft_delete_by_ids(self, ids: list[int]) -> int:
+        """
+        CRUD-001: baja logica masiva. UPDATE en una query (no toca correcciones).
+
+        Solo marca las que aun no estaban borradas, para no pisar el deleted_at
+        original de una que ya estaba en la papelera.
+        """
+        ahora = datetime.utcnow()
+        result = await self.db.execute(
+            update(Entrega)
+            .where(Entrega.id.in_(ids), Entrega.deleted_at.is_(None))
+            .values(deleted_at=ahora, updated_at=ahora)
+        )
+        await self.db.commit()
+        return result.rowcount
 
     async def get_by_ids(self, ids: list[int]) -> list[Entrega]:
         """

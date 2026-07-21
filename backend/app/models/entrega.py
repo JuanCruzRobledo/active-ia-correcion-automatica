@@ -13,7 +13,7 @@ from sqlalchemy import Boolean, Enum as SQLEnum, ForeignKey, Index, Integer, Num
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 from app.models.enums import EstadoEntregaEnum
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from app.models.usuario import Usuario
 
 
-class Entrega(Base, TimestampMixin):
+class Entrega(Base, TimestampMixin, SoftDeleteMixin):
     """
     Entrega de alumno.
 

@@ -10,6 +10,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
 import asyncio
 import base64
 import hashlib
+import json
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -18,9 +19,10 @@ from typing import BinaryIO, Literal
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.upload_limits import validar_tamano_upload, validar_zip_bomb
 from app.models.entrega import Entrega
-from app.models.enums import EstadoEntregaEnum
+from app.models.enums import EstadoEntregaEnum, TipoActividadEnum
 from app.repositories.comision_repository import ComisionRepository
 from app.repositories.entrega_repository import EntregaRepository
 from app.repositories.rubrica_repository import RubricaRepository
@@ -38,6 +40,7 @@ from app.schemas.entrega import (
     HistorialItem,
     HistorialResponse,
 )
+from app.services.actividad_service import ActividadService
 from app.services.consolidacion_service import ConsolidacionService
 from app.services.correccion_service import _limpiar_entrega_error
 from app.services.historial_service import HistorialService
@@ -564,25 +567,72 @@ class EntregaService:
             num_versiones_anteriores=num_versiones,
         )
 
-    async def eliminar_entrega(self, entrega_id: int) -> None:
+    async def eliminar_entrega(self, entrega_id: int, actor_id: int) -> None:
         """
-        Physically delete an entrega (hard delete).
+        CRUD-001: elimina una entrega. Soft delete por defecto (deleted_at);
+        físico con cascada solo si ALLOW_HARD_DELETE. Registra Actividad en ambos
+        casos (hoy es el único dominio del sistema que audita borrados).
 
         Args:
             entrega_id: Entrega's database ID.
+            actor_id: ID del usuario que ejecuta el borrado (para el audit log).
 
         Raises:
-            HTTPException 404: Entrega not found.
+            HTTPException 404: Entrega no encontrada.
+            HTTPException 400: La entrega ya estaba eliminada (soft).
         """
-        entrega = await self.entrega_repo.get_by_id(entrega_id)
-
+        # include_deleted=True para distinguir 404 (no existe) de 400 (ya borrada).
+        entrega = await self.entrega_repo.get_by_id(entrega_id, include_deleted=True)
         if not entrega:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Entrega no encontrada",
             )
 
-        await self.entrega_repo.delete(entrega)
+        # Capturar antes del borrado: el hard delete expira el objeto ORM.
+        alumno = entrega.alumno_nombre
+
+        if settings.ALLOW_HARD_DELETE:
+            await self.entrega_repo.delete(entrega)
+        else:
+            if entrega.is_deleted:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="La entrega ya está eliminada",
+                )
+            await self.entrega_repo.soft_delete(entrega)
+
+        await ActividadService(self.db).registrar_actividad(
+            tipo=TipoActividadEnum.ENTREGA_ELIMINADA,
+            descripcion=f"Entrega de '{alumno}' eliminada",
+            entidad_id=entrega_id,
+            entidad_nombre=alumno,
+            usuario_id=actor_id,
+        )
+
+    async def restaurar_entrega(self, entrega_id: int, actor_id: int) -> Entrega:
+        """CRUD-001: restaura una entrega borrada (soft delete) y lo audita."""
+        entrega = await self.entrega_repo.get_by_id(entrega_id, include_deleted=True)
+        if not entrega:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Entrega no encontrada",
+            )
+        if not entrega.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La entrega no está eliminada",
+            )
+
+        await self.entrega_repo.restore(entrega)
+        await ActividadService(self.db).registrar_actividad(
+            tipo=TipoActividadEnum.ENTREGA_RESTAURADA,
+            descripcion=f"Entrega de '{entrega.alumno_nombre}' restaurada",
+            entidad_id=entrega_id,
+            entidad_nombre=entrega.alumno_nombre,
+            usuario_id=actor_id,
+        )
+        return entrega
 
     async def archivar_entregas(
         self,
@@ -617,12 +667,15 @@ class EntregaService:
     async def eliminar_entregas_masivo(
         self,
         ids: list[int],
+        actor_id: int,
     ) -> EntregaAccionMasivaResponse:
         """
-        Bulk hard delete multiple entregas.
+        CRUD-001: baja masiva. Soft delete por defecto; físico solo si
+        ALLOW_HARD_DELETE. Registra UNA Actividad por lote con los IDs en metadatos.
 
         Args:
             ids: List of entrega IDs to delete.
+            actor_id: ID del usuario que ejecuta el borrado (para el audit log).
 
         Returns:
             EntregaAccionMasivaResponse with count of deleted entregas.
@@ -639,7 +692,20 @@ class EntregaService:
                 detail=f"Entregas no encontradas: {missing}",
             )
 
-        count = await self.entrega_repo.delete_by_ids(ids)
+        if settings.ALLOW_HARD_DELETE:
+            count = await self.entrega_repo.delete_by_ids(ids)
+        else:
+            count = await self.entrega_repo.soft_delete_by_ids(ids)
+
+        # UNA Actividad por lote (no una por entrega): el detalle vive en metadatos.
+        await ActividadService(self.db).registrar_actividad(
+            tipo=TipoActividadEnum.ENTREGA_ELIMINADA,
+            descripcion=f"Eliminó {count} entrega(s) en lote",
+            entidad_id=ids[0] if ids else 0,
+            entidad_nombre=f"{count} entregas",
+            usuario_id=actor_id,
+            metadatos=json.dumps({"ids": ids, "count": count}),
+        )
         return EntregaAccionMasivaResponse(procesadas=count, ids=ids)
 
     async def obtener_contenido(self, entrega_id: int) -> ContenidoEntrega:
