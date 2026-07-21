@@ -9,6 +9,8 @@
 import { isAxiosError } from 'axios';
 import { apiClient } from '@/shared/services/api-client';
 import type { Correccion, CorreccionUpdate } from '../types';
+// IA-012: corregir/recorregir devuelven 202 (corrección en background).
+import type { CorreccionAceptadaResponse } from '@/features/entregas/types';
 
 /**
  * Corrige una entrega individual con IA.
@@ -16,8 +18,10 @@ import type { Correccion, CorreccionUpdate } from '../types';
  * @param entregaId - ID de la entrega a corregir
  * @returns Promise con la corrección generada
  */
-export const corregirEntrega = async (entregaId: number): Promise<Correccion> => {
-  const response = await apiClient.post<Correccion>(
+export const corregirEntrega = async (
+  entregaId: number
+): Promise<CorreccionAceptadaResponse> => {
+  const response = await apiClient.post<CorreccionAceptadaResponse>(
     `/entregas/${entregaId}/corregir`
   );
   return response.data;
@@ -95,8 +99,10 @@ export const updateCorreccion = async (
  * @param entregaId - ID de la entrega a re-corregir
  * @returns Promise con la nueva corrección generada
  */
-export const recorregirEntrega = async (entregaId: number): Promise<Correccion> => {
-  const response = await apiClient.post<Correccion>(
+export const recorregirEntrega = async (
+  entregaId: number
+): Promise<CorreccionAceptadaResponse> => {
+  const response = await apiClient.post<CorreccionAceptadaResponse>(
     `/correcciones/entregas/${entregaId}/recorregir`
   );
   return response.data;

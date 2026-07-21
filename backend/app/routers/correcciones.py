@@ -28,6 +28,7 @@ from app.schemas.moodle_grade import (
 )
 from app.services.moodle_grade_service import MoodleGradeService
 from app.schemas.correccion import (
+    CorreccionAceptadaResponse,
     CorreccionHistorialResponse,
     CorreccionResponse,
     CorreccionUpdate,
@@ -41,6 +42,7 @@ from app.repositories.entrega_repository import EntregaRepository
 from app.services.correccion_service import (
     CorreccionService,
     procesar_global_background,
+    procesar_individual_background,
     procesar_lote_background,
 )
 
@@ -80,30 +82,28 @@ router = APIRouter(
 
 @router.post(
     "/entregas/{entrega_id}/corregir",
-    response_model=CorreccionResponse,
-    status_code=status.HTTP_201_CREATED,
+    response_model=CorreccionAceptadaResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def corregir_entrega(
     entrega_id: int,
+    background_tasks: BackgroundTasks,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> CorreccionResponse:
+) -> CorreccionAceptadaResponse:
     """
-    Correct a single entrega using AI.
+    Correct a single entrega using AI (async — IA-012).
 
-    **Process:**
-    1. Validates that user has Gemini API Key configured
-    2. Gets entrega and rubrica
-    3. Sends to N8N → Gemini for evaluation
-    4. Parses and validates AI response
-    5. Saves correction to database
-    6. Updates entrega state to CORREGIDA
+    **Behavior:**
+    - Valida acceso y API key sincrónicamente (feedback inmediato: 403/404/400)
+    - Agenda la corrección en background y responde **202 Accepted** al toque
+    - La corrección real corre sin bloquear el request (evita el timeout de ~3 min
+      y que el cierre del browser deje la entrega colgada en PENDIENTE)
+    - El frontend pollea el estado de la entrega para ver el progreso
 
     **States:**
     - Entrega goes from SUBIDA → PENDIENTE → CORREGIDA
-    - On error: PENDIENTE → ERROR
-
-    **Timeout:** 90 seconds (configurable in N8N)
+    - On error: PENDIENTE → ERROR (se descubre por polling)
 
     **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
     """
@@ -113,26 +113,34 @@ async def corregir_entrega(
 
     key, provider = _resolver_credenciales_ia(current_user)
 
-    service = CorreccionService(db)
-    return await service.corregir_individual(
+    # IA-012: la corrección corre en background (202) para no bloquear el request
+    # HTTP. corregir_individual conserva su reclamo atómico (IA-003) y failover (IA-002).
+    background_tasks.add_task(
+        procesar_individual_background,
         entrega_id=entrega_id,
         api_key_encrypted=key,
         corregido_por_id=current_user.id,
         provider=provider,
     )
+    return CorreccionAceptadaResponse(
+        mensaje="Corrección iniciada. El estado se actualizará automáticamente.",
+        entrega_id=entrega_id,
+    )
 
 
 @router.post(
     "/entregas/{entrega_id}/recorregir",
-    response_model=CorreccionResponse,
+    response_model=CorreccionAceptadaResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def recorregir_entrega(
     entrega_id: int,
+    background_tasks: BackgroundTasks,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> CorreccionResponse:
+) -> CorreccionAceptadaResponse:
     """
-    Re-correct an entrega (replaces existing correction).
+    Re-correct an entrega (replaces existing correction) — async (IA-012).
 
     **Use cases:**
     - Rubrica was updated
@@ -140,24 +148,30 @@ async def recorregir_entrega(
     - Want fresh evaluation
 
     **Behavior:**
-    - Deletes existing correction (hard delete)
-    - Generates new correction from scratch
-    - Entrega goes through PENDIENTE → CORREGIDA again
+    - Valida acceso sincrónicamente; agenda la re-corrección en background (202)
+    - corregir_individual reemplaza la corrección existente y vuelve a evaluar
+    - Entrega goes through PENDIENTE → CORREGIDA again (progreso por polling)
 
     **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
     """
-    # SEC-001 + CRUD-003: recorregir hace hard-delete de la corrección existente.
+    # SEC-001 + CRUD-003: recorregir reemplaza la corrección existente.
     # El guard va primero: sin acceso, no se destruye una corrección ajena.
     await verificar_acceso_entrega(db, current_user, entrega_id)
 
     key, provider = _resolver_credenciales_ia(current_user)
 
-    service = CorreccionService(db)
-    return await service.recorregir(
+    # IA-012: misma vía async que corregir. procesar_individual_background llama a
+    # corregir_individual, que ya maneja el reemplazo de la corrección previa.
+    background_tasks.add_task(
+        procesar_individual_background,
         entrega_id=entrega_id,
         api_key_encrypted=key,
         corregido_por_id=current_user.id,
         provider=provider,
+    )
+    return CorreccionAceptadaResponse(
+        mensaje="Re-corrección iniciada. El estado se actualizará automáticamente.",
+        entrega_id=entrega_id,
     )
 
 

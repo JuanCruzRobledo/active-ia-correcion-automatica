@@ -57,22 +57,28 @@ def _db(*rows):
 # ===================== POST /entregas/{id}/corregir =====================
 
 
+# IA-012: corregir/recorregir ahora responden 202 y agendan la corrección en un
+# BackgroundTask. El guard de pertenencia sigue corriendo ANTES: sin acceso, no se
+# agenda nada (no se gasta LLM ni se destruye una corrección ajena).
+
+
 @pytest.mark.asyncio
 async def test_corregir_entrega_propia_ok():
     db = _db(_ENTREGA_42, _ES_TUTOR)
-    with patch("app.routers.correcciones.CorreccionService") as MockSvc:
-        MockSvc.return_value.corregir_individual = AsyncMock(return_value="CORR")
-        assert await corregir_entrega(42, current_user=TUTOR, db=db) == "CORR"
+    bg = _BgTasks()
+    res = await corregir_entrega(42, bg, current_user=TUTOR, db=db)
+    assert res.entrega_id == 42
+    assert len(bg.llamadas) == 1
 
 
 @pytest.mark.asyncio
 async def test_corregir_entrega_ajena_403_sin_gastar_llm():
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
-    with patch("app.routers.correcciones.CorreccionService") as MockSvc:
-        with pytest.raises(HTTPException) as exc:
-            await corregir_entrega(42, current_user=TUTOR, db=db)
+    bg = _BgTasks()
+    with pytest.raises(HTTPException) as exc:
+        await corregir_entrega(42, bg, current_user=TUTOR, db=db)
     assert exc.value.status_code == 403
-    MockSvc.return_value.corregir_individual.assert_not_called()
+    assert bg.llamadas == []
 
 
 @pytest.mark.asyncio
@@ -80,23 +86,24 @@ async def test_corregir_entrega_ajena_da_403_antes_que_400_por_falta_de_key():
     """El guard corre ANTES de resolver credenciales: sin acceso, ni se mira la key."""
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
     with pytest.raises(HTTPException) as exc:
-        await corregir_entrega(42, current_user=TUTOR_SIN_KEY, db=db)
+        await corregir_entrega(42, _BgTasks(), current_user=TUTOR_SIN_KEY, db=db)
     assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_corregir_entrega_coordinador_de_la_materia_ok():
     db = _db(_ENTREGA_42, _ES_COORDINADOR)
-    with patch("app.routers.correcciones.CorreccionService") as MockSvc:
-        MockSvc.return_value.corregir_individual = AsyncMock(return_value="CORR")
-        assert await corregir_entrega(42, current_user=COORD, db=db) == "CORR"
+    bg = _BgTasks()
+    res = await corregir_entrega(42, bg, current_user=COORD, db=db)
+    assert res.entrega_id == 42
+    assert len(bg.llamadas) == 1
 
 
 @pytest.mark.asyncio
 async def test_corregir_entrega_inexistente_404():
     db = _db(None)
     with pytest.raises(HTTPException) as exc:
-        await corregir_entrega(404404, current_user=TUTOR, db=db)
+        await corregir_entrega(404404, _BgTasks(), current_user=TUTOR, db=db)
     assert exc.value.status_code == 404
 
 
@@ -106,28 +113,30 @@ async def test_corregir_entrega_inexistente_404():
 @pytest.mark.asyncio
 async def test_recorregir_entrega_propia_ok():
     db = _db(_ENTREGA_42, _ES_TUTOR)
-    with patch("app.routers.correcciones.CorreccionService") as MockSvc:
-        MockSvc.return_value.recorregir = AsyncMock(return_value="CORR")
-        assert await recorregir_entrega(42, current_user=TUTOR, db=db) == "CORR"
+    bg = _BgTasks()
+    res = await recorregir_entrega(42, bg, current_user=TUTOR, db=db)
+    assert res.entrega_id == 42
+    assert len(bg.llamadas) == 1
 
 
 @pytest.mark.asyncio
 async def test_recorregir_entrega_ajena_403_no_destruye_la_correccion_ajena():
-    """recorregir hace hard-delete de la correccion existente: el service NO debe correr."""
+    """recorregir reemplaza la correccion existente: sin acceso, NO debe agendarse."""
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
-    with patch("app.routers.correcciones.CorreccionService") as MockSvc:
-        with pytest.raises(HTTPException) as exc:
-            await recorregir_entrega(42, current_user=TUTOR, db=db)
+    bg = _BgTasks()
+    with pytest.raises(HTTPException) as exc:
+        await recorregir_entrega(42, bg, current_user=TUTOR, db=db)
     assert exc.value.status_code == 403
-    MockSvc.return_value.recorregir.assert_not_called()
+    assert bg.llamadas == []
 
 
 @pytest.mark.asyncio
 async def test_recorregir_entrega_admin_ok_sin_consultar_permisos():
     db = AsyncMock()
-    with patch("app.routers.correcciones.CorreccionService") as MockSvc:
-        MockSvc.return_value.recorregir = AsyncMock(return_value="CORR")
-        assert await recorregir_entrega(42, current_user=ADMIN, db=db) == "CORR"
+    bg = _BgTasks()
+    res = await recorregir_entrega(42, bg, current_user=ADMIN, db=db)
+    assert res.entrega_id == 42
+    assert len(bg.llamadas) == 1
     db.execute.assert_not_called()
 
 

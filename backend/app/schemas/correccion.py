@@ -284,6 +284,22 @@ class CorregirLoteAceptadoResponse(BaseModel):
     )
 
 
+class CorreccionAceptadaResponse(BaseModel):
+    """IA-012: respuesta inmediata (202) de la corrección individual asíncrona.
+
+    El endpoint agenda la corrección en background y responde al toque, sin
+    bloquear el request HTTP hasta ~3 min. El frontend pollea el estado de la
+    entrega (PENDIENTE → CORREGIDA/ERROR), igual que con el lote.
+    """
+
+    mensaje: str = Field(..., description="Status message for the user")
+    entrega_id: int = Field(..., description="ID de la entrega en corrección")
+    estado: str = Field(
+        default="PENDIENTE",
+        description="Estado de la entrega tras encolar (PENDIENTE)",
+    )
+
+
 class CorregirGlobalAceptadoResponse(BaseModel):
     """Respuesta 202 de la corrección masiva global (todas las SUBIDA del tutor)."""
 

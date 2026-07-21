@@ -108,6 +108,15 @@ export interface CorregirLoteAceptadoResponse {
   entrega_ids_omitidos?: number[];
 }
 
+// IA-012: respuesta 202 de la corrección/re-corrección individual asíncrona. El
+// backend agenda la corrección en background; el frontend pollea el estado de la
+// entrega (PENDIENTE → CORREGIDA/ERROR) igual que con el lote.
+export interface CorreccionAceptadaResponse {
+  mensaje: string;
+  entrega_id: number;
+  estado: string;
+}
+
 
 export interface Entrega {
   id: number;

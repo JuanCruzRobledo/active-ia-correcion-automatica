@@ -19,8 +19,8 @@ import type {
   EntregaContenido,
   EntregasFilters,
   EntregaAccionMasivaResponse,
-  Correccion,
   CorregirLoteAceptadoResponse,
+  CorreccionAceptadaResponse,
 } from '../types';
 
 
@@ -169,8 +169,11 @@ export const entregasService = {
   /**
    * Trigger AI correction for a specific entrega.
    */
-  corregir: async (id: number): Promise<Correccion> => {
-    const { data } = await apiClient.post<Correccion>(`/correcciones/entregas/${id}/corregir`);
+  // IA-012: el endpoint responde 202 y agenda la corrección en background.
+  corregir: async (id: number): Promise<CorreccionAceptadaResponse> => {
+    const { data } = await apiClient.post<CorreccionAceptadaResponse>(
+      `/correcciones/entregas/${id}/corregir`
+    );
     return data;
   },
 

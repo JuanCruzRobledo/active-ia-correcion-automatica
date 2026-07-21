@@ -1319,6 +1319,45 @@ async def procesar_lote_background(
     )
 
 
+async def procesar_individual_background(
+    entrega_id: int,
+    api_key_encrypted: str,
+    corregido_por_id: int,
+    provider: str = "gemini",
+) -> None:
+    """IA-012: corrige UNA entrega en background, después de que la respuesta 202 ya
+    salió. Antes la corrección corría dentro del request (await directo), bloqueándolo
+    hasta ~3 min (timeout + reintento) y dejando la entrega colgada en PENDIENTE si el
+    browser se cerraba a mitad.
+
+    Crea su propia sesión (la del request ya está cerrada) y reusa corregir_individual
+    tal cual (validación + reclamo atómico IA-003 + failover IA-002 + persistencia). Los
+    errores se loguean y NO se propagan: el estado de la entrega ya quedó en CORREGIDA o
+    ERROR, y el frontend lo descubre por polling.
+    """
+    async with async_session_maker() as db:
+        service = CorreccionService(db)
+        try:
+            await service.corregir_individual(
+                entrega_id=entrega_id,
+                api_key_encrypted=api_key_encrypted,
+                corregido_por_id=corregido_por_id,
+                provider=provider,
+            )
+            logger.info("[BG] Entrega %s corregida (individual async)", entrega_id)
+        except HTTPException as e:
+            logger.warning(
+                "[BG] Error corrigiendo entrega %s (individual async): %s",
+                entrega_id,
+                e.detail,
+            )
+        except Exception:
+            logger.exception(
+                "[BG] Error inesperado corrigiendo entrega %s (individual async)",
+                entrega_id,
+            )
+
+
 async def procesar_global_background(
     entrega_ids: list[int],
     api_key_encrypted: str,

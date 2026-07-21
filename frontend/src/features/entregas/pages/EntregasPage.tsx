@@ -558,8 +558,9 @@ export const EntregasPage = () => {
 
   const runRecorregir = async (entregaId: number) => {
     try {
+      // IA-012: el toast de "iniciada" lo emite el hook (useRecorregirEntrega);
+      // acá solo cerramos el modal al encolar con éxito.
       await recorregirMutation.mutateAsync(entregaId);
-      toast.success('Re-corrección iniciada exitosamente');
       if (modalEntregaId === entregaId) {
         setModalEntregaId(null);
         setModalAlumno('');
@@ -820,12 +821,14 @@ export const EntregasPage = () => {
                 label: 'Corregir',
                 icon: <FileCheck2 className="w-4 h-4" />,
                 onClick: () => {
-                  toast.loading('Corrección iniciada en segundo plano...', {
-                    duration: 3000,
-                  });
+                  // IA-012: la corrección corre en background. No afirmamos
+                  // "completada": el estado de la entrega pasa a PENDIENTE y el
+                  // polling de la lista lo lleva a CORREGIDA/ERROR.
                   corregirMutation.mutate(entrega.id, {
                     onSuccess: () => {
-                      toast.success(`Corrección completada para ${entrega.alumno_nombre}`);
+                      toast.success(
+                        `Corrección iniciada para ${entrega.alumno_nombre}. El estado se actualizará automáticamente.`
+                      );
                     },
                   });
                 },
