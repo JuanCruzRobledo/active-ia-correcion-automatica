@@ -82,29 +82,56 @@ class UnidadRepository:
     async def sincronizar(
         self, materia_id: int, nuevas: list[tuple[int, int, str | None]]
     ) -> list[Unidad]:
-        """Reemplaza TODAS las unidades de la materia por `nuevas` en una transacción.
+        """UPSERT de las unidades de la materia matcheando por moodle_section_id.
 
-        `nuevas` = lista de (numero, moodle_section_id, nombre). Borra las viejas
-        (desvinculando sus rúbricas) y crea las nuevas. Borrar+recrear evita choques
-        con el UNIQUE(materia_id, numero) al renumerar.
+        `nuevas` = lista de (numero, moodle_section_id, nombre).
+
+        CRUD-014: las unidades que siguen existiendo (mismo moodle_section_id)
+        CONSERVAN su id — así las rúbricas vinculadas (unidad_id) y los componentes
+        configurados a mano NO se pierden. Solo se crean las nuevas y se borran las
+        ausentes de Moodle (desvinculando sus rúbricas). Antes esto era delete+recreate,
+        que cambiaba los IDs en cada sync y desarmaba silenciosamente los vínculos.
+
+        El renumerado (una unidad cambia de número) puede chocar con el
+        UNIQUE(materia_id, numero); se resuelve corriendo todos los números a un
+        offset temporal negativo y flusheando antes de asignar los definitivos.
         """
         actuales = await self.get_by_materia(materia_id)
-        for u in actuales:
-            await self.desvincular_rubricas(u.id)
-            await self.db.delete(u)
-        await self.db.flush()  # aplica los DELETE antes de los INSERT (evita choque de unique)
+        por_section = {u.moodle_section_id: u for u in actuales}
+        sections_nuevas = {section_id for _, section_id, _ in nuevas}
 
-        creadas: list[Unidad] = []
+        # 1. Borrar las ausentes de Moodle (desvinculando sus rúbricas).
+        for u in actuales:
+            if u.moodle_section_id not in sections_nuevas:
+                await self.desvincular_rubricas(u.id)
+                await self.db.delete(u)
+
+        # 2. Liberar el espacio de números: correr los de las que se conservan a un
+        #    offset temporal (negativo) para evitar choques del UNIQUE al renumerar.
+        for u in actuales:
+            if u.moodle_section_id in sections_nuevas:
+                u.numero = -(u.numero + 1)
+        await self.db.flush()
+
+        # 3. Upsert: actualizar in place las existentes, crear las nuevas.
+        resultado: list[Unidad] = []
         for numero, section_id, nombre in nuevas:
-            unidad = Unidad(
-                materia_id=materia_id,
-                numero=numero,
-                moodle_section_id=section_id,
-                nombre=nombre,
-            )
-            self.db.add(unidad)
-            creadas.append(unidad)
+            existente = por_section.get(section_id)
+            if existente is not None:
+                existente.numero = numero
+                existente.nombre = nombre
+                resultado.append(existente)
+            else:
+                unidad = Unidad(
+                    materia_id=materia_id,
+                    numero=numero,
+                    moodle_section_id=section_id,
+                    nombre=nombre,
+                )
+                self.db.add(unidad)
+                resultado.append(unidad)
+
         await self.db.commit()
-        for u in creadas:
+        for u in resultado:
             await self.db.refresh(u)
-        return creadas
+        return resultado
