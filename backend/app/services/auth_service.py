@@ -11,7 +11,6 @@ Ref: docs/specs/11-SEGURIDAD.md
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import (
@@ -20,6 +19,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.usuario import Usuario
+from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.auth import (
     ChangePasswordRequest,
     ChangePasswordResponse,
@@ -44,6 +44,7 @@ class AuthService:
             db: Async database session.
         """
         self.db = db
+        self.usuario_repo = UsuarioRepository(db)
 
     async def authenticate(self, data: LoginRequest) -> TokenResponse:
         """
@@ -59,10 +60,8 @@ class AuthService:
             HTTPException 401: Invalid credentials.
             HTTPException 403: Account locked or disabled.
         """
-        # Get user by username
-        stmt = select(Usuario).where(Usuario.username == data.username)
-        result = await self.db.execute(stmt)
-        user = result.scalar_one_or_none()
+        # Get user by username (ARCH-001: vía repo, no SQL crudo en el service)
+        user = await self.usuario_repo.get_by_username(data.username)
 
         if not user:
             raise HTTPException(
@@ -166,13 +165,11 @@ class AuthService:
                 detail="La contraseña debe contener al menos un número",
             )
 
-        # Update password
+        # Update password (ARCH-001: persistencia vía repo; update() bumpea updated_at)
         user.password_hash = hash_password(data.new_password)
         user.primer_login = False
-        user.updated_at = datetime.utcnow()
 
-        await self.db.commit()
-        await self.db.refresh(user)
+        await self.usuario_repo.update(user)
 
         return ChangePasswordResponse()
 
@@ -190,7 +187,9 @@ class AuthService:
         if user.failed_login_attempts >= MAX_LOGIN_ATTEMPTS:
             user.locked_until = datetime.utcnow() + LOCKOUT_DURATION
 
-        await self.db.commit()
+        # ARCH-001: persistencia vía repo. save() NO bumpea updated_at (el estado de
+        # login no cuenta como 'modificación' del registro).
+        await self.usuario_repo.save(user)
 
     async def _handle_successful_login(self, user: Usuario) -> None:
         """
@@ -205,5 +204,5 @@ class AuthService:
         user.locked_until = None
         user.last_login = datetime.utcnow()
 
-        await self.db.commit()
-        await self.db.refresh(user)
+        # ARCH-001: persistencia vía repo. save() NO bumpea updated_at.
+        await self.usuario_repo.save(user)
