@@ -307,3 +307,31 @@ class ProgresoGlobalResponse(BaseModel):
     total: int = 0
     # Desglose de las que están en ERROR por código (item #7), para el resumen de la masiva.
     errores_por_codigo: dict[str, int] = {}
+
+
+# ============================================================================
+# CRUD-003: historial de correcciones (versiones reemplazadas al recorregir)
+# ============================================================================
+
+
+class CorreccionHistorialItem(BaseModel):
+    """Una versión histórica de la corrección de una entrega. SIN raw_response."""
+
+    id: int
+    nota: float
+    editado_manualmente: bool
+    comentario_general: str | None
+    corregido_por_nombre: str | None
+    reemplazada_por_nombre: str | None
+    correccion_creada_en: datetime
+    reemplazada_en: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CorreccionHistorialResponse(BaseModel):
+    """Historial de correcciones de una entrega, de la más reciente a la más vieja."""
+
+    entrega_id: int
+    total_versiones: int
+    versiones: list[CorreccionHistorialItem]

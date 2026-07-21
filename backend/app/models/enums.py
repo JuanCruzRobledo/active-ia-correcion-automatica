@@ -71,6 +71,7 @@ class TipoActividadEnum(str, Enum):
     # Soft delete: hoy es el unico dominio del sistema que audita BORRADOS.
     ENTREGA_ELIMINADA = "ENTREGA_ELIMINADA"
     ENTREGA_RESTAURADA = "ENTREGA_RESTAURADA"
+    CORRECCION_RECORREGIDA = "CORRECCION_RECORREGIDA"
 
 
 class MoodleSyncEstado(str, Enum):

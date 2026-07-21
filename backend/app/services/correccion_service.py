@@ -46,14 +46,19 @@ from app.core.exceptions import (
 from app.core.security import decrypt_api_key
 from app.integrations import openrouter_client
 from app.integrations.gemini_correction_client import GeminiCorrectionClient
-from app.models.correccion import Correccion
-from app.models.enums import EstadoEntregaEnum
+from app.models.correccion import Correccion, CorreccionHistorial
+from app.models.enums import EstadoEntregaEnum, TipoActividadEnum
+from app.repositories.correccion_historial_repository import (
+    CorreccionHistorialRepository,
+)
 from app.repositories.correccion_repository import CorreccionRepository
 from app.repositories.entrega_repository import EntregaRepository
 from app.repositories.rubrica_repository import RubricaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.correccion import (
     CorreccionCreate,
+    CorreccionHistorialItem,
+    CorreccionHistorialResponse,
     CorreccionListItem,
     CorreccionResponse,
     CorreccionUpdate,
@@ -61,6 +66,39 @@ from app.schemas.correccion import (
     CorregirLoteResponse,
     GeminiResponse,
 )
+from app.services.actividad_service import ActividadService
+
+
+def _snapshot_de_correccion(
+    c: Correccion, reemplazada_por_id: int | None
+) -> CorreccionHistorial:
+    """
+    CRUD-003: foto de una corrección saliente antes de reemplazarla al recorregir.
+
+    Copia por VALOR: el CorreccionHistorial resultante NO depende de que `c` siga
+    viva en la sesión tras el delete. Requiere que `raw_response` ya esté cargada
+    (get_by_entrega_id(load_raw=True)) porque es deferred.
+
+    Preserva `editado_manualmente` (lo más importante ante un reclamo académico) y
+    usa el `created_at` original como `correccion_creada_en` ("cuándo se calificó
+    por primera vez", no cuándo se archivó).
+    """
+    return CorreccionHistorial(
+        entrega_id=c.entrega_id,
+        nota=c.nota,
+        criterios_json=c.criterios_json,
+        fortalezas=c.fortalezas,
+        recomendaciones=c.recomendaciones,
+        comentario_general=c.comentario_general,
+        nota_antes_penalizaciones=c.nota_antes_penalizaciones,
+        condicion_desaprobacion_aplicada=c.condicion_desaprobacion_aplicada,
+        penalizaciones_aplicadas=c.penalizaciones_aplicadas,
+        editado_manualmente=c.editado_manualmente,
+        raw_response=c.raw_response,
+        corregido_por_id=c.corregido_por_id,
+        correccion_creada_en=c.created_at,
+        reemplazada_por_id=reemplazada_por_id,
+    )
 
 
 def _marcar_entrega_error(entrega, code: str, provider: str = "gemini") -> None:
@@ -120,6 +158,7 @@ class CorreccionService:
         """
         self.db = db
         self.correccion_repo = CorreccionRepository(db)
+        self.correccion_historial_repo = CorreccionHistorialRepository(db)
         self.entrega_repo = EntregaRepository(db)
         self.rubrica_repo = RubricaRepository(db)
         self.usuario_repo = UsuarioRepository(db)
@@ -328,14 +367,35 @@ class CorreccionService:
                 detail=mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, provider),
             )
 
-        # Check if correction already exists (re-correction case)
+        # Check if correction already exists (re-correction case).
+        # CRUD-003: load_raw=True para poder snapshotear el crudo ANTES del delete.
         existing_correccion = await self.correccion_repo.get_by_entrega_id(
-            entrega_id
+            entrega_id, load_raw=True
         )
 
         if existing_correccion:
-            # Delete old correction (hard delete for re-correction)
+            # CRUD-003: versionar la corrección saliente antes de destruirla, para
+            # poder reconstruir la nota anterior ante un reclamo. El snapshot se
+            # construye leyendo los campos AHORA (existing está vivo), después se
+            # borra, después se persiste — así el delete no expira datos que aún
+            # necesito (evita MissingGreenlet en async).
+            nota_anterior = existing_correccion.nota
+            snapshot = _snapshot_de_correccion(
+                existing_correccion, reemplazada_por_id=corregido_por_id
+            )
             await self.correccion_repo.delete(existing_correccion)
+            await self.correccion_historial_repo.create(snapshot)
+
+            await ActividadService(self.db).registrar_actividad(
+                tipo=TipoActividadEnum.CORRECCION_RECORREGIDA,
+                descripcion=(
+                    f"Recorrección de la entrega {entrega_id} "
+                    f"(nota anterior: {nota_anterior})"
+                ),
+                entidad_id=entrega_id,
+                entidad_nombre=f"entrega {entrega_id}",
+                usuario_id=corregido_por_id,
+            )
 
         # Convert CriterioGeminiSchema to CriterioEvaluado
         from app.schemas.correccion import CriterioEvaluado, SubcriterioEvaluado
@@ -590,6 +650,36 @@ class CorreccionService:
             )
 
         return await self._build_correccion_response(correccion)
+
+    async def obtener_historial_correcciones(
+        self, entrega_id: int
+    ) -> CorreccionHistorialResponse:
+        """
+        CRUD-003: versiones históricas de las correcciones de una entrega (las que
+        fueron reemplazadas al recorregir), de la más reciente a la más vieja.
+        NO expone raw_response (forense). Lista vacía si nunca se recorrigió.
+        """
+        versiones = await self.correccion_historial_repo.list_by_entrega(entrega_id)
+        items = [
+            CorreccionHistorialItem(
+                id=v.id,
+                nota=float(v.nota),
+                editado_manualmente=v.editado_manualmente,
+                comentario_general=v.comentario_general,
+                corregido_por_nombre=v.corregido_por.nombre if v.corregido_por else None,
+                reemplazada_por_nombre=(
+                    v.reemplazada_por.nombre if v.reemplazada_por else None
+                ),
+                correccion_creada_en=v.correccion_creada_en,
+                reemplazada_en=v.reemplazada_en,
+            )
+            for v in versiones
+        ]
+        return CorreccionHistorialResponse(
+            entrega_id=entrega_id,
+            total_versiones=len(items),
+            versiones=items,
+        )
 
     def _build_correction_payload(
         self,

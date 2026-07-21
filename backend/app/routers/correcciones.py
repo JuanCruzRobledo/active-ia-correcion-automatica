@@ -28,6 +28,7 @@ from app.schemas.moodle_grade import (
 )
 from app.services.moodle_grade_service import MoodleGradeService
 from app.schemas.correccion import (
+    CorreccionHistorialResponse,
     CorreccionResponse,
     CorreccionUpdate,
     CorregirGlobalAceptadoResponse,
@@ -281,6 +282,30 @@ async def obtener_correccion_por_entrega(
 
     service = CorreccionService(db)
     return await service.obtener_por_entrega(entrega_id)
+
+
+@router.get(
+    "/entregas/{entrega_id}/historial",
+    response_model=CorreccionHistorialResponse,
+)
+async def obtener_historial_correcciones(
+    entrega_id: int,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CorreccionHistorialResponse:
+    """
+    Historial de correcciones de una entrega: las versiones que fueron reemplazadas
+    al recorregir (CRUD-003). Preserva la nota anterior y las ediciones manuales
+    para reconstruir qué pasó ante un reclamo. NO incluye raw_response.
+
+    **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
+    """
+    # verificar_acceso_entrega ve entregas soft-deleted (no filtra deleted_at), así
+    # que el historial de una entrega borrada sigue siendo consultable.
+    await verificar_acceso_entrega(db, current_user, entrega_id)
+
+    service = CorreccionService(db)
+    return await service.obtener_historial_correcciones(entrega_id)
 
 
 @router.put(

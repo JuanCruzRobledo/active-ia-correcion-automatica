@@ -14,7 +14,7 @@ from datetime import datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, undefer
 
 from app.models.comision import Comision, ComisionTutor
 from app.models.correccion import Correccion
@@ -83,7 +83,9 @@ class CorreccionRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_entrega_id(self, entrega_id: int) -> Correccion | None:
+    async def get_by_entrega_id(
+        self, entrega_id: int, *, load_raw: bool = False
+    ) -> Correccion | None:
         """
         Get correccion by entrega ID.
 
@@ -92,13 +94,18 @@ class CorreccionRepository:
 
         Args:
             entrega_id: ID of the entrega.
+            load_raw: CRUD-003: si True, carga raw_response (deferred) con undefer().
+                El snapshot de la recorrección lo necesita: hay que leer el crudo
+                ANTES del delete o salta DetachedInstanceError (o MissingGreenlet en
+                async). Los demás callers no lo tocan (default False).
 
         Returns:
             Correccion object if found, None otherwise.
         """
-        result = await self.db.execute(
-            select(Correccion).where(Correccion.entrega_id == entrega_id)
-        )
+        query = select(Correccion).where(Correccion.entrega_id == entrega_id)
+        if load_raw:
+            query = query.options(undefer(Correccion.raw_response))
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def get_by_entrega_id_with_relations(
