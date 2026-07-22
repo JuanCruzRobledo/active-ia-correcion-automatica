@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from app.models.correccion import Correccion
     from app.models.entrega import Entrega
     from app.models.materia import CoordinadorMateria
+    from app.models.usuario_universidad import UsuarioUniversidad
 
 
 class Usuario(Base, TimestampMixin):
@@ -110,6 +111,17 @@ class Usuario(Base, TimestampMixin):
     # Soft delete
     activo: Mapped[bool] = mapped_column(default=True, index=True)
 
+    # Fase 0 multi-tenant (openspec/changes/multi-tenant-modelo-datos): admin global
+    # que en fases posteriores bypasea el scoping por universidad. El backfill de esta
+    # fase deja a TODOS los usuarios en False; la promoción es una decisión de negocio
+    # manual (OP-2), NUNCA automática.
+    es_superadmin: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+
     # Relationships
     materias_coordinadas: Mapped[list["CoordinadorMateria"]] = relationship(
         "CoordinadorMateria",
@@ -138,6 +150,18 @@ class Usuario(Base, TimestampMixin):
     )
     actividades_realizadas: Mapped[list["Actividad"]] = relationship(
         "Actividad",
+        back_populates="usuario",
+        lazy="raise",
+    )
+    # Fase 0 multi-tenant: membresías del usuario en cada universidad (rol scopeado
+    # + credenciales Moodle por membresía). Convive con `rol`/`moodle_*` (viejos,
+    # todavía la fuente de verdad hasta Fase 2). PERF-001: mismo criterio que
+    # entregas_subidas/correcciones_realizadas — NINGÚN código ni schema la lee
+    # todavía (Fase 0 es solo modelo), así que lazy="raise" evita precargarla en
+    # cada query de Usuario (y romper fixtures de tests que arman un subset de
+    # tablas sin usuario_universidad). Se revisa cuando Fase 3/4 la consuma.
+    universidades: Mapped[list["UsuarioUniversidad"]] = relationship(
+        "UsuarioUniversidad",
         back_populates="usuario",
         lazy="raise",
     )

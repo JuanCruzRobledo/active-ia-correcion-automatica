@@ -35,6 +35,13 @@ class Comision(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
+    # Fase 0 multi-tenant: denormalizada, propagada desde materia.universidad_id en
+    # el backfill. Nullable por ahora (NOT NULL vía migración R7, post-backfill).
+    universidad_id: Mapped[int | None] = mapped_column(
+        ForeignKey("universidades.id"),
+        nullable=True,
+        index=True,
+    )
     nombre: Mapped[str] = mapped_column(String(50), nullable=False)
     anio: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     activa: Mapped[bool] = mapped_column(default=True, index=True)

@@ -45,6 +45,13 @@ class AvanceSnapshot(Base):
         nullable=False,
         index=True,
     )
+    # Fase 0 multi-tenant: denormalizada, propagada desde materia.universidad_id en
+    # el backfill. Nullable por ahora (NOT NULL vía migración R7, post-backfill).
+    universidad_id: Mapped[int | None] = mapped_column(
+        ForeignKey("universidades.id"),
+        nullable=True,
+        index=True,
+    )
     generado_en: Mapped[datetime] = mapped_column(
         default=datetime.utcnow,
         nullable=False,

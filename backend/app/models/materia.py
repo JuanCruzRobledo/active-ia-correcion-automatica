@@ -34,9 +34,16 @@ class Materia(Base, TimestampMixin):
     __tablename__ = "materias"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    # Fase 0 multi-tenant (openspec/changes/multi-tenant-modelo-datos): denormalizada
+    # en cascada, raíz del árbol (el resto de las tablas la propagan desde acá).
+    # Nullable por ahora (se endurece a NOT NULL vía migración R7, post-backfill).
+    universidad_id: Mapped[int | None] = mapped_column(
+        ForeignKey("universidades.id"),
+        nullable=True,
+        index=True,
+    )
     codigo: Mapped[str] = mapped_column(
         String(20),
-        unique=True,
         nullable=False,
         index=True,
     )
@@ -92,6 +99,16 @@ class Materia(Base, TimestampMixin):
         default=2,
         server_default="2",
         comment="Atraso (delta) a partir del cual el alumno entra en RIESGO_ALTO (> medio)",
+    )
+
+    __table_args__ = (
+        # Fase 0 multi-tenant: reemplaza el unique global de `codigo` (D5 del
+        # design.md) — dos universidades pueden compartir código de materia.
+        UniqueConstraint(
+            "universidad_id",
+            "codigo",
+            name="uq_materias_universidad_id_codigo",
+        ),
     )
 
     # Relationships
