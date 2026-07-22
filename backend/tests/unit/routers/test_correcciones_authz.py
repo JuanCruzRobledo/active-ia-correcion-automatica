@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+from app.core.dependencies import ContextoUniversidad
 from app.models.enums import RolEnum
 from app.routers.correcciones import (
     corregir_entrega,
@@ -35,6 +36,22 @@ COORD = SimpleNamespace(id=7, rol=RolEnum.COORDINADOR, correction_provider="gemi
 # Tutor ajeno SIN key: si el guard corre primero, recibe 403 (no 400 por falta de key).
 TUTOR_SIN_KEY = SimpleNamespace(id=6, rol=RolEnum.TUTOR, correction_provider="gemini",
                                 gemini_api_key_encrypted=None, openrouter_api_key_encrypted=None)
+
+# Fase 2 multi-tenant: los guards de rol/pertenencia reciben ctx (ContextoUniversidad).
+CTX_ADMIN = ContextoUniversidad(universidad_id=1, rol=RolEnum.ADMIN, es_superadmin=False)
+CTX_TUTOR = ContextoUniversidad(universidad_id=1, rol=RolEnum.TUTOR, es_superadmin=False)
+CTX_COORD = ContextoUniversidad(universidad_id=1, rol=RolEnum.COORDINADOR, es_superadmin=False)
+CTX_GESTOR = ContextoUniversidad(universidad_id=1, rol=RolEnum.GESTOR, es_superadmin=False)
+
+
+def _ctx_for(usuario):
+    """Resuelve el ctx equivalente al rol del usuario mono-universidad de prueba."""
+    return {
+        RolEnum.ADMIN: CTX_ADMIN,
+        RolEnum.TUTOR: CTX_TUTOR,
+        RolEnum.COORDINADOR: CTX_COORD,
+        RolEnum.GESTOR: CTX_GESTOR,
+    }[usuario.rol]
 
 _ES_TUTOR = (10, 555, None)
 _ES_COORDINADOR = (10, None, 777)
@@ -66,7 +83,7 @@ def _db(*rows):
 async def test_corregir_entrega_propia_ok():
     db = _db(_ENTREGA_42, _ES_TUTOR)
     bg = _BgTasks()
-    res = await corregir_entrega(42, bg, current_user=TUTOR, db=db)
+    res = await corregir_entrega(42, bg, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert res.entrega_id == 42
     assert len(bg.llamadas) == 1
 
@@ -76,7 +93,7 @@ async def test_corregir_entrega_ajena_403_sin_gastar_llm():
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
     bg = _BgTasks()
     with pytest.raises(HTTPException) as exc:
-        await corregir_entrega(42, bg, current_user=TUTOR, db=db)
+        await corregir_entrega(42, bg, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     assert bg.llamadas == []
 
@@ -86,7 +103,7 @@ async def test_corregir_entrega_ajena_da_403_antes_que_400_por_falta_de_key():
     """El guard corre ANTES de resolver credenciales: sin acceso, ni se mira la key."""
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
     with pytest.raises(HTTPException) as exc:
-        await corregir_entrega(42, _BgTasks(), current_user=TUTOR_SIN_KEY, db=db)
+        await corregir_entrega(42, _BgTasks(), current_user=TUTOR_SIN_KEY, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
 
 
@@ -94,7 +111,7 @@ async def test_corregir_entrega_ajena_da_403_antes_que_400_por_falta_de_key():
 async def test_corregir_entrega_coordinador_de_la_materia_ok():
     db = _db(_ENTREGA_42, _ES_COORDINADOR)
     bg = _BgTasks()
-    res = await corregir_entrega(42, bg, current_user=COORD, db=db)
+    res = await corregir_entrega(42, bg, current_user=COORD, db=db, ctx=CTX_COORD)
     assert res.entrega_id == 42
     assert len(bg.llamadas) == 1
 
@@ -103,7 +120,7 @@ async def test_corregir_entrega_coordinador_de_la_materia_ok():
 async def test_corregir_entrega_inexistente_404():
     db = _db(None)
     with pytest.raises(HTTPException) as exc:
-        await corregir_entrega(404404, _BgTasks(), current_user=TUTOR, db=db)
+        await corregir_entrega(404404, _BgTasks(), current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 404
 
 
@@ -114,7 +131,7 @@ async def test_corregir_entrega_inexistente_404():
 async def test_recorregir_entrega_propia_ok():
     db = _db(_ENTREGA_42, _ES_TUTOR)
     bg = _BgTasks()
-    res = await recorregir_entrega(42, bg, current_user=TUTOR, db=db)
+    res = await recorregir_entrega(42, bg, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert res.entrega_id == 42
     assert len(bg.llamadas) == 1
 
@@ -125,7 +142,7 @@ async def test_recorregir_entrega_ajena_403_no_destruye_la_correccion_ajena():
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
     bg = _BgTasks()
     with pytest.raises(HTTPException) as exc:
-        await recorregir_entrega(42, bg, current_user=TUTOR, db=db)
+        await recorregir_entrega(42, bg, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     assert bg.llamadas == []
 
@@ -134,7 +151,7 @@ async def test_recorregir_entrega_ajena_403_no_destruye_la_correccion_ajena():
 async def test_recorregir_entrega_admin_ok_sin_consultar_permisos():
     db = AsyncMock()
     bg = _BgTasks()
-    res = await recorregir_entrega(42, bg, current_user=ADMIN, db=db)
+    res = await recorregir_entrega(42, bg, current_user=ADMIN, db=db, ctx=CTX_ADMIN)
     assert res.entrega_id == 42
     assert len(bg.llamadas) == 1
     db.execute.assert_not_called()
@@ -148,7 +165,7 @@ async def test_obtener_correccion_propia_ok():
     db = _db(_CORRECCION_99, _ES_COORDINADOR)
     with patch("app.routers.correcciones.CorreccionService") as MockSvc:
         MockSvc.return_value.obtener_correccion = AsyncMock(return_value="CORR")
-        assert await obtener_correccion(99, current_user=COORD, db=db) == "CORR"
+        assert await obtener_correccion(99, current_user=COORD, db=db, ctx=CTX_COORD) == "CORR"
 
 
 @pytest.mark.asyncio
@@ -156,7 +173,7 @@ async def test_obtener_correccion_ajena_403():
     db = _db(_CORRECCION_99, _SIN_PERTENENCIA)
     with patch("app.routers.correcciones.CorreccionService") as MockSvc:
         with pytest.raises(HTTPException) as exc:
-            await obtener_correccion(99, current_user=TUTOR, db=db)
+            await obtener_correccion(99, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockSvc.return_value.obtener_correccion.assert_not_called()
 
@@ -165,7 +182,7 @@ async def test_obtener_correccion_ajena_403():
 async def test_obtener_correccion_inexistente_404():
     db = _db(None)
     with pytest.raises(HTTPException) as exc:
-        await obtener_correccion(404404, current_user=TUTOR, db=db)
+        await obtener_correccion(404404, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 404
 
 
@@ -173,7 +190,7 @@ async def test_obtener_correccion_inexistente_404():
 async def test_obtener_correccion_gestor_403():
     db = _db(_CORRECCION_99, _SIN_PERTENENCIA)
     with pytest.raises(HTTPException) as exc:
-        await obtener_correccion(99, current_user=SimpleNamespace(id=9, rol=RolEnum.GESTOR), db=db)
+        await obtener_correccion(99, current_user=SimpleNamespace(id=9, rol=RolEnum.GESTOR), db=db, ctx=CTX_GESTOR)
     assert exc.value.status_code == 403
 
 
@@ -185,7 +202,7 @@ async def test_obtener_correccion_por_entrega_propia_ok():
     db = _db(_ENTREGA_42, _ES_TUTOR)
     with patch("app.routers.correcciones.CorreccionService") as MockSvc:
         MockSvc.return_value.obtener_por_entrega = AsyncMock(return_value="CORR")
-        assert await obtener_correccion_por_entrega(42, current_user=TUTOR, db=db) == "CORR"
+        assert await obtener_correccion_por_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR) == "CORR"
 
 
 @pytest.mark.asyncio
@@ -193,7 +210,7 @@ async def test_obtener_correccion_por_entrega_ajena_403():
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
     with patch("app.routers.correcciones.CorreccionService") as MockSvc:
         with pytest.raises(HTTPException) as exc:
-            await obtener_correccion_por_entrega(42, current_user=TUTOR, db=db)
+            await obtener_correccion_por_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockSvc.return_value.obtener_por_entrega.assert_not_called()
 
@@ -207,7 +224,7 @@ async def test_editar_correccion_propia_ok():
     data = SimpleNamespace(nota=80)
     with patch("app.routers.correcciones.CorreccionService") as MockSvc:
         MockSvc.return_value.editar_correccion = AsyncMock(return_value="CORR")
-        assert await editar_correccion(99, data, current_user=TUTOR, db=db) == "CORR"
+        assert await editar_correccion(99, data, current_user=TUTOR, db=db, ctx=CTX_TUTOR) == "CORR"
 
 
 @pytest.mark.asyncio
@@ -217,7 +234,7 @@ async def test_editar_correccion_ajena_403_no_puede_cambiar_la_nota():
     data = SimpleNamespace(nota=100)
     with patch("app.routers.correcciones.CorreccionService") as MockSvc:
         with pytest.raises(HTTPException) as exc:
-            await editar_correccion(99, data, current_user=TUTOR, db=db)
+            await editar_correccion(99, data, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockSvc.return_value.editar_correccion.assert_not_called()
 
@@ -228,7 +245,7 @@ async def test_editar_correccion_coordinador_de_la_materia_ok():
     data = SimpleNamespace(nota=75)
     with patch("app.routers.correcciones.CorreccionService") as MockSvc:
         MockSvc.return_value.editar_correccion = AsyncMock(return_value="CORR")
-        assert await editar_correccion(99, data, current_user=COORD, db=db) == "CORR"
+        assert await editar_correccion(99, data, current_user=COORD, db=db, ctx=CTX_COORD) == "CORR"
 
 
 # ===================== POST /correcciones/lote (particion ANTES del bg task) ====

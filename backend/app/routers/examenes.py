@@ -9,7 +9,7 @@ globales). Solo ADMIN. Gemelo del ABM de unidades.
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import (
     require_coordinador_or_admin,
     verificar_acceso_examen,
@@ -31,10 +31,11 @@ async def listar_examenes(
     materia_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[ExamenMateriaResponse]:
     """Lista los exámenes de una materia. Admin o coordinador de la materia."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_materia(db, current_user, materia_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     return await ExamenService(db).listar(materia_id)
 
 
@@ -48,10 +49,11 @@ async def crear_examen(
     data: ExamenMateriaCreate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ExamenMateriaResponse:
     """Da de alta un examen (numeración automática). Admin o coordinador de la materia."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_materia(db, current_user, materia_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     return await ExamenService(db).crear(materia_id, data, usuario_id=current_user.id)
 
 
@@ -61,10 +63,11 @@ async def actualizar_examen(
     data: ExamenMateriaUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ExamenMateriaResponse:
     """Edita un examen. Admin o coordinador de la materia."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_examen(db, current_user, examen_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_examen(db, current_user, ctx, examen_id)
     return await ExamenService(db).actualizar(examen_id, data)
 
 
@@ -73,8 +76,9 @@ async def eliminar_examen(
     examen_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> None:
     """Elimina un examen (y sus recuperatorios por cascade). Admin o coordinador de la materia."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_examen(db, current_user, examen_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_examen(db, current_user, ctx, examen_id)
     await ExamenService(db).eliminar(examen_id)

@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import require_admin, require_any_authenticated, require_coordinador_or_admin
 from app.models.enums import RolEnum, TipoRubricaEnum
 from app.models.usuario import Usuario
@@ -81,6 +81,7 @@ async def crear_rubrica(
     data: RubricaCreate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> RubricaResponse:
     """
     Create a new rubrica V2.
@@ -107,7 +108,7 @@ async def crear_rubrica(
 
     **Authorization:** Admin only
     """
-    require_coordinador_or_admin(current_user)
+    require_coordinador_or_admin(ctx)
 
     service = RubricaService(db)
     return await service.crear_rubrica(
@@ -122,6 +123,7 @@ async def obtener_rubrica(
     rubrica_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> RubricaDetailResponse:
     """
     Get a rubrica by ID with full details.
@@ -133,7 +135,7 @@ async def obtener_rubrica(
 
     **Authorization:** Admin only
     """
-    require_coordinador_or_admin(current_user)
+    require_coordinador_or_admin(ctx)
 
     service = RubricaService(db)
     return await service.obtener_rubrica(
@@ -148,6 +150,7 @@ async def actualizar_rubrica(
     data: RubricaUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> RubricaResponse:
     """
     Update an existing rubrica.
@@ -163,7 +166,7 @@ async def actualizar_rubrica(
 
     **Authorization:** Admin only
     """
-    require_coordinador_or_admin(current_user)
+    require_coordinador_or_admin(ctx)
 
     service = RubricaService(db)
     return await service.actualizar_rubrica(
@@ -178,6 +181,7 @@ async def eliminar_rubrica(
     rubrica_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> None:
     """
     Soft delete a rubrica.
@@ -187,7 +191,7 @@ async def eliminar_rubrica(
 
     **Authorization:** Admin only
     """
-    require_coordinador_or_admin(current_user)
+    require_coordinador_or_admin(ctx)
 
     service = RubricaService(db)
     await service.eliminar_rubrica(
@@ -201,6 +205,7 @@ async def restaurar_rubrica(
     rubrica_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> RubricaResponse:
     """
     Restore a soft-deleted rubrica.
@@ -209,7 +214,7 @@ async def restaurar_rubrica(
 
     **Authorization:** Admin only
     """
-    require_coordinador_or_admin(current_user)
+    require_coordinador_or_admin(ctx)
 
     service = RubricaService(db)
     return await service.restaurar_rubrica(
@@ -224,6 +229,7 @@ async def duplicar_rubrica(
     data: RubricaDuplicar,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> RubricaResponse:
     """
     Duplicate a rubrica to a new year.
@@ -243,7 +249,7 @@ async def duplicar_rubrica(
 
     **Authorization:** Admin only
     """
-    require_coordinador_or_admin(current_user)
+    require_coordinador_or_admin(ctx)
 
     service = RubricaService(db)
     return await service.duplicar_rubrica(
@@ -429,6 +435,7 @@ async def generar_rubrica_desde_pdf(
     tipo_rubrica: str = Form("TP", description="Tipo de rúbrica (TP, PARCIAL_1, etc.)"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> dict:
     """
     Generate a rubrica from a PDF file using AI.
@@ -468,7 +475,7 @@ async def generar_rubrica_desde_pdf(
 
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-RUB-02
     """
-    require_coordinador_or_admin(current_user)
+    require_coordinador_or_admin(ctx)
 
     # Validate API Key is configured
     if not current_user.gemini_api_key_encrypted:

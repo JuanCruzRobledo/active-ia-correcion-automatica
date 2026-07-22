@@ -82,7 +82,7 @@ async def test_solo_tp_se_suben_no_tp_omitidas():
         "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
     ):
         cls.return_value.subir_correccion = AsyncMock(return_value=MagicMock())
-        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test"))
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
 
     resumen = eventos[-1]
     assert resumen["enviadas"] == 2
@@ -102,7 +102,7 @@ async def test_ya_calificada_en_moodle_se_registra_y_no_se_sube():
         "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
     ):
         cls.return_value.subir_correccion = AsyncMock()
-        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test"))
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
 
     resumen = eventos[-1]
     assert resumen["ya_calificadas_en_moodle"] == 1
@@ -130,7 +130,7 @@ async def test_reentrega_se_resube_con_forzar():
         "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
     ):
         cls.return_value.subir_correccion = AsyncMock(return_value=MagicMock())
-        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test"))
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
 
     resumen = eventos[-1]
     assert resumen["reenviadas_reentrega"] == 1
@@ -153,7 +153,7 @@ async def test_mezcla_una_calificada_y_una_pendiente():
         "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
     ):
         cls.return_value.subir_correccion = AsyncMock(return_value=MagicMock())
-        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test"))
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
 
     resumen = eventos[-1]
     assert resumen["ya_calificadas_en_moodle"] == 1
@@ -173,7 +173,7 @@ async def test_entregada_sin_calificar_no_cuenta_como_ya_en_moodle():
         "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
     ):
         cls.return_value.subir_correccion = AsyncMock(return_value=MagicMock())
-        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test"))
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
 
     resumen = eventos[-1]
     assert resumen["ya_calificadas_en_moodle"] == 0
@@ -196,7 +196,7 @@ async def test_409_cuenta_como_ya_enviada():
         "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
     ):
         cls.return_value.subir_correccion = AsyncMock(side_effect=_subir)
-        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test"))
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
 
     resumen = eventos[-1]
     assert resumen["enviadas"] == 1
@@ -222,7 +222,7 @@ async def test_error_no_aborta_el_lote():
         "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
     ):
         cls.return_value.subir_correccion = AsyncMock(side_effect=_subir)
-        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test"))
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
 
     resumen = eventos[-1]
     assert resumen["enviadas"] == 2
@@ -238,7 +238,7 @@ async def test_token_falla_emite_error():
         "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
     ):
         cls.return_value.subir_correccion = AsyncMock()
-        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test"))
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
 
     assert eventos[-1]["tipo"] == "error"
     cls.return_value.subir_correccion.assert_not_called()
@@ -253,7 +253,7 @@ async def test_verificacion_fallida_no_pisa_la_nota():
         "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
     ):
         cls.return_value.subir_correccion = AsyncMock()
-        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test"))
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
 
     resumen = eventos[-1]
     assert resumen["enviadas"] == 0
@@ -270,7 +270,7 @@ async def test_sin_automaticas_emite_inicio_cero_y_resumen():
         "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
     ):
         cls.return_value.subir_correccion = AsyncMock()
-        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test"))
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
 
     assert eventos[0] == {"tipo": "inicio", "total": 0}
     assert eventos[-1]["tipo"] == "resumen"

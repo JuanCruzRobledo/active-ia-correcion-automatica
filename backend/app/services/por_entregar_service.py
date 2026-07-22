@@ -161,7 +161,7 @@ class PorEntregarService:
         )
 
     async def entregar_masivo_stream(
-        self, usuario, base_url: str
+        self, usuario, base_url: str, ctx
     ) -> AsyncIterator[dict]:
         """Sube en bloque las correcciones de comentario automático (TP), con progreso.
 
@@ -264,6 +264,7 @@ class PorEntregarService:
                             correccion_id=correccion.id,
                             comentario_final=render.comentario,
                             usuario=usuario,
+                            ctx=ctx,
                             base_url=base_url,
                             # Re-entrega (item #3b): forzamos para pisar la nota vieja con la
                             # nueva (el alumno re-entregó después). El resto, sin forzar.

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import verificar_acceso_materia
 from app.models import Usuario
 from app.repositories.materia_repository import MateriaRepository
@@ -50,8 +50,9 @@ async def generar_cierre(
     payload: GenerarCierreRequest,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CierreRunResponse:
-    await verificar_acceso_materia(db, current_user, materia_id)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     _requerir_credenciales_moodle(current_user)
     service = CierreCursadaService(db)
     try:
@@ -68,12 +69,13 @@ async def descargar_excel(
     run_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     service = CierreCursadaService(db)
     run = await service.obtener_run(run_id)
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Corrida no encontrada")
-    await verificar_acceso_materia(db, current_user, run.materia_id)
+    await verificar_acceso_materia(db, current_user, ctx, run.materia_id)
 
     materia = await MateriaRepository(db).get_by_id(run.materia_id)
     # PERF-004: render openpyxl (CPU-bound) en un thread para no bloquear el event loop.
@@ -94,8 +96,9 @@ async def historial(
     materia_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CierreHistorialResponse:
-    await verificar_acceso_materia(db, current_user, materia_id)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = CierreCursadaService(db)
     runs = await service.listar_historial(materia_id)
     return CierreHistorialResponse(runs=[CierreRunResponse.model_validate(r) for r in runs])

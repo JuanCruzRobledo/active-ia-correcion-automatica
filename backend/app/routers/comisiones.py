@@ -11,7 +11,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 5
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import (
     require_admin,
     verificar_acceso_materia,
@@ -82,6 +82,7 @@ async def crear_comision(
     data: ComisionCreate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ComisionDetailResponse:
     """
     Create a new comision with optional tutor assignments.
@@ -105,7 +106,7 @@ async def crear_comision(
     """
     # Admin: cualquier materia. Coordinador: solo las que tiene asignadas (403 si no).
     # Cualquier otro rol: 403.
-    await verificar_acceso_materia(db, current_user, data.materia_id)
+    await verificar_acceso_materia(db, current_user, ctx, data.materia_id)
 
     service = ComisionService(db)
     return await service.crear_comision(data, current_user_id=current_user.id)
@@ -178,6 +179,7 @@ async def actualizar_comision(
     data: ComisionUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ComisionDetailResponse:
     """
     Update an existing comision with optional tutor reassignment.
@@ -196,7 +198,7 @@ async def actualizar_comision(
 
     **Authorization:** Admin (cualquiera) o Coordinador de la materia de la comisión.
     """
-    await verificar_acceso_materia_de_comision(db, current_user, comision_id)
+    await verificar_acceso_materia_de_comision(db, current_user, ctx, comision_id)
 
     service = ComisionService(db)
     return await service.actualizar_comision(comision_id, data)
@@ -207,6 +209,7 @@ async def eliminar_comision(
     comision_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> None:
     """
     Soft delete a comision.
@@ -216,7 +219,7 @@ async def eliminar_comision(
 
     **Authorization:** Admin only
     """
-    require_admin(current_user)
+    require_admin(ctx)
 
     service = ComisionService(db)
     await service.eliminar_comision(comision_id)
@@ -227,6 +230,7 @@ async def restaurar_comision(
     comision_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ComisionResponse:
     """
     Restore a soft-deleted comision.
@@ -235,7 +239,7 @@ async def restaurar_comision(
 
     **Authorization:** Admin only
     """
-    require_admin(current_user)
+    require_admin(ctx)
 
     service = ComisionService(db)
     return await service.restaurar_comision(comision_id)
@@ -247,6 +251,7 @@ async def asignar_tutores(
     data: TutoresAssign,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> TutoresResponse:
     """
     Assign tutors to a comision.
@@ -263,7 +268,7 @@ async def asignar_tutores(
 
     **Authorization:** Admin (cualquiera) o Coordinador de la materia de la comisión.
     """
-    await verificar_acceso_materia_de_comision(db, current_user, comision_id)
+    await verificar_acceso_materia_de_comision(db, current_user, ctx, comision_id)
 
     service = ComisionService(db)
     return await service.asignar_tutores(comision_id, data)

@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+from app.core.dependencies import ContextoUniversidad
 from app.models.enums import RolEnum
 
 
@@ -95,6 +96,7 @@ async def test_service_tolera_autor_nulo():
 # ===================== router GET =====================
 
 TUTOR = SimpleNamespace(id=5, rol=RolEnum.TUTOR)
+CTX_TUTOR = ContextoUniversidad(universidad_id=1, rol=RolEnum.TUTOR, es_superadmin=False)
 _ENTREGA = (42, 10)
 _ES_TUTOR = (10, 555, None)
 _SIN = (10, None, None)
@@ -118,7 +120,7 @@ async def test_endpoint_con_pertenencia_devuelve_historial():
     db = _db(_ENTREGA, _ES_TUTOR)
     with patch("app.routers.correcciones.CorreccionService") as MockSvc:
         MockSvc.return_value.obtener_historial_correcciones = AsyncMock(return_value="HIST")
-        res = await obtener_historial_correcciones(42, current_user=TUTOR, db=db)
+        res = await obtener_historial_correcciones(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
         MockSvc.return_value.obtener_historial_correcciones.assert_awaited_once_with(42)
     assert res == "HIST"
 
@@ -130,6 +132,6 @@ async def test_endpoint_sin_pertenencia_403():
     db = _db(_ENTREGA, _SIN)
     with patch("app.routers.correcciones.CorreccionService") as MockSvc:
         with pytest.raises(HTTPException) as exc:
-            await obtener_historial_correcciones(42, current_user=TUTOR, db=db)
+            await obtener_historial_correcciones(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockSvc.return_value.obtener_historial_correcciones.assert_not_called()

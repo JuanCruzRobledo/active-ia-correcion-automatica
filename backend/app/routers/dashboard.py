@@ -7,7 +7,7 @@ Ref: docs/specs/07-DISENO-UI-UX.md Section 4.1 - Dashboard designs
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import require_admin, require_coordinador, require_tutor
 from app.models import Usuario
 from app.schemas.dashboard import (
@@ -24,6 +24,7 @@ router = APIRouter()
 async def get_admin_stats(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ):
     """
     Get admin dashboard statistics.
@@ -36,7 +37,7 @@ async def get_admin_stats(
 
     **Permissions**: Admin only
     """
-    require_admin(current_user)
+    require_admin(ctx)
     return await DashboardService.get_admin_stats(db)
 
 
@@ -44,6 +45,7 @@ async def get_admin_stats(
 async def get_coordinador_stats(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ):
     """
     Get coordinador dashboard statistics.
@@ -56,7 +58,7 @@ async def get_coordinador_stats(
 
     **Permissions**: Coordinador only
     """
-    require_coordinador(current_user)
+    require_coordinador(ctx)
     return await DashboardService.get_coordinador_stats(db, current_user.id)
 
 
@@ -64,6 +66,7 @@ async def get_coordinador_stats(
 async def get_tutor_stats(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ):
     """
     Get tutor dashboard statistics.
@@ -76,5 +79,5 @@ async def get_tutor_stats(
 
     **Permissions**: Tutor only
     """
-    require_tutor(current_user)
+    require_tutor(ctx)
     return await DashboardService.get_tutor_stats(db, current_user.id)

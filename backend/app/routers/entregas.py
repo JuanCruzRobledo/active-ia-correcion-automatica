@@ -13,7 +13,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import (
     comisiones_visibles_para,
     filtrar_entregas_accesibles,
@@ -56,6 +56,7 @@ async def listar_entregas(
     per_page: int = Query(20, ge=1, le=100, description="Items por página"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> EntregaList:
     """
     List all entregas with optional filters and pagination.
@@ -79,10 +80,10 @@ async def listar_entregas(
     # SEC-002: con comisión explícita es un 403; SIN ella hay que FILTRAR, porque
     # el listado sin filtro devolvía entregas de todas las comisiones del sistema.
     if comision_id is not None:
-        await verificar_acceso_comision_o_materia(db, current_user, comision_id)
+        await verificar_acceso_comision_o_materia(db, current_user, ctx, comision_id)
         comisiones_visibles = None
     else:
-        comisiones_visibles = await comisiones_visibles_para(db, current_user)
+        comisiones_visibles = await comisiones_visibles_para(db, current_user, ctx)
 
     service = EntregaService(db)
     return await service.listar_entregas(
@@ -112,6 +113,7 @@ async def crear_entrega(
     archivo: UploadFile = File(..., description="Archivo ZIP o TXT"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> EntregaResponse:
     """
     Create a new entrega (individual upload).
@@ -135,7 +137,7 @@ async def crear_entrega(
     """
     # SEC-002: el guard va ANTES de tocar el upload. Sin esto se podía crear
     # (y consolidar) una entrega en cualquier comisión ajena.
-    await verificar_acceso_comision_o_materia(db, current_user, comision_id)
+    await verificar_acceso_comision_o_materia(db, current_user, ctx, comision_id)
 
     # Parse custom extensions JSON if provided
     ext_list: list[str] | None = None
@@ -178,6 +180,7 @@ async def crear_entregas_masivas(
     archivo_zip: UploadFile = File(..., description="ZIP con carpetas de alumnos"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CargaMasivaResponse:
     """
     Create multiple entregas from a ZIP file (bulk upload).
@@ -218,7 +221,7 @@ async def crear_entregas_masivas(
     """
     # SEC-002: el guard va ANTES de descomprimir. Sin esto, un ZIP-bomb sobre
     # una comisión ajena era gratis (combinado con SEC-005).
-    await verificar_acceso_comision_o_materia(db, current_user, comision_id)
+    await verificar_acceso_comision_o_materia(db, current_user, ctx, comision_id)
 
     # Parse custom extensions JSON if provided
     ext_list_masiva: list[str] | None = None
@@ -245,6 +248,7 @@ async def archivar_entregas(
     body: EntregaArchivarRequest,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> EntregaAccionMasivaResponse:
     """
     Archive or unarchive multiple entregas.
@@ -260,7 +264,7 @@ async def archivar_entregas(
     solo sobre las accesibles; las omitidas se informan en la respuesta.
     """
     # SEC-002: partición en UNA query. Se opera solo sobre lo accesible.
-    permitidos, denegados = await filtrar_entregas_accesibles(db, current_user, body.ids)
+    permitidos, denegados = await filtrar_entregas_accesibles(db, current_user, ctx, body.ids)
     if not permitidos:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -281,6 +285,7 @@ async def eliminar_entregas_masivo(
     body: EntregaDeleteMasivoRequest,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> EntregaAccionMasivaResponse:
     """
     Bulk delete multiple entregas permanently.
@@ -293,7 +298,7 @@ async def eliminar_entregas_masivo(
     """
     # SEC-002 + CRUD-001: este borrado es FÍSICO e irreversible. La partición va
     # antes del service: el service nunca ve un ID que el usuario no pueda borrar.
-    permitidos, denegados = await filtrar_entregas_accesibles(db, current_user, body.ids)
+    permitidos, denegados = await filtrar_entregas_accesibles(db, current_user, ctx, body.ids)
     if not permitidos:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -314,6 +319,7 @@ async def obtener_entrega(
     entrega_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> EntregaDetailResponse:
     """
     Get an entrega by ID with full details.
@@ -327,7 +333,7 @@ async def obtener_entrega(
 
     **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
     """
-    await verificar_acceso_entrega(db, current_user, entrega_id)
+    await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     service = EntregaService(db)
     return await service.obtener_entrega(entrega_id)
@@ -338,6 +344,7 @@ async def obtener_contenido_entrega(
     entrega_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ContenidoEntrega:
     """
     Get the full consolidated content of an entrega.
@@ -355,7 +362,7 @@ async def obtener_contenido_entrega(
     """
     # SEC-002: este endpoint devuelve el código fuente completo del alumno.
     # Era el peor filtrado de datos de los 20 endpoints.
-    await verificar_acceso_entrega(db, current_user, entrega_id)
+    await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     service = EntregaService(db)
     return await service.obtener_contenido(entrega_id)
@@ -366,6 +373,7 @@ async def eliminar_entrega(
     entrega_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> None:
     """
     Elimina una entrega.
@@ -378,7 +386,7 @@ async def eliminar_entrega(
     """
     # SEC-002 + CRUD-001: soft delete por defecto (recuperable + auditado);
     # físico solo si ALLOW_HARD_DELETE.
-    await verificar_acceso_entrega(db, current_user, entrega_id)
+    await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     service = EntregaService(db)
     await service.eliminar_entrega(entrega_id, actor_id=current_user.id)
@@ -389,6 +397,7 @@ async def restaurar_entrega(
     entrega_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> EntregaDetailResponse:
     """
     Restaura una entrega eliminada (soft delete): vuelve a aparecer con su corrección.
@@ -397,7 +406,7 @@ async def restaurar_entrega(
     """
     # CRUD-001: verificar_acceso_entrega ve las entregas borradas (no filtra
     # deleted_at), así que sirve como guard del restore. Pertenencia, no solo-admin.
-    await verificar_acceso_entrega(db, current_user, entrega_id)
+    await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     service = EntregaService(db)
     await service.restaurar_entrega(entrega_id, actor_id=current_user.id)

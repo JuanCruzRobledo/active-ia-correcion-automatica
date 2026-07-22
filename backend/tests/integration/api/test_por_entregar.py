@@ -9,11 +9,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 from app.main import app
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import (
+    ContextoUniversidad,
+    get_current_user,
+    get_db,
+    get_universidad_activa,
+)
+from app.models.enums import RolEnum
 from app.services.por_entregar_service import (
     CorreccionPorEntregaItem,
     PorEntregarResultado,
 )
+
+
+def _ctx_tutor():
+    return ContextoUniversidad(universidad_id=1, rol=RolEnum.TUTOR, es_superadmin=False)
 
 
 @pytest.fixture
@@ -22,6 +32,7 @@ def auth():
         id=1, moodle_username="tutor", moodle_password_encrypted="enc"
     )
     app.dependency_overrides[get_db] = lambda: AsyncMock()
+    app.dependency_overrides[get_universidad_activa] = _ctx_tutor
     yield
     app.dependency_overrides.clear()
 
@@ -57,7 +68,7 @@ async def test_listar_devuelve_items_y_contadores(auth):
 
 @pytest.mark.asyncio
 async def test_entregar_stream_emite_eventos(auth):
-    async def _fake_stream(usuario, base_url):
+    async def _fake_stream(usuario, base_url, ctx=None):
         yield {"tipo": "inicio", "total": 1}
         yield {"tipo": "progreso", "procesadas": 1, "total": 1}
         yield {"tipo": "resumen", "enviadas": 1, "ya_enviadas": 0,
@@ -81,6 +92,7 @@ async def test_entregar_stream_sin_credenciales_es_424():
         id=1, moodle_username=None, moodle_password_encrypted=None
     )
     app.dependency_overrides[get_db] = lambda: AsyncMock()
+    app.dependency_overrides[get_universidad_activa] = _ctx_tutor
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/api/v1/por-entregar/entregar/stream")

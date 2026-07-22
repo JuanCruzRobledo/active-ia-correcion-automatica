@@ -64,7 +64,7 @@ async def test_subir_tp_aprobado_envia_indice_correcto(service):
     )
 
     await service.subir_correccion(
-        correccion_id=9, comentario_final="Muy bien!", usuario=_usuario(), base_url="http://test",
+        correccion_id=9, comentario_final="Muy bien!", usuario=_usuario(), ctx=MagicMock(), base_url="http://test",
     )
 
     # nota 85 (>=60) → índice 1 (Aprobado) en scale 5
@@ -87,7 +87,7 @@ async def test_subir_no_tp_escala_numerica(service):
         return_value=AssignmentGradeConfig(instance_id=487, tipo="numerica", grade_max=100)
     )
 
-    await service.subir_correccion(correccion_id=9, comentario_final="Bien", usuario=_usuario(), base_url="http://test")
+    await service.subir_correccion(correccion_id=9, comentario_final="Bien", usuario=_usuario(), ctx=MagicMock(), base_url="http://test")
 
     assert service.moodle.save_grade.call_args.kwargs["grade"] == 90.0
 
@@ -98,7 +98,7 @@ async def test_subir_idempotente_bloquea_doble_envio(service):
     service.moodle_sync_repo.get_ultimo_enviado = AsyncMock(return_value=MagicMock(id=1))  # ya enviado
 
     with pytest.raises(HTTPException) as exc:
-        await service.subir_correccion(correccion_id=9, comentario_final="x", usuario=_usuario(), base_url="http://test")
+        await service.subir_correccion(correccion_id=9, comentario_final="x", usuario=_usuario(), ctx=MagicMock(), base_url="http://test")
     assert exc.value.status_code == 409
     service.moodle.save_grade.assert_not_called()
 
@@ -112,7 +112,7 @@ async def test_subir_forzar_reenvia(service):
     )
 
     await service.subir_correccion(
-        correccion_id=9, comentario_final="x", usuario=_usuario(), base_url="http://test", forzar=True
+        correccion_id=9, comentario_final="x", usuario=_usuario(), ctx=MagicMock(), base_url="http://test", forzar=True
     )
     service.moodle.save_grade.assert_awaited()
 
@@ -123,7 +123,7 @@ async def test_subir_sin_moodle_user_id_es_400(service):
         return_value=_correccion(moodle_user_id=None)
     )
     with pytest.raises(HTTPException) as exc:
-        await service.subir_correccion(correccion_id=9, comentario_final="x", usuario=_usuario(), base_url="http://test")
+        await service.subir_correccion(correccion_id=9, comentario_final="x", usuario=_usuario(), ctx=MagicMock(), base_url="http://test")
     assert exc.value.status_code == 400
 
 
@@ -135,7 +135,7 @@ async def test_subir_discordancia_escala_es_422(service):
         return_value=AssignmentGradeConfig(instance_id=1, tipo="numerica", grade_max=100)
     )
     with pytest.raises(HTTPException) as exc:
-        await service.subir_correccion(correccion_id=9, comentario_final="x", usuario=_usuario(), base_url="http://test")
+        await service.subir_correccion(correccion_id=9, comentario_final="x", usuario=_usuario(), ctx=MagicMock(), base_url="http://test")
     assert exc.value.status_code == 422
     service.moodle.save_grade.assert_not_called()
 
@@ -144,7 +144,7 @@ async def test_subir_discordancia_escala_es_422(service):
 async def test_subir_correccion_inexistente_es_404(service):
     service.correccion_repo.get_by_id_with_relations = AsyncMock(return_value=None)
     with pytest.raises(HTTPException) as exc:
-        await service.subir_correccion(correccion_id=999, comentario_final="x", usuario=_usuario(), base_url="http://test")
+        await service.subir_correccion(correccion_id=999, comentario_final="x", usuario=_usuario(), ctx=MagicMock(), base_url="http://test")
     assert exc.value.status_code == 404
 
 
@@ -159,7 +159,7 @@ async def test_subir_bloquea_si_ya_calificada_en_moodle(service):
         return_value={101: {"timemodified": 99999, "grade": "1.0"}}
     )
     with pytest.raises(HTTPException) as exc:
-        await service.subir_correccion(correccion_id=9, comentario_final="x", usuario=_usuario(), base_url="http://test")
+        await service.subir_correccion(correccion_id=9, comentario_final="x", usuario=_usuario(), ctx=MagicMock(), base_url="http://test")
     assert exc.value.status_code == 409
     service.moodle.save_grade.assert_not_called()
 
@@ -175,7 +175,7 @@ async def test_subir_no_bloquea_si_entregada_sin_calificar(service):
     service.moodle.get_grades_full = AsyncMock(
         return_value={101: {"timemodified": 99999, "grade": "-1.00000"}}
     )
-    await service.subir_correccion(correccion_id=9, comentario_final="x", usuario=_usuario(), base_url="http://test")
+    await service.subir_correccion(correccion_id=9, comentario_final="x", usuario=_usuario(), ctx=MagicMock(), base_url="http://test")
     service.moodle.save_grade.assert_awaited()
 
 
@@ -189,7 +189,7 @@ async def test_subir_forzar_pisa_aunque_este_calificada_en_moodle(service):
         return_value={101: {"timemodified": 99999, "grade": "1.0"}}
     )
     await service.subir_correccion(
-        correccion_id=9, comentario_final="x", usuario=_usuario(), base_url="http://test", forzar=True
+        correccion_id=9, comentario_final="x", usuario=_usuario(), ctx=MagicMock(), base_url="http://test", forzar=True
     )
     service.moodle.save_grade.assert_awaited()
 
@@ -202,7 +202,7 @@ async def test_subir_verificar_moodle_false_no_chequea(service):
         return_value=AssignmentGradeConfig(instance_id=478, tipo="escala", scale_id=5)
     )
     await service.subir_correccion(
-        correccion_id=9, comentario_final="x", usuario=_usuario(), base_url="http://test",
+        correccion_id=9, comentario_final="x", usuario=_usuario(), ctx=MagicMock(), base_url="http://test",
         verificar_moodle=False,
     )
     service.moodle.save_grade.assert_awaited()

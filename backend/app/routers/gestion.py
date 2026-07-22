@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import require_gestor_or_admin
 from app.models import Usuario
 from app.schemas.gestion import (
@@ -55,8 +55,9 @@ def _ascii_filename(filename: str) -> str:
 async def listar_cursos(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[CursoGestionResponse]:
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     service = GestionService(db)
     cursos = await service.listar_cursos(current_user)
     return [CursoGestionResponse(**asdict(c)) for c in cursos]
@@ -67,8 +68,9 @@ async def opciones_filtros(
     materia_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> FiltrosDisponiblesResponse:
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     service = GestionService(db)
     opciones = await service.opciones_filtros(current_user, materia_id)
     return FiltrosDisponiblesResponse(**asdict(opciones))
@@ -80,8 +82,9 @@ async def consultar(
     filtros: FiltrosGestionRequest,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ConsultaGestionResponse:
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     service = GestionService(db)
     resultado = await service.consultar(current_user, materia_id, _to_filtros(filtros))
     return ConsultaGestionResponse(**asdict(resultado))
@@ -94,9 +97,10 @@ async def exportar_excel(
     agrupar_por: Literal["regional", "comision"] = Query("regional"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     """`agrupar_por`: 'regional' (Excel para Nexos) o 'comision' (Excel para Tutores)."""
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     service = GestionService(db)
     data, filename = await service.exportar_excel(
         current_user, materia_id, _to_filtros(filtros), agrupar_por=agrupar_por
@@ -114,10 +118,11 @@ async def exportar_pendientes_excel(
     agrupar_por: Literal["trabajo", "comision"] = Query("trabajo"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     """Excel de entregas pendientes de corregir del curso. `agrupar_por`: 'trabajo'
     (por práctico) o 'comision'. Consulta Moodle en vivo, puede tardar unos segundos."""
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     service = GestionService(db)
     data, filename = await service.exportar_pendientes_excel(
         current_user, materia_id, agrupar_por=agrupar_por

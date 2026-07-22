@@ -300,13 +300,37 @@ def test_get_current_user_no_fue_modificado_de_firma():
     assert params == ["credentials", "db"]
 
 
-def test_get_universidad_activa_no_esta_montado_en_ningun_router():
-    """Fase 1: el dependency se entrega listo para consumir pero NO se monta
-    todavía en ningún endpoint existente (eso es de fases posteriores)."""
-    import ast
+def test_get_universidad_activa_esta_montado_en_routers_con_guard_de_rol_o_pertenencia():
+    """Fase 2 (multi-tenant-permisos): el dependency pasa a montarse en todo
+    endpoint que ya tenga un guard de rol (`require_*`) o de pertenencia
+    (`verificar_acceso_*`), reemplazando el boundary de Fase 1 (que
+    deliberadamente no lo montaba en ningún lado todavía).
+
+    OQ2: los endpoints cuyo ÚNICO guard es `require_any_authenticated` (sin
+    guard de pertenencia) NO deben montarlo -- se verifica en rubricas.py,
+    que tiene ambos casos en el mismo archivo.
+    """
     from pathlib import Path
 
     routers_dir = Path(__file__).resolve().parents[3] / "app" / "routers"
-    for path in routers_dir.glob("*.py"):
-        source = path.read_text(encoding="utf-8")
-        assert "get_universidad_activa" not in source, f"montado en {path.name}"
+
+    # Al menos un router con guard de rol/pertenencia lo monta (la refactorización
+    # de Fase 2 no quedó a mitad de camino).
+    montado_en_algun_router = any(
+        "get_universidad_activa" in path.read_text(encoding="utf-8")
+        for path in routers_dir.glob("*.py")
+    )
+    assert montado_en_algun_router, (
+        "get_universidad_activa debería estar montado en al menos un router "
+        "tras el refactor de Fase 2 (multi-tenant-permisos)."
+    )
+
+    # rubricas.py es el caso mixto de OQ2: algunos endpoints lo montan
+    # (require_coordinador_or_admin) y otros deliberadamente NO
+    # (require_any_authenticated puro).
+    rubricas_source = (routers_dir / "rubricas.py").read_text(encoding="utf-8")
+    assert "get_universidad_activa" in rubricas_source
+    assert rubricas_source.count("ctx: ContextoUniversidad = Depends(get_universidad_activa)") < (
+        rubricas_source.count("require_any_authenticated(current_user)")
+        + rubricas_source.count("require_coordinador_or_admin(ctx)")
+    ), "rubricas.py debería tener endpoints SIN ctx (OQ2: solo require_any_authenticated)"

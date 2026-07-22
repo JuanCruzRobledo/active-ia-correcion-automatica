@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import require_admin, require_gestor_or_admin
 from app.core.scheduler import reprogramar_desde_config
 from app.models import Usuario
@@ -47,9 +47,10 @@ _SIN_CREDENCIALES = "Configurá tus credenciales de Moodle en tu perfil"
 async def obtener_cron_config(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CronConfigResponse:
     """Config actual del cron de snapshots. Solo admin."""
-    require_admin(current_user)
+    require_admin(ctx)
     return await SnapshotConfigService(db).obtener()
 
 
@@ -58,9 +59,10 @@ async def actualizar_cron_config(
     data: CronConfigUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CronConfigResponse:
     """Actualiza usuario/hora/activo del cron y lo reprograma en caliente. Solo admin."""
-    require_admin(current_user)
+    require_admin(ctx)
     result = await SnapshotConfigService(db).actualizar(data)
     await reprogramar_desde_config()
     return result
@@ -76,10 +78,11 @@ async def disparar_snapshot_manual(
     ),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[SnapshotResumenResponse]:
     """Dispara el cálculo de snapshot a mano (botón de pruebas), con las credenciales
     Moodle del usuario actual. Gestor o admin."""
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     service = SnapshotService(db)
 
     if materia_id is not None:
@@ -106,9 +109,10 @@ async def disparar_snapshot_manual(
 async def listar_materias_configuradas(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[MateriaConfiguradaItem]:
     """Materias listas para snapshot (con fecha de su último snapshot). Gestor o admin."""
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     return await DashboardLecturaService(db).materias_configuradas()
 
 
@@ -122,6 +126,7 @@ async def snapshot_stream(
     ),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     """Genera snapshots emitiendo el progreso por SSE (X/total alumnos), en vivo.
 
@@ -129,7 +134,7 @@ async def snapshot_stream(
     `{tipo: 'progreso', materia_idx, materias_total, procesados, total}` por alumno,
     `{tipo: 'done', materias}` al final, `{tipo: 'error', detalle}` si falla.
     """
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     service = SnapshotService(db)
     try:
         _, host = await service.token_de_usuario(current_user)
@@ -208,9 +213,10 @@ async def snapshot_stream(
 async def obtener_arbol(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[CohorteArbol]:
     """Árbol cohorte → cuatrimestre → materias para los selectores. Gestor o admin."""
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     return await DashboardLecturaService(db).obtener_arbol()
 
 
@@ -220,9 +226,10 @@ async def obtener_avance(
     materia_id: int | None = Query(None, description="Materia puntual; omitir = todas (Todos)"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> AvanceResponse:
     """Conteos por estado del último snapshot + título dinámico (gráfico de torta)."""
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     return await DashboardLecturaService(db).avance(cuatrimestre_id, materia_id)
 
 
@@ -233,9 +240,10 @@ async def obtener_detalle(
     materia_id: int | None = Query(None),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[AlumnoDetalle]:
     """Lista de alumnos en un estado (alimenta el modal de detalle). Gestor o admin."""
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     return await DashboardLecturaService(db).detalle(cuatrimestre_id, estado, materia_id)
 
 
@@ -245,9 +253,10 @@ async def descargar_avance_excel(
     materia_id: int | None = Query(None),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     """Excel del avance: hoja Resumen (torta + conteos) + 1 hoja por estado. Gestor o admin."""
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     contenido, filename = await DashboardLecturaService(db).avance_excel(
         cuatrimestre_id, materia_id
     )

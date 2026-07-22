@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+from app.core.dependencies import ContextoUniversidad
 from app.models.enums import RolEnum
 from app.routers.documentos import (
     descargar_pdf_correccion,
@@ -27,6 +28,11 @@ ADMIN = SimpleNamespace(id=1, rol=RolEnum.ADMIN)
 TUTOR = SimpleNamespace(id=5, rol=RolEnum.TUTOR)
 COORD = SimpleNamespace(id=7, rol=RolEnum.COORDINADOR)
 GESTOR = SimpleNamespace(id=9, rol=RolEnum.GESTOR)
+
+CTX_ADMIN = ContextoUniversidad(universidad_id=1, rol=RolEnum.ADMIN, es_superadmin=False)
+CTX_TUTOR = ContextoUniversidad(universidad_id=1, rol=RolEnum.TUTOR, es_superadmin=False)
+CTX_COORD = ContextoUniversidad(universidad_id=1, rol=RolEnum.COORDINADOR, es_superadmin=False)
+CTX_GESTOR = ContextoUniversidad(universidad_id=1, rol=RolEnum.GESTOR, es_superadmin=False)
 
 _ES_TUTOR = (10, 555, None)
 _ES_COORDINADOR = (10, None, 777)
@@ -56,7 +62,7 @@ async def test_pdf_correccion_propia_ok():
     ) as MockRepo:
         MockPDF.return_value.generar_pdf_devolucion = AsyncMock(return_value=b"%PDF")
         MockRepo.return_value.get_by_id_with_relations = AsyncMock(return_value=None)
-        resp = await descargar_pdf_correccion(99, current_user=TUTOR, db=db)
+        resp = await descargar_pdf_correccion(99, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert resp.status_code == 200
 
 
@@ -65,7 +71,7 @@ async def test_pdf_correccion_ajena_403_sin_generar_el_pdf():
     db = _db(_CORRECCION_99, _SIN_PERTENENCIA)
     with patch("app.routers.documentos.PDFService") as MockPDF:
         with pytest.raises(HTTPException) as exc:
-            await descargar_pdf_correccion(99, current_user=TUTOR, db=db)
+            await descargar_pdf_correccion(99, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockPDF.return_value.generar_pdf_devolucion.assert_not_called()
 
@@ -78,7 +84,7 @@ async def test_pdf_correccion_coordinador_de_la_materia_ok():
     ) as MockRepo:
         MockPDF.return_value.generar_pdf_devolucion = AsyncMock(return_value=b"%PDF")
         MockRepo.return_value.get_by_id_with_relations = AsyncMock(return_value=None)
-        resp = await descargar_pdf_correccion(99, current_user=COORD, db=db)
+        resp = await descargar_pdf_correccion(99, current_user=COORD, db=db, ctx=CTX_COORD)
     assert resp.status_code == 200
 
 
@@ -86,7 +92,7 @@ async def test_pdf_correccion_coordinador_de_la_materia_ok():
 async def test_pdf_correccion_inexistente_404():
     db = _db(None)
     with pytest.raises(HTTPException) as exc:
-        await descargar_pdf_correccion(404404, current_user=TUTOR, db=db)
+        await descargar_pdf_correccion(404404, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 404
 
 
@@ -98,7 +104,7 @@ async def test_pdfs_lote_comision_propia_ok():
     db = _db(_ES_TUTOR)
     with patch("app.routers.documentos.PDFService") as MockPDF:
         MockPDF.return_value.generar_zip_pdfs = AsyncMock(return_value=(b"ZIP", "x.zip"))
-        resp = await descargar_pdfs_lote(10, 3, current_user=TUTOR, db=db)
+        resp = await descargar_pdfs_lote(10, 3, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert resp.status_code == 200
 
 
@@ -107,7 +113,7 @@ async def test_pdfs_lote_comision_ajena_403():
     db = _db(_SIN_PERTENENCIA)
     with patch("app.routers.documentos.PDFService") as MockPDF:
         with pytest.raises(HTTPException) as exc:
-            await descargar_pdfs_lote(10, 3, current_user=TUTOR, db=db)
+            await descargar_pdfs_lote(10, 3, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockPDF.return_value.generar_zip_pdfs.assert_not_called()
 
@@ -116,7 +122,7 @@ async def test_pdfs_lote_comision_ajena_403():
 async def test_pdfs_lote_gestor_403():
     db = _db(_SIN_PERTENENCIA)
     with pytest.raises(HTTPException) as exc:
-        await descargar_pdfs_lote(10, 3, current_user=GESTOR, db=db)
+        await descargar_pdfs_lote(10, 3, current_user=GESTOR, db=db, ctx=CTX_GESTOR)
     assert exc.value.status_code == 403
 
 
@@ -128,7 +134,7 @@ async def test_excel_comision_propia_ok():
     db = _db(_ES_COORDINADOR)
     with patch("app.routers.documentos.ExcelService") as MockXls:
         MockXls.return_value.exportar_notas_excel = AsyncMock(return_value=(b"XLS", "n.xlsx"))
-        resp = await exportar_notas_excel(10, 3, current_user=COORD, db=db)
+        resp = await exportar_notas_excel(10, 3, current_user=COORD, db=db, ctx=CTX_COORD)
     assert resp.status_code == 200
 
 
@@ -138,7 +144,7 @@ async def test_excel_comision_ajena_403_sin_generar_el_acta():
     db = _db(_SIN_PERTENENCIA)
     with patch("app.routers.documentos.ExcelService") as MockXls:
         with pytest.raises(HTTPException) as exc:
-            await exportar_notas_excel(10, 3, current_user=TUTOR, db=db)
+            await exportar_notas_excel(10, 3, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockXls.return_value.exportar_notas_excel.assert_not_called()
 
@@ -148,7 +154,7 @@ async def test_excel_admin_ok_sin_consultar_permisos():
     db = AsyncMock()
     with patch("app.routers.documentos.ExcelService") as MockXls:
         MockXls.return_value.exportar_notas_excel = AsyncMock(return_value=(b"XLS", "n.xlsx"))
-        resp = await exportar_notas_excel(10, 3, current_user=ADMIN, db=db)
+        resp = await exportar_notas_excel(10, 3, current_user=ADMIN, db=db, ctx=CTX_ADMIN)
     assert resp.status_code == 200
     db.execute.assert_not_called()
 
@@ -167,7 +173,7 @@ async def test_pdfs_seleccionados_mixto_zip_solo_permitidos_y_header_omitidos():
         MockPDF.return_value.generar_zip_pdfs_seleccionados = AsyncMock(
             return_value=(b"ZIP", "sel.zip")
         )
-        resp = await descargar_pdfs_seleccionados(data, current_user=TUTOR, db=db)
+        resp = await descargar_pdfs_seleccionados(data, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
         # El ZIP se genera SOLO con los permitidos.
         kwargs = MockPDF.return_value.generar_zip_pdfs_seleccionados.await_args.kwargs
     assert kwargs["entrega_ids"] == [1, 2]
@@ -183,7 +189,7 @@ async def test_pdfs_seleccionados_todo_denegado_403_sin_generar_zip():
         AsyncMock(return_value=(set(), {98, 99})),
     ):
         with pytest.raises(HTTPException) as exc:
-            await descargar_pdfs_seleccionados(data, current_user=TUTOR, db=db)
+            await descargar_pdfs_seleccionados(data, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockPDF.return_value.generar_zip_pdfs_seleccionados.assert_not_called()
 
@@ -199,7 +205,7 @@ async def test_pdfs_seleccionados_todo_propio_header_vacio():
         MockPDF.return_value.generar_zip_pdfs_seleccionados = AsyncMock(
             return_value=(b"ZIP", "sel.zip")
         )
-        resp = await descargar_pdfs_seleccionados(data, current_user=TUTOR, db=db)
+        resp = await descargar_pdfs_seleccionados(data, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert resp.headers["X-Entregas-Omitidas"] == ""
 
 
@@ -215,7 +221,7 @@ async def test_pdfs_seleccionados_el_zip_no_incluye_entregas_ajenas():
         MockPDF.return_value.generar_zip_pdfs_seleccionados = AsyncMock(
             return_value=(b"ZIP", "sel.zip")
         )
-        await descargar_pdfs_seleccionados(data, current_user=TUTOR, db=db)
+        await descargar_pdfs_seleccionados(data, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
         ids = MockPDF.return_value.generar_zip_pdfs_seleccionados.await_args.kwargs["entrega_ids"]
     assert set(ids) == {1, 3}
     assert not ({2, 4, 5} & set(ids))

@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.main import app
 from app.models.base import Base
 from app.models.actividad import Actividad
@@ -70,6 +70,9 @@ def _admin_user(**attrs):
     user = MagicMock(**base)
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = lambda: AsyncMock()
+    app.dependency_overrides[get_universidad_activa] = lambda: ContextoUniversidad(
+        universidad_id=1, rol=base["rol"], es_superadmin=False
+    )
     return user
 
 

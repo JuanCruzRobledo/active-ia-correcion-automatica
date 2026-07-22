@@ -69,6 +69,7 @@ class MoodleGradeService:
         correccion_id: int,
         comentario_final: str,
         usuario,
+        ctx,
         base_url: str,
         forzar: bool = False,
         verificar_moodle: bool = True,
@@ -91,8 +92,8 @@ class MoodleGradeService:
         comision = entrega.comision
         materia = comision.materia
 
-        # Permisos: sólo tutor de la comisión (o admin).
-        await verificar_acceso_comision(self.db, usuario, comision.id)
+        # Permisos: sólo tutor de la comisión (o acceso total: admin/superadmin).
+        await verificar_acceso_comision(self.db, usuario, ctx, comision.id)
 
         # moodle_user_id: se puebla al importar desde Moodle. Sin él no se puede publicar.
         if not entrega.moodle_user_id:
@@ -220,6 +221,7 @@ class MoodleGradeService:
         *,
         correccion_id: int,
         usuario,
+        ctx,
         base_url: str,
     ) -> PreviewCorreccion:
         """Calcula lo que se enviaría a Moodle SIN enviarlo (para el modal)."""
@@ -232,7 +234,7 @@ class MoodleGradeService:
         comision = entrega.comision
         materia = comision.materia
 
-        await verificar_acceso_comision(self.db, usuario, comision.id)
+        await verificar_acceso_comision(self.db, usuario, ctx, comision.id)
 
         if not usuario.moodle_username or not usuario.moodle_password_encrypted:
             raise HTTPException(

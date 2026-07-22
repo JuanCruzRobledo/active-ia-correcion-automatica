@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.models import Usuario
 from app.schemas.por_entregar import PorEntregarResponse
 from app.services.por_entregar_service import PorEntregarService
@@ -46,6 +46,7 @@ async def entregar_todo_stream(
     request: Request,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ):
     """Sube en bloque (SSE) las correcciones de comentario automático (TP).
 
@@ -68,7 +69,7 @@ async def entregar_todo_stream(
 
     async def event_gen():
         try:
-            async for ev in service.entregar_masivo_stream(current_user, base_url):
+            async for ev in service.entregar_masivo_stream(current_user, base_url, ctx=ctx):
                 yield _sse(ev)
         except Exception:  # noqa: BLE001
             yield _sse({"tipo": "error", "detail": "Error inesperado durante la entrega masiva"})
