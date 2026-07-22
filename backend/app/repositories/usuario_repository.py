@@ -13,10 +13,12 @@ from datetime import datetime
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import noload
+from sqlalchemy.orm import noload, selectinload
 
 from app.models import Usuario
 from app.models.enums import RolEnum
+from app.models.universidad import Universidad
+from app.models.usuario_universidad import UsuarioUniversidad
 
 
 class UsuarioRepository:
@@ -293,6 +295,66 @@ class UsuarioRepository:
         await self.db.commit()
         await self.db.refresh(user)
         return user
+
+    async def get_membresias_activas(self, usuario_id: int) -> list[UsuarioUniversidad]:
+        """
+        Membresías ACTIVAS de un usuario, con la `Universidad` ya cargada.
+
+        Fase 1 multi-tenant (multi-tenant-auth-jwt, D7): consumido por
+        `AuthService` para ramificar el login (0/1/2+ universidades). Filtra
+        `usuario_universidad.activo = true` Y `universidades.activa = true`.
+
+        `Usuario.universidades` es `lazy="raise"`: se usa `select(...)` +
+        `selectinload(...)` explícito acá, nunca se navega el objeto `Usuario`.
+
+        Args:
+            usuario_id: ID del usuario.
+
+        Returns:
+            Lista de `UsuarioUniversidad` activas, con `.universidad` precargada.
+        """
+        result = await self.db.execute(
+            select(UsuarioUniversidad)
+            .join(Universidad, UsuarioUniversidad.universidad_id == Universidad.id)
+            .where(
+                UsuarioUniversidad.usuario_id == usuario_id,
+                UsuarioUniversidad.activo == True,  # noqa: E712
+                Universidad.activa == True,  # noqa: E712
+            )
+            .options(selectinload(UsuarioUniversidad.universidad))
+        )
+        return list(result.scalars().all())
+
+    async def get_membresia(
+        self, usuario_id: int, universidad_id: int
+    ) -> UsuarioUniversidad | None:
+        """
+        Membresía ACTIVA puntual de un usuario en una universidad, o `None`.
+
+        Usado por `select-universidad`/`switch-universidad`/`get_universidad_activa`
+        para validar pertenencia. Requiere `usuario_universidad.activo = true` Y
+        `universidades.activa = true` (mismo criterio que `get_membresias_activas`).
+
+        Args:
+            usuario_id: ID del usuario.
+            universidad_id: ID de la universidad.
+
+        Returns:
+            `UsuarioUniversidad` con `.universidad` precargada, o `None` si no
+            existe el par, la membresía está inactiva o la universidad lo está.
+        """
+        result = await self.db.execute(
+            select(UsuarioUniversidad)
+            .join(Universidad, UsuarioUniversidad.universidad_id == Universidad.id)
+            .where(
+                UsuarioUniversidad.usuario_id == usuario_id,
+                UsuarioUniversidad.universidad_id == universidad_id,
+                UsuarioUniversidad.activo == True,  # noqa: E712
+                Universidad.activa == True,  # noqa: E712
+            )
+            .options(selectinload(UsuarioUniversidad.universidad))
+        )
+        return result.scalar_one_or_none()
 
     async def hard_delete(self, user: Usuario) -> None:
         """
