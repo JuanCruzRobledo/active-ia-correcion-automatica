@@ -133,6 +133,18 @@ class Rubrica(Base, TimestampMixin):
         nullable=True,
     )
 
+    # Versión del schema de la estructura de criterios (JSONB). v1 = comportamiento
+    # actual (subcriterios sin peso propio, reparto implícito). v2 = subcriterios con
+    # peso propio que deben sumar exactamente el peso del criterio contenedor.
+    # server_default='1' asegura que las rúbricas existentes queden en v1 sin backfill.
+    schema_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default=text("1"),
+        comment="Versión del schema de criterios_json (1 = sin peso por subcriterio, 2 = con peso por subcriterio)",
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "materia_id",

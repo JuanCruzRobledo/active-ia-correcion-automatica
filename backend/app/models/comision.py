@@ -88,6 +88,7 @@ class ComisionTutor(Base):
     tutor_id: Mapped[int] = mapped_column(
         ForeignKey("usuarios.id"),
         nullable=False,
+        index=True,
     )
     asignado_en: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 

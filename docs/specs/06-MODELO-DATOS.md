@@ -127,7 +127,7 @@ El sistema utiliza PostgreSQL con SQLAlchemy como ORM. Las entidades principales
 | `nombre` | String(100) | Not Null | Nombre completo |
 | `password_hash` | String(255) | Not Null | Hash bcrypt de la contraseña |
 | `rol` | Enum | Not Null | 'ADMIN', 'COORDINADOR', 'TUTOR' |
-| `gemini_api_key_encrypted` | Text | Nullable | API Key Gemini encriptada (AES-256) |
+| `gemini_api_key_encrypted` | Text | Nullable | API Key de IA encriptada con Fernet (AES-128-CBC + HMAC-SHA256) |
 | `gemini_api_key_valid` | Boolean | Default False | Flag de validación de API Key |
 | `primer_login` | Boolean | Default True | True si debe cambiar contraseña |
 | `activo` | Boolean | Default True | False = soft delete |
@@ -682,7 +682,7 @@ Se guarda la respuesta completa de Gemini para auditoría y debugging:
 
 ```json
 {
-  "model": "gemini-2.0-flash",
+  "model": "gemini-3.5-flash",
   "timestamp": "2026-01-15T10:30:00Z",
   "prompt_tokens": 1500,
   "completion_tokens": 800,

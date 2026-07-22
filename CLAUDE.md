@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Active-IA** is a full-stack platform for AI-powered automatic correction of student practical assignments for TUD (Technical University). It integrates with N8N workflows and Google Gemini to evaluate code submissions against rubric criteria.
+**Active-IA** is a full-stack platform for AI-powered automatic correction of student practical assignments for TUD (Technical University). The backend calls Google Gemini (AI Studio) or OpenRouter directly (no N8N intermediary) to evaluate code submissions against rubric criteria.
 
 ## Commands
 
@@ -71,17 +71,17 @@ Shared reusable code lives in `frontend/src/shared/`.
 
 ```
 Entrega upload → Code consolidation (ZIP/TXT → string)
-  → N8N webhook → Gemini API (model: gemini-2.0-flash)
+  → Direct AI call (Gemini / OpenRouter, model from settings.GEMINI_MODEL)
   → Correccion record (nota + JSONB criteria scores)
 ```
 
-N8N runs at `http://n8n:5678`. Each user stores their Gemini API key encrypted with AES-256 (`app/core/security.py`).
+The backend calls the AI provider directly (no N8N intermediary): `app/integrations/gemini_correction_client.py` / `openrouter_client.py`, routed by `ia_provider.py`. The model name comes from `settings.GEMINI_MODEL` (single source of truth; today `gemini-3.5-flash` for Gemini, `google/gemini-3.5-flash` for OpenRouter). Each user stores their AI API key encrypted with Fernet — AES-128-CBC + HMAC-SHA256 (`app/core/security.py`).
 
 ## Critical Rules
 
 ### Backend
 - Never put business logic in Routers; never access DB directly from Services
-- API Keys (Gemini) must always be stored AES-256 encrypted — never plaintext
+- API Keys (Gemini/OpenRouter) must always be stored encrypted with Fernet (AES-128-CBC + HMAC-SHA256) — never plaintext
 - Use JSONB columns for rubric criteria and correction scores
 - Max 500 LOC per file
 - Use soft delete (never hard delete) for audit purposes
@@ -101,7 +101,7 @@ N8N runs at `http://n8n:5678`. Each user stores their Gemini API key encrypted w
 | Validation | `HTTPException 400` |
 | Not found | `HTTPException 404` |
 | Forbidden | `HTTPException 403` |
-| AI/N8N error | `HTTPException 502` + retry |
+| AI provider error | `HTTPException 502` + retry |
 | Internal | `HTTPException 500` + detailed log |
 
 ## Data Model Summary
@@ -126,13 +126,19 @@ Conventional Commits: `<type>(<scope>): <description>`
 
 ## Environment Variables
 
-Key vars from `.env.example`:
-- `DATABASE_URL` — PostgreSQL connection string
-- `SECRET_KEY` — JWT signing (min 32 chars)
-- `ENCRYPTION_KEY` — AES-256 key for Gemini API keys (exactly 32 chars)
-- `N8N_WEBHOOK_URL` — N8N service URL
-- `UPLOAD_DIR` — File upload path
+Full reference: `backend/.env.example` (derived from `backend/app/core/config.py`). Key vars:
+- `DATABASE_URL` — PostgreSQL connection string (async: `postgresql+asyncpg://...`)
+- `SECRET_KEY` — JWT signing key; generate with `openssl rand -hex 32`
+- `ENCRYPTION_KEY` — Fernet key for AI API keys; generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` (base64 url-safe, 44 chars — NOT a raw 32-char string)
+- `GEMINI_MODEL` — Gemini Studio model (default `gemini-3.5-flash`); `GEMINI_TIMEOUT_SECONDS` (default 90)
+- `OPENROUTER_BASE_URL` / `OPENROUTER_MODEL` — OpenRouter provider (default model `google/gemini-3.5-flash`)
+- `UPLOAD_DIR` — File upload path; `MAX_UPLOAD_SIZE`, `ALLOWED_EXTENSIONS`, ZIP-bomb limits (`MAX_ZIP_EXPANDED_SIZE`, `MAX_ZIP_ENTRIES`)
+- `CORS_ORIGINS` — comma-separated allowed origins
+- `RESEND_API_KEY` / `EMAIL_REMITENTE` / `EMAIL_RATE_POR_SEGUNDO` — email notifications (Resend)
 - `ACCESS_TOKEN_EXPIRE_DAYS` — JWT expiry (default: 7)
+- (CRUD-002) `ALLOW_HARD_DELETE` fue eliminado: los DELETE son SIEMPRE soft (baja lógica), nunca físico — regla dura del proyecto. Una purga física real, si se necesitara, debe ser una feature deliberada y auditada, no un toggle de env.
+
+DEBUG must be `false` in production; with `false`, the app aborts on startup if `SECRET_KEY`/`ENCRYPTION_KEY` still hold their placeholder values.
 
 ## Skills (Auto-invoke)
 

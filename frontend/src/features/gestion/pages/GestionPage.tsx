@@ -107,12 +107,21 @@ export function GestionPage() {
 
       {/* Selector de curso */}
       <div>
-        <label className="mb-1 block text-sm font-medium text-muted-foreground">Curso</label>
+        {/* UI-012: label asociada al select por htmlFor/id. */}
+        <label htmlFor="gestion-curso" className="mb-1 block text-sm font-medium text-muted-foreground">Curso</label>
         {cursosQuery.isLoading ? (
           <LoadingState title="Cargando cursos…" />
+        ) : cursosQuery.isError ? (
+          // UI-004: el error del select de cursos ya no se descarta en silencio.
+          <div className="flex items-center gap-2 rounded-md border border-border bg-card p-4 text-sm text-foreground">
+            <AlertTriangle className="h-5 w-5 text-warning" />
+            No se pudieron cargar los cursos. Verificá tus credenciales Moodle en tu perfil e
+            intentá recargar la página.
+          </div>
         ) : (
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
             <select
+              id="gestion-curso"
               className={SELECT_CLS}
               value={materiaId ?? ''}
               onChange={(e) => handleCursoChange(e.target.value ? Number(e.target.value) : null)}

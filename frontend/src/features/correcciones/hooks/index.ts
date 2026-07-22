@@ -7,7 +7,6 @@ export {
   useCorreccion,
   useCorreccionByEntrega,
   useCorregirEntrega,
-  useCorregirEntregasLote,
   useUpdateCorreccion,
   useRecorregirEntrega,
   correccionesKeys,

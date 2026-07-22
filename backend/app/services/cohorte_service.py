@@ -80,7 +80,8 @@ class CohorteService:
         self, cohorte_id: int, data: CohorteUpdate
     ) -> CohorteDetailResponse:
         cohorte = await self._get_cohorte_or_404(cohorte_id)
-        if data.nombre is not None:
+        # CRUD-010: nombre es nullable -> model_fields_set para poder vaciarlo.
+        if "nombre" in data.model_fields_set:
             cohorte.nombre = data.nombre
         if data.activa is not None:
             cohorte.activa = data.activa
@@ -90,6 +91,13 @@ class CohorteService:
 
     async def eliminar_cohorte(self, cohorte_id: int) -> None:
         cohorte = await self._get_cohorte_or_404(cohorte_id)
+        # CRUD-007: soft delete (activa=False). Antes era físico (y reventaba con 500
+        # si la cohorte tenía cuatrimestres, por la FK NOT NULL sin ON DELETE).
+        if not cohorte.activa:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La cohorte ya está eliminada",
+            )
         materias = await self.cohorte_repo.count_materias(cohorte_id)
         if materias > 0:
             raise HTTPException(
@@ -99,7 +107,7 @@ class CohorteService:
                     "a cuatrimestres de esta cohorte"
                 ),
             )
-        await self.cohorte_repo.delete(cohorte)
+        await self.cohorte_repo.soft_delete(cohorte)
 
     # ===================== Cuatrimestre =====================
 
@@ -140,7 +148,8 @@ class CohorteService:
                     detail=f"La cohorte ya tiene el cuatrimestre {data.numero}",
                 )
             cuatrimestre.numero = data.numero
-        if data.nombre is not None:
+        # CRUD-010: nombre es nullable -> model_fields_set para poder vaciarlo.
+        if "nombre" in data.model_fields_set:
             cuatrimestre.nombre = data.nombre
         updated = await self.cuatrimestre_repo.update(cuatrimestre)
         return CuatrimestreResponse.model_validate(updated)

@@ -480,10 +480,11 @@ async def generar_rubrica_desde_pdf(
         )
 
     # Use RubricaIAService to generate rubrica
-    ia_service = RubricaIAService()
+    ia_service = RubricaIAService(db)
     rubrica_data = await ia_service.generar_rubrica_desde_pdf(
         pdf_file=pdf_file,
         api_key_encrypted=current_user.gemini_api_key_encrypted,
+        usuario=current_user,
         tipo_rubrica=tipo_rubrica,
     )
 

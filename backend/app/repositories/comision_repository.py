@@ -11,12 +11,14 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 5
 
 from datetime import datetime
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, selectinload
 
 from app.models.comision import Comision, ComisionTutor
+from app.models.entrega import Entrega
 from app.models.materia import CoordinadorMateria
+from app.models.usuario import Usuario
 from app.utils.orden_natural import orden_natural_sql
 
 
@@ -61,11 +63,16 @@ class ComisionRepository:
         Returns:
             Comision object with relations if found, None otherwise.
         """
+        # PERF-012: se eager-loadea también el usuario de cada tutor (con load_only de
+        # las columnas que usa la respuesta), para que el service NO haga un
+        # get_by_id(tutor_id) por tutor en loop.
         result = await self.db.execute(
             select(Comision)
             .options(
                 selectinload(Comision.materia),
-                selectinload(Comision.tutores),
+                selectinload(Comision.tutores)
+                .selectinload(ComisionTutor.tutor)
+                .load_only(Usuario.id, Usuario.username, Usuario.nombre),
             )
             .where(Comision.id == comision_id)
         )
@@ -134,6 +141,64 @@ class ComisionRepository:
 
         return comisiones, total
 
+    async def contar_tutores_entregas(
+        self, comision_ids: list[int]
+    ) -> dict[int, tuple[int, int]]:
+        """(num_tutores, num_entregas) por comisión en UNA sola query agregada.
+
+        Reemplaza el N+1 de ``listar_comisiones`` (una query de tutores + la
+        materialización de la colección ``entregas`` selectin por cada comisión).
+
+        Se hacen dos ``outerjoin`` (a comision_tutor y a entregas) y se cuenta con
+        ``COUNT(DISTINCT ...)`` para que la multiplicación cartesiana de ambos joins
+        NO infle los conteos: el resultado es idéntico al del loop viejo
+        (``len(get_tutores_for_comision(id))`` y ``len(comision.entregas)``). Las
+        comisiones sin tutores ni entregas quedan en (0, 0).
+
+        Args:
+            comision_ids: IDs de las comisiones a contar.
+
+        Returns:
+            dict {comision_id: (num_tutores, num_entregas)}.
+        """
+        if not comision_ids:
+            return {}
+
+        result = await self.db.execute(
+            select(
+                Comision.id,
+                func.count(func.distinct(ComisionTutor.id)),
+                func.count(func.distinct(Entrega.id)),
+            )
+            .select_from(Comision)
+            .outerjoin(ComisionTutor, ComisionTutor.comision_id == Comision.id)
+            .outerjoin(Entrega, Entrega.comision_id == Comision.id)
+            .where(Comision.id.in_(comision_ids))
+            .group_by(Comision.id)
+        )
+        return {cid: (int(nt), int(ne)) for cid, nt, ne in result.all()}
+
+    async def contar_comisiones_activas_por_materia(
+        self, materia_ids: list[int]
+    ) -> dict[int, int]:
+        """CRUD-016: Nº de comisiones ACTIVAS por materia en UNA query agregada.
+
+        Reemplaza el conteo en Python sobre materia.comisiones (lazy=selectin), que
+        materializaba la colección entera de cada materia del listado solo para
+        contar. Las materias sin comisiones activas no aparecen (se interpretan 0).
+        """
+        if not materia_ids:
+            return {}
+        result = await self.db.execute(
+            select(Comision.materia_id, func.count(Comision.id))
+            .where(
+                Comision.materia_id.in_(materia_ids),
+                Comision.activa == True,  # noqa: E712
+            )
+            .group_by(Comision.materia_id)
+        )
+        return {mid: int(n) for mid, n in result.all()}
+
     async def get_by_materia(self, materia_id: int) -> list[Comision]:
         """
         Get all active comisiones for a materia.
@@ -191,6 +256,36 @@ class ComisionRepository:
         )
         return list(result.scalars().all())
 
+    async def get_moodle_habilitadas_de_tutor(
+        self,
+        tutor_id: int,
+        *,
+        comision_id: int | None = None,
+        materia_id: int | None = None,
+    ) -> list[Comision]:
+        """Comisiones ACTIVAS del tutor con moodle_group_id configurado (con la
+        materia eager-loaded), para los flujos de Moodle (pendientes / import).
+
+        Filtros de scope opcionales: comision_id acota a una sola comisión;
+        materia_id acota a las de una materia (usados por el import con scope).
+        """
+        stmt = (
+            select(Comision)
+            .join(ComisionTutor, ComisionTutor.comision_id == Comision.id)
+            .where(
+                ComisionTutor.tutor_id == tutor_id,
+                Comision.activa == True,  # noqa: E712
+                Comision.moodle_group_id.isnot(None),
+            )
+            .options(selectinload(Comision.materia))
+        )
+        if comision_id is not None:
+            stmt = stmt.where(Comision.id == comision_id)
+        if materia_id is not None:
+            stmt = stmt.where(Comision.materia_id == materia_id)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_active_by_id(self, comision_id: int) -> Comision | None:
         """
         Get active comision by ID (not soft-deleted).
@@ -237,6 +332,55 @@ class ComisionRepository:
         )
         count = result.scalar() or 0
         return count > 0
+
+    async def desactivar_por_materia(self, materia_id: int) -> int:
+        """
+        CRUD-006: desactiva las comisiones ACTIVAS de una materia (propagación del
+        soft delete). Solo toca las activas para que el restore reactive el mismo
+        conjunto. Devuelve cuántas se desactivaron.
+        """
+        result = await self.db.execute(
+            update(Comision)
+            .where(Comision.materia_id == materia_id, Comision.activa == True)  # noqa: E712
+            .values(activa=False)
+        )
+        await self.db.commit()
+        return result.rowcount
+
+    async def reactivar_por_materia(self, materia_id: int) -> int:
+        """CRUD-006: reactiva las comisiones inactivas de una materia (restore).
+
+        Nota: reactiva TODAS las inactivas de la materia. Si una comisión se había
+        desactivado por su cuenta antes de borrar la materia, el restore también la
+        reactivará (edge case documentado, poco frecuente).
+        """
+        result = await self.db.execute(
+            update(Comision)
+            .where(Comision.materia_id == materia_id, Comision.activa == False)  # noqa: E712
+            .values(activa=True)
+        )
+        await self.db.commit()
+        return result.rowcount
+
+    async def get_by_materia_nombre_anio(
+        self,
+        materia_id: int,
+        nombre: str,
+        anio: int,
+    ) -> Comision | None:
+        """
+        CRUD-011: devuelve la comisión que ocupa la clave única (materia+nombre+anio),
+        SIN filtrar por `activa`, para poder distinguir un conflicto contra un
+        registro eliminado y ofrecer restaurarlo.
+        """
+        result = await self.db.execute(
+            select(Comision).where(
+                Comision.materia_id == materia_id,
+                Comision.nombre == nombre,
+                Comision.anio == anio,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def create(self, comision: Comision) -> Comision:
         """
@@ -317,7 +461,6 @@ class ComisionRepository:
         Raises:
             Exception: Si falla alguna operación de DB o de disco.
         """
-        import os
 
         from sqlalchemy import select
 
@@ -332,12 +475,6 @@ class ComisionRepository:
         entregas = result.scalars().all()
 
         for entrega in entregas:
-            # Eliminar archivo físico del disco
-            if entrega.archivo_ruta and os.path.exists(entrega.archivo_ruta):
-                try:
-                    os.remove(entrega.archivo_ruta)
-                except OSError:
-                    pass  # Si el archivo ya no existe, continuar
 
             # Eliminar la entrega (cascade ORM elimina Correccion y EntregaHistorial)
             await self.db.delete(entrega)
@@ -460,6 +597,18 @@ class ComisionTutorRepository:
 
         await self.db.commit()
         return count
+
+    async def delete_all_for_tutor(self, tutor_id: int) -> int:
+        """
+        CRUD-013: borra todas las asignaciones de tutoría de un usuario.
+
+        Se usa al cambiar su rol AWAY de TUTOR, para no dejar filas huérfanas.
+        """
+        result = await self.db.execute(
+            delete(ComisionTutor).where(ComisionTutor.tutor_id == tutor_id)
+        )
+        await self.db.commit()
+        return result.rowcount
 
     async def delete(self, tutor_id: int, comision_id: int) -> bool:
         """

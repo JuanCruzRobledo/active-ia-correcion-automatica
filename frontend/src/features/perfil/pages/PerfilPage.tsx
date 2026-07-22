@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -114,6 +114,10 @@ export const PerfilPage = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+  // UI-012: ids estables para asociar cada label con su Input (htmlFor/id).
+  const currentPasswordId = useId();
+  const newPasswordId = useId();
+  const confirmPasswordId = useId();
 
   if (isLoading) {
     return <LoadingState title="Cargando tu perfil…" />;
@@ -690,11 +694,12 @@ export const PerfilPage = () => {
       >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">
+            <label htmlFor={currentPasswordId} className="block text-sm font-medium text-foreground mb-1.5">
               Contraseña actual
             </label>
             <div className="relative">
               <Input
+                id={currentPasswordId}
                 type={showCurrentPassword ? 'text' : 'password'}
                 autoComplete="current-password"
                 autoCapitalize="none"
@@ -723,11 +728,12 @@ export const PerfilPage = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">
+            <label htmlFor={newPasswordId} className="block text-sm font-medium text-foreground mb-1.5">
               Nueva contraseña
             </label>
             <div className="relative">
               <Input
+                id={newPasswordId}
                 type={showNewPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 autoCapitalize="none"
@@ -756,11 +762,12 @@ export const PerfilPage = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-foreground mb-1.5">
+            <label htmlFor={confirmPasswordId} className="block text-sm font-medium text-foreground mb-1.5">
               Confirmar nueva contraseña
             </label>
             <div className="relative">
               <Input
+                id={confirmPasswordId}
                 type={showConfirmPassword ? 'text' : 'password'}
                 autoComplete="new-password"
                 autoCapitalize="none"

@@ -5,7 +5,7 @@ Authentication schemas for Active-IA.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 2
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import RolEnum
 
@@ -25,6 +25,15 @@ class LoginRequest(BaseModel):
         min_length=1,
         description="Contraseña del usuario",
     )
+
+    @field_validator("username")
+    @classmethod
+    def _username_a_minuscula(cls, v: str) -> str:
+        # CRUD-009: el login hacía match exacto contra usernames guardados en
+        # minúscula, así que quien tipeaba "JPerez" no podía entrar. Normalizar acá
+        # hace el login case-insensitive. Verificado en la DB real: 0 usuarios con
+        # mayúsculas, así que no rompe ningún acceso existente.
+        return v.lower()
 
 
 class TokenResponse(BaseModel):

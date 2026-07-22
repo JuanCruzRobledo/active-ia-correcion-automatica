@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 MOODLE_USER_AGENT = "Active-IA/1.0 (integracion academica TUD)"
 
 from app.core.security import decrypt_api_key
+from app.repositories.comision_repository import ComisionRepository
+from app.repositories.materia_repository import MateriaRepository
+from app.repositories.rubrica_repository import RubricaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.pendientes import (
     ComisionPendiente,
@@ -171,6 +174,9 @@ class MoodleService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.usuario_repo = UsuarioRepository(db)
+        self.comision_repo = ComisionRepository(db)
+        self.rubrica_repo = RubricaRepository(db)
+        self.materia_repo = MateriaRepository(db)
         # Per-instance caches for a single get_pendientes call
         self._cmid_map: dict[int, dict[int, int]] = {}   # course_id -> {cmid: assign_id}
         self._group_members: dict[int, set[int]] = {}    # group_id -> {user_id, ...}
@@ -1259,11 +1265,9 @@ class MoodleService:
             raise MoodleConnectionError(f"Moodle rechazó la nota: {msg}")
 
     async def get_pendientes(self, user_id: int) -> MateriasPendientesResponse:
-        from app.models.comision import Comision, ComisionTutor
-        from app.models.materia import Materia
+        # Comision/Rubrica se usan como type hints en fetch_with_semaphore (abajo).
+        from app.models.comision import Comision
         from app.models.rubrica import Rubrica
-        from sqlalchemy import select
-        from sqlalchemy.orm import selectinload
 
         usuario = await self.usuario_repo.get_by_id(user_id)
         if not usuario or not usuario.moodle_username or not usuario.moodle_password_encrypted:
@@ -1280,18 +1284,8 @@ class MoodleService:
             password_encrypted=usuario.moodle_password_encrypted,
         )
 
-        # Obtener comisiones del tutor con moodle_group_id configurado
-        result = await self.db.execute(
-            select(Comision)
-            .join(ComisionTutor, ComisionTutor.comision_id == Comision.id)
-            .where(
-                ComisionTutor.tutor_id == user_id,
-                Comision.activa == True,  # noqa: E712
-                Comision.moodle_group_id.isnot(None),
-            )
-            .options(selectinload(Comision.materia))
-        )
-        comisiones = list(result.scalars().all())
+        # Obtener comisiones del tutor con moodle_group_id configurado (ARCH-001: vía repo)
+        comisiones = await self.comision_repo.get_moodle_habilitadas_de_tutor(user_id)
         logger.info(
             "get_pendientes user_id=%s: %d comisiones activas con moodle_group_id",
             user_id, len(comisiones),
@@ -1310,16 +1304,8 @@ class MoodleService:
             )
             return MateriasPendientesResponse(materias=[])
 
-        # Obtener rúbricas con moodle_assign_id (cmid) agrupadas por materia
-        rubrica_result = await self.db.execute(
-            select(Rubrica)
-            .where(
-                Rubrica.materia_id.in_(materia_ids),
-                Rubrica.activa == True,  # noqa: E712
-                Rubrica.moodle_assign_id.isnot(None),
-            )
-        )
-        rubricas = list(rubrica_result.scalars().all())
+        # Obtener rúbricas con moodle_assign_id (cmid) agrupadas por materia (ARCH-001: vía repo)
+        rubricas = await self.rubrica_repo.get_moodle_habilitadas_por_materias(materia_ids)
         logger.info(
             "get_pendientes user_id=%s: %d rúbricas activas con moodle_assign_id para materia_ids=%s",
             user_id, len(rubricas), materia_ids,
@@ -1335,11 +1321,9 @@ class MoodleService:
                 user_id,
             )
 
-        # Obtener materias para resolver course_id (necesario para cmid → assign_id y group members)
-        materia_result = await self.db.execute(
-            select(Materia).where(Materia.id.in_(materia_ids))
-        )
-        materias_by_id = {m.id: m for m in materia_result.scalars().all()}
+        # Obtener materias para resolver course_id (cmid → assign_id y group members) (ARCH-001: vía repo)
+        materias = await self.materia_repo.get_by_ids(materia_ids)
+        materias_by_id = {m.id: m for m in materias}
 
         # Pre-resolver cmid → assignment instance id por curso
         for materia in materias_by_id.values():

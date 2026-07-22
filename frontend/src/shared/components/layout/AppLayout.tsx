@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, Suspense } from 'react';
 import { Outlet, ScrollRestoration } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { MobileHeader } from './MobileHeader';
 import { BottomNav } from './BottomNav';
+import { LoadingState } from '@/shared/components/ui';
 
 export const AppLayout = () => {
   // Al loguearse se entra al shell desde /login, donde el teclado de iOS pudo dejar
@@ -28,7 +29,10 @@ export const AppLayout = () => {
         {/* Contenido con scroll. En mobile reservamos espacio inferior para la
             bottom-nav + home indicator; en desktop vuelve al padding original. */}
         <main className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-[calc(4rem+env(safe-area-inset-bottom))] sm:p-6 lg:p-8 lg:pb-8">
-          <Outlet />
+          {/* PERF-014: boundary único para las páginas lazy-loaded (ver router.tsx). */}
+          <Suspense fallback={<LoadingState title="Cargando…" />}>
+            <Outlet />
+          </Suspense>
         </main>
 
         {/* Bottom tab bar - solo mobile, hermano del main */}

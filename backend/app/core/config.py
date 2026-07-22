@@ -10,8 +10,23 @@ Ref: docs/specs/11-SEGURIDAD.md
 from functools import lru_cache
 from typing import List
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+# Valores default públicos de los secretos. Viven en el repositorio, así que un
+# despliegue de producción que los conserve es explotable (SEC-003): permiten
+# forjar JWT de ADMIN y descifrar las API keys y contraseñas almacenadas.
+# Son una única fuente de verdad: el default del campo y el validador de
+# arranque leen de acá.
+_DEFAULT_SECRET_KEY = "change-me-in-production-use-openssl-rand-hex-32"
+_DEFAULT_ENCRYPTION_KEY = "change-me-in-production-use-fernet-generate-key"
+
+# Todo secreto que empiece así es un placeholder público del repositorio: el
+# default de arriba, o el de .env.example ("change-me-in-production"). Se
+# rechazan por prefijo porque el operador que copia .env.example sin tocarlo es
+# el vector real de SEC-003, y ese valor NO coincide con el default de acá.
+_PREFIJO_SECRETO_INSEGURO = "change-me-in-production"
 
 
 class Settings(BaseSettings):
@@ -50,16 +65,16 @@ class Settings(BaseSettings):
     # =========================================
     # Seguridad - JWT
     # =========================================
-    SECRET_KEY: str = "change-me-in-production-use-openssl-rand-hex-32"
+    SECRET_KEY: str = _DEFAULT_SECRET_KEY
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_DAYS: int = 7
 
     # =========================================
     # Seguridad - Encriptación
     # =========================================
-    # Key para encriptar API Keys de Gemini (Fernet/AES-256)
+    # Key para encriptar API Keys de Gemini (Fernet: AES-128-CBC + HMAC-SHA256)
     # Generar con: from cryptography.fernet import Fernet; Fernet.generate_key()
-    ENCRYPTION_KEY: str = "change-me-in-production-use-fernet-generate-key"
+    ENCRYPTION_KEY: str = _DEFAULT_ENCRYPTION_KEY
 
     # =========================================
     # Seguridad - Bloqueo de cuenta
@@ -93,6 +108,20 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 104857600  # 100 MB en bytes
     ALLOWED_EXTENSIONS: List[str] = [".zip", ".txt"]
 
+    # Anti ZIP-bomb (SEC-005 / PERF-008): topes al descomprimir/consolidar ZIPs.
+    # - MAX_ZIP_EXPANDED_SIZE: tamaño DESCOMPRIMIDO acumulado permitido
+    #   (suma de ZipInfo.file_size). Se alinea con MAX_UPLOAD_SIZE (100 MB): una
+    #   entrega legítima descomprimida no debería superar el propio tope de subida.
+    # - MAX_ZIP_ENTRIES: cantidad máxima de entradas del ZIP; corta las bombas de
+    #   "muchos archivos diminutos" que el tope de tamaño no atrapa.
+    MAX_ZIP_EXPANDED_SIZE: int = MAX_UPLOAD_SIZE  # 100 MB descomprimido acumulado
+
+    # IA-015: tope de caracteres del código consolidado que se manda al LLM. Una
+    # entrega enorme podía inflar el payload sin control (costo de tokens / rechazo
+    # del modelo). ~200k chars ≈ ~50k tokens, holgado para una entrega de código.
+    MAX_CODIGO_CORRECCION_CHARS: int = 200_000
+    MAX_ZIP_ENTRIES: int = 5000
+
     # =========================================
     # CORS
     # =========================================
@@ -119,10 +148,12 @@ class Settings(BaseSettings):
     # =========================================
     # Eliminación
     # =========================================
-    # Si es True, los endpoints de DELETE eliminan el registro físicamente
-    # de la base de datos (hard delete) con cascada completa.
-    # Si es False (default), se usa baja lógica (soft delete, activo=False).
-    ALLOW_HARD_DELETE: bool = False
+    # CRUD-002: se eliminó el flag ALLOW_HARD_DELETE. Los DELETE son SIEMPRE soft
+    # (baja lógica), nunca físico — regla dura del proyecto (auditoría). Antes el
+    # flag sobrecargaba el mismo verbo DELETE con dos semánticas opuestas según
+    # config: un solo cambio de env degradaba todo el sistema a borrado destructivo
+    # (incluido el audit log). Si alguna vez se necesita purga física real, debe ser
+    # una feature deliberada y auditada (endpoint /purge explícito), no un toggle.
 
     # =========================================
     # Email / Resend (notificaciones de avance)
@@ -152,6 +183,41 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [ext.strip() for ext in v.split(",")]
         return v
+
+    @model_validator(mode="after")
+    def rechazar_secretos_default_en_produccion(self) -> "Settings":
+        """Aborta el arranque si en producción (DEBUG=False) los secretos siguen
+        siendo los defaults públicos del repositorio (SEC-003)."""
+        if self.DEBUG:
+            return self
+
+        candidatos = (
+            (
+                "SECRET_KEY",
+                self.SECRET_KEY,
+                "openssl rand -hex 32",
+            ),
+            (
+                "ENCRYPTION_KEY",
+                self.ENCRYPTION_KEY,
+                'python -c "from cryptography.fernet import Fernet; '
+                'print(Fernet.generate_key().decode())"',
+            ),
+        )
+        # Mensaje sin acentos a proposito: se lee en logs de deploy y consolas
+        # sin UTF-8 (Windows/cp1252), donde los acentos salen corruptos.
+        inseguras = [
+            f"  - {nombre}: conserva un valor placeholder. Genera uno real con: {comando}"
+            for nombre, valor, comando in candidatos
+            if valor.startswith(_PREFIJO_SECRETO_INSEGURO)
+        ]
+        if inseguras:
+            raise ValueError(
+                "Arranque abortado: hay secretos con valor placeholder en produccion "
+                "(DEBUG=False). Configura estas variables en el .env antes de "
+                "desplegar:\n" + "\n".join(inseguras)
+            )
+        return self
 
 
 @lru_cache

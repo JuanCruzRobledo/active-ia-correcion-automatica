@@ -10,11 +10,16 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7.3
 """
 
 import io
+import logging
 import zipfile
-from datetime import datetime
 from typing import BinaryIO
 
 from fastapi import HTTPException, status
+
+from app.core.fecha import ahora_ar
+from app.core.upload_limits import validar_zip_bomb
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -247,10 +252,11 @@ class ConsolidacionService:
             )
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
+            logger.exception("Error inesperado procesando el archivo ZIP")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error procesando el archivo ZIP: {str(e)}",
+                detail="Error procesando el archivo ZIP",
             )
 
     def _consolidar_desde_zipfile(
@@ -267,6 +273,11 @@ class ConsolidacionService:
         conserva ese `\\` literal, y leer con el path normalizado a `/` provoca
         ``KeyError "There is no item named '...' in the archive"``.
         """
+        # Anti ZIP-bomb (SEC-005): cortar por tamaño descomprimido acumulado
+        # (ZipInfo.file_size) y por cantidad de entradas ANTES de leer/descomprimir
+        # nada. Se valida sobre todo el filelist, no solo lo filtrado por extensión.
+        validar_zip_bomb(zf.filelist)
+
         archivos_info = self._scan_zip(zf, extensiones)
 
         if not archivos_info:
@@ -314,10 +325,11 @@ class ConsolidacionService:
 
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
+            logger.exception("Error inesperado procesando el archivo TXT")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error procesando el archivo TXT: {str(e)}",
+                detail="Error procesando el archivo TXT",
             )
 
     def consolidar_archivo_individual(
@@ -378,10 +390,11 @@ class ConsolidacionService:
 
         except HTTPException:
             raise
-        except Exception as e:
+        except Exception:
+            logger.exception("Error inesperado procesando el archivo")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Error procesando el archivo: {str(e)}",
+                detail="Error procesando el archivo",
             )
 
     def extraer_pdf_de_zip(self, zip_bytes: bytes) -> tuple[bytes, str] | None:
@@ -436,7 +449,7 @@ class ConsolidacionService:
         sections.append("> A continuación se presenta el contenido completo de todos los archivos entregados para su evaluación.\n\n")
 
         sections.append(
-            f"**Fecha de generación:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"**Fecha de generación:** {ahora_ar().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         )
 
         # --- Metadata ---
@@ -497,7 +510,7 @@ class ConsolidacionService:
         sections.append("> A continuación se presenta el contenido completo de todos los archivos entregados para su evaluación.\n\n")
 
         sections.append(
-            f"**Fecha de generación:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            f"**Fecha de generación:** {ahora_ar().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         )
         sections.append(f"**Modo de procesamiento:** {modo_nombre}\n\n")
 

@@ -6,20 +6,24 @@
 
 | Integración | Propósito | Obligatoria |
 |-------------|-----------|-------------|
-| **N8N** | Orquestador de workflows de IA | Sí |
-| **Google Gemini** | Modelo de IA para corrección | Sí |
+| **Google Gemini (Gemini Studio)** | Modelo de IA para corrección — llamada HTTP directa desde el backend | Sí (o OpenRouter) |
+| **OpenRouter** | Proveedor de IA alternativo — llamada HTTP directa desde el backend | Sí (o Gemini) |
 | **Google Drive/Sheets** | ~~Sincronización de archivos~~ | ❌ Eliminada |
+
+> **Nota de arquitectura:** la corrección es **nativa del backend**. Ya NO existe un intermediario N8N. El backend (`backend/app/integrations/`) llama directamente al proveedor de IA por HTTP: `ia_provider.py` rutea según `usuario.correction_provider` hacia `gemini_correction_client.py` (Gemini Studio) o `openrouter_client.py` (OpenRouter).
 
 ### Decisiones Clave
 
 | Aspecto | Decisión |
 |---------|----------|
-| **Workflows N8N** | 2 workflows: Corrección + Generación de rúbricas |
-| **Modelo IA** | gemini-2.0-flash (predeterminado) |
-| **Respuesta IA** | JSON estructurado estricto |
+| **Ruteo de proveedor** | `ia_provider.py` lee `usuario.correction_provider` (`"gemini"` \| `"openrouter"`); normaliza vacío/desconocido → `"gemini"`. Sin failover automático. |
+| **Clientes** | `gemini_correction_client.py` (Gemini Studio) y `openrouter_client.py` (OpenRouter) |
+| **Modelo IA** | Gemini Studio: `gemini-3.5-flash` (`settings.GEMINI_MODEL`) · OpenRouter: `google/gemini-3.5-flash` (`settings.OPENROUTER_MODEL`) |
+| **Respuesta IA** | JSON estructurado estricto (Gemini: `responseSchema` · OpenRouter: `response_format: json_object`) |
+| **Temperatura** | 0 (respuestas determinísticas) |
+| **Timeout** | 90s (cliente Gemini) |
 | **Reintentos** | 1 reintento automático, luego marcar fallida |
-| **Timeout** | 60s nominal, extensible a 120s |
-| **Health Check** | Sí, endpoint `/webhook/health` |
+| **API Key** | Una key encriptada por proveedor y por usuario (Fernet) |
 
 ---
 
@@ -40,156 +44,88 @@
 │  │                      CorreccionService                               │    │
 │  │                                                                      │    │
 │  │  1. Valida permisos del usuario                                     │    │
-│  │  2. Obtiene API Key Gemini (desencriptada)                          │    │
-│  │  3. Prepara payload para N8N                                        │    │
-│  │  4. Envía request a webhook N8N                                     │    │
-│  │  5. Procesa respuesta                                               │    │
+│  │  2. Consolida el código de la entrega (ZIP/TXT → string, PDF → b64) │    │
+│  │  3. Obtiene la API Key del proveedor (desencriptada con Fernet)     │    │
+│  │  4. Llama a ia_provider.py                                          │    │
 │  │  6. Guarda corrección en BD                                         │    │
 │  └──────────────────────────────────┬──────────────────────────────────┘    │
 │                                     │                                        │
-└─────────────────────────────────────┼───────────────────────────────────────┘
-                                      │ HTTP POST (webhook)
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                N8N                                           │
-│                         (Orquestador de IA)                                  │
-│                                                                              │
-│  ┌───────────────────┐     ┌───────────────────┐     ┌───────────────────┐  │
-│  │  Webhook Trigger  │────▶│  Construir Prompt │────▶│   Llamar Gemini   │  │
-│  └───────────────────┘     └───────────────────┘     └─────────┬─────────┘  │
-│                                                                 │            │
-│                                                                 ▼            │
-│  ┌───────────────────┐     ┌───────────────────┐     ┌───────────────────┐  │
-│  │  Retornar JSON    │◀────│  Parsear Response │◀────│  Respuesta Gemini │  │
-│  └───────────────────┘     └───────────────────┘     └───────────────────┘  │
-│                                                                              │
-└─────────────────────────────────────┼───────────────────────────────────────┘
-                                      │ HTTPS
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          GOOGLE GEMINI API                                   │
-│                                                                              │
-│  Endpoint: generativelanguage.googleapis.com                                │
-│  Modelo: gemini-2.0-flash                                                   │
-│  Auth: API Key por usuario                                                  │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+│  ┌──────────────────────────────────▼──────────────────────────────────┐    │
+│  │            integrations/ia_provider.py  (ruteo por proveedor)        │    │
+│  │   usuario.correction_provider → normaliza vacío/desconocido → gemini │    │
+│  └──────────────┬──────────────────────────────────┬────────────────────┘   │
+│                 │ "gemini"                          │ "openrouter"           │
+│                 ▼                                   ▼                        │
+│  ┌───────────────────────────┐      ┌───────────────────────────────────┐   │
+│  │ gemini_correction_client  │      │      openrouter_client            │   │
+│  └──────────────┬────────────┘      └──────────────────┬────────────────┘   │
+└─────────────────┼──────────────────────────────────────┼────────────────────┘
+                  │ HTTPS POST                             │ HTTPS POST
+                  ▼                                        ▼
+┌────────────────────────────────────┐   ┌────────────────────────────────────┐
+│      GOOGLE GEMINI (Studio)         │   │             OPENROUTER             │
+│                                     │   │                                    │
+│ generativelanguage.googleapis.com   │   │ {OPENROUTER_BASE_URL}/chat/        │
+│ modelo: gemini-3.5-flash            │   │   completions                      │
+│ auth: ?key=API_KEY                  │   │ modelo: google/gemini-3.5-flash    │
+│ responseSchema JSON · temp 0        │   │ auth: Authorization: Bearer        │
+│                                     │   │ response_format: json_object       │
+└────────────────────────────────────┘   └────────────────────────────────────┘
 ```
+
+El backend elige **un** proveedor por usuario (el que el usuario configuró). No hay failover: si el proveedor elegido falla, la corrección se marca fallida tras el reintento.
 
 ---
 
-## 3. N8N - Configuración
+## 3. Proveedores de IA - Configuración
 
-### 3.1 Información General
+### 3.1 Ruteo de Proveedor (`ia_provider.py`)
 
 | Aspecto | Especificación |
 |---------|----------------|
-| **Versión** | Latest (self-hosted) |
-| **Puerto interno** | 5678 |
-| **Base URL interna** | `http://n8n:5678` (Docker network) |
-| **Autenticación** | Basic Auth (usuario/password) |
-| **Timezone** | America/Argentina/Buenos_Aires |
+| **Fuente de la decisión** | `usuario.correction_provider` |
+| **Valores válidos** | `"gemini"` \| `"openrouter"` |
+| **Normalización** | Valor vacío o desconocido → `"gemini"` |
+| **Failover** | No existe. Un solo proveedor por corrección. |
+| **API Key** | Se lee la key encriptada del usuario para el proveedor elegido y se desencripta con Fernet antes de la llamada |
 
-### 3.2 Variables de Entorno N8N
-
-```yaml
-# docker-compose.yml - servicio n8n
-environment:
-  # Autenticación para panel de administración
-  N8N_BASIC_AUTH_ACTIVE: "true"
-  N8N_BASIC_AUTH_USER: "${N8N_USER}"
-  N8N_BASIC_AUTH_PASSWORD: "${N8N_PASSWORD}"
-
-  # Configuración de red
-  N8N_HOST: "0.0.0.0"
-  N8N_PORT: "5678"
-  N8N_PROTOCOL: "http"
-  WEBHOOK_URL: "http://n8n:5678"
-
-  # Timezone
-  GENERIC_TIMEZONE: "America/Argentina/Buenos_Aires"
-
-  # Ejecuciones
-  EXECUTIONS_DATA_PRUNE: "true"
-  EXECUTIONS_DATA_MAX_AGE: "168"  # 7 días
-```
-
-### 3.3 URLs de Webhooks
-
-El backend debe configurar estas URLs en su `.env`:
+### 3.2 Variables de Entorno relevantes
 
 ```bash
-# URLs de webhooks N8N (red interna Docker)
-N8N_BASE_URL=http://n8n:5678
+# backend/.env — modelos por proveedor (backend/app/core/config.py es la fuente de verdad)
+GEMINI_MODEL=gemini-3.5-flash
+OPENROUTER_MODEL=google/gemini-3.5-flash
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
-# Webhooks específicos
-N8N_WEBHOOK_CORRECCION=http://n8n:5678/webhook/corregir
-N8N_WEBHOOK_RUBRICA=http://n8n:5678/webhook/generar-rubrica
-N8N_WEBHOOK_HEALTH=http://n8n:5678/webhook/health
+# Clave maestra de encriptación de API Keys (Fernet)
+# 32 bytes aleatorios en base64 url-safe = 44 caracteres, generada con Fernet.generate_key()
+ENCRYPTION_KEY=...
 ```
+
+> Las API Keys de IA de cada usuario NO se configuran por variable de entorno: se guardan encriptadas por usuario en la BD (una por proveedor).
 
 ---
 
-## 4. Workflows de N8N
+## 4. Flujos de IA (nativos en el backend)
 
-### 4.1 Workflow: Health Check
+### 4.1 Validación de API Key
 
-**Propósito:** Verificar que N8N está operativo y puede conectar con Gemini.
+**Propósito:** Verificar que la API Key del usuario es válida antes de usarla para corregir.
 
-**Endpoint:** `POST /webhook/health`
+- **Gemini Studio:** `backend/app/integrations/gemini_studio_client.py` valida contra el **mismo** modelo que usa la corrección (`settings.GEMINI_MODEL`, es decir `gemini-3.5-flash`).
+- **OpenRouter:** `openrouter_client.validar_api_key`.
 
-**Request:**
-```json
-{
-  "api_key": "AIza..."
-}
-```
-
-**Response (éxito):**
-```json
-{
-  "status": "ok",
-  "n8n_version": "1.x.x",
-  "gemini_available": true,
-  "timestamp": "2026-01-24T10:30:00Z"
-}
-```
-
-**Response (error Gemini):**
-```json
-{
-  "status": "degraded",
-  "n8n_version": "1.x.x",
-  "gemini_available": false,
-  "gemini_error": "API key inválida",
-  "timestamp": "2026-01-24T10:30:00Z"
-}
-```
-
-**Flujo del Workflow:**
-```
-1. Webhook Trigger (POST /webhook/health)
-   │
-   ▼
-2. Extraer api_key del body
-   │
-   ▼
-3. Llamar a Gemini con prompt simple: "Responde OK"
-   │
-   ├── Éxito ──▶ 4a. Retornar status: "ok", gemini_available: true
-   │
-   └── Error ──▶ 4b. Retornar status: "degraded", gemini_available: false
-```
+Se dispara al guardar/actualizar la API Key del usuario. Si la key es inválida, se rechaza y no se persiste.
 
 ---
 
-### 4.2 Workflow: Corrección de Entrega
+### 4.2 Corrección de Entrega
 
-**Propósito:** Evaluar código de un alumno usando una rúbrica y retornar calificación estructurada.
+**Propósito:** Evaluar el código de un alumno usando una rúbrica y retornar una calificación estructurada.
 
-**Endpoint:** `POST /webhook/corregir`
+**Entrada (construida por el backend):** código consolidado del alumno (o PDF en base64), la rúbrica con sus criterios, el contexto (materia, lenguaje) y la API Key del usuario ya desencriptada.
 
-**Request:**
+**Payload conceptual entregado al cliente de IA:**
 ```json
 {
   "codigo": "// Código consolidado del alumno...\nclass MiClase {\n  ...\n}",
@@ -215,7 +151,6 @@ N8N_WEBHOOK_HEALTH=http://n8n:5678/webhook/health
       }
     ]
   },
-  "api_key": "AIza...",
   "contexto": {
     "materia": "Programación I",
     "lenguaje": "Java"
@@ -223,7 +158,7 @@ N8N_WEBHOOK_HEALTH=http://n8n:5678/webhook/health
 }
 ```
 
-**Response (éxito):**
+**Respuesta de la IA (JSON estricto):**
 ```json
 {
   "success": true,
@@ -265,7 +200,7 @@ N8N_WEBHOOK_HEALTH=http://n8n:5678/webhook/health
     "comentario_general": "Trabajo con buena base estructural pero con detalles importantes a corregir. El error en calcularTotal() puede causar NullPointerException en producción. Se recomienda revisar las buenas prácticas de naming."
   },
   "metadata": {
-    "modelo": "gemini-2.0-flash",
+    "modelo": "gemini-3.5-flash",
     "tokens_entrada": 1250,
     "tokens_salida": 580,
     "tiempo_ms": 3200
@@ -273,17 +208,19 @@ N8N_WEBHOOK_HEALTH=http://n8n:5678/webhook/health
 }
 ```
 
-**Response (error):**
+**Respuesta de error:**
 ```json
 {
   "success": false,
   "error": {
-    "code": "GEMINI_ERROR",
-    "message": "Error al procesar con Gemini: cuota excedida",
+    "code": "N8N_ERROR",
+    "message": "Error al procesar con el proveedor de IA: cuota excedida",
     "retry": false
   }
 }
 ```
+
+> **Nota sobre códigos de error:** los códigos `N8N_ERROR` / `N8N_TIMEOUT` y las excepciones `N8NError` / `N8NTimeoutError` (definidas en `backend/app/core/error_catalog.py`) se **conservan a propósito como nombres históricos** (están persistidos en datos). Hoy los **levantan los clientes de Gemini/OpenRouter**, no ningún servicio N8N. No hay N8N en ejecución.
 
 **Estados de Criterio:**
 
@@ -293,56 +230,47 @@ N8N_WEBHOOK_HEALTH=http://n8n:5678/webhook/health
 | `WARNING` | Criterio parcialmente cumplido (40-79% del puntaje) | Amarillo |
 | `ERROR` | Criterio no cumplido (<40% del puntaje) | Rojo |
 
-**Flujo del Workflow:**
+**Flujo de corrección (backend nativo):**
 ```
-1. Webhook Trigger (POST /webhook/corregir)
+1. CorreccionService recibe la solicitud de corrección
    │
    ▼
-2. Validar campos requeridos (codigo, rubrica, api_key)
+2. Valida permisos y consolida el código (ZIP/TXT → string · PDF → base64)
    │
    ▼
-3. Construir prompt de corrección (ver sección 5.1)
+3. Desencripta la API Key del proveedor del usuario (Fernet)
    │
    ▼
-4. Llamar a Gemini API
-   │   - Modelo: gemini-2.0-flash
-   │   - Timeout: 60s (extensible a 120s)
-   │   - Temperatura: 0.3 (respuestas consistentes)
+4. ia_provider.py rutea según usuario.correction_provider
    │
-   ├── Éxito ──▶ 5a. Parsear JSON de respuesta
-   │                  │
-   │                  ▼
-   │             6a. Validar schema de respuesta
-   │                  │
-   │                  ├── Válido ──▶ 7a. Retornar success: true
-   │                  │
-   │                  └── Inválido ──▶ 7b. Reintentar 1 vez
-   │                                        │
-   │                                        ├── Éxito ──▶ Retornar success: true
-   │                                        │
-   │                                        └── Fallo ──▶ Retornar error parsing
+   ├── "gemini" ──▶ gemini_correction_client.py
+   │      POST https://generativelanguage.googleapis.com/v1beta/
+   │           models/gemini-3.5-flash:generateContent?key=API_KEY
+   │      temperature 0 · responseSchema JSON estricto · timeout 90s
+   │      (PDF: usa la Files API + visión)
    │
-   └── Error ──▶ 5b. Clasificar error (cuota, red, API key)
-                      │
-                      └── Retornar success: false con código de error
+   └── "openrouter" ──▶ openrouter_client.py
+          POST {OPENROUTER_BASE_URL}/chat/completions
+          Authorization: Bearer API_KEY · response_format json_object
+   │
+   ▼
+5. Parsear y validar el JSON de respuesta
+   │
+   ├── Válido ──▶ 6a. Guardar Correccion (nota + criterios JSONB) en BD
+   │
+   └── Inválido/Error ──▶ 6b. Reintentar 1 vez; si falla, marcar entrega fallida
+                               (levanta N8NError / N8NTimeoutError — nombres históricos)
 ```
 
 ---
 
-### 4.3 Workflow: Generación de Rúbrica desde PDF
+### 4.3 Generación de Rúbrica desde PDF
 
-**Propósito:** Extraer criterios de evaluación desde un PDF de consigna.
+**Propósito:** Extraer criterios de evaluación desde un PDF de consigna, usando el mismo proveedor de IA del usuario.
 
-**Endpoint:** `POST /webhook/generar-rubrica`
+**Entrada:** PDF de la consigna (procesado por el backend — para Gemini se usa la Files API + visión), la API Key del usuario y el tipo de rúbrica (opcional, default: `TP`).
 
-**Request:** (multipart/form-data)
-```
-pdf: [archivo PDF de la consigna]
-api_key: AIza...
-tipo_rubrica: TP  (opcional, default: TP)
-```
-
-**Response (éxito):**
+**Respuesta (éxito):**
 ```json
 {
   "success": true,
@@ -375,34 +303,28 @@ tipo_rubrica: TP  (opcional, default: TP)
   },
   "metadata": {
     "paginas_procesadas": 3,
-    "modelo": "gemini-2.0-flash"
+    "modelo": "gemini-3.5-flash"
   }
 }
 ```
 
-**Flujo del Workflow:**
+**Flujo:**
 ```
-1. Webhook Trigger (POST /webhook/generar-rubrica, multipart)
+1. El backend recibe el PDF de la consigna
    │
    ▼
-2. Extraer PDF y convertir a texto
-   │   - Usar nodo "Extract from File" de N8N
-   │   - O enviar PDF directo a Gemini (soporta multimodal)
+2. Prepara el PDF para la IA
+   │   - Gemini: sube el PDF con la Files API y usa visión
+   │   - OpenRouter: envía el contenido según el cliente correspondiente
    │
    ▼
 3. Construir prompt de extracción (ver sección 5.2)
    │
    ▼
-4. Llamar a Gemini API
-   │   - Modelo: gemini-2.0-flash
-   │   - Timeout: 60s
+4. Llamar al proveedor de IA (gemini_correction_client / openrouter_client)
+   │   - Gemini: modelo gemini-3.5-flash · OpenRouter: google/gemini-3.5-flash
    │
-   ├── Éxito ──▶ 5a. Parsear JSON de respuesta
-   │                  │
-   │                  ▼
-   │             6a. Validar que tenga criterios
-   │                  │
-   │                  └── Retornar success: true
+   ├── Éxito ──▶ 5a. Parsear JSON y validar que tenga criterios ──▶ success: true
    │
    └── Error ──▶ 5b. Retornar error
 ```
@@ -475,6 +397,8 @@ IMPORTANTE:
 - NO uses markdown, solo JSON puro
 ```
 
+> En Gemini Studio, este contrato de salida se refuerza además con `responseSchema` (JSON estricto). En OpenRouter se usa `response_format: json_object`.
+
 ### 5.2 Prompt: Generación de Rúbrica desde PDF
 
 ```
@@ -524,192 +448,134 @@ IMPORTANTE:
 
 ---
 
-## 6. Google Gemini
+## 6. Proveedores de IA - Detalle
 
 ### 6.1 Configuración
 
-| Aspecto | Especificación |
-|---------|----------------|
-| **Modelo predeterminado** | gemini-2.0-flash |
-| **Endpoint** | generativelanguage.googleapis.com |
-| **Autenticación** | API Key por usuario |
-| **Temperatura** | 0.3 (respuestas consistentes) |
-| **Max tokens output** | 4096 |
+| Aspecto | Gemini Studio | OpenRouter |
+|---------|---------------|------------|
+| **Cliente** | `gemini_correction_client.py` | `openrouter_client.py` |
+| **Modelo** | `gemini-3.5-flash` (`settings.GEMINI_MODEL`) | `google/gemini-3.5-flash` (`settings.OPENROUTER_MODEL`) |
+| **Endpoint** | `generativelanguage.googleapis.com/v1beta/.../generateContent` | `{OPENROUTER_BASE_URL}/chat/completions` |
+| **Autenticación** | `?key=API_KEY` (por usuario) | `Authorization: Bearer API_KEY` (por usuario) |
+| **Formato de salida** | `responseSchema` (JSON estricto) | `response_format: json_object` |
+| **Temperatura** | 0 | 0 |
+| **Timeout** | 90s | — |
+| **PDF** | Files API + visión | según cliente |
 
-### 6.2 Modelos Disponibles
+### 6.2 Modelos por Proveedor
 
-| Modelo | Uso Recomendado | Velocidad | Costo |
-|--------|-----------------|-----------|-------|
-| `gemini-2.0-flash` | Correcciones masivas, uso general | Rápido | Bajo |
-| `gemini-2.0-flash-thinking` | Análisis complejos | Medio | Medio |
-| `gemini-1.5-pro` | Casos que requieren más contexto | Lento | Alto |
+| Proveedor | Modelo | Setting (fuente de verdad) |
+|-----------|--------|-----------------------------|
+| Gemini Studio | `gemini-3.5-flash` | `settings.GEMINI_MODEL` |
+| OpenRouter | `google/gemini-3.5-flash` | `settings.OPENROUTER_MODEL` |
+
+> El modelo está **unificado** en `backend/app/core/config.py`. La validación de API Key de Gemini se hace contra el mismo `settings.GEMINI_MODEL` que usa la corrección, para no validar contra un modelo distinto del que efectivamente corrige.
 
 ### 6.3 Validación de API Key
 
-Antes de usar una API Key, el backend debe validarla:
+Antes de persistir una API Key, el backend la valida:
+
+- **Gemini Studio** (`gemini_studio_client.py`): request de prueba contra `settings.GEMINI_MODEL` (`gemini-3.5-flash`).
+- **OpenRouter** (`openrouter_client.validar_api_key`): verificación contra el endpoint de OpenRouter.
 
 ```python
-# app/services/gemini_service.py
+# backend/app/integrations/gemini_studio_client.py (conceptual)
+# Valida la API Key contra el MISMO modelo que corrige: settings.GEMINI_MODEL
 
-import httpx
-from app.core.exceptions import ValidationError
-
-async def validate_gemini_api_key(api_key: str) -> bool:
-    """
-    Valida que una API Key de Gemini sea válida.
-
-    Args:
-        api_key: API Key a validar.
-
-    Returns:
-        True si la key es válida.
-
-    Raises:
-        ValidationError: Si la key es inválida o hay error de conexión.
-    """
-    # Validar formato básico
-    if not api_key or not api_key.startswith("AIza"):
-        raise ValidationError(
-            message="Formato de API Key inválido (debe empezar con 'AIza')",
-            field="gemini_api_key"
-        )
-
-    # Probar con request simple
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-
-    payload = {
-        "contents": [{"parts": [{"text": "Responde OK"}]}]
-    }
-
-    headers = {"Content-Type": "application/json"}
-
-    async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(
-                f"{url}?key={api_key}",
-                json=payload,
-                headers=headers,
-                timeout=10.0
-            )
-
-            if response.status_code == 200:
-                return True
-            elif response.status_code == 400:
-                raise ValidationError("API Key inválida o incorrecta")
-            elif response.status_code == 429:
-                raise ValidationError("API Key sin cuota disponible")
-            else:
-                raise ValidationError(f"Error al validar: {response.status_code}")
-
-        except httpx.TimeoutException:
-            raise ValidationError("Timeout al validar API Key")
-        except httpx.RequestError as e:
-            raise ValidationError(f"Error de conexión: {str(e)}")
+url = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{settings.GEMINI_MODEL}:generateContent"   # gemini-3.5-flash
+)
+payload = {"contents": [{"parts": [{"text": "Responde OK"}]}]}
+# POST url?key=API_KEY  →  200 = válida · 400 = inválida · 429 = sin cuota
 ```
 
 ### 6.4 Almacenamiento Seguro de API Keys
 
-Las API Keys se almacenan encriptadas en la base de datos:
+Las API Keys se almacenan **encriptadas con Fernet** (AES-128-CBC + HMAC-SHA256) en la base de datos:
 
 ```python
-# app/core/security.py
+# backend/app/core/security.py
 
 from cryptography.fernet import Fernet
 from app.core.config import settings
 
 def get_fernet() -> Fernet:
-    """Obtiene instancia de Fernet para encriptación."""
+    """Obtiene instancia de Fernet para encriptación (AES-128-CBC + HMAC-SHA256)."""
     return Fernet(settings.ENCRYPTION_KEY.encode())
 
 def encrypt_api_key(api_key: str) -> str:
-    """
-    Encripta una API Key para almacenamiento seguro.
-
-    Args:
-        api_key: API Key en texto plano.
-
-    Returns:
-        API Key encriptada (base64).
-    """
+    """Encripta una API Key para almacenamiento seguro (retorna base64)."""
     fernet = get_fernet()
     return fernet.encrypt(api_key.encode()).decode()
 
 def decrypt_api_key(encrypted_key: str) -> str:
-    """
-    Desencripta una API Key almacenada.
-
-    Args:
-        encrypted_key: API Key encriptada.
-
-    Returns:
-        API Key en texto plano.
-    """
+    """Desencripta una API Key almacenada."""
     fernet = get_fernet()
     return fernet.decrypt(encrypted_key.encode()).decode()
 ```
 
+> `ENCRYPTION_KEY` es una **clave Fernet**: 32 bytes aleatorios codificados en base64 url-safe = **44 caracteres**, generada con `Fernet.generate_key()`.
+
 ---
 
-## 7. Contrato de Comunicación Backend ↔ N8N
+## 7. Contrato de Comunicación Backend ↔ Proveedor de IA
 
 ### 7.1 Headers Comunes
 
 ```http
+# Gemini Studio
 Content-Type: application/json
-Accept: application/json
+# (API Key en la query string: ?key=API_KEY)
+
+# OpenRouter
+Content-Type: application/json
+Authorization: Bearer <API_KEY>
 ```
 
 ### 7.2 Timeouts
 
-| Operación | Timeout | Extensible |
-|-----------|---------|------------|
-| Health check | 10s | No |
-| Corrección | 60s | Sí (hasta 120s) |
-| Generación rúbrica | 60s | No |
+| Operación | Timeout |
+|-----------|---------|
+| Validación de API Key | Corto (request de prueba) |
+| Corrección (Gemini) | 90s |
+| Generación de rúbrica | Según cliente |
 
 ### 7.3 Manejo de Errores
+
+Los errores están centralizados en `backend/app/core/error_catalog.py`.
 
 **Códigos de Error:**
 
 | Código | Significado | Acción |
 |--------|-------------|--------|
 | `VALIDATION_ERROR` | Request inválido | No reintentar |
-| `GEMINI_ERROR` | Error de Gemini API | Reintentar 1 vez |
-| `QUOTA_EXCEEDED` | Sin cuota en API Key | No reintentar, notificar usuario |
+| `N8N_ERROR` | Error del proveedor de IA (nombre histórico) | Reintentar 1 vez |
+| `N8N_TIMEOUT` | Timeout de la llamada a la IA (nombre histórico) | Reintentar 1 vez |
+| `QUOTA_EXCEEDED` | Sin cuota en la API Key | No reintentar, notificar usuario |
 | `PARSING_ERROR` | Respuesta de IA inválida | Reintentar 1 vez |
-| `TIMEOUT` | Timeout de operación | Reintentar 1 vez |
-| `NETWORK_ERROR` | Error de red | Reintentar 1 vez |
+
+> `N8N_ERROR` / `N8N_TIMEOUT` (y las clases `N8NError` / `N8NTimeoutError`) son **nombres históricos conservados a propósito** (persistidos en datos). Hoy los levantan los clientes de Gemini/OpenRouter, no un servicio N8N.
 
 **Lógica de Reintentos en Backend:**
 
 ```python
-# app/services/correccion_service.py
+# backend/app/services/correccion_service.py
 
 async def corregir_con_reintentos(
     self,
     entrega_id: int,
     max_reintentos: int = 1
 ) -> Correccion:
-    """
-    Corrige una entrega con lógica de reintentos.
-
-    Args:
-        entrega_id: ID de la entrega.
-        max_reintentos: Máximo de reintentos (default: 1).
-
-    Returns:
-        Correccion creada.
-
-    Raises:
-        ExternalServiceError: Si falla después de reintentos.
-    """
-    errores_reintentables = {"GEMINI_ERROR", "PARSING_ERROR", "TIMEOUT", "NETWORK_ERROR"}
+    """Corrige una entrega con lógica de reintentos (1 por defecto)."""
+    errores_reintentables = {"N8N_ERROR", "N8N_TIMEOUT", "PARSING_ERROR"}
 
     for intento in range(max_reintentos + 1):
         try:
             return await self._ejecutar_correccion(entrega_id)
 
-        except N8NError as e:
+        except N8NError as e:  # nombre histórico; lo levanta el cliente de IA
             if e.code not in errores_reintentables:
                 raise  # No reintentar
 
@@ -719,7 +585,7 @@ async def corregir_con_reintentos(
 
             # Último intento falló
             await self._marcar_entrega_fallida(entrega_id, e.message)
-            raise ExternalServiceError("N8N", f"Falló después de {max_reintentos + 1} intentos: {e.message}")
+            raise
 ```
 
 ---
@@ -729,48 +595,37 @@ async def corregir_con_reintentos(
 ### 8.1 Diagrama de Secuencia
 
 ```
-Usuario          Frontend         Backend          N8N            Gemini
-   │                │                │               │               │
-   │  Click         │                │               │               │
-   │  "Corregir"    │                │               │               │
-   ├───────────────▶│                │               │               │
-   │                │ POST /corregir │               │               │
-   │                ├───────────────▶│               │               │
-   │                │                │               │               │
-   │                │                │ Validar       │               │
-   │                │                │ permisos      │               │
-   │                │                │               │               │
-   │                │                │ Obtener       │               │
-   │                │                │ API Key       │               │
-   │                │                │               │               │
-   │                │                │ POST webhook  │               │
-   │                │                ├──────────────▶│               │
-   │                │                │               │               │
-   │                │                │               │ Construir     │
-   │                │                │               │ prompt        │
-   │                │                │               │               │
-   │                │                │               │ POST API      │
-   │                │                │               ├──────────────▶│
-   │                │                │               │               │
-   │                │                │               │    Evaluar    │
-   │                │                │               │    código     │
-   │                │                │               │               │
-   │                │                │               │◀──────────────┤
-   │                │                │               │   JSON resp   │
-   │                │                │               │               │
-   │                │                │               │ Parsear       │
-   │                │                │               │ respuesta     │
-   │                │                │               │               │
-   │                │                │◀──────────────┤               │
-   │                │                │  JSON result  │               │
-   │                │                │               │               │
-   │                │                │ Guardar en BD │               │
-   │                │                │               │               │
-   │                │◀───────────────┤               │               │
-   │                │   Corrección   │               │               │
-   │◀───────────────┤                │               │               │
-   │   Mostrar      │                │               │               │
-   │   resultado    │                │               │               │
+Usuario          Frontend         Backend                     Proveedor IA
+   │                │                │                        (Gemini/OpenRouter)
+   │  Click         │                │                              │
+   │  "Corregir"    │                │                              │
+   ├───────────────▶│                │                              │
+   │                │ POST /corregir │                              │
+   │                ├───────────────▶│                              │
+   │                │                │ Validar permisos             │
+   │                │                │                              │
+   │                │                │ Consolidar código            │
+   │                │                │ (ZIP/TXT → string · PDF b64) │
+   │                │                │                              │
+   │                │                │ Desencriptar API Key (Fernet)│
+   │                │                │                              │
+   │                │                │ ia_provider rutea por        │
+   │                │                │ correction_provider          │
+   │                │                │                              │
+   │                │                │ POST HTTP directo            │
+   │                │                ├─────────────────────────────▶│
+   │                │                │                              │ Evaluar
+   │                │                │                              │ código
+   │                │                │◀─────────────────────────────┤
+   │                │                │   JSON estricto (nota + crit)│
+   │                │                │                              │
+   │                │                │ Parsear + validar schema     │
+   │                │                │ Guardar Correccion en BD     │
+   │                │◀───────────────┤                              │
+   │                │   Corrección   │                              │
+   │◀───────────────┤                │                              │
+   │   Mostrar      │                │                              │
+   │   resultado    │                │                              │
 ```
 
 ### 8.2 Estados de Entrega Durante Corrección
@@ -786,22 +641,15 @@ Usuario          Frontend         Backend          N8N            Gemini
 
 ## 9. Configuración de Desarrollo
 
-### 9.1 Mock de N8N para Testing
+### 9.1 Mock del Proveedor de IA para Testing
 
-Para tests locales sin N8N real:
+Para tests locales sin llamar a la IA real, se mockea el cliente de integración (`gemini_correction_client` / `openrouter_client`) para que retorne una corrección fija:
 
 ```python
-# tests/mocks/n8n_mock.py
+# tests (conceptual): mockear el cliente de IA, no un servicio HTTP externo
 
-from fastapi import FastAPI
-from fastapi.responses import JSONResponse
-
-mock_n8n = FastAPI()
-
-@mock_n8n.post("/webhook/corregir")
-async def mock_corregir(request: dict):
-    """Mock de corrección para testing."""
-    return JSONResponse({
+def mock_corregir(*args, **kwargs):
+    return {
         "success": True,
         "correccion": {
             "nota": 85,
@@ -818,30 +666,21 @@ async def mock_corregir(request: dict):
             "recomendaciones": ["Agregar más tests"],
             "comentario_general": "Trabajo aprobado."
         }
-    })
-
-@mock_n8n.post("/webhook/health")
-async def mock_health():
-    """Mock de health check."""
-    return JSONResponse({
-        "status": "ok",
-        "n8n_version": "mock",
-        "gemini_available": True
-    })
+    }
 ```
 
 ### 9.2 Variables de Entorno para Desarrollo
 
 ```bash
-# .env.development
+# backend/.env.development
 
-# N8N local
-N8N_WEBHOOK_CORRECCION=http://localhost:5678/webhook/corregir
-N8N_WEBHOOK_RUBRICA=http://localhost:5678/webhook/generar-rubrica
-N8N_WEBHOOK_HEALTH=http://localhost:5678/webhook/health
+# Modelos por proveedor
+GEMINI_MODEL=gemini-3.5-flash
+OPENROUTER_MODEL=google/gemini-3.5-flash
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 
-# Gemini (usar key de desarrollo)
-# Cada desarrollador usa su propia API Key
+# Cada desarrollador configura su propia API Key por usuario (encriptada en BD),
+# eligiendo el proveedor con correction_provider ("gemini" | "openrouter").
 ```
 
 ---
@@ -851,14 +690,15 @@ N8N_WEBHOOK_HEALTH=http://localhost:5678/webhook/health
 | Aspecto | Decisión |
 |---------|----------|
 | **Google Drive/Sheets** | Eliminado del proyecto |
-| **Workflows N8N** | 2: Corrección + Generación rúbricas |
-| **Health Check** | Sí, `/webhook/health` |
-| **Modelo IA** | gemini-2.0-flash (predeterminado) |
-| **Respuesta IA** | JSON estricto con schema fijo |
+| **Intermediario N8N** | Eliminado — la corrección es nativa del backend |
+| **Ruteo** | `ia_provider.py` por `usuario.correction_provider` (sin failover) |
+| **Clientes** | `gemini_correction_client.py` · `openrouter_client.py` |
+| **Modelo IA** | Gemini `gemini-3.5-flash` · OpenRouter `google/gemini-3.5-flash` |
+| **Respuesta IA** | JSON estricto (responseSchema · json_object) |
 | **Reintentos** | 1 reintento para errores recuperables |
-| **Timeout corrección** | 60s nominal, 120s máximo |
-| **API Keys** | Por usuario, encriptadas con AES-256 |
-| **Prompts** | Documentados con ejemplos completos |
+| **Timeout corrección** | 90s (cliente Gemini) |
+| **API Keys** | Por usuario y por proveedor, encriptadas con Fernet (AES-128-CBC + HMAC-SHA256) |
+| **Códigos de error** | `N8N_ERROR` / `N8N_TIMEOUT` conservados como nombres históricos |
 
 ---
 
@@ -872,5 +712,5 @@ Este documento define las integraciones. Los siguientes documentos detallarán:
 ---
 
 *Documento parte de la especificación de Active-IA*
-*Versión: 1.0*
-*Fecha: Enero 2026*
+*Versión: 1.1 — actualizado a la arquitectura de IA nativa (sin N8N)*
+*Fecha: Julio 2026*

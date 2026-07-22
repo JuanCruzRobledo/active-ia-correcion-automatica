@@ -12,10 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import RolEnum, TipoActividadEnum
 from app.models.materia import Materia
+from app.repositories.comision_repository import ComisionRepository
 from app.repositories.materia_repository import (
     CoordinadorMateriaRepository,
     MateriaRepository,
 )
+from app.repositories.rubrica_repository import RubricaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.materia import (
     CoordinadoresAssign,
@@ -44,6 +46,8 @@ class MateriaService:
         self.db = db
         self.materia_repo = MateriaRepository(db)
         self.coord_materia_repo = CoordinadorMateriaRepository(db)
+        self.comision_repo = ComisionRepository(db)
+        self.rubrica_repo = RubricaRepository(db)
         self.usuario_repo = UsuarioRepository(db)
 
     async def crear_materia(
@@ -66,8 +70,19 @@ class MateriaService:
         # Normalize codigo to uppercase
         codigo_upper = data.codigo.upper()
 
-        # Check if codigo already exists
-        if await self.materia_repo.exists_codigo(codigo_upper):
+        # Check if codigo already exists. CRUD-011: si el conflicto es contra una
+        # materia ELIMINADA (soft delete), decirlo y ofrecer restaurar — si no, el
+        # 409 confunde porque la materia borrada no aparece en el listado.
+        conflicto = await self.materia_repo.get_by_codigo(codigo_upper)
+        if conflicto is not None:
+            if not conflicto.activa:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Ya existe una materia con código {codigo_upper}, pero está "
+                        f"eliminada (id {conflicto.id}). Restaurala o elegí otro código."
+                    ),
+                )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="El código de materia ya existe",
@@ -162,19 +177,21 @@ class MateriaService:
             coordinador_id=coordinador_id,
         )
 
+        materia_ids = [materia.id for materia in materias]
+        # PERF-012: conteo de coordinadores de TODAS las materias de la página en UNA
+        # query agregada (antes: get_coordinadores_for_materia por materia en loop).
+        coord_counts = await self.coord_materia_repo.contar_por_materias(materia_ids)
+        # CRUD-016: idem para las comisiones activas, en vez de materializar la
+        # colección materia.comisiones (lazy=selectin) de cada materia solo para contar.
+        comi_counts = await self.comision_repo.contar_comisiones_activas_por_materia(
+            materia_ids
+        )
+
         # Build list items with counts
         items = []
         for materia in materias:
-            # Count coordinadores
-            coordinadores = await self.coord_materia_repo.get_coordinadores_for_materia(
-                materia.id
-            )
-            num_coordinadores = len(coordinadores)
-
-            # Count active comisiones
-            num_comisiones = len(
-                [c for c in materia.comisiones if c.activa]
-            ) if materia.comisiones else 0
+            num_coordinadores = coord_counts.get(materia.id, 0)
+            num_comisiones = comi_counts.get(materia.id, 0)
 
             items.append(
                 MateriaListItem(
@@ -269,12 +286,13 @@ class MateriaService:
                 detail="Materia no encontrada",
             )
 
-        # Update only provided fields
+        # Update only provided fields. CRUD-010: los nullable usan model_fields_set
+        # para distinguir "ausente" (preservar) de "null explícito" (limpiar).
         if data.nombre is not None:
             materia.nombre = data.nombre
-        if data.descripcion is not None:
+        if "descripcion" in data.model_fields_set:
             materia.descripcion = data.descripcion
-        if data.moodle_course_id is not None:
+        if "moodle_course_id" in data.model_fields_set:
             materia.moodle_course_id = data.moodle_course_id
 
         await self.materia_repo.update(materia)
@@ -339,8 +357,6 @@ class MateriaService:
             HTTPException 404: Materia not found.
             HTTPException 400: (soft delete only) Materia already deleted.
         """
-        from app.core.config import settings
-
         materia = await self.materia_repo.get_by_id(materia_id)
 
         if not materia:
@@ -349,17 +365,18 @@ class MateriaService:
                 detail="Materia no encontrada",
             )
 
-        if settings.ALLOW_HARD_DELETE:
-            # Hard delete: eliminación física con cascada completa
-            await self.materia_repo.hard_delete_with_cascade(materia)
-        else:
-            # Soft delete: baja lógica (comportamiento original)
-            if not materia.activa:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="La materia ya está eliminada",
-                )
-            await self.materia_repo.soft_delete(materia)
+        # CRUD-002: soft delete SIEMPRE (se eliminó el flag ALLOW_HARD_DELETE, que
+        # sobrecargaba el mismo verbo DELETE con dos semánticas según config).
+        if not materia.activa:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La materia ya está eliminada",
+            )
+        await self.materia_repo.soft_delete(materia)
+        # CRUD-006: propagar la baja a los hijos, para que las comisiones no
+        # queden operables (crear_entrega valida comisión activa) ni visibles.
+        await self.comision_repo.desactivar_por_materia(materia_id)
+        await self.rubrica_repo.desactivar_por_materia(materia_id)
 
     async def restaurar_materia(self, materia_id: int) -> MateriaResponse:
         """
@@ -390,6 +407,9 @@ class MateriaService:
             )
 
         restored_materia = await self.materia_repo.restore(materia)
+        # CRUD-006: reactivar los hijos que se dieron de baja al eliminar la materia.
+        await self.comision_repo.reactivar_por_materia(materia_id)
+        await self.rubrica_repo.reactivar_por_materia(materia_id)
 
         return MateriaResponse.model_validate(restored_materia)
 

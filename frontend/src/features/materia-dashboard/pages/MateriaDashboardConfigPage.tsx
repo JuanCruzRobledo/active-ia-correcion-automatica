@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, RefreshCw, Save, SlidersHorizontal, Trash2 } from 'lucide-react';
 import {
+  Alert,
   Button,
   Checkbox,
   ConfirmDialog,
@@ -30,8 +31,8 @@ export const MateriaDashboardConfigPage = () => {
 
   const { data: materia } = useMateria(materiaId);
   const { data: cohortes } = useCohortes();
-  const { data: config, isLoading: loadingConfig } = useDashboardConfig(materiaId);
-  const { data: unidades, isLoading: loadingUnidades } = useUnidades(materiaId);
+  const { data: config, isLoading: loadingConfig, isError: errorConfig } = useDashboardConfig(materiaId);
+  const { data: unidades, isLoading: loadingUnidades, isError: errorUnidades } = useUnidades(materiaId);
 
   const detectar = useDetectarSecciones(materiaId);
   const eliminarUnidad = useEliminarUnidad(materiaId);
@@ -98,6 +99,14 @@ export const MateriaDashboardConfigPage = () => {
         </div>
         {materia?.nombre && <p className="text-sm text-muted-foreground">{materia.nombre}</p>}
       </div>
+
+      {/* UI-004: si fallan las queries de config/unidades, avisamos en vez de
+          renderizar secciones vacías indistinguibles de "sin datos". */}
+      {(errorConfig || errorUnidades) && (
+        <Alert variant="destructive" title="No se pudo cargar la configuración del dashboard">
+          <p>Hubo un problema al consultar el servidor. Revisá tu conexión e intentá recargar la página.</p>
+        </Alert>
+      )}
 
       {/* Config */}
       {config && cohortes && (

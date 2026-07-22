@@ -199,6 +199,17 @@ class UsuarioRepository:
         await self.db.refresh(user)
         return user
 
+    async def save(self, user: Usuario) -> Usuario:
+        """Persiste cambios ya aplicados sobre un Usuario cargado SIN tocar updated_at.
+
+        Para estado de login (contadores de intentos, lockout, last_login) que NO
+        debe contar como 'modificación' del registro. Para cambios de datos usar
+        update() (que sí bumpea updated_at).
+        """
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
     async def soft_delete(self, user: Usuario) -> Usuario:
         """
         Soft delete a user (set activo=False).

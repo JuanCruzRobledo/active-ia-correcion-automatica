@@ -8,6 +8,7 @@ Uses openpyxl to create .xlsx files with student grades and correction status.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 10.4
 """
 
+import asyncio
 import io
 from datetime import datetime
 
@@ -17,12 +18,8 @@ from app.services import excel_estilos
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.models.comision import Comision
-from app.models.entrega import Entrega as EntregaModel
 from app.repositories.entrega_repository import EntregaRepository
 
 
@@ -54,12 +51,13 @@ class ExcelService:
         """
         from fastapi import HTTPException, status
 
-        # Get all entregas for this comision and rubrica
-        entregas_list, _ = await self.entrega_repo.get_all(
+        # PERF-009: traemos TODAS las entregas, sin el viejo tope de per_page=1000 que
+        # truncaba el acta en silencio. Una comisión con más de 1000 entregas exportaba
+        # incompleta. get_all_for_export itera en lotes hasta agotar el conjunto (y sigue
+        # excluyendo las archivadas, igual que get_all).
+        entregas_list = await self.entrega_repo.get_all_for_export(
             comision_id=comision_id,
             rubrica_id=rubrica_id,
-            page=1,
-            per_page=1000,  # Get all
         )
 
         if not entregas_list:
@@ -68,23 +66,10 @@ class ExcelService:
                 detail="No hay entregas para esta comisión y rúbrica",
             )
 
-        # Create workbook
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Notas"
-
-        # Re-fetch first entrega with full nested relations (comision -> materia, rubrica)
+        # Re-fetch primera entrega con relaciones anidadas (comision->materia, rubrica).
+        # ARCH-001: vía repo. get_by_id_with_relations carga comision.materia + rubrica.
         first_id = entregas_list[0].id
-        stmt = (
-            select(EntregaModel)
-            .options(
-                selectinload(EntregaModel.comision).selectinload(Comision.materia),
-                selectinload(EntregaModel.rubrica),
-            )
-            .where(EntregaModel.id == first_id)
-        )
-        result = await self.db.execute(stmt)
-        first_entrega = result.scalar_one()
+        first_entrega = await self.entrega_repo.get_by_id_with_relations(first_id)
 
         materia_nombre = first_entrega.comision.materia.nombre
         materia_codigo = first_entrega.comision.materia.codigo
@@ -93,6 +78,75 @@ class ExcelService:
         # Use .value to get raw string from SQLAlchemy enum (avoids "TipoRubricaEnum.TP" in filename)
         rubrica_tipo = first_entrega.rubrica.tipo.value if hasattr(first_entrega.rubrica.tipo, 'value') else str(first_entrega.rubrica.tipo)
         rubrica_numero = str(first_entrega.rubrica.numero)
+
+        # PERF-004: materializamos TODA la data que el Excel necesita a estructuras Python
+        # simples ANTES de entrar al thread. En el thread no hay event loop, así que un
+        # acceso lazy al ORM dispararía MissingGreenlet. La relación `correccion` viene
+        # eager-loaded desde el repo, pero igual la aplanamos para que el builder sea
+        # 100% puro-CPU y no toque el ORM ni la sesión async.
+        filas = [
+            {
+                "alumno_nombre": entrega.alumno_nombre,
+                "estado": entrega.estado,
+                "correccion": None
+                if entrega.correccion is None
+                else {
+                    "nota": entrega.correccion.nota,
+                    "created_at": entrega.correccion.created_at,
+                    "editado_manualmente": entrega.correccion.editado_manualmente,
+                    "comentario_general": entrega.correccion.comentario_general,
+                },
+            }
+            for entrega in entregas_list
+        ]
+        total = len(entregas_list)
+
+        # PERF-004: el render openpyxl (CPU-bound, celda por celda) corre en un thread
+        # para no bloquear el event loop. El contenido del archivo es idéntico al anterior.
+        excel_bytes = await asyncio.to_thread(
+            self._build_notas_workbook_sync,
+            filas,
+            total,
+            materia_nombre,
+            materia_codigo,
+            comision_nombre,
+            rubrica_nombre,
+            rubrica_tipo,
+            rubrica_numero,
+        )
+
+        # Build suggested filename using text code (materia.codigo), not ID
+        fecha = datetime.now().strftime("%Y%m%d")
+
+        excel_filename = f"notas_{materia_codigo}_{comision_nombre}_{rubrica_tipo}{rubrica_numero}_{fecha}.xlsx"
+        excel_filename = self._sanitize_filename(excel_filename)
+
+        return excel_bytes, excel_filename
+
+    def _build_notas_workbook_sync(
+        self,
+        filas: list[dict],
+        total: int,
+        materia_nombre: str,
+        materia_codigo: str,
+        comision_nombre: str,
+        rubrica_nombre: str,
+        rubrica_tipo: str,
+        rubrica_numero: str,
+    ) -> bytes:
+        """PERF-004: parte pura-CPU del export de notas (construcción del workbook +
+        ``wb.save`` a bytes).
+
+        Recibe SÓLO estructuras Python ya materializadas — no toca el ORM ni la sesión
+        async —, así puede correr en un thread vía ``asyncio.to_thread`` sin riesgo de
+        MissingGreenlet. La salida es byte-idéntica a la del builder inline anterior
+        (mismas celdas, formato, colores y orden): esto es un acta de calificaciones
+        oficiales, sólo cambia que se genera en un thread.
+        """
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Notas"
 
         # Add title — row 1: materia name
         ws.merge_cells("A1:F1")
@@ -139,17 +193,18 @@ class ExcelService:
         # Add data rows
         current_row = header_row + 1
 
-        for entrega in entregas_list:
+        for fila in filas:
+            correccion = fila["correccion"]
             # Alumno
-            ws.cell(row=current_row, column=1).value = entrega.alumno_nombre
+            ws.cell(row=current_row, column=1).value = fila["alumno_nombre"]
 
             # Nota, Estado, Fecha, Editado, Comentario
-            if entrega.correccion:
-                nota = entrega.correccion.nota
+            if correccion:
+                nota = correccion["nota"]
                 estado = "CORREGIDA"
-                fecha = entrega.correccion.created_at.strftime("%d/%m/%Y %H:%M")
-                editado = "Sí" if entrega.correccion.editado_manualmente else "No"
-                comentario = entrega.correccion.comentario_general or ""
+                fecha = correccion["created_at"].strftime("%d/%m/%Y %H:%M")
+                editado = "Sí" if correccion["editado_manualmente"] else "No"
+                comentario = correccion["comentario_general"] or ""
 
                 # Nota cell with color
                 nota_cell = ws.cell(row=current_row, column=2)
@@ -163,7 +218,7 @@ class ExcelService:
                     "PENDIENTE": "EN PROCESO",
                     "ERROR": "ERROR",
                 }
-                estado = estado_map.get(entrega.estado, entrega.estado)
+                estado = estado_map.get(fila["estado"], fila["estado"])
                 fecha = "-"
                 editado = "-"
                 comentario = ""
@@ -216,7 +271,7 @@ class ExcelService:
         summary_row = current_row + 1
         ws.merge_cells(f"A{summary_row}:C{summary_row}")
         summary_cell = ws.cell(row=summary_row, column=1)
-        summary_cell.value = f"Total de entregas: {len(entregas_list)}"
+        summary_cell.value = f"Total de entregas: {total}"
         summary_cell.font = Font(bold=True)
 
         # Freeze header rows
@@ -228,13 +283,7 @@ class ExcelService:
         excel_bytes = excel_buffer.getvalue()
         excel_buffer.close()
 
-        # Build suggested filename using text code (materia.codigo), not ID
-        fecha = datetime.now().strftime("%Y%m%d")
-
-        excel_filename = f"notas_{materia_codigo}_{comision_nombre}_{rubrica_tipo}{rubrica_numero}_{fecha}.xlsx"
-        excel_filename = self._sanitize_filename(excel_filename)
-
-        return excel_bytes, excel_filename
+        return excel_bytes
 
     # =========================================================================
     # Gestión (pantalla rol GESTOR) — export multi-hoja

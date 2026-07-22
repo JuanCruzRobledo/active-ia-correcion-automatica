@@ -19,6 +19,10 @@ ERROR_SIN_CREDITOS = "SIN_CREDITOS"
 ERROR_N8N_TIMEOUT = "N8N_TIMEOUT"
 ERROR_N8N = "N8N_ERROR"
 ERROR_IA_RESPUESTA_INVALIDA = "IA_RESPUESTA_INVALIDA"
+# IA-004: la corrección quedó a medias porque el proceso se reinició (los lotes
+# corren como BackgroundTasks in-process; un restart las deja huérfanas). El
+# watchdog de arranque las marca con este código para que el tutor las re-dispare.
+ERROR_INTERRUMPIDA = "CORRECCION_INTERRUMPIDA"
 
 _GENERICO = "Ocurrió un error al corregir. Reintentá; si persiste, avisá al equipo."
 
@@ -51,6 +55,10 @@ _MENSAJES_POR_PROVEEDOR: dict[str, str] = {
 
 # Mensajes neutros (no dependen del proveedor).
 _MENSAJES_NEUTROS: dict[str, str] = {
+    ERROR_INTERRUMPIDA: (
+        "La corrección se interrumpió (el servidor se reinició mientras corría). "
+        "Volvé a corregir esta entrega."
+    ),
     ERROR_SIN_CREDITOS: (
         "Tu cuenta de OpenRouter no tiene créditos suficientes. "
         "Cargá créditos y volvé a intentar."

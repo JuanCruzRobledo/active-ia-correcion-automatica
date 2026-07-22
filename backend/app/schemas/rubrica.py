@@ -53,6 +53,17 @@ class Subcriterio(BaseModel):
         description="Checklist de evidencias verificables por la IA",
         examples=[["Archivo package.json existe", "Dependencia express presente"]],
     )
+    peso: int | None = Field(
+        default=None,
+        ge=1,
+        le=100,
+        description=(
+            "Peso del subcriterio en puntos absolutos (suman al peso del criterio "
+            "contenedor). Opcional a nivel de modelo: solo es obligatorio y se valida "
+            "en rúbricas schema_version >= 2 (ver RubricaCreate/RubricaUpdate)."
+        ),
+        examples=[10, 25],
+    )
 
     @field_validator("evidencias")
     @classmethod
@@ -270,6 +281,33 @@ class CriteriosStructure(BaseModel):
         return self
 
 
+def _validar_pesos_subcriterios_v2(criterios: list["Criterio"]) -> None:
+    """
+    Valida los pesos de subcriterio para rúbricas `schema_version >= 2`.
+
+    Réplica de `CriteriosStructure.validar_suma_pesos` un nivel más abajo:
+    por cada criterio, (a) todos los subcriterios deben tener `peso` no nulo,
+    y (b) la suma de esos pesos debe ser exactamente igual al `peso` del
+    criterio contenedor. Solo se invoca cuando `schema_version >= 2`; las
+    rúbricas v1 nunca pasan por acá (sus subcriterios pueden no tener peso).
+    """
+    for criterio in criterios:
+        pesos_faltantes = [s.id for s in criterio.subcriterios if s.peso is None]
+        if pesos_faltantes:
+            raise ValueError(
+                f"En schema_version 2, todos los subcriterios del criterio "
+                f"{criterio.id} deben tener 'peso'. Faltan en: "
+                f"{', '.join(pesos_faltantes)}"
+            )
+        suma = sum(s.peso for s in criterio.subcriterios)
+        if suma != criterio.peso:
+            raise ValueError(
+                f"La suma de pesos de subcriterios del criterio {criterio.id} "
+                f"({suma}) debe ser exactamente igual al peso del criterio "
+                f"({criterio.peso})"
+            )
+
+
 # ============================================================================
 # Schemas Base de Rúbrica
 # ============================================================================
@@ -355,12 +393,22 @@ class RubricaCreate(RubricaBase):
         None,
         description="Extensiones a incluir si modo_consolidacion='personalizado' (ej: ['.ipynb', '.sql'])",
     )
+    schema_version: int = Field(
+        default=1,
+        ge=1,
+        description=(
+            "Versión del schema de criterios (1 = sin peso por subcriterio, "
+            "reparto implícito; 2 = con peso por subcriterio, exige "
+            "sum(subcriterio.peso) == criterio.peso). Default 1 preserva el "
+            "comportamiento de cualquier cliente que no lo envíe."
+        ),
+    )
 
     @model_validator(mode="after")
     def validar_estructura_completa(self) -> "RubricaCreate":
         """Valida la estructura completa usando CriteriosStructure."""
         try:
-            CriteriosStructure(
+            estructura = CriteriosStructure(
                 titulo=self.titulo,
                 descripcion=self.descripcion,
                 puntaje_maximo=self.puntaje_maximo,
@@ -371,6 +419,8 @@ class RubricaCreate(RubricaBase):
                     CondicionDesaprobacion(**cd) for cd in self.condiciones_desaprobacion_json
                 ],
             )
+            if self.schema_version >= 2:
+                _validar_pesos_subcriterios_v2(estructura.criterios)
         except Exception as e:
             raise ValueError(f"Error en la estructura de la rúbrica: {str(e)}")
         return self
@@ -422,6 +472,14 @@ class RubricaUpdate(BaseModel):
         None,
         description="Extensiones para modo personalizado",
     )
+    schema_version: int | None = Field(
+        None,
+        ge=1,
+        description=(
+            "Nueva versión del schema de criterios (2 = con peso por "
+            "subcriterio). Omitir preserva la versión existente de la rúbrica."
+        ),
+    )
 
     @model_validator(mode="after")
     def validar_estructura_si_presente(self) -> "RubricaUpdate":
@@ -438,7 +496,9 @@ class RubricaUpdate(BaseModel):
                     "penalizaciones": self.penalizaciones_json or [],
                     "condiciones_desaprobacion": self.condiciones_desaprobacion_json or [],
                 }
-                CriteriosStructure(**estructura)
+                criterios_structure = CriteriosStructure(**estructura)
+                if self.schema_version is not None and self.schema_version >= 2:
+                    _validar_pesos_subcriterios_v2(criterios_structure.criterios)
             except Exception as e:
                 raise ValueError(f"Error en la estructura de criterios: {str(e)}")
         return self
@@ -470,6 +530,7 @@ class RubricaResponse(BaseModel):
     moodle_assign_id: int | None = None
     modo_consolidacion: str = "solo_codigo"
     extensiones_personalizadas: list[str] | None = None
+    schema_version: int = 1
     created_at: str
     updated_at: str
 
@@ -534,6 +595,10 @@ class RubricaListItem(BaseModel):
     extensiones_personalizadas: list[str] | None = Field(
         default=None,
         description="Extensiones a incluir si modo_consolidacion='personalizado'",
+    )
+    schema_version: int = Field(
+        default=1,
+        description="Versión del schema de criterios (1 = sin peso por subcriterio, 2 = con peso por subcriterio)",
     )
     activa: bool
     created_at: str

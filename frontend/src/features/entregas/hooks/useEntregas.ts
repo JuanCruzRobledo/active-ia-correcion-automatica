@@ -23,8 +23,8 @@ import type {
   EntregaContenido,
   EntregasFilters,
   EntregaAccionMasivaResponse,
-  Correccion,
   CorregirLoteAceptadoResponse,
+  CorreccionAceptadaResponse,
 } from '../types';
 
 /**
@@ -239,30 +239,29 @@ export const useDeleteEntrega = () => {
 export const useCorregirEntrega = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<Correccion, Error, number>({
+  return useMutation<CorreccionAceptadaResponse, Error, number>({
     mutationFn: entregasService.corregir,
-    onSuccess: (correccion, entregaId) => {
-      // Invalidate lists
-      queryClient.invalidateQueries({
-        queryKey: entregasKeys.lists(),
-      });
-
-      // Update detail if it exists in cache
-      queryClient.setQueryData<EntregaDetail>(
-        entregasKeys.detail(entregaId),
+    onSuccess: (_res, entregaId) => {
+      // IA-012: la corrección corre en background (202). Marcamos la entrega en
+      // PENDIENTE de forma optimista para que el polling de la lista (EntregasPage)
+      // arranque y la lleve a CORREGIDA/ERROR. NO invalidamos acá: un refetch
+      // inmediato podría pisar el PENDIENTE optimista con el SUBIDA todavía en DB
+      // (el background aún no reclamó) y frenar el polling.
+      queryClient.setQueriesData<EntregaList>(
+        { queryKey: entregasKeys.lists() },
         (old) => {
-          if (!old) return undefined;
+          if (!old?.items) return old;
           return {
             ...old,
-            estado: 'CORREGIDA',
-            correccion: {
-              id: correccion.id,
-              nota: correccion.nota,
-              editado_manualmente: correccion.editado_manualmente,
-              fecha_correccion: correccion.fecha_correccion,
-            },
+            items: old.items.map((e) =>
+              e.id === entregaId ? { ...e, estado: 'PENDIENTE' } : e
+            ),
           };
         }
+      );
+      queryClient.setQueryData<EntregaDetail>(
+        entregasKeys.detail(entregaId),
+        (old) => (old ? { ...old, estado: 'PENDIENTE' } : undefined)
       );
     },
     onError: (error) => {

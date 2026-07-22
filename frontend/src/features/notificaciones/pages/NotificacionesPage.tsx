@@ -2,6 +2,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Eye, FileSpreadsheet, FileText, Play, Send } from 'lucide-react';
 import {
+  Alert,
   Badge,
   Button,
   Checkbox,
@@ -31,15 +32,19 @@ const TIPO_LABEL: Record<string, string> = {
 };
 
 export const NotificacionesPage = () => {
-  const { data: config, isLoading: loadingConfig } = useNotifConfig();
-  const { data: usuariosData, isLoading: loadingUsuarios } = useUsuarios({
+  const { data: config, isLoading: loadingConfig, isError: errorConfig } = useNotifConfig();
+  const {
+    data: usuariosData,
+    isLoading: loadingUsuarios,
+    isError: errorUsuarios,
+  } = useUsuarios({
     rol: 'TODOS',
     activo: true,
     search: '',
     page: 1,
     per_page: 100,
   });
-  const { data: historial } = useHistorialNotif();
+  const { data: historial, isError: errorHistorial } = useHistorialNotif();
 
   const disparar = useDispararCorrida();
   const enviarPrueba = useEnviarPrueba();
@@ -50,7 +55,9 @@ export const NotificacionesPage = () => {
   const [incluirAlumnos, setIncluirAlumnos] = useState(false);
   // Tutores nexo: por defecto SÍ se notifican (comportamiento actual); se puede desmarcar.
   const [incluirNexos, setIncluirNexos] = useState(true);
-  const [comisionesText, setComisionesText] = useState('7:1, 7:2, 7:3, 9:7');
+  // UI-009: default vacío (= todas las comisiones). El formato esperado va en el
+  // placeholder del Input, sin quemar identificadores de producción en la UI.
+  const [comisionesText, setComisionesText] = useState('');
   const [resumen, setResumen] = useState<CorridaResumen | null>(null);
 
   const handleDisparar = async () => {
@@ -58,8 +65,12 @@ export const NotificacionesPage = () => {
       .split(',')
       .map((c) => c.trim())
       .filter(Boolean);
-    const r = await disparar.mutateAsync({ refrescar, incluirAlumnos, incluirNexos, comisiones });
-    setResumen(r);
+    try {
+      const r = await disparar.mutateAsync({ refrescar, incluirAlumnos, incluirNexos, comisiones });
+      setResumen(r);
+    } catch {
+      // El onError del hook ya muestra el toast; acá sólo evitamos la unhandled rejection.
+    }
   };
 
   const handlePreview = (tipo: 'alumno' | 'tutor' | 'nexo') => {
@@ -87,6 +98,17 @@ export const NotificacionesPage = () => {
           tutores nexo.
         </p>
       </div>
+
+      {/* UI-004: si fallan las queries de config/usuarios, avisamos en vez de
+          mostrar la sección vacía (que se confundiría con "no hay config"). */}
+      {(errorConfig || errorUsuarios) && (
+        <Alert variant="destructive" title="No se pudo cargar la configuración">
+          <p>
+            Hubo un problema al consultar el servidor. Revisá tu conexión e intentá recargar la
+            página.
+          </p>
+        </Alert>
+      )}
 
       {/* Config del cron */}
       {config && (
@@ -221,7 +243,11 @@ export const NotificacionesPage = () => {
       {/* Historial */}
       <div className="rounded-lg border border-border bg-card p-4 sm:p-6">
         <h2 className="text-lg font-semibold text-foreground">Historial de envíos</h2>
-        {!historial || historial.length === 0 ? (
+        {errorHistorial ? (
+          <p className="mt-4 text-sm text-destructive">
+            No se pudo cargar el historial de envíos. Reintentá recargando la página.
+          </p>
+        ) : !historial || historial.length === 0 ? (
           <p className="mt-4 text-sm text-muted-foreground">Todavía no hay envíos registrados.</p>
         ) : (
           <>

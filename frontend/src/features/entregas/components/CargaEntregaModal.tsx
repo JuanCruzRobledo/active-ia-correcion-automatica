@@ -176,9 +176,9 @@ function UploadResultView({
             Entregas exitosas ({uploadResult.exitosas.length})
           </h4>
           <div className="max-h-40 overflow-y-auto space-y-1">
-            {uploadResult.exitosas.map((entrega, index) => (
+            {uploadResult.exitosas.map((entrega) => (
               <div
-                key={index}
+                key={entrega.id}
                 className="flex items-center gap-2 text-sm text-foreground bg-success/10 px-3 py-2 rounded"
               >
                 <CheckCircle className="w-4 h-4 text-success flex-shrink-0" />
@@ -197,9 +197,9 @@ function UploadResultView({
             Errores ({uploadResult.errores.length})
           </h4>
           <div className="max-h-40 overflow-y-auto space-y-1">
-            {uploadResult.errores.map((error, index) => (
+            {uploadResult.errores.map((error) => (
               <div
-                key={index}
+                key={`${error.alumno_nombre}-${error.error}`}
                 className="flex items-start gap-2 text-sm text-foreground bg-destructive/10 px-3 py-2 rounded"
               >
                 <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />

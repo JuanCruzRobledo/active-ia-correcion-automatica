@@ -26,24 +26,71 @@ export const subcriterioSchema = z.object({
   evidencias: z
     .array(z.string().min(1, 'Evidencia no puede estar vacía'))
     .min(1, 'Debe haber al menos una evidencia'),
-});
-
-export const criterioSchema = z.object({
-  id: z
-    .string()
-    .min(1, 'ID del criterio es requerido')
-    .regex(/^[A-Z0-9]+$/, 'ID debe tener formato C1, C2, etc.'),
-  nombre: z.string().min(1, 'Nombre es requerido').max(100),
-  descripcion: z.string().min(1, 'Descripción es requerida').max(500),
+  // Peso en puntos absolutos (rúbricas schema_version >= 2). Opcional a nivel de
+  // schema para que los subcriterios v1 (sin peso) sigan validando igual que antes —
+  // espejo de la decisión backend D3 (Subcriterio.peso opcional a nivel modelo).
   peso: z
     .number()
     .min(1, 'Peso debe ser al menos 1')
-    .max(100, 'Peso no puede exceder 100'),
-  instrucciones_puntuacion: z.string().max(2000).nullish(),
-  subcriterios: z
-    .array(subcriterioSchema)
-    .min(1, 'Debe haber al menos un subcriterio'),
+    .max(100, 'Peso no puede exceder 100')
+    .optional(),
 });
+
+export const criterioSchema = z
+  .object({
+    id: z
+      .string()
+      .min(1, 'ID del criterio es requerido')
+      .regex(/^[A-Z0-9]+$/, 'ID debe tener formato C1, C2, etc.'),
+    nombre: z.string().min(1, 'Nombre es requerido').max(100),
+    descripcion: z.string().min(1, 'Descripción es requerida').max(500),
+    peso: z
+      .number()
+      .min(1, 'Peso debe ser al menos 1')
+      .max(100, 'Peso no puede exceder 100'),
+    instrucciones_puntuacion: z.string().max(2000).nullish(),
+    subcriterios: z
+      .array(subcriterioSchema)
+      .min(1, 'Debe haber al menos un subcriterio'),
+  })
+  .superRefine((data, ctx) => {
+    // Validación de peso por subcriterio (D1/D7): puntos absolutos que suman el
+    // peso del criterio, análogo a "los criterios suman 100" un nivel arriba.
+    //
+    // No hay un `schema_version` explícito disponible acá (criterioSchema no lo
+    // conoce, igual que en el backend — ver D3). El equivalente en el front es
+    // presence-based: la validación solo se activa cuando ALGÚN subcriterio de
+    // este criterio trae `peso` definido (es decir, se está editando/migrando
+    // como v2). Si ninguno trae `peso`, el criterio es v1 y no se exige nada
+    // (compatibilidad total con rúbricas viejas).
+    const algunoConPeso = data.subcriterios.some((s) => s.peso !== undefined);
+    if (!algunoConPeso) return;
+
+    const faltantes = data.subcriterios
+      .map((s, idx) => ({ s, idx }))
+      .filter(({ s }) => s.peso === undefined);
+
+    if (faltantes.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Todos los subcriterios de ${data.id} deben tener peso si alguno lo tiene`,
+        path: ['subcriterios'],
+      });
+      return;
+    }
+
+    const sumaSubpesos = data.subcriterios.reduce(
+      (sum, s) => sum + (s.peso ?? 0),
+      0
+    );
+    if (sumaSubpesos !== data.peso) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `La suma de pesos de los subcriterios de ${data.id} (${sumaSubpesos}) debe ser exactamente ${data.peso}`,
+        path: ['subcriterios'],
+      });
+    }
+  });
 
 export const penalizacionSchema = z.object({
   id: z

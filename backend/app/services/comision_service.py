@@ -77,12 +77,23 @@ class ComisionService:
                 detail="Materia no encontrada o inactiva",
             )
 
-        # Check if comision already exists (materia + nombre + anio)
-        if await self.comision_repo.exists(
+        # Check if comision already exists (materia + nombre + anio). CRUD-011: si el
+        # conflicto es con una comisión ELIMINADA, decirlo y ofrecer restaurar.
+        conflicto = await self.comision_repo.get_by_materia_nombre_anio(
             materia_id=data.materia_id,
             nombre=data.nombre,
             anio=data.anio,
-        ):
+        )
+        if conflicto is not None:
+            if not conflicto.activa:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Ya existe una comisión '{data.nombre}' ({data.anio}) para esta "
+                        f"materia, pero está eliminada (id {conflicto.id}). Restaurala o "
+                        "usá otro nombre."
+                    ),
+                )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Ya existe una comisión con ese nombre para esta materia y año",
@@ -174,21 +185,17 @@ class ComisionService:
             per_page=per_page,
         )
 
+        # PERF-007: conteos de tutores y entregas de TODAS las comisiones de la página
+        # en UNA sola query agregada (antes: 1 query de tutores + materializar la
+        # colección entregas por cada comisión).
+        conteos = await self.comision_repo.contar_tutores_entregas(
+            [comision.id for comision in comisiones]
+        )
+
         # Build list items with counts
         items = []
         for comision in comisiones:
-            # Count tutores
-            tutores = await self.comision_tutor_repo.get_tutores_for_comision(
-                comision.id
-            )
-            num_tutores = len(tutores)
-
-            # Count entregas
-            num_entregas = (
-                len(comision.entregas)
-                if comision.entregas
-                else 0
-            )
+            num_tutores, num_entregas = conteos.get(comision.id, (0, 0))
 
             items.append(
                 ComisionListItem(
@@ -240,11 +247,16 @@ class ComisionService:
             nombre=comision.materia.nombre,
         )
 
-        # Build tutores info
+        # Build tutores info.
+        # PERF-012: el usuario de cada tutor viene eager-loaded (ct.tutor) desde
+        # get_by_id_with_relations, en vez de un get_by_id(tutor_id) por tutor en loop.
         tutores_info = []
         for ct in comision.tutores:
-            tutor = await self.usuario_repo.get_by_id(ct.tutor_id)
-            if tutor:
+            tutor = ct.tutor
+            # CRUD-017: ocultar tutores inactivos, alineado con obtener_materia
+            # (que ya oculta coordinadores inactivos). Antes un usuario deshabilitado
+            # desaparecía de una pantalla y seguía visible en la otra.
+            if tutor and tutor.activo:
                 tutores_info.append(
                     TutorInfo(
                         id=tutor.id,
@@ -311,9 +323,10 @@ class ComisionService:
                     )
             comision.nombre = data.nombre
 
-        if data.moodle_group_id is not None:
+        # CRUD-010: nullable -> model_fields_set para poder desvincular (null explícito).
+        if "moodle_group_id" in data.model_fields_set:
             comision.moodle_group_id = data.moodle_group_id
-        if data.moodle_group_code is not None:
+        if "moodle_group_code" in data.model_fields_set:
             comision.moodle_group_code = data.moodle_group_code
 
         await self.comision_repo.update(comision)
@@ -378,9 +391,10 @@ class ComisionService:
                 detail="Comisión no encontrada",
             )
 
-        if data.moodle_group_id is not None:
+        # CRUD-010: nullable -> model_fields_set para poder desvincular (null explícito).
+        if "moodle_group_id" in data.model_fields_set:
             comision.moodle_group_id = data.moodle_group_id
-        if data.moodle_group_code is not None:
+        if "moodle_group_code" in data.model_fields_set:
             comision.moodle_group_code = data.moodle_group_code
 
         await self.comision_repo.update(comision)
@@ -414,25 +428,14 @@ class ComisionService:
         """
         from app.core.config import settings
 
-        if settings.ALLOW_HARD_DELETE:
-            # Hard delete: buscar sin filtro activa para poder borrar cualquiera
-            comision = await self.comision_repo.get_by_id(comision_id)
-            if not comision:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Comisión no encontrada",
-                )
-            # Hard delete con cascada completa
-            await self.comision_repo.hard_delete_with_cascade(comision)
-        else:
-            # Soft delete: baja lógica (comportamiento original)
-            comision = await self.comision_repo.get_active_by_id(comision_id)
-            if not comision:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Comisión no encontrada o ya eliminada",
-                )
-            await self.comision_repo.soft_delete(comision)
+        # CRUD-002: soft delete SIEMPRE (se eliminó el flag ALLOW_HARD_DELETE).
+        comision = await self.comision_repo.get_active_by_id(comision_id)
+        if not comision:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Comisión no encontrada o ya eliminada",
+            )
+        await self.comision_repo.soft_delete(comision)
 
     async def restaurar_comision(self, comision_id: int) -> ComisionResponse:
         """

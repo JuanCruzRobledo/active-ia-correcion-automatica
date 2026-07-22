@@ -9,6 +9,8 @@ Endpoints:
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md HU-PERF-01, HU-PERF-02
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +30,8 @@ from app.schemas.perfil import (
     UpdateKeyPagaRequest,
     UpdateKeyPagaResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _last_4(encrypted: str | None) -> str | None:
@@ -130,7 +134,7 @@ async def update_api_key(
 
     Valida contra el proveedor correspondiente (Gemini Studio → Google;
     OpenRouter → consulta real a google/gemini-3.5-flash) ANTES de guardar.
-    Si es válida, se encripta con AES-256 en la columna propia de ese proveedor.
+    Si es válida, se encripta con AES-128-CBC (Fernet) en la columna propia de ese proveedor.
     Las keys de cada proveedor se guardan por separado.
 
     **Permissions**: All authenticated users
@@ -166,10 +170,13 @@ async def update_api_key(
             valid=True,
         )
 
-    except Exception as e:
+    except Exception:
+        logger.exception(
+            "Error al guardar API Key para usuario %s", current_user.id
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al guardar API Key: {str(e)}",
+            detail="Error al guardar la API Key. Intentá nuevamente.",
         )
 
 

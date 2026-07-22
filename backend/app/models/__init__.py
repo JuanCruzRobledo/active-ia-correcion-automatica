@@ -41,7 +41,7 @@ from app.models.examen_materia import ExamenMateria
 from app.models.comision import Comision, ComisionTutor
 from app.models.rubrica import Rubrica
 from app.models.entrega import Entrega, EntregaHistorial
-from app.models.correccion import Correccion
+from app.models.correccion import Correccion, CorreccionHistorial
 from app.models.actividad import Actividad
 from app.models.moodle_sync import MoodleSync
 from app.models.avance import AvanceAlumno, AvanceSnapshot, SnapshotCronConfig
@@ -90,6 +90,7 @@ __all__ = [
     "Entrega",
     "EntregaHistorial",
     "Correccion",
+    "CorreccionHistorial",
     "Actividad",
     "MoodleSync",
     "AvanceSnapshot",

@@ -11,7 +11,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 6
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -181,6 +181,28 @@ class RubricaRepository:
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
+    async def desactivar_por_materia(self, materia_id: int) -> int:
+        """CRUD-006: desactiva las rúbricas ACTIVAS de una materia (propagación del
+        soft delete). Solo las activas, para que el restore reactive el mismo
+        conjunto. Devuelve cuántas se desactivaron."""
+        result = await self.db.execute(
+            update(Rubrica)
+            .where(Rubrica.materia_id == materia_id, Rubrica.activa == True)  # noqa: E712
+            .values(activa=False)
+        )
+        await self.db.commit()
+        return result.rowcount
+
+    async def reactivar_por_materia(self, materia_id: int) -> int:
+        """CRUD-006: reactiva las rúbricas inactivas de una materia (restore)."""
+        result = await self.db.execute(
+            update(Rubrica)
+            .where(Rubrica.materia_id == materia_id, Rubrica.activa == False)  # noqa: E712
+            .values(activa=True)
+        )
+        await self.db.commit()
+        return result.rowcount
+
     async def get_by_materia_tipo_numero(
         self,
         materia_id: int,
@@ -227,6 +249,25 @@ class RubricaRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def get_moodle_habilitadas_por_materias(
+        self,
+        materia_ids: list[int],
+        *,
+        rubrica_id: int | None = None,
+    ) -> list[Rubrica]:
+        """Rúbricas ACTIVAS con moodle_assign_id (cmid) de las materias dadas, para
+        los flujos de Moodle. rubrica_id acota a una sola rúbrica (import con scope).
+        """
+        stmt = select(Rubrica).where(
+            Rubrica.materia_id.in_(materia_ids),
+            Rubrica.activa == True,  # noqa: E712
+            Rubrica.moodle_assign_id.isnot(None),
+        )
+        if rubrica_id is not None:
+            stmt = stmt.where(Rubrica.id == rubrica_id)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
 
     async def exists(
         self,
@@ -357,7 +398,6 @@ class RubricaRepository:
         Raises:
             Exception: Si falla alguna operación de DB o de disco.
         """
-        import os
 
         from sqlalchemy import select
 
@@ -372,12 +412,6 @@ class RubricaRepository:
         entregas = result.scalars().all()
 
         for entrega in entregas:
-            # Eliminar archivo físico del disco
-            if entrega.archivo_ruta and os.path.exists(entrega.archivo_ruta):
-                try:
-                    os.remove(entrega.archivo_ruta)
-                except OSError:
-                    pass  # Si el archivo ya no existe, continuar
 
             # Eliminar la entrega (cascade ORM elimina Correccion y EntregaHistorial)
             await self.db.delete(entrega)

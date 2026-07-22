@@ -1,8 +1,18 @@
 // React Query hooks de notificaciones por email
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import toast from 'react-hot-toast';
+import { extractDetailMessage } from '@/shared/utils/apiError';
 import { notificacionesService } from '../services/notificaciones.service';
 import type { NotifCronConfigUpdate } from '../types';
+
+/** Mensaje legible del backend, con fallback (para los onError de las mutaciones). */
+function mensajeError(error: unknown, fallback: string): string {
+  if (isAxiosError(error)) {
+    return extractDetailMessage(error.response?.data?.detail) ?? fallback;
+  }
+  return fallback;
+}
 
 export const notificacionesKeys = {
   config: ['notificaciones', 'cron-config'] as const,
@@ -23,6 +33,9 @@ export const useSetNotifConfig = () => {
     onSuccess: () => {
       toast.success('Configuración guardada');
       qc.invalidateQueries({ queryKey: notificacionesKeys.config });
+    },
+    onError: (error) => {
+      toast.error(mensajeError(error, 'No se pudo guardar la configuración. Intentá nuevamente.'));
     },
   });
 };
@@ -48,6 +61,14 @@ export const useDispararCorrida = () => {
         `Corrida lista: ${r.alumnos} alumnos · ${r.tutores} tutores · ${r.nexos} nexos`
       );
       qc.invalidateQueries({ queryKey: notificacionesKeys.historial });
+    },
+    onError: (error) => {
+      toast.error(
+        mensajeError(
+          error,
+          'No se pudo disparar la corrida de emails. Revisá la conexión e intentá de nuevo.'
+        )
+      );
     },
   });
 };

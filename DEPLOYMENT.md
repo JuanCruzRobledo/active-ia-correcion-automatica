@@ -2,6 +2,16 @@
 
 Esta guía te ayudará a desplegar la aplicación Active-IA en tu VPS Hostinger KVM 4 usando Docker Compose.
 
+> ℹ️ **Esta es la vía self-hosted (alternativa).** El deploy vigente del proyecto es:
+> **backend** como app service de EasyPanel construido desde `backend/Dockerfile`, y
+> **frontend** en **Vercel** (sin Docker) usando `frontend/vercel.json`.
+> Ver [EASYPANEL_DEPLOY.md](./EASYPANEL_DEPLOY.md).
+> Los archivos `docker-compose.prod.yml` / `docker-compose.easypanel.yml` quedan como
+> alternativa para levantar todo el stack en un VPS propio, que es lo que documenta esta guía.
+>
+> La corrección con IA **no usa un orquestador externo**: el backend llama directo a
+> Gemini/OpenRouter con la API key de cada usuario (guardada cifrada con AES-128-CBC (Fernet)).
+
 ## 📋 Pre-requisitos
 
 ### En tu VPS:
@@ -128,14 +138,10 @@ CORS_ORIGINS=["http://TU_IP_O_DOMINIO","https://TU_IP_O_DOMINIO"]
 
 # Frontend - URL del API
 VITE_API_URL=http://TU_IP_O_DOMINIO/api/v1
-
-# N8N - Cambiar credenciales
-N8N_BASIC_AUTH_USER=admin
-N8N_BASIC_AUTH_PASSWORD=tu_contraseña_n8n
-
-# Webhooks
-WEBHOOK_URL=http://TU_IP_O_DOMINIO/n8n
 ```
+
+> La API key de IA (Gemini/OpenRouter) **no se configura acá**: la carga cada usuario desde su
+> perfil y se guarda cifrada con AES-128-CBC (Fernet) usando `ENCRYPTION_KEY`.
 
 ---
 
@@ -165,7 +171,6 @@ Deberías ver todos los servicios como "running" (healthy):
 - active-ia-postgres
 - active-ia-backend
 - active-ia-frontend
-- active-ia-n8n
 - active-ia-nginx
 
 ---
@@ -181,7 +186,6 @@ docker compose -f docker-compose.prod.yml logs -f
 ```bash
 docker compose -f docker-compose.prod.yml logs -f backend
 docker compose -f docker-compose.prod.yml logs -f frontend
-docker compose -f docker-compose.prod.yml logs -f n8n
 docker compose -f docker-compose.prod.yml logs -f postgres
 ```
 
@@ -192,16 +196,12 @@ curl http://localhost/api/v1/health
 
 # Frontend
 curl http://localhost/
-
-# N8N
-curl http://localhost/n8n/healthz
 ```
 
 ### 5.4 Acceder a la aplicación
 Abre tu navegador y ve a:
 - **Frontend**: `http://TU_IP_VPS/`
 - **Backend API**: `http://TU_IP_VPS/api/v1/docs`
-- **N8N**: `http://TU_IP_VPS/n8n/`
 
 ---
 
@@ -363,7 +363,7 @@ docker system prune -a --volumes -f
 docker compose -f docker-compose.prod.yml logs
 
 # Verificar que los puertos no estén ocupados
-netstat -tulpn | grep -E '80|443|5432|5678'
+netstat -tulpn | grep -E '80|443|5432'
 ```
 
 ### Problema: Backend no conecta con PostgreSQL
@@ -387,14 +387,15 @@ docker compose -f docker-compose.prod.yml logs frontend
 docker compose -f docker-compose.prod.yml exec frontend cat /etc/nginx/conf.d/default.conf
 ```
 
-### Problema: N8N no responde
+### Problema: falla la corrección con IA
 ```bash
-# Verificar logs de N8N
-docker compose -f docker-compose.prod.yml logs n8n
-
-# Verificar health
-curl http://localhost/n8n/healthz
+# Ver logs del backend (la llamada a Gemini/OpenRouter sale desde acá)
+docker compose -f docker-compose.prod.yml logs backend
 ```
+Verificá además que:
+- El usuario tenga cargada su API key en el perfil.
+- `ENCRYPTION_KEY` sea la misma con la que se cifró esa API key (si cambia, no se puede descifrar).
+- El VPS tenga salida a internet hacia el proveedor de IA.
 
 ---
 
@@ -450,7 +451,6 @@ Si encuentras problemas durante el deployment, verifica:
 - [ ] Health checks pasando (todos los servicios "healthy")
 - [ ] Frontend accesible desde el navegador
 - [ ] Backend API respondiendo
-- [ ] N8N accesible y configurado
 - [ ] SSL configurado (opcional)
 - [ ] Backups automáticos configurados
 - [ ] Dominio apuntando al VPS (si aplica)

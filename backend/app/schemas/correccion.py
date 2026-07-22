@@ -33,6 +33,36 @@ def _round_to_int(v) -> int:
 RoundedInt = Annotated[int, BeforeValidator(_round_to_int)]
 
 
+class SubcriterioEvaluado(BaseModel):
+    """Schema for an evaluated subcriterion within a correction (API/persistence level).
+
+    Only populated for rubricas `schema_version = 2` (peso-por-subcriterio):
+    the subcriterios desglosan el puntaje del criterio, no lo alteran (el
+    puntaje_obtenido del criterio sigue siendo la suma de sus subcriterios).
+    Uses `Decimal`, coherente con `CriterioEvaluado.puntaje_obtenido`.
+    """
+
+    id: str = Field(..., description="Subcriterion ID from rubric (ej: 'C1.1')")
+    puntaje_obtenido: Decimal = Field(..., ge=0, description="Points obtained")
+    puntaje_maximo: Decimal = Field(..., ge=1, description="Maximum points for subcriterion")
+    estado: Literal["OK", "WARNING", "ERROR"] = Field(..., description="Subcriterion status")
+    feedback: str = Field(..., min_length=1, description="Specific feedback for this subcriterion")
+
+
+class SubcriterioGeminiSchema(BaseModel):
+    """Schema for parsing subcriterion evaluation from the raw Gemini/OpenRouter response.
+
+    Mirrors `CriterioGeminiSchema`: uses `RoundedInt` because the AI sometimes
+    returns decimal scores. Only present for rubricas `schema_version = 2`.
+    """
+
+    id: str = Field(..., description="Subcriterion ID from rubric (ej: 'C1.1')")
+    puntaje_obtenido: RoundedInt = Field(ge=0)
+    puntaje_maximo: RoundedInt = Field(ge=1)
+    estado: Literal["OK", "WARNING", "ERROR"]
+    feedback: str = Field(min_length=1)
+
+
 class CriterioEvaluado(BaseModel):
     """Schema for an evaluated criterion in a correction."""
 
@@ -42,6 +72,13 @@ class CriterioEvaluado(BaseModel):
     puntaje_maximo: Decimal = Field(..., ge=1, description="Maximum points for criterion")
     estado: Literal["OK", "WARNING", "ERROR"] = Field(..., description="Criterion status")
     feedback: str = Field(..., min_length=1, description="Specific feedback for this criterion")
+    subcriterios_evaluados: Optional[list[SubcriterioEvaluado]] = Field(
+        default=None,
+        description=(
+            "Desglose de puntaje por subcriterio (solo rubricas schema_version=2). "
+            "Ausente en correcciones viejas o de rubricas v1 — no rompe el parseo."
+        ),
+    )
 
 
 class CriterioGeminiSchema(BaseModel):
@@ -58,6 +95,13 @@ class CriterioGeminiSchema(BaseModel):
     puntaje_maximo: RoundedInt = Field(ge=1)
     estado: Literal["OK", "WARNING", "ERROR"]
     feedback: str = Field(min_length=1)
+    subcriterios_evaluados: Optional[list[SubcriterioGeminiSchema]] = Field(
+        default=None,
+        description=(
+            "Desglose de puntaje por subcriterio devuelto por la IA (solo "
+            "rubricas schema_version=2). Ausente en v1 o si el modelo lo omite."
+        ),
+    )
 
 
 class GeminiResponse(BaseModel):
@@ -71,20 +115,14 @@ class GeminiResponse(BaseModel):
     fortalezas: list[str] = Field(default_factory=list, description="Strengths identified")
     recomendaciones: list[str] = Field(default_factory=list, description="Recommendations")
     comentario_general: str = Field(..., description="General feedback comment")
+    # IA-010: el modelo marca si detectó un intento de prompt injection en el código.
+    injection_detectada: bool = Field(default=False, description="True if a prompt-injection attempt was detected")
 
-    @field_validator('nota')
-    @classmethod
-    def validate_nota_sum(cls, v, info):
-        """Validate nota matches sum of criteria ONLY when no CD or penalties apply."""
-        has_cd = info.data.get('condicion_desaprobacion_aplicada')
-        has_penalties = info.data.get('penalizaciones_aplicadas')
-        if has_cd or has_penalties:
-            return v
-        if 'criterios' in info.data:
-            suma = sum(c.puntaje_obtenido for c in info.data['criterios'])
-            if abs(v - suma) > 1:
-                return suma
-        return v
+    # IA-008: se eliminó validate_nota_sum. Era código muerto (por el orden de
+    # campos de Pydantic, `criterios` aún no está en info.data cuando corre el
+    # validador de `nota`) y además quedó irrelevante con IA-001: la nota final la
+    # calcula el backend determinísticamente (_nota_deterministica), ignorando la
+    # nota que devuelve el modelo.
 
 
 class CorreccionResponse(BaseModel):
@@ -236,6 +274,30 @@ class CorregirLoteAceptadoResponse(BaseModel):
     mensaje: str = Field(..., description="Status message for the user")
     total_encoladas: int = Field(..., description="Number of submissions queued for correction")
     entrega_ids: list[int] = Field(..., description="IDs of the queued submissions")
+    # SEC-001: el lote se encola SOLO sobre las entregas accesibles. Lo omitido se
+    # informa (default -> contrato aditivo, backend despliega antes que el frontend).
+    omitidas: int = Field(
+        default=0, description="Entregas omitidas por falta de permisos"
+    )
+    entrega_ids_omitidos: list[int] = Field(
+        default_factory=list, description="IDs omitidos por falta de permisos"
+    )
+
+
+class CorreccionAceptadaResponse(BaseModel):
+    """IA-012: respuesta inmediata (202) de la corrección individual asíncrona.
+
+    El endpoint agenda la corrección en background y responde al toque, sin
+    bloquear el request HTTP hasta ~3 min. El frontend pollea el estado de la
+    entrega (PENDIENTE → CORREGIDA/ERROR), igual que con el lote.
+    """
+
+    mensaje: str = Field(..., description="Status message for the user")
+    entrega_id: int = Field(..., description="ID de la entrega en corrección")
+    estado: str = Field(
+        default="PENDIENTE",
+        description="Estado de la entrega tras encolar (PENDIENTE)",
+    )
 
 
 class CorregirGlobalAceptadoResponse(BaseModel):
@@ -255,3 +317,31 @@ class ProgresoGlobalResponse(BaseModel):
     total: int = 0
     # Desglose de las que están en ERROR por código (item #7), para el resumen de la masiva.
     errores_por_codigo: dict[str, int] = {}
+
+
+# ============================================================================
+# CRUD-003: historial de correcciones (versiones reemplazadas al recorregir)
+# ============================================================================
+
+
+class CorreccionHistorialItem(BaseModel):
+    """Una versión histórica de la corrección de una entrega. SIN raw_response."""
+
+    id: int
+    nota: float
+    editado_manualmente: bool
+    comentario_general: str | None
+    corregido_por_nombre: str | None
+    reemplazada_por_nombre: str | None
+    correccion_creada_en: datetime
+    reemplazada_en: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class CorreccionHistorialResponse(BaseModel):
+    """Historial de correcciones de una entrega, de la más reciente a la más vieja."""
+
+    entrega_id: int
+    total_versiones: int
+    versiones: list[CorreccionHistorialItem]

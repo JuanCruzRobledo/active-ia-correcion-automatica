@@ -13,7 +13,11 @@ import toast from 'react-hot-toast';
 import { AxiosError } from 'axios';
 import * as correccionesService from '../services/correcciones-service';
 import { invalidateStoredApiKey } from '@/features/auth/services/auth-service';
+import { entregasKeys } from '@/features/entregas/hooks/useEntregas';
 import type { Correccion, CorreccionUpdate } from '../types';
+// IA-012: corregir/recorregir devuelven 202 (corrección en background); marcamos
+// la entrega en PENDIENTE (optimista) para que arranque el polling de la lista.
+import type { CorreccionAceptadaResponse, EntregaList } from '@/features/entregas/types';
 
 /**
  * Check if an error is a Gemini API Key invalid error (HTTP 402).
@@ -127,23 +131,27 @@ export const useCorreccionByEntrega = (entregaId: number) => {
 export const useCorregirEntrega = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<Correccion, Error, number>({
+  return useMutation<CorreccionAceptadaResponse, Error, number>({
     mutationFn: correccionesService.corregirEntrega,
-    onSuccess: (correccion) => {
-      // Invalidate entregas list to update estado
-      queryClient.invalidateQueries({ queryKey: ['entregas'] });
-
-      // Set the new corrección in cache
-      queryClient.setQueryData(
-        correccionesKeys.detail(correccion.id),
-        correccion
+    onSuccess: (_res, entregaId) => {
+      // IA-012: la corrección corre en background (202). Marcamos la entrega en
+      // PENDIENTE (optimista) para que el polling de la lista la lleve a
+      // CORREGIDA/ERROR. No invalidamos: un refetch inmediato pisaría el PENDIENTE
+      // optimista con el estado aún sin reclamar y frenaría el polling.
+      queryClient.setQueriesData<EntregaList>(
+        { queryKey: entregasKeys.lists() },
+        (old) => {
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: old.items.map((e) =>
+              e.id === entregaId ? { ...e, estado: 'PENDIENTE' } : e
+            ),
+          };
+        }
       );
-      queryClient.setQueryData(
-        correccionesKeys.byEntrega(correccion.entrega_id),
-        correccion
-      );
 
-      toast.success('Entrega corregida exitosamente');
+      toast.success('Corrección iniciada. El estado se actualizará automáticamente.');
     },
     onError: (error) => {
       if (isGeminiApiKeyError(error)) {
@@ -156,54 +164,6 @@ export const useCorregirEntrega = () => {
       }
       const msg = getErrorMessage(error, 'Error al corregir la entrega. Intenta nuevamente.');
       console.error('Error al corregir entrega:', error);
-      toast.error(msg, { duration: 6000 });
-    },
-  });
-};
-
-/**
- * Hook to correct multiple entregas in batch.
- *
- * Invalidates entregas list on success.
- *
- * @returns Mutation hook for batch correction
- */
-export const useCorregirEntregasLote = () => {
-  const queryClient = useQueryClient();
-
-  return useMutation<Correccion[], Error, number[]>({
-    mutationFn: correccionesService.corregirEntregasLote,
-    onSuccess: (correcciones) => {
-      // Invalidate entregas list to update estados
-      queryClient.invalidateQueries({ queryKey: ['entregas'] });
-
-      // Set each corrección in cache
-      correcciones.forEach((correccion) => {
-        queryClient.setQueryData(
-          correccionesKeys.detail(correccion.id),
-          correccion
-        );
-        queryClient.setQueryData(
-          correccionesKeys.byEntrega(correccion.entrega_id),
-          correccion
-        );
-      });
-
-      toast.success(
-        `${correcciones.length} entrega(s) corregida(s) exitosamente`
-      );
-    },
-    onError: (error) => {
-      if (isGeminiApiKeyError(error)) {
-        handleGeminiApiKeyError(queryClient);
-        return;
-      }
-      if (isGeminiRateLimitError(error)) {
-        handleGeminiRateLimitError();
-        return;
-      }
-      const msg = getErrorMessage(error, 'Error al corregir las entregas. Intenta nuevamente.');
-      console.error('Error al corregir entregas en lote:', error);
       toast.error(msg, { duration: 6000 });
     },
   });
@@ -237,8 +197,8 @@ export const useUpdateCorreccion = () => {
         updatedCorreccion
       );
 
-      // Invalidate entregas list to show "editado_manualmente"
-      queryClient.invalidateQueries({ queryKey: ['entregas'] });
+      // PERF-018: solo las listas (para mostrar "editado_manualmente").
+      queryClient.invalidateQueries({ queryKey: entregasKeys.lists() });
 
       toast.success('Corrección actualizada exitosamente');
     },
@@ -259,23 +219,26 @@ export const useUpdateCorreccion = () => {
 export const useRecorregirEntrega = () => {
   const queryClient = useQueryClient();
 
-  return useMutation<Correccion, Error, number>({
+  return useMutation<CorreccionAceptadaResponse, Error, number>({
     mutationFn: correccionesService.recorregirEntrega,
-    onSuccess: (correccion) => {
-      // Invalidate entregas list
-      queryClient.invalidateQueries({ queryKey: ['entregas'] });
-
-      // Update corrección in cache
-      queryClient.setQueryData(
-        correccionesKeys.detail(correccion.id),
-        correccion
+    onSuccess: (_res, entregaId) => {
+      // IA-012: la re-corrección corre en background (202). Marcamos PENDIENTE
+      // (optimista) para que el polling la lleve a CORREGIDA/ERROR (ver comentario
+      // en useCorregirEntrega sobre por qué no invalidamos acá).
+      queryClient.setQueriesData<EntregaList>(
+        { queryKey: entregasKeys.lists() },
+        (old) => {
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: old.items.map((e) =>
+              e.id === entregaId ? { ...e, estado: 'PENDIENTE' } : e
+            ),
+          };
+        }
       );
-      queryClient.setQueryData(
-        correccionesKeys.byEntrega(correccion.entrega_id),
-        correccion
-      );
 
-      toast.success('Entrega re-corregida exitosamente');
+      toast.success('Re-corrección iniciada. El estado se actualizará automáticamente.');
     },
     onError: (error) => {
       if (isGeminiApiKeyError(error)) {

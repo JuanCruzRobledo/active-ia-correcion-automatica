@@ -24,6 +24,7 @@ from app.models.base import async_session_maker
 logger = logging.getLogger(__name__)
 
 
+from app.core.config import settings
 from app.core.error_catalog import (
     ERROR_API_KEY_INVALID,
     ERROR_IA_RESPUESTA_INVALIDA,
@@ -46,14 +47,19 @@ from app.core.exceptions import (
 from app.core.security import decrypt_api_key
 from app.integrations import openrouter_client
 from app.integrations.gemini_correction_client import GeminiCorrectionClient
-from app.models.correccion import Correccion
-from app.models.enums import EstadoEntregaEnum
+from app.models.correccion import Correccion, CorreccionHistorial
+from app.models.enums import EstadoEntregaEnum, TipoActividadEnum
+from app.repositories.correccion_historial_repository import (
+    CorreccionHistorialRepository,
+)
 from app.repositories.correccion_repository import CorreccionRepository
 from app.repositories.entrega_repository import EntregaRepository
 from app.repositories.rubrica_repository import RubricaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.correccion import (
     CorreccionCreate,
+    CorreccionHistorialItem,
+    CorreccionHistorialResponse,
     CorreccionListItem,
     CorreccionResponse,
     CorreccionUpdate,
@@ -61,6 +67,161 @@ from app.schemas.correccion import (
     CorregirLoteResponse,
     GeminiResponse,
 )
+from app.services.actividad_service import ActividadService
+
+
+def _problemas_respuesta_vs_rubrica(criterios_resp, rubrica) -> list[str]:
+    """IA-007: valida la respuesta del LLM contra la rúbrica. Devuelve la lista de
+    problemas (vacía = coherente): criterios faltantes/inventados, puntaje_maximo
+    distinto del peso del criterio, o puntaje_obtenido fuera de [0, maximo].
+
+    Si algún criterio de la respuesta viene sin id (caso PDF), NO se valida el set de
+    ids ni el peso (no hay con qué matchear), pero SÍ se validan los rangos siempre.
+    """
+    problemas: list[str] = []
+
+    # Rangos: siempre.
+    for c in criterios_resp:
+        obt = float(c.puntaje_obtenido)
+        maxi = float(c.puntaje_maximo)
+        if obt < 0 or obt > maxi:
+            problemas.append(
+                f"criterio {getattr(c, 'id', None)}: puntaje {obt} fuera de [0, {maxi}]"
+            )
+
+    rubrica_crits = {
+        c.get("id"): c for c in (getattr(rubrica, "criterios_json", None) or []) if c.get("id")
+    }
+    ids_resp = [getattr(c, "id", None) for c in criterios_resp]
+
+    # Set de ids + peso: solo si tanto la rúbrica como la respuesta tienen ids.
+    if rubrica_crits and all(ids_resp):
+        esperados = set(rubrica_crits.keys())
+        recibidos = set(ids_resp)
+        faltan = esperados - recibidos
+        sobran = recibidos - esperados
+        if faltan:
+            problemas.append(f"criterios faltantes en la respuesta: {sorted(faltan)}")
+        if sobran:
+            problemas.append(f"criterios inventados por el modelo: {sorted(sobran)}")
+        for c in criterios_resp:
+            rc = rubrica_crits.get(c.id)
+            if rc is not None and rc.get("peso") is not None:
+                if float(c.puntaje_maximo) != float(rc["peso"]):
+                    problemas.append(
+                        f"criterio {c.id}: puntaje_maximo {c.puntaje_maximo} "
+                        f"!= peso de la rúbrica {rc['peso']}"
+                    )
+    return problemas
+
+
+def _metricas_ia(result) -> dict:
+    """IA-014: extrae el consumo (tokens in/out, modelo, proveedor) de la metadata de
+    la respuesta del LLM, para persistirlo en columnas queryables de la corrección en
+    vez de dejarlo enterrado solo en raw_response (JSONB deferred)."""
+    meta = (result or {}).get("metadata") or {}
+    return {
+        "tokens_entrada": meta.get("tokens_entrada"),
+        "tokens_salida": meta.get("tokens_salida"),
+        "ia_modelo": meta.get("modelo"),
+        "ia_proveedor": meta.get("modo"),
+    }
+
+
+def _truncar_codigo(codigo, limite: int):
+    """IA-015: capa el código consolidado a `limite` caracteres antes de mandarlo al
+    LLM, con un marcador de corte. None y códigos por debajo del límite pasan igual."""
+    if codigo is None or len(codigo) <= limite:
+        return codigo
+    marcador = (
+        f"\n\n... [código truncado: superó el límite de {limite} caracteres; "
+        "se corrige solo la primera parte] ..."
+    )
+    return codigo[:limite] + marcador
+
+
+def _techo_de_condicion(rubrica, cd_id) -> int | None:
+    """IA-001: techo (nota_maxima) de una condición de desaprobación, tomado de la
+    RÚBRICA (fuente autoritativa), no del modelo. None si no hay id o no existe en
+    la rúbrica (el modelo pudo alucinar un id)."""
+    if not cd_id:
+        return None
+    for cd in (getattr(rubrica, "condiciones_desaprobacion_json", None) or []):
+        if cd.get("id") == cd_id:
+            return cd.get("nota_maxima")
+    return None
+
+
+def _penalizaciones_validas(rubrica, ids) -> list[str]:
+    """IA-001: filtra las penalizaciones informadas por el modelo a las que existen
+    en la rúbrica (defensa contra ids alucinados). No alteran la nota (ya están en
+    los criterios); son solo auditoría/display."""
+    validos = {p.get("id") for p in (getattr(rubrica, "penalizaciones_json", None) or [])}
+    return [i for i in (ids or []) if i in validos]
+
+
+def _nota_deterministica(criterios_evaluados, gemini_response, rubrica):
+    """IA-001: calcula la nota final en el BACKEND, no confía en la aritmética del
+    modelo. Devuelve (nota_final, nota_antes_penalizaciones, condicion_aplicada,
+    penalizaciones_aplicadas).
+
+    - suma = sum(criterios) (ya refleja las penalizaciones, que el prompt aplica
+      reduciendo el puntaje del criterio afectado).
+    - si el modelo señaló una CD que existe en la rúbrica: nota = min(suma, techo),
+      con techo tomado de la rúbrica; nota_antes = suma (para mostrar el sin-capar).
+    - si no hay CD (o el id es alucinado): nota = suma, nota_antes = None.
+    """
+    from decimal import Decimal as _Dec
+
+    suma = _Dec(str(sum(float(c.puntaje_obtenido) for c in criterios_evaluados)))
+    cd_id = getattr(gemini_response, "condicion_desaprobacion_aplicada", None)
+    techo = _techo_de_condicion(rubrica, cd_id)
+
+    if techo is not None:
+        condicion_aplicada = cd_id
+        nota_antes = suma
+        nota_final = min(suma, _Dec(str(techo)))
+    else:
+        condicion_aplicada = None
+        nota_antes = None
+        nota_final = suma
+
+    penalizaciones = _penalizaciones_validas(
+        rubrica, getattr(gemini_response, "penalizaciones_aplicadas", None)
+    )
+    return nota_final, nota_antes, condicion_aplicada, penalizaciones
+
+
+def _snapshot_de_correccion(
+    c: Correccion, reemplazada_por_id: int | None
+) -> CorreccionHistorial:
+    """
+    CRUD-003: foto de una corrección saliente antes de reemplazarla al recorregir.
+
+    Copia por VALOR: el CorreccionHistorial resultante NO depende de que `c` siga
+    viva en la sesión tras el delete. Requiere que `raw_response` ya esté cargada
+    (get_by_entrega_id(load_raw=True)) porque es deferred.
+
+    Preserva `editado_manualmente` (lo más importante ante un reclamo académico) y
+    usa el `created_at` original como `correccion_creada_en` ("cuándo se calificó
+    por primera vez", no cuándo se archivó).
+    """
+    return CorreccionHistorial(
+        entrega_id=c.entrega_id,
+        nota=c.nota,
+        criterios_json=c.criterios_json,
+        fortalezas=c.fortalezas,
+        recomendaciones=c.recomendaciones,
+        comentario_general=c.comentario_general,
+        nota_antes_penalizaciones=c.nota_antes_penalizaciones,
+        condicion_desaprobacion_aplicada=c.condicion_desaprobacion_aplicada,
+        penalizaciones_aplicadas=c.penalizaciones_aplicadas,
+        editado_manualmente=c.editado_manualmente,
+        raw_response=c.raw_response,
+        corregido_por_id=c.corregido_por_id,
+        correccion_creada_en=c.created_at,
+        reemplazada_por_id=reemplazada_por_id,
+    )
 
 
 def _marcar_entrega_error(entrega, code: str, provider: str = "gemini") -> None:
@@ -83,6 +244,31 @@ def _limpiar_entrega_error(entrega) -> None:
     entrega.error_at = None
 
 
+def _subcriterios_para_json(subcriterios) -> list[dict] | None:
+    """Serializa `subcriterios_evaluados` para `criterios_json` (JSONB).
+
+    Convierte los Decimal de puntaje a float (igual que se hace al nivel de
+    criterio) para que el dict sea JSON-serializable. Devuelve None si no hay
+    desglose (rubricas v1 o corrección vieja) — no se persiste una lista vacía
+    ni una clave con valor engañoso.
+    """
+    if not subcriterios:
+        return None
+    resultado = []
+    for sub in subcriterios:
+        sub_dict = dict(sub) if isinstance(sub, dict) else sub
+        resultado.append(
+            {
+                "id": sub_dict["id"],
+                "puntaje_obtenido": float(sub_dict["puntaje_obtenido"]),
+                "puntaje_maximo": float(sub_dict["puntaje_maximo"]),
+                "estado": sub_dict["estado"],
+                "feedback": sub_dict["feedback"],
+            }
+        )
+    return resultado
+
+
 class CorreccionService:
     """Service for AI-powered correction operations."""
 
@@ -95,6 +281,7 @@ class CorreccionService:
         """
         self.db = db
         self.correccion_repo = CorreccionRepository(db)
+        self.correccion_historial_repo = CorreccionHistorialRepository(db)
         self.entrega_repo = EntregaRepository(db)
         self.rubrica_repo = RubricaRepository(db)
         self.usuario_repo = UsuarioRepository(db)
@@ -125,8 +312,12 @@ class CorreccionService:
             HTTPException 400: Invalid entrega state or missing data.
             HTTPException 502: N8N/Gemini error.
         """
-        # Get entrega with relations
-        entrega = await self.entrega_repo.get_by_id_with_relations(entrega_id)
+        # Get entrega with relations. load_contenido=True: la corrección arma el payload
+        # para la IA leyendo contenido_consolidado / pdf_contenido_b64 (columnas deferidas
+        # por PERF-002/PERF-006), así que hay que cargarlas con undefer en esta query.
+        entrega = await self.entrega_repo.get_by_id_with_relations(
+            entrega_id, load_contenido=True
+        )
         if not entrega:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -169,10 +360,15 @@ class CorreccionService:
         # Decrypt API key
         try:
             api_key = decrypt_api_key(api_key_encrypted)
-        except Exception as e:
+        except Exception:
+            # No exponemos el detalle de crypto al cliente (posible rotación de
+            # ENCRYPTION_KEY): va al log; el usuario recibe un mensaje accionable.
+            logger.exception(
+                "Error al desencriptar la API Key del usuario %s", corregido_por_id
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Error al desencriptar API Key: {str(e)}",
+                detail="No se pudo procesar tu API Key. Reconfigurala en tu perfil.",
             )
 
         # Build payload for N8N and call appropriate webhook before updating state
@@ -182,17 +378,33 @@ class CorreccionService:
         else:
             payload = self._build_correction_payload(entrega, rubrica, api_key)
 
-        # Update entrega state to PENDIENTE
-        entrega.estado = EstadoEntregaEnum.PENDIENTE
-        await self.entrega_repo.update(entrega)
+        # IA-003: reclamo ATÓMICO en vez de un set no atómico. Evita que un doble
+        # click / retry / lote con la misma entrega dispare DOS llamadas al LLM: el
+        # segundo request concurrente no reclama y recibe 409 (sin gastar tokens).
+        if not await self.entrega_repo.reclamar_para_correccion(entrega_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Esta entrega ya está siendo corregida (en proceso). Esperá a que termine.",
+            )
+        entrega.estado = EstadoEntregaEnum.PENDIENTE  # reflejar en memoria
 
         # Call the appropriate AI provider directly (Gemini or OpenRouter)
+        provider_efectivo = provider
         try:
             if entrega.archivo_tipo == "pdf":
                 result = await self._call_ia_pdf_with_retry(payload)
             else:
-                result = await self._call_ia_with_retry(payload, provider=provider)
+                # IA-002: failover acotado. Ante error recuperable del primario y con
+                # key válida del secundario, cae al otro proveedor. provider_efectivo
+                # refleja quién generó REALMENTE la corrección (se persiste abajo).
+                result, provider_efectivo = await self._corregir_codigo_con_failover(
+                    payload, entrega, rubrica, provider, corregido_por_id
+                )
         except N8NTimeoutError:
+            logger.warning(
+                f"Timeout de {provider} corrigiendo entrega {entrega_id}",
+                exc_info=True,
+            )
             _marcar_entrega_error(entrega, ERROR_N8N_TIMEOUT, provider)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
@@ -262,36 +474,110 @@ class CorreccionService:
                 },
             )
         except N8NError as e:
+            # El str(e) puede traer el body crudo del proveedor: va SOLO al log.
+            logger.warning(
+                f"Error del proveedor {provider} corrigiendo entrega {entrega_id}: {e}",
+                exc_info=True,
+            )
             _marcar_entrega_error(entrega, ERROR_N8N, provider)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"{mensaje_error(ERROR_N8N, provider)} ({str(e)})",
+                detail=mensaje_error(ERROR_N8N, provider),
             )
 
         # Parse and validate Gemini response
         try:
             gemini_response = self._parse_gemini_response(result)
         except ValidationError as e:
+            # El detalle de validación Pydantic (potencialmente enorme) va SOLO al log.
+            logger.warning(
+                f"Respuesta inválida de {provider} corrigiendo entrega {entrega_id}: {e.message}",
+                exc_info=True,
+            )
             _marcar_entrega_error(entrega, ERROR_IA_RESPUESTA_INVALIDA, provider)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"{mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, provider)} ({e.message})",
+                detail=mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, provider),
             )
 
-        # Check if correction already exists (re-correction case)
+        # IA-010: el modelo marcó un intento de prompt injection en el código. Se
+        # registra prominente para revisión humana del tutor (la corrección con nota 0
+        # se persiste igual, pero queda el aviso en el log).
+        if getattr(gemini_response, "injection_detectada", False):
+            logger.warning(
+                "IA-010: posible PROMPT INJECTION detectado en la entrega %s "
+                "(provider=%s). Revisar manualmente.",
+                entrega_id, provider,
+            )
+
+        # IA-007: validar la respuesta contra la RÚBRICA antes de persistir. Una
+        # alucinación (criterio faltante/inventado, peso cambiado, puntaje inflado) no
+        # debe guardarse como corrección válida.
+        problemas = _problemas_respuesta_vs_rubrica(gemini_response.criterios, rubrica)
+        if problemas:
+            logger.warning(
+                "IA-007: respuesta de %s divergente de la rúbrica (entrega %s): %s",
+                provider, entrega_id, problemas,
+            )
+            _marcar_entrega_error(entrega, ERROR_IA_RESPUESTA_INVALIDA, provider)
+            await self.entrega_repo.update(entrega)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, provider),
+            )
+
+        # Check if correction already exists (re-correction case).
+        # CRUD-003: load_raw=True para poder snapshotear el crudo ANTES del delete.
         existing_correccion = await self.correccion_repo.get_by_entrega_id(
-            entrega_id
+            entrega_id, load_raw=True
         )
 
         if existing_correccion:
-            # Delete old correction (hard delete for re-correction)
+            # CRUD-003: versionar la corrección saliente antes de destruirla, para
+            # poder reconstruir la nota anterior ante un reclamo. El snapshot se
+            # construye leyendo los campos AHORA (existing está vivo), después se
+            # borra, después se persiste — así el delete no expira datos que aún
+            # necesito (evita MissingGreenlet en async).
+            nota_anterior = existing_correccion.nota
+            snapshot = _snapshot_de_correccion(
+                existing_correccion, reemplazada_por_id=corregido_por_id
+            )
             await self.correccion_repo.delete(existing_correccion)
+            await self.correccion_historial_repo.create(snapshot)
+
+            await ActividadService(self.db).registrar_actividad(
+                tipo=TipoActividadEnum.CORRECCION_RECORREGIDA,
+                descripcion=(
+                    f"Recorrección de la entrega {entrega_id} "
+                    f"(nota anterior: {nota_anterior})"
+                ),
+                entidad_id=entrega_id,
+                entidad_nombre=f"entrega {entrega_id}",
+                usuario_id=corregido_por_id,
+            )
 
         # Convert CriterioGeminiSchema to CriterioEvaluado
-        from app.schemas.correccion import CriterioEvaluado
+        from app.schemas.correccion import CriterioEvaluado, SubcriterioEvaluado
         from decimal import Decimal as Dec
+
+        def _subcriterios_evaluados_de(c) -> list[SubcriterioEvaluado] | None:
+            """Convierte subcriterios_evaluados (RoundedInt, nivel Gemini) a
+            SubcriterioEvaluado (Decimal, nivel API/persistencia). Ausente en
+            rubricas v1 o si la IA lo omite — no rompe el parseo (D6)."""
+            if not c.subcriterios_evaluados:
+                return None
+            return [
+                SubcriterioEvaluado(
+                    id=sub.id,
+                    puntaje_obtenido=Dec(str(sub.puntaje_obtenido)),
+                    puntaje_maximo=Dec(str(sub.puntaje_maximo)),
+                    estado=sub.estado,
+                    feedback=sub.feedback,
+                )
+                for sub in c.subcriterios_evaluados
+            ]
 
         criterios_evaluados = [
             CriterioEvaluado(
@@ -300,22 +586,27 @@ class CorreccionService:
                 puntaje_obtenido=Dec(str(c.puntaje_obtenido)),
                 puntaje_maximo=Dec(str(c.puntaje_maximo)),
                 estado=c.estado,
-                feedback=c.feedback
+                feedback=c.feedback,
+                subcriterios_evaluados=_subcriterios_evaluados_de(c),
             )
             for i, c in enumerate(gemini_response.criterios)
         ]
 
+        # IA-001: la nota final la calcula el BACKEND determinísticamente
+        # (min(suma, techo) con el techo de la RÚBRICA), no se confía en la
+        # aritmética del modelo ni en gemini_response.nota. El modelo solo identifica
+        # qué condición de desaprobación se cumple.
+        nota_final, nota_antes, condicion_aplicada, penalizaciones = _nota_deterministica(
+            criterios_evaluados, gemini_response, rubrica
+        )
+
         # Create new correction
         correccion_data = CorreccionCreate(
             entrega_id=entrega_id,
-            nota=Decimal(str(gemini_response.nota)),
-            nota_antes_penalizaciones=(
-                Decimal(str(gemini_response.nota_antes_penalizaciones))
-                if gemini_response.nota_antes_penalizaciones is not None
-                else None
-            ),
-            condicion_desaprobacion_aplicada=gemini_response.condicion_desaprobacion_aplicada,
-            penalizaciones_aplicadas=gemini_response.penalizaciones_aplicadas,
+            nota=nota_final,
+            nota_antes_penalizaciones=nota_antes,
+            condicion_desaprobacion_aplicada=condicion_aplicada,
+            penalizaciones_aplicadas=penalizaciones,
             criterios=criterios_evaluados,
             fortalezas=gemini_response.fortalezas,
             recomendaciones=gemini_response.recomendaciones,
@@ -334,13 +625,21 @@ class CorreccionService:
             criterio_dict = dict(c) if isinstance(c, dict) else c
             criterio_dict['puntaje_obtenido'] = float(criterio_dict['puntaje_obtenido'])
             criterio_dict['puntaje_maximo'] = float(criterio_dict['puntaje_maximo'])
+            criterio_dict['subcriterios_evaluados'] = _subcriterios_para_json(
+                criterio_dict.get('subcriterios_evaluados')
+            )
             criterios_for_json.append(criterio_dict)
 
         data_dict['criterios_json'] = {
             "criterios": criterios_for_json  # Store as JSON structure with float values
         }
 
-        correccion = Correccion(**data_dict)
+        # IA-014: persistir el consumo (tokens/modelo/proveedor) en columnas propias.
+        # IA-002: ia_proveedor = el proveedor que REALMENTE generó la corrección
+        # (puede diferir del elegido si hubo failover).
+        metricas = _metricas_ia(result)
+        metricas["ia_proveedor"] = provider_efectivo
+        correccion = Correccion(**data_dict, **metricas)
         created_correccion = await self.correccion_repo.create(correccion)
 
         # Update entrega state to CORREGIDA y limpiar cualquier error previo (item #1).
@@ -440,6 +739,9 @@ class CorreccionService:
                     "puntaje_maximo": float(c["puntaje_maximo"]),
                     "estado": c["estado"],
                     "feedback": c["feedback"],
+                    "subcriterios_evaluados": _subcriterios_para_json(
+                        c.get("subcriterios_evaluados")
+                    ),
                 }
                 for c in criterios_list
             ]
@@ -519,6 +821,36 @@ class CorreccionService:
 
         return await self._build_correccion_response(correccion)
 
+    async def obtener_historial_correcciones(
+        self, entrega_id: int
+    ) -> CorreccionHistorialResponse:
+        """
+        CRUD-003: versiones históricas de las correcciones de una entrega (las que
+        fueron reemplazadas al recorregir), de la más reciente a la más vieja.
+        NO expone raw_response (forense). Lista vacía si nunca se recorrigió.
+        """
+        versiones = await self.correccion_historial_repo.list_by_entrega(entrega_id)
+        items = [
+            CorreccionHistorialItem(
+                id=v.id,
+                nota=float(v.nota),
+                editado_manualmente=v.editado_manualmente,
+                comentario_general=v.comentario_general,
+                corregido_por_nombre=v.corregido_por.nombre if v.corregido_por else None,
+                reemplazada_por_nombre=(
+                    v.reemplazada_por.nombre if v.reemplazada_por else None
+                ),
+                correccion_creada_en=v.correccion_creada_en,
+                reemplazada_en=v.reemplazada_en,
+            )
+            for v in versiones
+        ]
+        return CorreccionHistorialResponse(
+            entrega_id=entrega_id,
+            total_versiones=len(items),
+            versiones=items,
+        )
+
     def _build_correction_payload(
         self,
         entrega: Any,
@@ -540,6 +872,8 @@ class CorreccionService:
         """
         # Use contenido_consolidado if available, fallback to preview for old entregas
         codigo = entrega.contenido_consolidado or entrega.contenido_preview
+        # IA-015: capar el tamaño del código antes de mandarlo al LLM.
+        codigo = _truncar_codigo(codigo, settings.MAX_CODIGO_CORRECCION_CHARS)
 
         return {
             "codigo": codigo,
@@ -552,6 +886,7 @@ class CorreccionService:
                 "criterios": rubrica.criterios_json or [],
                 "penalizaciones": rubrica.penalizaciones_json or [],
                 "condiciones_desaprobacion": rubrica.condiciones_desaprobacion_json or [],
+                "schema_version": rubrica.schema_version,
             },
             "api_key": api_key,
             "contexto": {
@@ -592,6 +927,7 @@ class CorreccionService:
                 "criterios": rubrica.criterios_json or [],
                 "penalizaciones": rubrica.penalizaciones_json or [],
                 "condiciones_desaprobacion": rubrica.condiciones_desaprobacion_json or [],
+                "schema_version": rubrica.schema_version,
             },
             "api_key": api_key,
             "contexto": {
@@ -647,6 +983,14 @@ class CorreccionService:
                     continue
                 raise
 
+            except ModelOverloadedError:
+                # IA-009: 503 (modelo sobrecargado) es transitorio -> reintentar con
+                # backoff, igual que el timeout. Antes se caía al primer intento.
+                if attempt < max_retries:
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                raise
+
             except N8NError as e:
                 if attempt < max_retries:
                     await asyncio.sleep(2 ** attempt)
@@ -655,6 +999,79 @@ class CorreccionService:
 
         # Should not reach here
         raise N8NError("Error inesperado en reintentos")
+
+    @staticmethod
+    def _otro_provider(provider: str) -> str:
+        """IA-002: el proveedor opuesto, para el failover acotado."""
+        return "gemini" if provider == "openrouter" else "openrouter"
+
+    async def _credencial_secundaria(
+        self, corregido_por_id: int, secundario: str
+    ) -> str | None:
+        """IA-002: API key desencriptada del proveedor secundario, SOLO si el tutor
+        la tiene configurada y marcada como válida. Devuelve None si no hay failover
+        posible (sin key o key inválida), en cuyo caso el error del primario se propaga.
+        """
+        usuario = await self.usuario_repo.get_by_id(corregido_por_id)
+        if not usuario:
+            return None
+        if secundario == "openrouter":
+            enc = getattr(usuario, "openrouter_api_key_encrypted", None)
+            valida = getattr(usuario, "openrouter_api_key_valid", False)
+        else:
+            enc = getattr(usuario, "gemini_api_key_encrypted", None)
+            valida = getattr(usuario, "gemini_api_key_valid", False)
+        if not enc or not valida:
+            return None
+        try:
+            return decrypt_api_key(enc)
+        except Exception:
+            logger.exception(
+                "IA-002: no se pudo desencriptar la key secundaria (%s) del usuario %s",
+                secundario,
+                corregido_por_id,
+            )
+            return None
+
+    async def _corregir_codigo_con_failover(
+        self,
+        payload_primario: dict[str, Any],
+        entrega: Any,
+        rubrica: Any,
+        provider: str,
+        corregido_por_id: int,
+    ) -> tuple[dict[str, Any], str]:
+        """IA-002: corrige código con failover ACOTADO entre proveedores.
+
+        Intenta el proveedor primario; ante un error RECUPERABLE (timeout / 503 / 5xx)
+        y solo si el tutor tiene key válida del secundario, cae al otro proveedor.
+        Ante errores NO recuperables (401/403 key inválida, 402 sin créditos, 429 rate
+        limit) o sin secundario válido, re-lanza el error del primario tal cual.
+
+        Solo aplica a código: la corrección de PDF es Gemini-only (OpenRouter no la
+        soporta), así que ese camino no pasa por acá.
+
+        Returns:
+            (result, provider_efectivo): la respuesta cruda y qué proveedor la generó.
+        """
+        try:
+            result = await self._call_ia_with_retry(payload_primario, provider=provider)
+            return result, provider
+        except (N8NTimeoutError, ModelOverloadedError, N8NError):
+            secundario = self._otro_provider(provider)
+            api_key_sec = await self._credencial_secundaria(corregido_por_id, secundario)
+            if api_key_sec is None:
+                # Sin secundario válido: el failover no aplica, propaga el error real.
+                raise
+            logger.warning(
+                "IA-002: failover %s -> %s corrigiendo entrega %s (error recuperable del primario)",
+                provider,
+                secundario,
+                getattr(entrega, "id", "?"),
+            )
+            payload_sec = self._build_correction_payload(entrega, rubrica, api_key_sec)
+            result = await self._call_ia_with_retry(payload_sec, provider=secundario)
+            return result, secundario
 
     async def _call_ia_pdf_with_retry(
         self,
@@ -695,6 +1112,14 @@ class CorreccionService:
             except N8NTimeoutError:
                 if attempt < max_retries:
                     await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                    continue
+                raise
+
+            except ModelOverloadedError:
+                # IA-009: 503 (modelo sobrecargado) es transitorio -> reintentar con
+                # backoff, igual que el timeout. Antes se caía al primer intento.
+                if attempt < max_retries:
+                    await asyncio.sleep(2 ** attempt)
                     continue
                 raise
 
@@ -839,8 +1264,15 @@ async def procesar_lote_background(
                         fallidas += 1
                         stop_batch = True
                         remaining = len(entrega_ids) - exitosas - fallidas
+                        # 402 puede ser API_KEY_INVALID o SIN_CREDITOS (OpenRouter):
+                        # logueamos el error_code real para no confundir el diagnóstico.
+                        error_code = (
+                            e.detail.get("error_code")
+                            if isinstance(e.detail, dict)
+                            else e.detail
+                        )
                         logger.error(
-                            f"[BG] API Key inválida. Deteniendo lote. "
+                            f"[BG] Lote detenido por 402 ({error_code}). "
                             f"{remaining} entregas no procesadas."
                         )
                         break
@@ -885,6 +1317,45 @@ async def procesar_lote_background(
     logger.info(
         f"[BG] Corrección masiva finalizada: {exitosas} exitosas, {fallidas} fallidas"
     )
+
+
+async def procesar_individual_background(
+    entrega_id: int,
+    api_key_encrypted: str,
+    corregido_por_id: int,
+    provider: str = "gemini",
+) -> None:
+    """IA-012: corrige UNA entrega en background, después de que la respuesta 202 ya
+    salió. Antes la corrección corría dentro del request (await directo), bloqueándolo
+    hasta ~3 min (timeout + reintento) y dejando la entrega colgada en PENDIENTE si el
+    browser se cerraba a mitad.
+
+    Crea su propia sesión (la del request ya está cerrada) y reusa corregir_individual
+    tal cual (validación + reclamo atómico IA-003 + failover IA-002 + persistencia). Los
+    errores se loguean y NO se propagan: el estado de la entrega ya quedó en CORREGIDA o
+    ERROR, y el frontend lo descubre por polling.
+    """
+    async with async_session_maker() as db:
+        service = CorreccionService(db)
+        try:
+            await service.corregir_individual(
+                entrega_id=entrega_id,
+                api_key_encrypted=api_key_encrypted,
+                corregido_por_id=corregido_por_id,
+                provider=provider,
+            )
+            logger.info("[BG] Entrega %s corregida (individual async)", entrega_id)
+        except HTTPException as e:
+            logger.warning(
+                "[BG] Error corrigiendo entrega %s (individual async): %s",
+                entrega_id,
+                e.detail,
+            )
+        except Exception:
+            logger.exception(
+                "[BG] Error inesperado corrigiendo entrega %s (individual async)",
+                entrega_id,
+            )
 
 
 async def procesar_global_background(

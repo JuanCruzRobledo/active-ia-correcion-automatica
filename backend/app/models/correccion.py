@@ -8,7 +8,9 @@ Ref: docs/specs/06-MODELO-DATOS.md seccion 3.8
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ARRAY, ForeignKey, Numeric, Text
+from datetime import datetime
+
+from sqlalchemy import ARRAY, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -92,14 +94,28 @@ class Correccion(Base, TimestampMixin):
     editado_manualmente: Mapped[bool] = mapped_column(
         default=False,
     )
+    # PERF-006: respuesta cruda de Gemini (JSONB grande). Sólo se ESCRIBE al crear la
+    # corrección; ningún schema de respuesta la serializa, así que no se lee nunca en la
+    # app → deferred=True para que no se arrastre en cada select(Correccion) (listados de
+    # correcciones, PDF, Moodle). Si algún día hace falta leerla, cargar con
+    # undefer(Correccion.raw_response) en esa query puntual.
     raw_response: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB,
         nullable=True,
+        deferred=True,
     )
     corregido_por_id: Mapped[int | None] = mapped_column(
         ForeignKey("usuarios.id"),
         nullable=True,
     )
+
+    # IA-014: consumo de la corrección, en columnas queryables (antes solo vivían en
+    # raw_response.metadata, JSONB deferred, sin agregación posible). Nullable: las
+    # correcciones viejas no los tienen.
+    tokens_entrada: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_salida: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ia_modelo: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    ia_proveedor: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Relationships
     entrega: Mapped["Entrega"] = relationship(
@@ -121,3 +137,72 @@ class Correccion(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<Correccion(id={self.id}, entrega_id={self.entrega_id}, nota={self.nota})>"
+
+
+class CorreccionHistorial(Base):
+    """
+    CRUD-003: snapshot append-only de una corrección reemplazada al recorregir.
+
+    El unique(entrega_id) de Correccion impide dejar la vieja soft-deleted, así que
+    se saca una foto acá ANTES de borrarla. Preserva la nota, los criterios, el
+    feedback y sobre todo `editado_manualmente` (lo más importante ante un reclamo
+    académico: "me habían puesto un 8 y ahora figura un 4").
+    """
+
+    __tablename__ = "correccion_historial"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    entrega_id: Mapped[int] = mapped_column(
+        ForeignKey("entregas.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    nota: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    criterios_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    fortalezas: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), default=list, server_default="{}"
+    )
+    recomendaciones: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), default=list, server_default="{}"
+    )
+    comentario_general: Mapped[str | None] = mapped_column(Text, nullable=True)
+    nota_antes_penalizaciones: Mapped[Decimal | None] = mapped_column(
+        Numeric(5, 2), nullable=True
+    )
+    condicion_desaprobacion_aplicada: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    penalizaciones_aplicadas: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), default=list, server_default="{}"
+    )
+    editado_manualmente: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Forense, grande: deferred para no arrastrarla en el listado del historial.
+    raw_response: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True, deferred=True
+    )
+    corregido_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Metadatos del versionado
+    # created_at ORIGINAL de la corrección vieja ("cuándo se calificó por primera vez").
+    correccion_creada_en: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    reemplazada_en: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, nullable=False
+    )
+    reemplazada_por_id: Mapped[int | None] = mapped_column(
+        ForeignKey("usuarios.id", ondelete="SET NULL"), nullable=True
+    )
+
+    corregido_por: Mapped["Usuario | None"] = relationship(
+        "Usuario", foreign_keys=[corregido_por_id]
+    )
+    reemplazada_por: Mapped["Usuario | None"] = relationship(
+        "Usuario", foreign_keys=[reemplazada_por_id]
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CorreccionHistorial(id={self.id}, entrega_id={self.entrega_id}, "
+            f"nota={self.nota}, reemplazada_en={self.reemplazada_en})>"
+        )

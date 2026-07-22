@@ -33,7 +33,7 @@
 | Database | PostgreSQL 15+ |
 | Auth | JWT (python-jose) |
 | Password Hash | passlib[bcrypt] |
-| Encryption | cryptography (AES-256) |
+| Encryption | cryptography / Fernet (AES-128-CBC + HMAC-SHA256) |
 | PDF Generation | ReportLab |
 | Excel Export | openpyxl |
 | Validation | Pydantic v2 |
@@ -44,8 +44,8 @@
 backend/
 ├── app/
 │   ├── main.py                 # Entry point FastAPI
-│   ├── config.py               # Configuración (env vars)
-│   ├── database.py             # Conexión BD
+│   │   # NOTA: la config real vive en app/core/config.py (pydantic-settings)
+│   │   #       y la sesión/engine de BD en app/db/ — NO en app/config.py ni app/database.py
 │   │
 │   ├── models/                 # SQLAlchemy Models
 │   │   ├── __init__.py
@@ -99,15 +99,21 @@ backend/
 │   │
 │   ├── core/                   # Core utilities
 │   │   ├── __init__.py
-│   │   ├── security.py         # JWT, hashing, encryption
+│   │   ├── config.py           # Configuración (env vars, pydantic-settings)
+│   │   ├── security.py         # JWT, hashing, encryption (Fernet)
 │   │   ├── dependencies.py     # FastAPI dependencies
 │   │   ├── exceptions.py       # Custom exceptions
+│   │   ├── error_catalog.py    # Catálogo centralizado de errores de corrección
 │   │   └── permissions.py      # Permission validators
 │   │
-│   └── integrations/           # External services
+│   ├── db/                     # Sesión/engine SQLAlchemy async
+│   │
+│   └── integrations/           # Clientes de IA (llamada HTTP directa, sin N8N)
 │       ├── __init__.py
-│       ├── n8n_client.py       # N8N webhook client
-│       └── gemini_validator.py # API key validator
+│       ├── ia_provider.py             # Dispatcher: rutea "gemini" | "openrouter"
+│       ├── gemini_correction_client.py # GeminiCorrectionClient (corrección + rúbrica)
+│       ├── gemini_studio_client.py     # Validación de API key contra Gemini Studio
+│       └── openrouter_client.py        # Cliente OpenRouter (chat/completions, Bearer)
 │
 ├── alembic/                    # Migraciones
 │   ├── versions/
@@ -135,7 +141,7 @@ backend/
 - Soft delete (campo `deleted_at`)
 - Transacciones para operaciones múltiples
 - Logging estructurado
-- Encriptar API Keys con AES-256
+- Encriptar API Keys con Fernet (AES-128-CBC + HMAC-SHA256)
 
 ### NEVER
 - Lógica de negocio en Routers
@@ -371,7 +377,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from cryptography.fernet import Fernet
 
-from app.config import settings
+from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -387,8 +393,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
-# AES-256 encryption for API keys
-fernet = Fernet(settings.ENCRYPTION_KEY)
+# Fernet encryption (AES-128-CBC + HMAC-SHA256) for API keys
+fernet = Fernet(settings.ENCRYPTION_KEY.encode())
 
 def encrypt_api_key(api_key: str) -> str:
     return fernet.encrypt(api_key.encode()).decode()

@@ -10,6 +10,7 @@ Provides dependency injection for:
 Ref: docs/specs/11-SEGURIDAD.md section 2.2
 """
 
+import logging
 from typing import AsyncGenerator
 
 from fastapi import Depends, HTTPException, status
@@ -19,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_token
 from app.models import Usuario, get_async_session
+
+logger = logging.getLogger(__name__)
 
 # =========================================
 # Database Session Dependency
@@ -206,5 +209,13 @@ async def get_current_user_optional(
             return None
 
         return user
-    except (JWTError, Exception):
+    except JWTError:
+        # Token inválido o expirado → se trata como anónimo (comportamiento esperado
+        # de un auth opcional). No se loguea: es un caso de negocio normal.
+        return None
+    except Exception:
+        # Un error inesperado (p. ej. DB no disponible) NO debe degradarse en
+        # silencio: se deja traza para diagnóstico, pero se mantiene el contrato
+        # opcional (None) para no romper los endpoints que lo usan.
+        logger.exception("Error inesperado resolviendo el usuario opcional (auth opcional)")
         return None

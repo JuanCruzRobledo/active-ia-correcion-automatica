@@ -7,10 +7,10 @@ admin panel. Ref: PLAN_DASHBOARD_GESTORES.md §7 (T6).
 """
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.avance import SnapshotCronConfig
+from app.repositories.snapshot_config_repository import SnapshotConfigRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.dashboard_gestores import CronConfigResponse, CronConfigUpdate
 
@@ -23,17 +23,14 @@ class SnapshotConfigService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.usuario_repo = UsuarioRepository(db)
+        self.config_repo = SnapshotConfigRepository(db)
 
     async def _get_or_create(self) -> SnapshotCronConfig:
-        result = await self.db.execute(
-            select(SnapshotCronConfig).where(SnapshotCronConfig.id == _CONFIG_ID)
-        )
-        config = result.scalar_one_or_none()
+        # ARCH-001: acceso a datos vía repo, no SQL crudo en el service.
+        config = await self.config_repo.get()
         if config is None:
             config = SnapshotCronConfig(id=_CONFIG_ID, hora=3, minuto=0, activo=False)
-            self.db.add(config)
-            await self.db.commit()
-            await self.db.refresh(config)
+            config = await self.config_repo.create(config)
         return config
 
     async def get_config(self) -> SnapshotCronConfig:
@@ -83,6 +80,5 @@ class SnapshotConfigService:
         config.hora = data.hora
         config.minuto = data.minuto
         config.activo = data.activo
-        await self.db.commit()
-        await self.db.refresh(config)
+        await self.config_repo.save(config)
         return await self._to_response(config)

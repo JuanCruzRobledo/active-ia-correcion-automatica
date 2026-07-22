@@ -38,6 +38,7 @@ import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useNovedades } from '@/shared/hooks/useNovedades';
 import { mensajeNovedades } from '@/shared/utils/novedades';
 import { helpContent } from '@/shared/content/helpContent';
+import { resumenErrores } from '@/shared/utils/erroresResumen';
 import { EmptyState } from '@/shared/components/ui/EmptyState';
 import { Dropdown } from '@/shared/components/ui/Dropdown';
 import { Alert } from '@/shared/components/ui/Alert';
@@ -75,6 +76,15 @@ export const EntregasPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { data: profile } = useProfile();
+
+  // UI-013: el banner de "key inválida" debe evaluar la key del proveedor ACTIVO
+  // (Gemini u OpenRouter), no siempre la de Gemini. Misma lógica que PerfilPage.
+  const activeProvider = profile?.correction_provider ?? 'gemini';
+  const isOpenRouter = activeProvider === 'openrouter';
+  const keyValid = isOpenRouter
+    ? profile?.openrouter_api_key_valid
+    : profile?.gemini_api_key_valid;
+  const providerLabel = isOpenRouter ? 'OpenRouter' : 'Gemini';
 
   // Selectors state
   const [selectedComisionId, setSelectedComisionId] = useState<number | null>(
@@ -147,11 +157,11 @@ export const EntregasPage = () => {
 
   // Fetch comisiones (tutors see only their assigned comisiones)
   // per_page=100 para traer todas sin paginación (backend máx: 100)
-  const { data: comisionesData, isLoading: isLoadingComisiones } = useComisiones({ per_page: 100 });
+  const { data: comisionesData, isLoading: isLoadingComisiones, isError: errorComisiones } = useComisiones({ per_page: 100 });
 
   // Fetch rubricas for selected comision's materia
   const selectedComision = comisionesData?.items.find(c => c.id === selectedComisionId);
-  const { data: rubricasData, isLoading: isLoadingRubricas } = useRubricas(
+  const { data: rubricasData, isLoading: isLoadingRubricas, isError: errorRubricas } = useRubricas(
     selectedComision?.materia_id ? { materia_id: selectedComision.materia_id } : undefined
   );
   const selectedRubrica = rubricasData?.items?.find((r) => r.id === selectedRubricaId);
@@ -232,18 +242,40 @@ export const EntregasPage = () => {
     });
 
     if (newErrors.length > 0) {
-      // Backend stops batch on first error — remaining untouched won't be processed.
       const successCount = batchItems.filter(e => e.estado === 'CORREGIDA').length;
       const totalExpected = batchTotalCount.current;
       const unprocessedCount = totalExpected - successCount - newErrors.length;
       setBatchEntregaIds([]);
-      toast.error(
-        `⚠️ La corrección en lote se detuvo. ` +
-        `${successCount} completada(s), ${newErrors.length} con error` +
-        (unprocessedCount > 0 ? `, ${unprocessedCount} sin procesar` : '') +
-        `. Revisá si tu API Key de Gemini es válida o esperá unos minutos si se alcanzó el límite de uso.`,
-        { duration: 12000 }
+
+      // ERR-012: usar el error_code REAL persistido en cada entrega fallida (no un
+      // texto adivinado hardcodeado a "Gemini"). Agrupamos por código y lo traducimos
+      // con el mismo helper que la corrección global.
+      const erroresPorCodigo: Record<string, number> = {};
+      for (const e of newErrors) {
+        const code = e.error_code ?? 'OTROS';
+        erroresPorCodigo[code] = (erroresPorCodigo[code] ?? 0) + 1;
+      }
+      const detalle = resumenErrores(erroresPorCodigo);
+
+      // El backend SOLO corta el lote en 402/429 (key inválida, sin créditos, rate
+      // limit). Con errores genéricos (502) el lote sigue: no afirmamos "sin procesar".
+      const codigosDeCorte = new Set([
+        'GEMINI_API_KEY_INVALID',
+        'GEMINI_RATE_LIMIT',
+        'SIN_CREDITOS',
+      ]);
+      const huboCorte = newErrors.some(
+        (e) => e.error_code != null && codigosDeCorte.has(e.error_code)
       );
+
+      const encabezado = huboCorte
+        ? `⚠️ La corrección en lote se detuvo. ${successCount} completada(s), ${newErrors.length} con error` +
+          (unprocessedCount > 0 ? `, ${unprocessedCount} sin procesar` : '')
+        : `⚠️ La corrección en lote terminó con errores. ${successCount} completada(s), ${newErrors.length} con error`;
+
+      toast.error(detalle ? `${encabezado}. Detalle: ${detalle}.` : `${encabezado}.`, {
+        duration: 12000,
+      });
       return;
     }
 
@@ -395,6 +427,13 @@ export const EntregasPage = () => {
         `Los estados se actualizarán automáticamente en segundo plano.`,
         { duration: 6000 }
       );
+      // SEC-001: informar las entregas que quedaron fuera por falta de permisos.
+      if (result.omitidas && result.omitidas > 0) {
+        toast(
+          `⚠️ ${result.omitidas} entrega(s) no se corrigieron: no tenés permisos sobre su comisión.`,
+          { icon: '⚠️', duration: 8000 }
+        );
+      }
     } catch {
       // Error notification is handled by the hook's onError handler
     }
@@ -450,6 +489,13 @@ export const EntregasPage = () => {
       const result = await archivarMutation.mutateAsync({ ids, archivado });
       setSelectedIds([]);
       toast.success(`${result.procesadas} entrega(s) ${archivado ? 'archivada(s)' : 'desarchivada(s)'}`);
+      // SEC-002: informar lo omitido por permisos.
+      if (result.omitidas && result.omitidas > 0) {
+        toast(
+          `⚠️ ${result.omitidas} entrega(s) no se ${archivado ? 'archivaron' : 'desarchivaron'}: no tenés permisos sobre su comisión.`,
+          { icon: '⚠️', duration: 8000 }
+        );
+      }
     } catch {
       // Error handled by hook
     }
@@ -474,7 +520,19 @@ export const EntregasPage = () => {
     try {
       const result = await deleteMasivoMutation.mutateAsync(ids);
       setSelectedIds([]);
-      toast.success(`${result.procesadas} entrega(s) eliminada(s)`);
+      // SEC-002 + CRUD-001: el borrado es FÍSICO e irreversible. Si algo se omitió
+      // por permisos, el aviso NO puede ser un toast de éxito con un número más:
+      // el operador tiene que saber, sin ambigüedad, qué quedó vivo.
+      if (result.omitidas && result.omitidas > 0) {
+        toast.success(`${result.procesadas} entrega(s) eliminada(s)`);
+        toast(
+          `⚠️ ${result.omitidas} entrega(s) NO se eliminaron porque no tenés permisos sobre su comisión. ` +
+          `IDs no borrados: ${(result.ids_omitidos ?? []).join(', ')}.`,
+          { icon: '⚠️', duration: 12000, style: { border: '1px solid #f59e0b', maxWidth: 520 } }
+        );
+      } else {
+        toast.success(`${result.procesadas} entrega(s) eliminada(s)`);
+      }
     } catch {
       // Error handled by hook
     }
@@ -500,8 +558,9 @@ export const EntregasPage = () => {
 
   const runRecorregir = async (entregaId: number) => {
     try {
+      // IA-012: el toast de "iniciada" lo emite el hook (useRecorregirEntrega);
+      // acá solo cerramos el modal al encolar con éxito.
       await recorregirMutation.mutateAsync(entregaId);
-      toast.success('Re-corrección iniciada exitosamente');
       if (modalEntregaId === entregaId) {
         setModalEntregaId(null);
         setModalAlumno('');
@@ -545,14 +604,22 @@ export const EntregasPage = () => {
       const rubricaContext = selectedRubrica
         ? { tipo: selectedRubrica.tipo, numero: selectedRubrica.numero }
         : undefined;
-      await descargarPDFsSeleccionados(
+      const { omitidos } = await descargarPDFsSeleccionados(
         selectedCorregidas.map((e) => e.id),
         rubricaContext,
         selectedComision?.nombre
       );
+      const incluidos = selectedCorregidasCount - omitidos.length;
       toast.success(
-        `ZIP con ${selectedCorregidasCount} PDF${selectedCorregidasCount === 1 ? '' : 's'} descargado exitosamente`
+        `ZIP con ${incluidos} PDF${incluidos === 1 ? '' : 's'} descargado exitosamente`
       );
+      // SEC-004: informar los PDFs que quedaron fuera del ZIP por falta de permisos.
+      if (omitidos.length > 0) {
+        toast(
+          `⚠️ ${omitidos.length} PDF(s) no se incluyeron: no tenés permisos sobre su comisión.`,
+          { icon: '⚠️', duration: 8000 }
+        );
+      }
     } catch (e: any) {
       // Blob responses carry errors as Blob — parse them to get the real backend message
       let backendDetail: string | undefined;
@@ -754,12 +821,14 @@ export const EntregasPage = () => {
                 label: 'Corregir',
                 icon: <FileCheck2 className="w-4 h-4" />,
                 onClick: () => {
-                  toast.loading('Corrección iniciada en segundo plano...', {
-                    duration: 3000,
-                  });
+                  // IA-012: la corrección corre en background. No afirmamos
+                  // "completada": el estado de la entrega pasa a PENDIENTE y el
+                  // polling de la lista lo lleva a CORREGIDA/ERROR.
                   corregirMutation.mutate(entrega.id, {
                     onSuccess: () => {
-                      toast.success(`Corrección completada para ${entrega.alumno_nombre}`);
+                      toast.success(
+                        `Corrección iniciada para ${entrega.alumno_nombre}. El estado se actualizará automáticamente.`
+                      );
                     },
                   });
                 },
@@ -847,12 +916,27 @@ export const EntregasPage = () => {
           }}
         />
       )}
-      {/* API Key Invalid Banner */}
-      {profile && !profile.gemini_api_key_valid && (
-        <Alert variant="warning" title="⚠️ API Key de Gemini inválida">
+      {/* UI-004: las queries de comisiones/rúbricas alimentan los selects; si fallan,
+          los dropdowns quedarían vacíos sin explicación. Avisamos con un Alert. */}
+      {(errorComisiones || errorRubricas) && (
+        <Alert variant="destructive" title="No se pudieron cargar las opciones">
+          <p>
+            {errorComisiones
+              ? 'Hubo un problema al cargar las comisiones. '
+              : 'Hubo un problema al cargar las rúbricas de esta comisión. '}
+            Revisá tu conexión e intentá recargar la página.
+          </p>
+        </Alert>
+      )}
+
+      {/* API Key Invalid Banner (UI-013: proveedor activo, no siempre Gemini) */}
+      {profile && !keyValid && (
+        <Alert variant="warning" title={`⚠️ API Key de ${providerLabel} inválida`}>
           <p className="mb-3">
-            Tu API Key de Gemini expiró o es inválida. Las correcciones automáticas no funcionarán hasta que configures una nueva.
-            Por favor generá una nueva en Google AI Studio con otra cuenta de Google y actualizala en tu perfil.
+            Tu API Key de {providerLabel} expiró o es inválida. Las correcciones automáticas no funcionarán hasta que configures una nueva.
+            {isOpenRouter
+              ? ' Generá una nueva en OpenRouter y actualizala en tu perfil.'
+              : ' Por favor generá una nueva en Google AI Studio con otra cuenta de Google y actualizala en tu perfil.'}
           </p>
           <Button
             variant="primary"

@@ -49,6 +49,16 @@ class MateriaRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_ids(self, materia_ids: list[int]) -> list[Materia]:
+        """Materias cuyos ids están en la lista dada (para resolver course_id en los
+        flujos de Moodle). Lista vacía si materia_ids es vacía."""
+        if not materia_ids:
+            return []
+        result = await self.db.execute(
+            select(Materia).where(Materia.id.in_(materia_ids))
+        )
+        return list(result.scalars().all())
+
     async def get_by_id_with_coordinadores(self, materia_id: int) -> Materia | None:
         """
         Get materia by ID with coordinadores loaded.
@@ -185,6 +195,34 @@ class MateriaRepository:
             select(Materia)
             .where(
                 Materia.cuatrimestre_id == cuatrimestre_id,
+                Materia.activa == True,  # noqa: E712
+            )
+            .order_by(Materia.nombre.asc())
+        )
+        return list(result.scalars().all())
+
+    async def get_by_cuatrimestres(
+        self, cuatrimestre_ids: list[int]
+    ) -> list[Materia]:
+        """Materias activas de VARIOS cuatrimestres en UNA query (árbol del dashboard).
+
+        Reemplaza el N+1 de ``get_by_cuatrimestre(id)`` por cuatrimestre en el loop
+        de ``obtener_arbol``. Mismo orden (nombre asc) que ``get_by_cuatrimestre``, de
+        modo que al reagrupar por ``cuatrimestre_id`` cada cuatrimestre conserva el
+        orden idéntico al del loop viejo.
+
+        Args:
+            cuatrimestre_ids: IDs de cuatrimestres.
+
+        Returns:
+            Lista de materias activas de esos cuatrimestres, ordenadas por nombre.
+        """
+        if not cuatrimestre_ids:
+            return []
+        result = await self.db.execute(
+            select(Materia)
+            .where(
+                Materia.cuatrimestre_id.in_(cuatrimestre_ids),
                 Materia.activa == True,  # noqa: E712
             )
             .order_by(Materia.nombre.asc())
@@ -337,7 +375,6 @@ class MateriaRepository:
         Raises:
             Exception: Si falla alguna operación de DB o de disco.
         """
-        import os
 
         from app.models.comision import Comision, ComisionTutor
         from app.models.entrega import Entrega
@@ -359,12 +396,6 @@ class MateriaRepository:
             entregas = result_e.scalars().all()
 
             for entrega in entregas:
-                # Eliminar archivo físico del disco
-                if entrega.archivo_ruta and os.path.exists(entrega.archivo_ruta):
-                    try:
-                        os.remove(entrega.archivo_ruta)
-                    except OSError:
-                        pass  # Si el archivo ya no existe, continuar
 
                 # Eliminar entrega (cascade ORM elimina Correccion y EntregaHistorial)
                 await self.db.delete(entrega)
@@ -399,11 +430,6 @@ class MateriaRepository:
             entregas_remanentes = result_e2.scalars().all()
 
             for entrega in entregas_remanentes:
-                if entrega.archivo_ruta and os.path.exists(entrega.archivo_ruta):
-                    try:
-                        os.remove(entrega.archivo_ruta)
-                    except OSError:
-                        pass
                 await self.db.delete(entrega)
 
             await self.db.flush()
@@ -439,6 +465,29 @@ class CoordinadorMateriaRepository:
             db: Async database session.
         """
         self.db = db
+
+    async def contar_por_materias(self, materia_ids: list[int]) -> dict[int, int]:
+        """Nº de coordinadores por materia en UNA query agregada (GROUP BY).
+
+        Reemplaza el N+1 de ``listar_materias`` (``get_coordinadores_for_materia``
+        por materia sólo para contar). Devuelve el mismo número que
+        ``len(get_coordinadores_for_materia(id))``; las materias sin coordinadores
+        no aparecen en el dict (se interpretan como 0).
+
+        Args:
+            materia_ids: IDs de las materias a contar.
+
+        Returns:
+            dict {materia_id: num_coordinadores}.
+        """
+        if not materia_ids:
+            return {}
+        result = await self.db.execute(
+            select(CoordinadorMateria.materia_id, func.count(CoordinadorMateria.id))
+            .where(CoordinadorMateria.materia_id.in_(materia_ids))
+            .group_by(CoordinadorMateria.materia_id)
+        )
+        return {mid: int(n) for mid, n in result.all()}
 
     async def get_coordinadores_for_materia(
         self,
@@ -529,6 +578,21 @@ class CoordinadorMateriaRepository:
 
         await self.db.commit()
         return count
+
+    async def delete_all_for_coordinador(self, coordinador_id: int) -> int:
+        """
+        CRUD-013: borra todas las asignaciones de coordinación de un usuario.
+
+        Se usa al cambiar su rol AWAY de COORDINADOR, para no dejar filas huérfanas
+        (el ex-coordinador seguiría figurando como coordinador de sus materias).
+        """
+        result = await self.db.execute(
+            delete(CoordinadorMateria).where(
+                CoordinadorMateria.coordinador_id == coordinador_id
+            )
+        )
+        await self.db.commit()
+        return result.rowcount
 
     async def delete(self, coordinador_id: int, materia_id: int) -> bool:
         """

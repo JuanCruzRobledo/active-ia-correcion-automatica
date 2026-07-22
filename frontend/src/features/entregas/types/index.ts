@@ -102,6 +102,19 @@ export interface CorregirLoteAceptadoResponse {
   mensaje: string;
   total_encoladas: number;
   entrega_ids: number[];
+  // SEC-001: entregas del lote omitidas por falta de permisos. Opcionales
+  // porque el contrato es aditivo (un backend viejo no las manda).
+  omitidas?: number;
+  entrega_ids_omitidos?: number[];
+}
+
+// IA-012: respuesta 202 de la corrección/re-corrección individual asíncrona. El
+// backend agenda la corrección en background; el frontend pollea el estado de la
+// entrega (PENDIENTE → CORREGIDA/ERROR) igual que con el lote.
+export interface CorreccionAceptadaResponse {
+  mensaje: string;
+  entrega_id: number;
+  estado: string;
 }
 
 
@@ -111,7 +124,6 @@ export interface Entrega {
   rubrica_id: number;
   alumno_nombre: string;
   archivo_nombre: string;
-  archivo_ruta: string;
   archivo_tamanio: number;
   archivo_tipo: 'zip' | 'txt' | 'pdf' | 'individual';
   contenido_preview: string | null;
@@ -133,6 +145,9 @@ export interface EntregaDetail extends Entrega {
 export interface EntregaAccionMasivaResponse {
   procesadas: number;
   ids: number[];
+  // SEC-002: entregas del lote omitidas por falta de permisos (borrado/archivar).
+  omitidas?: number;
+  ids_omitidos?: number[];
 }
 
 export interface EntregaListItem {

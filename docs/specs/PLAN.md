@@ -1,5 +1,7 @@
 # Plan de Trabajo - Especificación del Nuevo Proyecto
 
+> ⚠️ **Sección/spec parcialmente obsoleta:** la integración de IA ya NO usa N8N. La corrección es nativa en el backend (`backend/app/integrations/`: `ia_provider.py` rutea a `gemini_correction_client.py` / `openrouter_client.py`, llamada HTTP directa a Gemini Studio / OpenRouter). Las menciones a N8N en este registro histórico de sesiones son históricas.
+
 ---
 
 ## ¿Qué es este documento?
@@ -480,12 +482,12 @@ En cada parte vamos a revisar tanto el documento de ideas como el código actual
 - Google Drive/Sheets: ELIMINADO del proyecto (archivos locales, Excel generado localmente)
 - Workflows N8N: Solo 2 (Corrección de entregas + Generación de rúbricas desde PDF)
 - Health Check: Sí, endpoint /webhook/health para verificar conexión
-- Modelo IA predeterminado: gemini-2.0-flash (rápido y económico)
+- Modelo IA predeterminado: gemini-3.5-flash (Gemini Studio) / google/gemini-3.5-flash (OpenRouter)
 - Respuesta IA: JSON estructurado estricto con schema fijo
 - Reintentos: 1 reintento automático para errores recuperables, luego marcar fallida
 - Timeout: 60s nominal, extensible a 120s para códigos largos
 - Prompts: Documentados con ejemplos completos (corrección y generación de rúbricas)
-- API Keys: Por usuario, encriptadas con AES-256/Fernet
+- API Keys: Por usuario, encriptadas con Fernet (AES-128-CBC + HMAC-SHA256)
 - Estados durante corrección: uploaded → pending_correction → corrected/failed
 
 **Funcionalidades eliminadas del proyecto actual:**
@@ -512,7 +514,7 @@ En cada parte vamos a revisar tanto el documento de ideas como el código actual
 - Política passwords: Mínimo 8 caracteres + al menos 1 número
 - Bloqueo cuenta: 5 intentos fallidos → bloqueo 15 minutos (automático)
 - Token storage: localStorage
-- Encriptación BD: Solo API Keys Gemini (AES-256/Fernet). Passwords con bcrypt
+- Encriptación BD: Solo API Keys de IA (Fernet, AES-128-CBC + HMAC-SHA256). Passwords con bcrypt
 - Auditoría: Log de acciones críticas (login, logout, cambio password, CRUD usuarios, correcciones editadas)
 - Upload security: Validar extensión + MIME type + tamaño (máx 100MB)
 - Webhooks N8N: Header Auth con X-Webhook-Secret + red interna Docker

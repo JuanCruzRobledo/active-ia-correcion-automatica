@@ -2,7 +2,10 @@ import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { isAxiosError } from 'axios';
+import toast from 'react-hot-toast';
 import { Code, Upload, Database, ListChecks, AlertTriangle, XCircle, FileText } from 'lucide-react';
+import { getErrorMessage } from '@/shared/types';
 
 import { Modal } from '@/shared/components/ui/Modal';
 import { Button } from '@/shared/components/ui/Button';
@@ -16,6 +19,7 @@ import { useCreateRubrica, useUpdateRubrica, useGenerarRubricaDesdePDF, usePrevi
 import { useMaterias } from '@/features/materias/hooks';
 import type { Rubrica } from '../types';
 import { criterioSchema } from '../schemas/rubrica-schema';
+import { distribuirPesosIguales } from '../utils/distribuirPesosIguales';
 import { RubricaManualMode } from './RubricaManualMode';
 import { PenalizacionesEditor } from './PenalizacionesEditor';
 import { CondicionesEditor } from './CondicionesEditor';
@@ -68,6 +72,14 @@ const rubricaFormSchema = z.object({
 );
 
 type RubricaFormData = z.infer<typeof rubricaFormSchema>;
+
+/**
+ * true si algún subcriterio de algún criterio ya tiene `peso` cargado — el
+ * equivalente en el front de "se está guardando como schema_version 2" (D7),
+ * sin necesitar un campo de formulario aparte para la versión.
+ */
+const criteriosTienenPesoSubcriterios = (criterios: RubricaFormData['criterios']) =>
+  criterios.some((c) => c.subcriterios.some((s) => s.peso !== undefined && s.peso !== null));
 
 // ========== MAIN COMPONENT ==========
 
@@ -145,6 +157,9 @@ export function RubricaEditor({
                 id: 'C1.1',
                 descripcion: '',
                 evidencias: [],
+                // Default de una rúbrica nueva: un solo subcriterio que absorbe todo
+                // el peso del criterio (100), así valida sin fricción desde el inicio.
+                peso: 100,
               },
             ],
           },
@@ -209,6 +224,9 @@ export function RubricaEditor({
                 id: 'C1.1',
                 descripcion: '',
                 evidencias: [],
+                // Default de una rúbrica nueva: un solo subcriterio que absorbe todo
+                // el peso del criterio (100), así valida sin fricción desde el inicio.
+                peso: 100,
               },
             ],
           },
@@ -335,7 +353,7 @@ export function RubricaEditor({
       });
     } catch (error) {
       console.error('Error generando preview PDF:', error);
-      alert('Error al generar la vista previa del PDF. Por favor, verifica que todos los campos requeridos estén completos.');
+      toast.error('Error al generar la vista previa del PDF. Verificá que todos los campos requeridos estén completos.');
     }
   };
 
@@ -364,14 +382,40 @@ export function RubricaEditor({
       });
     } catch (error) {
       console.error('Error generando preview de guía para estudiantes:', error);
-      alert('Error al generar la vista previa de la guía para estudiantes.');
+      toast.error('Error al generar la vista previa de la guía para estudiantes.');
     }
+  };
+
+  // ── Migrar al nuevo modelo (D4: reparto de resto mayor / Hamilton) ──
+  // Pre-carga pesos iguales por subcriterio en cada criterio, editable, sin
+  // guardar hasta que el docente confirme el submit. No auto-corrige el caso
+  // borde peso_criterio < n (deja el reparto con algunos en 0 y la validación
+  // Zod/backend guía al docente a ajustar).
+  const handleMigrarAV2 = () => {
+    const criteriosActuales = getValues('criterios');
+    const migrados = criteriosActuales.map((c) => {
+      const n = c.subcriterios.length;
+      if (n === 0) return c;
+      const pesos = distribuirPesosIguales(c.peso, n);
+      return {
+        ...c,
+        subcriterios: c.subcriterios.map((s, i) => ({ ...s, peso: pesos[i] })),
+      };
+    });
+    setValue('criterios', migrados, { shouldDirty: true, shouldValidate: true });
+    setCreationMode('manual');
   };
 
   // ── Form submit ──
   const onSubmit = async (data: RubricaFormData) => {
     console.log('📝 Intentando crear rúbrica con datos:', data);
     console.log('📝 Criterios JSON:', JSON.stringify(data.criterios, null, 2));
+    // schema_version: si algún subcriterio ya trae peso, se guarda como v2
+    // (D7). Si no, se preserva la versión existente (edición) o el default
+    // backend (creación, ver RubricaCreate.schema_version = 1).
+    const schemaVersion = criteriosTienenPesoSubcriterios(data.criterios)
+      ? 2
+      : rubrica?.schema_version;
     try {
       if (isEditing) {
         await updateMutation.mutateAsync({
@@ -391,6 +435,7 @@ export function RubricaEditor({
               data.modo_consolidacion === 'personalizado'
                 ? data.extensiones_personalizadas ?? []
                 : null,
+            schema_version: schemaVersion,
           },
         });
       } else {
@@ -413,18 +458,22 @@ export function RubricaEditor({
             data.modo_consolidacion === 'personalizado'
               ? data.extensiones_personalizadas ?? []
               : null,
+          schema_version: schemaVersion ?? 1,
         });
       }
 
       reset();
       onClose();
-    } catch (error: any) {
-      console.error('❌ Error guardando rúbrica:', error);
-      console.error('❌ Detalle de respuesta:', error?.response?.data);
-      // Mostrar error al usuario
-      if (error?.response?.data?.detail) {
-        alert(`Error: ${JSON.stringify(error.response.data.detail, null, 2)}`);
-      }
+    } catch (error) {
+      // UI-002: SIEMPRE notificar (antes fallaba en silencio si no había detail, o
+      // mostraba un alert con el JSON crudo de Pydantic). El extractor compartido
+      // traduce detail string | array | { error_code, message } a un texto legible.
+      console.error('Error guardando rúbrica:', error);
+      const msg =
+        isAxiosError(error) && error.response?.data
+          ? getErrorMessage(error.response.data)
+          : 'No se pudo guardar la rúbrica. Revisá tu conexión e intentá nuevamente.';
+      toast.error(msg, { duration: 8000 });
     }
   };
 
@@ -455,6 +504,25 @@ export function RubricaEditor({
         }}
         className="space-y-6"
       >
+        {/* ── Badge "Rúbrica desactualizada" + Migrar (peso-por-subcriterio D7) ── */}
+        {isEditing && (rubrica.schema_version ?? 1) < 2 && (
+          <div className="flex flex-col gap-3 rounded-lg border border-warning/50 bg-warning/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-sm text-warning">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>⚠️ Rúbrica desactualizada — actualizar al nuevo modelo</span>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleMigrarAV2}
+              className="w-full sm:w-auto"
+            >
+              Migrar al nuevo modelo
+            </Button>
+          </div>
+        )}
+
         {/* ── Información General ── */}
         <RubricaGeneralInfo
           register={register}

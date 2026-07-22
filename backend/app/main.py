@@ -5,13 +5,43 @@ Entry point de la aplicacion FastAPI.
 Ref: docs/specs/05-ARQUITECTURA-STACK.md seccion 3
 """
 
+import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSONResponse:
+    """
+    CRUD-008: traduce las violaciones de UNIQUE (SQLSTATE 23505) a 409.
+
+    El patrón check-then-insert de los Create (exists() y luego create() en
+    requests separados) tiene una carrera: dos requests concurrentes (doble click,
+    dos tutores importando la misma comisión) esquivan el pre-chequeo y el segundo
+    muere contra el unique. Sin este handler el cliente recibía un 500 genérico.
+
+    Solo las violaciones de unicidad se mapean a 409; una FK rota o un NOT NULL
+    (23503 / 23502) son bugs reales y siguen a 500 logueado.
+    """
+    if getattr(exc.orig, "sqlstate", None) == "23505":
+        logger.warning("IntegrityError unique -> 409: %s", exc.orig)
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "El recurso ya existe (conflicto de unicidad)"},
+        )
+    logger.exception("IntegrityError no-unique")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Error interno de integridad de datos"},
+    )
 
 
 @asynccontextmanager
@@ -41,6 +71,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await reprogramar_notificaciones_desde_config()
     except Exception:  # noqa: BLE001 — el scheduler no debe impedir el arranque de la app
         logging.getLogger(__name__).exception("No se pudo iniciar el scheduler")
+
+    # IA-004: watchdog. Los lotes corren como BackgroundTasks in-process; si el
+    # proceso se reinició a mitad de un lote, sus entregas quedaron colgadas en
+    # PENDIENTE. Al arrancar, cualquier PENDIENTE es huérfano (el task murió con el
+    # proceso viejo): se pasa a ERROR (CORRECCION_INTERRUMPIDA) para destrabarlas.
+    try:
+        from app.models.base import async_session_maker
+        from app.repositories.entrega_repository import EntregaRepository
+
+        async with async_session_maker() as _session:
+            _destrabadas = await EntregaRepository(_session).reset_pendientes_interrumpidas()
+        if _destrabadas:
+            logging.getLogger(__name__).warning(
+                "IA-004 watchdog: %s entrega(s) colgadas en PENDIENTE pasadas a ERROR",
+                _destrabadas,
+            )
+    except Exception:  # noqa: BLE001 — el watchdog no debe impedir el arranque
+        logging.getLogger(__name__).exception("Watchdog de PENDIENTES falló")
 
     yield
 
@@ -76,6 +124,9 @@ def create_application() -> FastAPI:
         allow_headers=settings.CORS_ALLOW_HEADERS,
         expose_headers=["Content-Disposition"],  # Permite que el frontend lea este header
     )
+
+    # CRUD-008: handler global de IntegrityError (unique -> 409).
+    app.add_exception_handler(IntegrityError, integrity_error_handler)
 
     # Registrar routers
     register_routers(app)

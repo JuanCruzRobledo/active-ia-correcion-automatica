@@ -17,6 +17,8 @@ metadata:
 
 # Rúbricas Skill
 
+> ⚠️ **Arquitectura actualizada — N8N fue removido.** La corrección/generación con IA es NATIVA en el backend: `backend/app/integrations/ia_provider.py` rutea a `gemini_correction_client.py` (Gemini Studio) o `openrouter_client.py` (OpenRouter) con llamadas HTTP directas. NO existe `n8n_client.py` ni `settings.N8N_WEBHOOK_URL`. Los ejemplos de este skill fueron corregidos a esa realidad; si ves referencias residuales a N8N, la fuente de verdad es el código en `backend/app/integrations/`.
+
 ## When to Use
 
 - Creando o editando rúbricas de evaluación
@@ -369,24 +371,27 @@ async def generar_desde_pdf(
     if not materia:
         raise HTTPException(404, "Materia no encontrada")
 
-    # Preparar payload para N8N
+    # Preparar payload para el cliente de Gemini (sin N8N, sin "model" — el
+    # cliente usa settings.GEMINI_MODEL internamente).
     api_key = decrypt_api_key(api_key_encrypted)
     payload = {
-        "api_key": api_key,
-        "model": "gemini-2.0-flash",
         "pdf_base64": base64.b64encode(pdf_content).decode(),
-        "instrucciones": self._get_rubric_generation_prompt(),
+        "filename": "consigna.pdf",
+        "api_key": api_key,
+        "tipo_rubrica": tipo,
     }
 
-    # Llamar a N8N
-    n8n_client = N8NClient()
+    # Generar DIRECTAMENTE con Gemini Vision (Files API + generateContent).
+    # generar_rubrica() replica el prompt de la rúbrica y devuelve
+    # {"success": True, "rubrica": {...}, "metadata": {...}}.
+    gemini_client = GeminiCorrectionClient()
     try:
-        result = await n8n_client.trigger_rubric_generation(payload)
-    except N8NError as e:
+        result = await gemini_client.generar_rubrica(payload)
+    except N8NError as e:  # nombre histórico: lo lanza el cliente de Gemini
         raise HTTPException(502, f"Error generando rúbrica: {e}")
 
-    # Parsear respuesta
-    criterios_data = self._parse_rubric_response(result)
+    # Parsear respuesta (el cliente ya devolvió el JSON de la rúbrica)
+    criterios_data = result["rubrica"].get("criterios", [])
 
     # Crear rúbrica
     rubrica = Rubrica(

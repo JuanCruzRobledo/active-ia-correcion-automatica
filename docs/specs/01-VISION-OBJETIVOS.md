@@ -1,5 +1,7 @@
 # 01 - Visión y Objetivos
 
+> ⚠️ **Sección/spec parcialmente obsoleta:** la integración de IA ya NO usa N8N. La corrección es nativa en el backend (`backend/app/integrations/`: `ia_provider.py` rutea a `gemini_correction_client.py` / `openrouter_client.py`, llamada HTTP directa a Gemini Studio / OpenRouter). Las menciones a N8N a continuación son históricas.
+
 ---
 
 ## 1. Definición del Problema
@@ -43,7 +45,7 @@ Active-IA es una solución integral que se diferencia mediante:
 | **Generación de rúbricas desde PDF** | Los tutores pueden cargar consignas en PDF y el sistema extrae automáticamente los criterios de evaluación |
 | **Simplicidad operativa** | Arquitectura simplificada con solo dos niveles jerárquicos (Materia → Comisión), eliminando complejidad innecesaria |
 | **Preservación del control docente** | Toda corrección automática puede ser revisada, modificada y complementada por el tutor |
-| **Flexibilidad en prompts** | Integración con N8N permite modificar prompts de IA sin tocar código |
+| **Flexibilidad en prompts** | Los prompts de IA viven en el backend (`app/integrations/`) y se ajustan en código |
 
 ### 2.3 Beneficios Esperados
 
@@ -76,7 +78,7 @@ El MVP (Producto Mínimo Viable) incluye:
 | **Gestión académica** | CRUD de materias, comisiones, usuarios |
 | **Gestión de rúbricas** | Crear manual, crear desde PDF, editar, duplicar |
 | **Gestión de entregas** | Carga individual y masiva, consolidación de código |
-| **Corrección automática** | Individual y en lote vía Gemini/N8N |
+| **Corrección automática** | Individual y en lote vía IA (Gemini Studio / OpenRouter, HTTP directo) |
 | **Edición de correcciones** | Modificar cualquier campo de la corrección |
 | **Generación de documentos** | PDFs de devolución, descarga masiva, exportar notas a Excel/CSV |
 | **Notificaciones** | Indicadores visuales en-app (sin email) |
@@ -112,7 +114,7 @@ El sistema debe soportar múltiples lenguajes de programación (configurable):
 | Categoría | Funcionalidad | Descripción |
 |-----------|---------------|-------------|
 | **Autenticación** | Login seguro | JWT con expiración configurable |
-| **Autenticación** | Gestión de API Keys | Cada usuario configura su API Key de Gemini, encriptada con AES-256 |
+| **Autenticación** | Gestión de API Keys | Cada usuario configura su API Key de IA, encriptada con Fernet (AES-128-CBC + HMAC-SHA256) |
 | **Autenticación** | Primer login forzado | Tutores deben cambiar contraseña provisional |
 | **Gestión** | CRUD Materias | Código único, nombre, descripción, soft delete |
 | **Gestión** | CRUD Comisiones | Asociadas a materia, año académico, tutores asignados |
@@ -123,7 +125,7 @@ El sistema debe soportar múltiples lenguajes de programación (configurable):
 | **Entregas** | Carga individual | ZIP o TXT de un alumno |
 | **Entregas** | Carga masiva | ZIP con carpetas por alumno |
 | **Entregas** | Consolidación | Unifica archivos de código en texto único |
-| **Corrección** | Automática individual | Envía a Gemini vía N8N, retorna evaluación estructurada |
+| **Corrección** | Automática individual | El backend llama directo al proveedor de IA (Gemini Studio / OpenRouter), retorna evaluación estructurada |
 | **Corrección** | En lote | Procesa todas las pendientes secuencialmente |
 | **Corrección** | Edición manual | Modificar nota, puntajes, feedback, fortalezas, recomendaciones |
 | **Corrección** | Re-corrección | Generar nueva evaluación con IA descartando anterior |
@@ -138,7 +140,7 @@ El sistema debe soportar múltiples lenguajes de programación (configurable):
 |----------|-------------|
 | **Lógica de consolidación** | Código que une archivos de proyecto en un solo texto para enviar a IA |
 | **Generación de PDFs** | Diseño y formato de los PDFs de devolución |
-| **Encriptación de API Keys** | Sistema AES-256 para almacenar API Keys de Gemini |
+| **Encriptación de API Keys** | Fernet (AES-128-CBC + HMAC-SHA256) para almacenar API Keys de IA |
 
 ---
 
@@ -164,7 +166,7 @@ El sistema debe soportar múltiples lenguajes de programación (configurable):
 | Decisión | Justificación |
 |----------|---------------|
 | **PostgreSQL sobre MongoDB** | Mejor para datos estructurados con relaciones claras |
-| **N8N como intermediario** | Permite modificar prompts de IA sin redeployear código |
+| **IA nativa en el backend** | El backend llama directo al proveedor; los prompts de IA se ajustan en código (`app/integrations/`) |
 | **2 niveles jerárquicos** | Simplicidad. Materia → Comisión es suficiente para TUD |
 | **3 roles únicamente** | Balance entre flexibilidad y simplicidad |
 | **API Key por usuario** | Cada tutor controla su cuota y costos de Gemini |
@@ -250,7 +252,7 @@ Las rúbricas (trabajos prácticos, parciales, etc.) se definen a nivel de **mat
 | Aspecto | Objetivo |
 |---------|----------|
 | Contraseñas | Hash bcrypt, nunca en texto plano |
-| API Keys | Encriptación AES-256 |
+| API Keys | Encriptación Fernet (AES-128-CBC + HMAC-SHA256) |
 | Autenticación | JWT con expiración |
 | Acceso a datos | Cada rol solo ve lo que le corresponde |
 
@@ -265,7 +267,7 @@ Las rúbricas (trabajos prácticos, parciales, etc.) se definen a nivel de **mat
 | Jerarquía | 2 niveles (Materia → Comisión) | Suficiente para TUD, reduce complejidad |
 | Roles | 3 (Admin, Coordinador, Tutor) | Balance entre flexibilidad y simplicidad |
 | Base de datos | PostgreSQL con Prisma | Mejor para datos estructurados |
-| Integración IA | N8N como intermediario | Flexibilidad para modificar prompts |
+| Integración IA | Llamada HTTP directa a Gemini Studio / OpenRouter | Corrección nativa en el backend |
 | Notificaciones | Solo en-app | Sin complejidad de servidor de email |
 | Lenguajes | Múltiples (configurable) | Flexibilidad para diferentes materias |
 | Similitud | Fase posterior | Priorizar corrección, agregar después |

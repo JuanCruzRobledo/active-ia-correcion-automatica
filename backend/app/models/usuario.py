@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, Enum as SQLEnum, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, SoftDeleteMixin, TimestampMixin
+from app.models.base import Base, TimestampMixin
 from app.models.enums import RolEnum
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from app.models.materia import CoordinadorMateria
 
 
-class Usuario(Base, TimestampMixin, SoftDeleteMixin):
+class Usuario(Base, TimestampMixin):
     """
     Usuario del sistema.
 
@@ -52,14 +52,14 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
         index=True,
     )
 
-    # API Key de Gemini Studio (Google, encriptada con AES-256).
+    # API Key de Gemini Studio (Google, encriptada con AES-128-CBC (Fernet)).
     # Corresponde al modo de corrección correction_provider == "gemini".
     gemini_api_key_encrypted: Mapped[str | None] = mapped_column(
         Text,
         nullable=True,
     )
 
-    # API Key de OpenRouter (encriptada con AES-256).
+    # API Key de OpenRouter (encriptada con AES-128-CBC (Fernet)).
     # Corresponde al modo de corrección correction_provider == "openrouter".
     # Se guarda por separado de la de Gemini Studio: el tutor mantiene ambas.
     openrouter_api_key_encrypted: Mapped[str | None] = mapped_column(
@@ -67,7 +67,7 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
         nullable=True,
     )
 
-    # Credenciales Moodle (password cifrado con AES-256)
+    # Credenciales Moodle (password cifrado con AES-128-CBC (Fernet))
     moodle_username: Mapped[str | None] = mapped_column(String(100), nullable=True)
     moodle_password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     moodle_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -121,20 +121,25 @@ class Usuario(Base, TimestampMixin, SoftDeleteMixin):
         back_populates="tutor",
         lazy="selectin",
     )
+    # PERF-001: estas 3 colecciones se precargaban con selectin en CADA query de
+    # Usuario (actividades_realizadas es un audit log sin techo) pero NINGUN codigo
+    # ni schema las lee. lazy="raise" corta la precarga inutil y, si en el futuro
+    # alguien las accede sin selectinload() explicito, falla con un error claro en
+    # los tests (no un MissingGreenlet silencioso en produccion).
     entregas_subidas: Mapped[list["Entrega"]] = relationship(
         "Entrega",
         back_populates="subido_por",
-        lazy="selectin",
+        lazy="raise",
     )
     correcciones_realizadas: Mapped[list["Correccion"]] = relationship(
         "Correccion",
         back_populates="corregido_por",
-        lazy="selectin",
+        lazy="raise",
     )
     actividades_realizadas: Mapped[list["Actividad"]] = relationship(
         "Actividad",
         back_populates="usuario",
-        lazy="selectin",
+        lazy="raise",
     )
 
     def __repr__(self) -> str:

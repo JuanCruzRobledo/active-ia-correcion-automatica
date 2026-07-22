@@ -9,26 +9,59 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md HU-RUB-02
 Ref: docs/specs/10-INTEGRACIONES.md seccion 4.3
 """
 
+import logging
 from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import N8NError, N8NTimeoutError, ValidationError
+from app.core.error_catalog import (
+    ERROR_API_KEY_INVALID,
+    ERROR_OVERLOADED,
+    ERROR_RATE_LIMIT,
+    ERROR_SIN_CREDITOS,
+    mensaje_error,
+)
+from app.core.exceptions import (
+    APIKeyInvalidError,
+    InsufficientCreditsError,
+    ModelOverloadedError,
+    N8NError,
+    N8NTimeoutError,
+    QuotaExceededError,
+    ValidationError,
+)
 from app.core.security import decrypt_api_key
 from app.integrations.gemini_correction_client import GeminiCorrectionClient
+from app.repositories.usuario_repository import UsuarioRepository
+
+logger = logging.getLogger(__name__)
+
+# Este flujo es Gemini-only (no multi-proveedor como corrección), así que el
+# proveedor de los mensajes del catálogo es fijo.
+_PROVIDER = "gemini"
 
 
 class RubricaIAService:
     """Service for AI-powered rubrica generation from PDF."""
 
-    def __init__(self):
-        """Initialize rubrica IA service."""
+    def __init__(self, db: AsyncSession):
+        """Initialize rubrica IA service.
+
+        Args:
+            db: Async database session. Necesaria para marcar la API key del
+                usuario como inválida cuando el proveedor la rechaza
+                (mismo contrato que `CorreccionService`).
+        """
+        self.db = db
+        self.usuario_repo = UsuarioRepository(db)
         self.gemini_client = GeminiCorrectionClient()
 
     async def generar_rubrica_desde_pdf(
         self,
         pdf_file: UploadFile,
         api_key_encrypted: str,
+        usuario: Any,
         tipo_rubrica: str = "TP",
     ) -> dict[str, Any]:
         """
@@ -37,6 +70,8 @@ class RubricaIAService:
         Args:
             pdf_file: Uploaded PDF file with assignment description.
             api_key_encrypted: Encrypted Gemini API key.
+            usuario: Usuario dueño de la API key. Se marca su
+                `gemini_api_key_valid = False` si el proveedor la rechaza.
             tipo_rubrica: Type of rubrica (TP, PARCIAL_1, etc.). Default: TP.
 
         Returns:
@@ -48,7 +83,10 @@ class RubricaIAService:
 
         Raises:
             HTTPException 400: Invalid file type or missing API key.
+            HTTPException 402: API key inválida o sin créditos.
+            HTTPException 429: Límite de uso (rate limit) del proveedor.
             HTTPException 502: N8N/Gemini error.
+            HTTPException 503: Modelo sobrecargado.
         """
         # Validate file type
         if not pdf_file.filename or not pdf_file.filename.lower().endswith(".pdf"):
@@ -99,6 +137,50 @@ class RubricaIAService:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail="Timeout esperando respuesta del servicio de IA (el PDF puede ser muy largo)",
             )
+        except APIKeyInvalidError:
+            # Key rechazada por el proveedor: marcarla inválida en la DB, igual que
+            # correccion_service.py, para que el frontend pida regenerarla.
+            if usuario is not None:
+                usuario.gemini_api_key_valid = False
+                await self.usuario_repo.update(usuario)
+                logger.warning(
+                    f"API Key de {_PROVIDER} marcada como inválida para usuario "
+                    f"{getattr(usuario, 'id', '?')}"
+                )
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error_code": ERROR_API_KEY_INVALID,
+                    "message": mensaje_error(ERROR_API_KEY_INVALID, _PROVIDER),
+                },
+            )
+        except InsufficientCreditsError as e:
+            logger.warning(f"Sin créditos en {_PROVIDER} generando rúbrica: {e}")
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error_code": ERROR_SIN_CREDITOS,
+                    "message": mensaje_error(ERROR_SIN_CREDITOS, _PROVIDER),
+                },
+            )
+        except QuotaExceededError as e:
+            logger.warning(f"Rate limit de {_PROVIDER} generando rúbrica: {e}")
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "error_code": ERROR_RATE_LIMIT,
+                    "message": mensaje_error(ERROR_RATE_LIMIT, _PROVIDER),
+                },
+            )
+        except ModelOverloadedError as e:
+            logger.warning(f"Modelo de {_PROVIDER} sobrecargado generando rúbrica: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error_code": ERROR_OVERLOADED,
+                    "message": mensaje_error(ERROR_OVERLOADED, _PROVIDER),
+                },
+            )
         except N8NError as e:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
@@ -110,13 +192,9 @@ class RubricaIAService:
             rubrica_data = self._parse_rubrica_response(result)
 
             # Log para debug
-            import logging
-            logger = logging.getLogger(__name__)
             logger.info(f"✅ Rúbrica V2 generada exitosamente: {rubrica_data.get('titulo', 'Sin título')}")
 
         except ValidationError as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"❌ Error validando rúbrica V2: {e.message}")
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,

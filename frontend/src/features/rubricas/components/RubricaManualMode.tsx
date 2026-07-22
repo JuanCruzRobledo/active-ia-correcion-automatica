@@ -66,6 +66,15 @@ function SortableCriterioItem({
 
   const criterioErrors = (errors?.criterios as any)?.[index];
 
+  // Suma en vivo de pesos de subcriterios (peso-por-subcriterio D1/D7).
+  // Solo se muestra cuando algún subcriterio ya tiene `peso` cargado — antes de
+  // eso la rúbrica sigue en v1 y no tiene sentido mostrar una suma sin datos.
+  const subcriteriosWatch =
+    (watch(`criterios.${index}.subcriterios`) as Array<{ peso?: number }> | undefined) || [];
+  const subSumaVisible = subcriteriosWatch.some((s) => s.peso !== undefined && s.peso !== null);
+  const subSumaPesos = subcriteriosWatch.reduce((sum, s) => sum + (s.peso || 0), 0);
+  const subSumaValida = subSumaPesos === (watch(`criterios.${index}.peso`) || 0);
+
   return (
     <div
       ref={setNodeRef}
@@ -167,21 +176,42 @@ function SortableCriterioItem({
           <div className="border-t border-border pt-4 mt-4">
             <div className="flex items-center justify-between mb-3">
               <h4 className="font-medium text-foreground">Subcriterios</h4>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  appendSubcriterio({
-                    id: `${watch(`criterios.${index}.id`)}.${subcriteriosFields.length + 1}`,
-                    descripcion: '',
-                    evidencias: [],
-                  })
-                }
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Agregar
-              </Button>
+              <div className="flex items-center gap-3">
+                {/* Suma en vivo de pesos de subcriterios vs peso del criterio
+                    (peso-por-subcriterio D1/D7, réplica del "Total: X%" de criterios).
+                    Solo se muestra si algún subcriterio ya tiene peso cargado (v2). */}
+                {subSumaVisible && (
+                  <span className="text-xs text-muted-foreground">
+                    Suma:{' '}
+                    <span
+                      className={cn(
+                        'font-semibold',
+                        subSumaValida ? 'text-success' : 'text-destructive'
+                      )}
+                    >
+                      {subSumaPesos}
+                    </span>
+                    {' / '}
+                    {watch(`criterios.${index}.peso`) || 0} pts
+                  </span>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    appendSubcriterio({
+                      id: `${watch(`criterios.${index}.id`)}.${subcriteriosFields.length + 1}`,
+                      descripcion: '',
+                      evidencias: [],
+                      peso: 0,
+                    })
+                  }
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Agregar
+                </Button>
+              </div>
             </div>
 
             {subcriteriosFields.map((subcriterio, subIdx) => (
@@ -191,12 +221,26 @@ function SortableCriterioItem({
               >
                 <div className="flex items-start gap-2">
                   <div className="flex-1 space-y-3">
-                    <Input
-                      label="ID (ej: C1.1)"
-                      {...register(`criterios.${index}.subcriterios.${subIdx}.id`)}
-                      error={criterioErrors?.subcriterios?.[subIdx]?.id?.message}
-                      placeholder={`${watch(`criterios.${index}.id`)}.${subIdx + 1}`}
-                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        label="ID (ej: C1.1)"
+                        {...register(`criterios.${index}.subcriterios.${subIdx}.id`)}
+                        error={criterioErrors?.subcriterios?.[subIdx]?.id?.message}
+                        placeholder={`${watch(`criterios.${index}.id`)}.${subIdx + 1}`}
+                      />
+                      <Input
+                        label="Peso (pts)"
+                        type="number"
+                        inputMode="numeric"
+                        {...register(`criterios.${index}.subcriterios.${subIdx}.peso`, {
+                          valueAsNumber: true,
+                        })}
+                        error={criterioErrors?.subcriterios?.[subIdx]?.peso?.message}
+                        placeholder="10"
+                        min={1}
+                        max={100}
+                      />
+                    </div>
 
                     <div>
                       <label className="block text-sm font-medium text-foreground mb-1.5">
@@ -249,6 +293,12 @@ function SortableCriterioItem({
             {subcriteriosFields.length === 0 && (
               <p className="text-sm text-muted-foreground italic text-center py-4">
                 No hay subcriterios. Agrega al menos uno.
+              </p>
+            )}
+
+            {typeof criterioErrors?.subcriterios?.message === 'string' && (
+              <p className="text-xs text-destructive mt-1">
+                {criterioErrors.subcriterios.message}
               </p>
             )}
           </div>

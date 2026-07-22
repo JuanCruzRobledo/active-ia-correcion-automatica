@@ -110,7 +110,9 @@ async def test_eliminar_cohorte_sin_materias_borra():
 
     await service.eliminar_cohorte(1)
 
-    service.cohorte_repo.delete.assert_awaited_once_with(cohorte)
+    # CRUD-007: ahora es soft delete (activa=False), no borrado físico.
+    service.cohorte_repo.soft_delete.assert_awaited_once_with(cohorte)
+    service.cohorte_repo.delete.assert_not_called()
 
 
 # ===================== Cuatrimestre =====================

@@ -167,12 +167,24 @@ class RubricaService:
             )
 
         # Check if rubrica already exists
-        if await self.rubrica_repo.exists(
+        # CRUD-011: si el conflicto es con una rúbrica ELIMINADA, decirlo y ofrecer
+        # restaurar (get_by_materia_tipo_numero no filtra por activa).
+        conflicto = await self.rubrica_repo.get_by_materia_tipo_numero(
             materia_id=data.materia_id,
             tipo=data.tipo.value,
             numero=data.numero,
             anio=data.anio,
-        ):
+        )
+        if conflicto is not None:
+            if not conflicto.activa:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Ya existe una rúbrica {data.tipo.value} N°{data.numero} "
+                        f"({data.anio}) para esta materia, pero está eliminada "
+                        f"(id {conflicto.id}). Restaurala o usá otro número."
+                    ),
+                )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Ya existe una rúbrica con ese tipo y número para esta materia y año",
@@ -201,6 +213,7 @@ class RubricaService:
             activa=True,
             modo_consolidacion=data.modo_consolidacion,
             extensiones_personalizadas=data.extensiones_personalizadas,
+            schema_version=data.schema_version,
         )
 
         created_rubrica = await self.rubrica_repo.create(rubrica)
@@ -282,6 +295,7 @@ class RubricaService:
                     num_entregas=num_entregas,
                     modo_consolidacion=rubrica.modo_consolidacion,
                     extensiones_personalizadas=rubrica.extensiones_personalizadas,
+                    schema_version=rubrica.schema_version,
                     activa=rubrica.activa,
                     created_at=rubrica.created_at,
                 )
@@ -350,6 +364,7 @@ class RubricaService:
             moodle_assign_id=rubrica.moodle_assign_id,
             modo_consolidacion=rubrica.modo_consolidacion,
             extensiones_personalizadas=rubrica.extensiones_personalizadas,
+            schema_version=rubrica.schema_version,
             created_at=rubrica.created_at,
             updated_at=rubrica.updated_at,
             materia=materia_info,
@@ -421,6 +436,9 @@ class RubricaService:
         if data.extensiones_personalizadas is not None:
             rubrica.extensiones_personalizadas = data.extensiones_personalizadas
 
+        if data.schema_version is not None:
+            rubrica.schema_version = data.schema_version
+
         updated_rubrica = await self.rubrica_repo.update(rubrica)
 
         return RubricaResponse.model_validate(updated_rubrica)
@@ -446,29 +464,16 @@ class RubricaService:
         """
         from app.core.config import settings
 
-        if settings.ALLOW_HARD_DELETE:
-            # Hard delete: buscar sin filtro activa para poder borrar cualquiera
-            rubrica = await self.rubrica_repo.get_by_id(rubrica_id)
-            if not rubrica:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Rúbrica no encontrada",
-                )
-            # Validar acceso a la materia antes de borrar
-            await self._validar_acceso_materia(current_user, rubrica.materia_id)
-            # Hard delete con cascada completa
-            await self.rubrica_repo.hard_delete_with_cascade(rubrica)
-        else:
-            # Soft delete: baja lógica (comportamiento original)
-            rubrica = await self.rubrica_repo.get_active_by_id(rubrica_id)
-            if not rubrica:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="Rúbrica no encontrada o ya eliminada",
-                )
-            # Validar acceso a la materia
-            await self._validar_acceso_materia(current_user, rubrica.materia_id)
-            await self.rubrica_repo.soft_delete(rubrica)
+        # CRUD-002: soft delete SIEMPRE (se eliminó el flag ALLOW_HARD_DELETE).
+        rubrica = await self.rubrica_repo.get_active_by_id(rubrica_id)
+        if not rubrica:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Rúbrica no encontrada o ya eliminada",
+            )
+        # Validar acceso a la materia
+        await self._validar_acceso_materia(current_user, rubrica.materia_id)
+        await self.rubrica_repo.soft_delete(rubrica)
 
     async def restaurar_rubrica(self, rubrica_id: int, current_user: Usuario) -> RubricaResponse:
         """
@@ -576,6 +581,7 @@ class RubricaService:
                 list(rubrica_original.extensiones_personalizadas)
                 if rubrica_original.extensiones_personalizadas else None
             ),
+            schema_version=rubrica_original.schema_version,
         )
 
         created_rubrica = await self.rubrica_repo.create(rubrica_nueva)

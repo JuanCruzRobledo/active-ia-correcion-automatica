@@ -14,9 +14,15 @@ from datetime import datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, undefer
 
+from app.models.comision import Comision, ComisionTutor
 from app.models.correccion import Correccion
+from app.models.entrega import Entrega
+from app.models.enums import EstadoEntregaEnum, MoodleSyncEstado
+from app.models.materia import Materia
+from app.models.moodle_sync import MoodleSync
+from app.models.rubrica import Rubrica
 
 
 class CorreccionRepository:
@@ -66,9 +72,6 @@ class CorreccionRepository:
         Returns:
             Correccion object with relations if found, None otherwise.
         """
-        from app.models.entrega import Entrega
-        from app.models.comision import Comision
-
         result = await self.db.execute(
             select(Correccion)
             .options(
@@ -80,7 +83,9 @@ class CorreccionRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_entrega_id(self, entrega_id: int) -> Correccion | None:
+    async def get_by_entrega_id(
+        self, entrega_id: int, *, load_raw: bool = False
+    ) -> Correccion | None:
         """
         Get correccion by entrega ID.
 
@@ -89,13 +94,18 @@ class CorreccionRepository:
 
         Args:
             entrega_id: ID of the entrega.
+            load_raw: CRUD-003: si True, carga raw_response (deferred) con undefer().
+                El snapshot de la recorrección lo necesita: hay que leer el crudo
+                ANTES del delete o salta DetachedInstanceError (o MissingGreenlet en
+                async). Los demás callers no lo tocan (default False).
 
         Returns:
             Correccion object if found, None otherwise.
         """
-        result = await self.db.execute(
-            select(Correccion).where(Correccion.entrega_id == entrega_id)
-        )
+        query = select(Correccion).where(Correccion.entrega_id == entrega_id)
+        if load_raw:
+            query = query.options(undefer(Correccion.raw_response))
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def get_by_entrega_id_with_relations(
@@ -114,9 +124,6 @@ class CorreccionRepository:
         Returns:
             Correccion object with relations if found, None otherwise.
         """
-        from app.models.entrega import Entrega
-        from app.models.comision import Comision
-
         result = await self.db.execute(
             select(Correccion)
             .options(
@@ -152,12 +159,6 @@ class CorreccionRepository:
         Returns:
             Tuple of (list of correcciones, total count).
         """
-        # Import here to avoid circular dependency
-        from app.models.entrega import Entrega
-
-        # Base query with nested relations for PDF generation
-        from app.models.comision import Comision
-
         query = select(Correccion).options(
             selectinload(Correccion.entrega).selectinload(Entrega.comision).selectinload(Comision.materia),
             selectinload(Correccion.entrega).selectinload(Entrega.rubrica),
@@ -195,6 +196,48 @@ class CorreccionRepository:
         correcciones = list(result.scalars().all())
 
         return correcciones, total
+
+    async def get_all_for_export(
+        self,
+        *,
+        comision_id: int | None = None,
+        rubrica_id: int | None = None,
+        batch_size: int = 500,
+    ) -> list[Correccion]:
+        """PERF-009: devuelve TODAS las correcciones que matchean el filtro, SIN el tope
+        de ``per_page`` de ``get_all``.
+
+        El ZIP de devoluciones es un artefacto OFICIAL: debe ser COMPLETO. Con
+        ``get_all(per_page=1000)`` cualquier comisión con más de 1000 correcciones salía
+        truncada en silencio. Acá iteramos en lotes reutilizando ``get_all`` (mismos
+        filtros y eager loads ya testeados) hasta agotar el conjunto, así el resultado
+        refleja el total real (si hay 1500, trae 1500).
+
+        Args:
+            comision_id: Filtra por comisión (vía entrega).
+            rubrica_id: Filtra por rúbrica (vía entrega).
+            batch_size: Tamaño de lote por página. Parametrizable para poder ejercitar la
+                iteración multi-página en tests sin sembrar miles de filas.
+
+        Returns:
+            Lista COMPLETA de correcciones con relaciones eager cargadas.
+        """
+        todas: list[Correccion] = []
+        page = 1
+        while True:
+            lote, _ = await self.get_all(
+                comision_id=comision_id,
+                rubrica_id=rubrica_id,
+                page=page,
+                per_page=batch_size,
+            )
+            if not lote:
+                break
+            todas.extend(lote)
+            if len(lote) < batch_size:
+                break
+            page += 1
+        return todas
 
     async def exists_by_entrega_id(self, entrega_id: int) -> bool:
         """
@@ -269,9 +312,6 @@ class CorreccionRepository:
         Returns:
             Dictionary with statistics (avg_nota, min_nota, max_nota, count).
         """
-        # Import here to avoid circular dependency
-        from app.models.entrega import Entrega
-
         result = await self.db.execute(
             select(
                 func.avg(Correccion.nota).label("avg_nota"),
@@ -307,9 +347,6 @@ class CorreccionRepository:
         Returns:
             List of Correccion objects.
         """
-        from app.models.entrega import Entrega
-        from app.models.comision import Comision
-
         result = await self.db.execute(
             select(Correccion)
             .options(
@@ -342,13 +379,6 @@ class CorreccionRepository:
             Lista de Correccion con entrega/comision/materia/rubrica cargadas,
             ordenada por materia, rúbrica y alumno.
         """
-        from app.models.comision import Comision, ComisionTutor
-        from app.models.entrega import Entrega
-        from app.models.enums import EstadoEntregaEnum, MoodleSyncEstado
-        from app.models.materia import Materia
-        from app.models.moodle_sync import MoodleSync
-        from app.models.rubrica import Rubrica
-
         enviado_exists = (
             select(MoodleSync.id)
             .where(
@@ -409,13 +439,6 @@ class CorreccionRepository:
         Returns:
             Cantidad de correcciones no vinculadas a Moodle.
         """
-        from app.models.comision import Comision, ComisionTutor
-        from app.models.entrega import Entrega
-        from app.models.enums import EstadoEntregaEnum, MoodleSyncEstado
-        from app.models.materia import Materia
-        from app.models.moodle_sync import MoodleSync
-        from app.models.rubrica import Rubrica
-
         enviado_exists = (
             select(MoodleSync.id)
             .where(
@@ -470,10 +493,6 @@ class CorreccionRepository:
         Returns:
             List of Correccion objects with relations loaded (only CORREGIDA entregas).
         """
-        from app.models.entrega import Entrega
-        from app.models.comision import Comision
-        from app.models.enums import EstadoEntregaEnum
-
         result = await self.db.execute(
             select(Correccion)
             .options(

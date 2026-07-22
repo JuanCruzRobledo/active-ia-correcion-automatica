@@ -1,5 +1,7 @@
 # 09 - Patrones de Código y Convenciones
 
+> ⚠️ **Sección/spec parcialmente obsoleta:** la integración de IA ya NO usa N8N. La corrección es nativa en el backend (`backend/app/integrations/`: `ia_provider.py` rutea a `gemini_correction_client.py` / `openrouter_client.py`, llamada HTTP directa a Gemini Studio / OpenRouter). Los ejemplos de código que nombran N8N a continuación son históricos.
+
 ---
 
 ## 1. Resumen Ejecutivo
@@ -94,7 +96,7 @@ POST /api/v1/entregas/{id}/corregir
    ├── Valida: usuario tiene acceso a la comisión
    ├── Valida: usuario tiene API Key configurada
    ├── Obtiene rúbrica: rubrica_repository.get_by_id(entrega.rubric_id)
-   ├── Llama a N8N para corrección
+   ├── Llama a ia_provider (gemini_correction_client / openrouter_client) para corrección
    ├── Procesa respuesta de IA
    ├── Guarda: correccion_repository.create(correccion_data)
    └── Retorna: objeto Correccion
@@ -195,7 +197,7 @@ export_service.py (120 LOC)        → PDF y Excel
 class CorreccionService:
     def _validar_permisos()
     def _obtener_api_key()
-    def _llamar_n8n()
+    def _llamar_ia_provider()
     def _procesar_respuesta()
     def _calcular_nota()
     ...
@@ -205,7 +207,7 @@ class PermisoValidator:
     def validar_acceso_comision()
     def validar_api_key()
 
-class N8NClient:
+class IAProviderClient:  # gemini_correction_client / openrouter_client
     def corregir()
     def generar_rubrica()
 
@@ -616,14 +618,14 @@ class ConflictError(AppException):
 
 
 class ExternalServiceError(AppException):
-    """Error en servicio externo (N8N, Gemini)."""
+    """Error en servicio externo (proveedor de IA: Gemini Studio / OpenRouter)."""
 
     def __init__(self, service: str, message: str):
         """
         Inicializa error de servicio externo.
 
         Args:
-            service: Nombre del servicio (ej: "N8N", "Gemini").
+            service: Nombre del servicio (ej: "Gemini", "OpenRouter").
             message: Mensaje de error.
         """
         super().__init__(

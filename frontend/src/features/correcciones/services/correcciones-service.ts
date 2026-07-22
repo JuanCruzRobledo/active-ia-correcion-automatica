@@ -6,8 +6,11 @@
  * Ref: skills/correccion-ia/SKILL.md - API Endpoints
  */
 
+import { isAxiosError } from 'axios';
 import { apiClient } from '@/shared/services/api-client';
-import type { Correccion, CorreccionUpdate, CorregirLoteRequest } from '../types';
+import type { Correccion, CorreccionUpdate } from '../types';
+// IA-012: corregir/recorregir devuelven 202 (corrección en background).
+import type { CorreccionAceptadaResponse } from '@/features/entregas/types';
 
 /**
  * Corrige una entrega individual con IA.
@@ -15,25 +18,12 @@ import type { Correccion, CorreccionUpdate, CorregirLoteRequest } from '../types
  * @param entregaId - ID de la entrega a corregir
  * @returns Promise con la corrección generada
  */
-export const corregirEntrega = async (entregaId: number): Promise<Correccion> => {
-  const response = await apiClient.post<Correccion>(
+export const corregirEntrega = async (
+  entregaId: number
+): Promise<CorreccionAceptadaResponse> => {
+  const response = await apiClient.post<CorreccionAceptadaResponse>(
     `/entregas/${entregaId}/corregir`
   );
-  return response.data;
-};
-
-/**
- * Corrige múltiples entregas en lote.
- *
- * @param entregaIds - Array de IDs de entregas a corregir (máximo 50)
- * @returns Promise con array de correcciones generadas
- */
-export const corregirEntregasLote = async (
-  entregaIds: number[]
-): Promise<Correccion[]> => {
-  const response = await apiClient.post<Correccion[]>('/entregas/corregir-lote', {
-    entrega_ids: entregaIds,
-  } as CorregirLoteRequest);
   return response.data;
 };
 
@@ -63,8 +53,14 @@ export const getCorreccionByEntregaId = async (
     );
     return response.data;
   } catch (error) {
-    // Si no existe corrección, retornar null
-    return null;
+    // ERR-006: null SOLO cuando el backend confirma que no hay corrección (404).
+    // Cualquier otro error (500, 403, timeout, red caída) se re-lanza para que
+    // React Query lo exponga como isError y la UI distinga "sin corrección" de
+    // "no pude consultar".
+    if (isAxiosError(error) && error.response?.status === 404) {
+      return null;
+    }
+    throw error;
   }
 };
 
@@ -103,8 +99,10 @@ export const updateCorreccion = async (
  * @param entregaId - ID de la entrega a re-corregir
  * @returns Promise con la nueva corrección generada
  */
-export const recorregirEntrega = async (entregaId: number): Promise<Correccion> => {
-  const response = await apiClient.post<Correccion>(
+export const recorregirEntrega = async (
+  entregaId: number
+): Promise<CorreccionAceptadaResponse> => {
+  const response = await apiClient.post<CorreccionAceptadaResponse>(
     `/correcciones/entregas/${entregaId}/recorregir`
   );
   return response.data;
@@ -224,7 +222,7 @@ export const descargarPDFsSeleccionados = async (
   entregaIds: number[],
   rubrica?: RubricaContext,
   comisionNombre?: string
-): Promise<void> => {
+): Promise<{ omitidos: number[] }> => {
   const response = await apiClient.post(
     '/documentos/pdfs-seleccionados',
     { entrega_ids: entregaIds },
@@ -234,6 +232,14 @@ export const descargarPDFsSeleccionados = async (
   if (!(response.data instanceof Blob) || response.data.size === 0) {
     throw new Error('No se encontraron entregas corregidas o el archivo está vacío');
   }
+
+  // SEC-004: el backend arma el ZIP solo con las entregas accesibles y lista las
+  // omitidas por permisos en este header (la respuesta es binaria, no hay JSON).
+  const header = (response.headers?.['x-entregas-omitidas'] ?? '') as string;
+  const omitidos = header
+    .split(',')
+    .map((s) => Number(s.trim()))
+    .filter((n) => Number.isFinite(n) && n > 0);
 
   const rubricaPart = rubrica
     ? `${rubrica.tipo}-${rubrica.numero}`.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-_]/g, '')
@@ -246,6 +252,7 @@ export const descargarPDFsSeleccionados = async (
     : `Devoluciones-Seleccionados-${rubricaPart}.zip`;
 
   downloadBlob(response.data as Blob, filename);
+  return { omitidos };
 };
 
 /**

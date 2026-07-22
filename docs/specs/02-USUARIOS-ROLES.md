@@ -83,7 +83,7 @@ El sistema tiene **3 roles** con responsabilidades claramente diferenciadas:
 | `password` | String | Sí | Contraseña hasheada (bcrypt) |
 | `rol` | Enum | Sí | 'ADMIN', 'COORDINADOR', 'TUTOR' |
 | `primer_login` | Boolean | Sí | True si debe cambiar contraseña en próximo login |
-| `gemini_api_key_encrypted` | String | No | API Key de Gemini encriptada (AES-256) |
+| `gemini_api_key_encrypted` | String | No | API Key de IA encriptada con Fernet (AES-128-CBC + HMAC-SHA256) |
 | `gemini_api_key_valid` | Boolean | No | Flag de validación de la API Key |
 | `activo` | Boolean | Sí | False = eliminado (soft delete) |
 | `created_at` | Timestamp | Sí | Fecha de creación |
@@ -368,7 +368,7 @@ Tutor ←──── N:M ────→ Comisión
 │         Válida              Inválida                             │
 │              │                   │                                │
 │              ▼                   ▼                                │
-│     - Encripta con AES-256      - Muestra error                  │
+│     - Encripta con Fernet       - Muestra error                  │
 │     - Guarda en BD              - No guarda                      │
 │     - gemini_api_key_valid=true - Pide reintentar                │
 │     - Muestra confirmación                                       │

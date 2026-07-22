@@ -10,7 +10,7 @@ Ref: docs/specs/06-MODELO-DATOS.md seccion 3.1
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import RolEnum
 
@@ -43,6 +43,14 @@ class UsuarioBase(BaseModel):
         description="Email del usuario (lo usa la notificación al tutor académico)",
         examples=["jperez@active-ia.com"],
     )
+
+    @field_validator("username")
+    @classmethod
+    def _username_a_minuscula(cls, v: str) -> str:
+        # CRUD-009: canonicalizar. Sin esto, exists_username(data.username) chequea
+        # el valor crudo pero el insert guarda .lower() -> "JPerez" pasa el chequeo
+        # (no existe "JPerez") y revienta contra el unique al guardar "jperez".
+        return v.lower()
 
 
 class UsuarioCreate(UsuarioBase):
@@ -182,7 +190,7 @@ class MoodleCredentialsUpdate(BaseModel):
     moodle_password: str = Field(
         ...,
         min_length=1,
-        description="Contraseña en Moodle (se cifra con AES-256)",
+        description="Contraseña en Moodle (se cifra con AES-128-CBC (Fernet))",
     )
 
 

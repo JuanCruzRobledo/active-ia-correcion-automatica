@@ -1,5 +1,7 @@
 # 03 - Requisitos Funcionales
 
+> ⚠️ **Sección/spec parcialmente obsoleta:** la integración de IA ya NO usa N8N. La corrección es nativa en el backend (`backend/app/integrations/`: `ia_provider.py` rutea a `gemini_correction_client.py` / `openrouter_client.py`, llamada HTTP directa a Gemini Studio / OpenRouter). Las menciones a N8N a continuación son históricas.
+
 ---
 
 ## 1. Resumen de Módulos
@@ -295,7 +297,7 @@ MATERIA (Programación 1)
 **Criterios de Aceptación:**
 - Selector de materia, tipo, número, año (igual que manual)
 - Campo para subir archivo PDF
-- Al subir, sistema envía a N8N → Gemini para extracción
+- Al subir, el backend llama directo al proveedor de IA (Gemini Studio / OpenRouter) para extracción
 - Muestra criterios extraídos para revisión
 - Coordinador puede editar criterios antes de confirmar
 - Requiere API Key Gemini configurada
@@ -428,13 +430,13 @@ Al subir entregas, si ya existe una entrega del mismo alumno para la misma rúbr
 
 ```
 1. Tutor selecciona entrega(s) a corregir
-2. Sistema valida API Key Gemini del tutor
-3. Sistema envía a N8N:
+2. Sistema valida la API Key de IA del tutor
+3. El backend (ia_provider.py) rutea según correction_provider y envía directo al proveedor:
    - Contenido consolidado del código
    - Rúbrica con criterios
-   - API Key Gemini del tutor
-4. N8N invoca Google Gemini con prompt estructurado
-5. Gemini evalúa según cada criterio y retorna:
+   (la API Key del tutor se usa para autenticar la llamada HTTP)
+4. El proveedor de IA (Gemini Studio / OpenRouter) evalúa con prompt estructurado
+5. La IA evalúa según cada criterio y retorna:
    - Nota total (0-100)
    - Evaluación por criterio (puntaje, estado, feedback)
    - Lista de fortalezas
@@ -724,7 +726,7 @@ Todos los campos de la corrección son editables:
 - Al guardar:
   - Valida formato (debe empezar con "AIza")
   - Realiza llamada de prueba a Gemini
-  - Si válida: encripta con AES-256 y guarda
+  - Si válida: encripta con Fernet (AES-128-CBC + HMAC-SHA256) y guarda
   - Si inválida: muestra error, no guarda
 - Mensaje de confirmación al guardar exitosamente
 

@@ -28,41 +28,6 @@ services:
       retries: 5
 
   # ==========================================
-  # N8N (Workflows de IA)
-  # ==========================================
-  n8n:
-    image: juancruzrobledo/n8n-active-ia:latest
-    restart: always
-    expose:
-      - "5678"
-    environment:
-      N8N_BASIC_AUTH_ACTIVE: true
-      N8N_BASIC_AUTH_USER: ${N8N_BASIC_AUTH_USER:-admin}
-      N8N_BASIC_AUTH_PASSWORD: ${N8N_BASIC_AUTH_PASSWORD:?N8N_BASIC_AUTH_PASSWORD requerido}
-      N8N_HOST: 0.0.0.0
-      N8N_PORT: 5678
-      WEBHOOK_URL: ${WEBHOOK_URL:-https://tudominio.com/n8n}
-      GENERIC_TIMEZONE: America/Argentina/Buenos_Aires
-      N8N_LOG_LEVEL: info
-      EXECUTIONS_DATA_PRUNE: true
-      EXECUTIONS_DATA_MAX_AGE: 168
-      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
-    volumes:
-      - n8n_data:/home/node/.n8n
-    networks:
-      - active-ia-network
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5678/healthz"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.n8n.rule=PathPrefix(`/n8n`)"
-      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
-
-  # ==========================================
   # Backend (FastAPI)
   # ==========================================
   backend:
@@ -79,11 +44,6 @@ services:
       ACCESS_TOKEN_EXPIRE_DAYS: ${ACCESS_TOKEN_EXPIRE_DAYS:-7}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY requerido}
       CORS_ORIGINS: ${CORS_ORIGINS:-["*"]}
-      N8N_BASE_URL: http://n8n:5678
-      N8N_WEBHOOK_CORRECCION: http://n8n:5678/webhook/corregir
-      N8N_WEBHOOK_RUBRICA: http://n8n:5678/webhook/generar-rubrica
-      N8N_WEBHOOK_HEALTH: http://n8n:5678/webhook/health
-      N8N_TIMEOUT_SECONDS: 90
       UPLOAD_DIR: /app/uploads
       MAX_UPLOAD_SIZE: ${MAX_UPLOAD_SIZE:-104857600}
       ALLOWED_EXTENSIONS: ${ALLOWED_EXTENSIONS:-[".zip",".txt"]}
@@ -96,8 +56,6 @@ services:
       - active-ia-network
     depends_on:
       postgres:
-        condition: service_healthy
-      n8n:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:80/api/v1/health"]
@@ -146,7 +104,6 @@ volumes:
   postgres_data:
   backend_uploads:
   backend_backups:
-  n8n_data:
 
 # ==========================================
 # Red interna

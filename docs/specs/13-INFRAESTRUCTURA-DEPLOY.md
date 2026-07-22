@@ -1,5 +1,7 @@
 # 13. Infraestructura y Deploy
 
+> ⚠️ **Sección/spec parcialmente obsoleta:** la integración de IA ya NO usa N8N. La corrección es nativa en el backend (`backend/app/integrations/`: `ia_provider.py` rutea a `gemini_correction_client.py` / `openrouter_client.py`, llamada HTTP directa a Gemini Studio / OpenRouter). El servicio N8N, su Dockerfile, sus volúmenes (`n8n_data`), variables `N8N_*`, webhooks y healthcheck `/healthz` descritos a continuación son **históricos y ya no forman parte del despliegue actual**.
+
 ## Introducción
 
 Este documento especifica la infraestructura, configuración de contenedores, ambientes de despliegue y procedimientos para el sistema de corrección automática.
@@ -99,7 +101,7 @@ Este documento especifica la infraestructura, configuración de contenedores, am
 - API REST para el frontend
 - Lógica de negocio
 - Comunicación con PostgreSQL
-- Orquestación de correcciones vía N8N
+- Corrección nativa: llamada HTTP directa al proveedor de IA (Gemini Studio / OpenRouter) vía `app/integrations/`
 - Generación de PDFs y Excel
 - Gestión de archivos (uploads)
 
@@ -117,8 +119,9 @@ Este documento especifica la infraestructura, configuración de contenedores, am
 
 - `DATABASE_URL` - Conexión a PostgreSQL
 - `JWT_SECRET` - Secreto para tokens
-- `ENCRYPTION_KEY` - Clave para encriptar API keys
-- `N8N_WEBHOOK_BASE_URL` - URL interna de N8N
+- `ENCRYPTION_KEY` - Clave Fernet para encriptar API keys (44 chars base64 url-safe)
+- `GEMINI_MODEL` / `OPENROUTER_MODEL` / `OPENROUTER_BASE_URL` - Config de los proveedores de IA
+- ~~`N8N_WEBHOOK_BASE_URL`~~ - *(histórico, ya no se usa)*
 
 **Health check**:
 
@@ -770,7 +773,7 @@ docker exec postgres pg_dump -U postgres correcion_db > backup_$(date +%Y%m%d).s
 
 **Respuesta**: `200 OK` (texto plano)
 
-### N8N (/healthz)
+### N8N (/healthz) *(histórico — el servicio N8N ya no forma parte del despliegue)*
 
 **Endpoint**: `GET /healthz`
 

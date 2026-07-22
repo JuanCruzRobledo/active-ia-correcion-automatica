@@ -1,6 +1,23 @@
 # Guía de Despliegue - Active-IA
 
-Esta guía explica cómo desplegar Active-IA usando Docker Compose en dos modos:
+## Topología vigente (producción)
+
+El despliegue real del proyecto **no usa Docker Compose**:
+
+- **Backend**: app service de **EasyPanel**, construido directo desde `backend/Dockerfile`.
+- **Frontend**: **Vercel**, sin Docker (config en `frontend/vercel.json`).
+- **IA**: el backend llama **directo** a Gemini/OpenRouter con la API key de cada usuario,
+  guardada cifrada con AES-128-CBC (Fernet). No hay orquestador ni servicio intermedio.
+
+Los pasos de esta guía son la **alternativa self-hosted** (todo el stack con Docker Compose en
+una máquina propia), útil para desarrollo local o para un VPS. Ver `EASYPANEL_DEPLOY.md` para el
+camino principal.
+
+---
+
+## Despliegue self-hosted con Docker Compose
+
+Dos modos:
 
 1. **Modo HÍBRIDO** (default): Base de datos en la nube
 2. **Modo LOCAL COMPLETO**: Todos los servicios locales incluyendo PostgreSQL
@@ -31,7 +48,7 @@ docker-compose --version  # Docker Compose version 2.0+
 - Despliegas en la PC del tutor con internet estable
 - Quieres compartir datos entre múltiples instancias
 
-**Servicios incluidos:** backend, frontend, n8n
+**Servicios incluidos:** backend, frontend
 **Base de datos:** PostgreSQL en la nube (externa)
 
 ### Paso 1: Clonar repositorio
@@ -58,14 +75,11 @@ nano .env  # o usar tu editor preferido
 DATABASE_URL=postgresql://user:password@host:5432/dbname
 
 # Seguridad (generar valores fuertes)
-JWT_SECRET=$(openssl rand -hex 32)
+SECRET_KEY=$(openssl rand -hex 32)
 ENCRYPTION_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
 
-# N8N (cambiar password)
-N8N_BASIC_AUTH_PASSWORD=tu-password-seguro-aqui
-
 # CORS (usar dominio real en producción)
-CORS_ORIGIN=http://tu-dominio.com
+CORS_ORIGINS=http://tu-dominio.com
 
 # URLs del frontend (cambiar si usas dominio)
 VITE_API_URL=http://tu-dominio.com:5000
@@ -90,12 +104,10 @@ docker-compose ps
 # Verificar health checks
 curl http://localhost:5000/health  # Backend
 curl http://localhost:3000/health  # Frontend
-curl http://localhost:5678/healthz # N8N
 
 # Ver logs individuales
 docker logs active-ia-backend
 docker logs active-ia-frontend
-docker logs active-ia-n8n
 ```
 
 ### Paso 5: Crear usuario administrador inicial
@@ -107,18 +119,16 @@ docker exec -it active-ia-backend python scripts/create_admin.py
 # O crear manualmente desde la UI después del primer inicio
 ```
 
-### Paso 6: Configurar N8N
+### Paso 6: Configurar la IA
 
-1. Acceder a N8N: `http://localhost:5678`
-2. Login con credenciales configuradas (usuario: `admin`, password: el configurado en `.env`)
-3. Importar workflows desde `n8n/workflows/` (si existen)
-4. Configurar credenciales de Gemini API (se usan las de los usuarios)
+No hay nada que configurar a nivel de infraestructura: el backend llama directo a
+Gemini/OpenRouter. Cada usuario carga su propia API key desde su perfil en la app, y se guarda
+cifrada con AES-128-CBC (Fernet) usando `ENCRYPTION_KEY`.
 
 ### Paso 7: Acceder a la aplicación
 
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:5000
-- **N8N**: http://localhost:5678 (solo para admin)
 
 ---
 
@@ -129,7 +139,7 @@ docker exec -it active-ia-backend python scripts/create_admin.py
 - Quieres una instancia completamente aislada
 - Estás en fase de desarrollo/testing
 
-**Servicios incluidos:** backend, frontend, n8n, postgres
+**Servicios incluidos:** backend, frontend, postgres
 **Base de datos:** PostgreSQL en Docker (local)
 
 ### Paso 1: Clonar repositorio
@@ -158,14 +168,11 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 
 # Seguridad (usar valores de desarrollo)
-JWT_SECRET=dev-secret-change-in-production
+SECRET_KEY=dev-secret-change-in-production
 ENCRYPTION_KEY=dev-encryption-key-32-chars!!
 
-# N8N
-N8N_BASIC_AUTH_PASSWORD=admin123
-
 # CORS
-CORS_ORIGIN=http://localhost:3000
+CORS_ORIGINS=http://localhost:3000
 
 # URLs
 VITE_API_URL=http://localhost:5000
@@ -193,14 +200,12 @@ docker exec -it active-ia-postgres psql -U postgres -c "\l"
 # Verificar health checks
 curl http://localhost:5000/health
 curl http://localhost:3000/health
-curl http://localhost:5678/healthz
 ```
 
 ### Paso 5: Acceder a la aplicación
 
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:5000
-- **N8N**: http://localhost:5678
 - **PostgreSQL**: localhost:5432 (con cliente psql)
 
 ---
@@ -237,9 +242,6 @@ docker exec -it active-ia-backend bash
 
 # Acceder a PostgreSQL (modo local)
 docker exec -it active-ia-postgres psql -U postgres active_ia_db
-
-# Ver archivos de N8N
-docker exec -it active-ia-n8n ls -la /home/node/.n8n
 ```
 
 ### Backups
@@ -272,15 +274,6 @@ docker exec active-ia-postgres \
   pg_dump -U postgres active_ia_db | gzip > backup_db_$(date +%Y%m%d).sql.gz
 ```
 
-#### Backup de N8N (workflows)
-
-```bash
-docker run --rm \
-  -v active-ia_n8n_data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/n8n_backup_$(date +%Y%m%d).tar.gz -C /data .
-```
-
 ### Restauración de backups
 
 #### Restaurar archivos
@@ -303,18 +296,6 @@ docker exec -i active-ia-postgres \
 gunzip -c backup_db_20260202.sql.gz | \
   docker exec -i active-ia-postgres \
   psql -U postgres active_ia_db
-```
-
-#### Restaurar N8N
-
-```bash
-docker run --rm \
-  -v active-ia_n8n_data:/data \
-  -v $(pwd):/backup \
-  alpine tar xzf /backup/n8n_backup_20260202.tar.gz -C /data
-
-# Reiniciar N8N después de restaurar
-docker-compose restart n8n
 ```
 
 ---
@@ -409,22 +390,23 @@ docker exec -it active-ia-postgres pg_isready
 docker logs active-ia-backend
 ```
 
-### N8N no responde a webhooks
+### Falla la corrección con IA
 
-**Síntoma**: Timeout en correcciones
+**Síntoma**: Timeout o error en correcciones
 
 **Solución**:
 
 ```bash
-# Verificar health check
-curl http://localhost:5678/healthz
-
-# Ver logs de N8N
-docker logs active-ia-n8n
-
-# Verificar workflows activos en UI
-# http://localhost:5678
+# La llamada a Gemini/OpenRouter sale desde el backend: revisar sus logs
+docker logs active-ia-backend
 ```
+
+Verificar además:
+
+- Que el usuario tenga cargada su API key en el perfil.
+- Que `ENCRYPTION_KEY` no haya cambiado desde que se guardó esa key (si cambia, no se puede
+  descifrar).
+- Que el host tenga salida a internet hacia el proveedor de IA.
 
 ### Frontend muestra página en blanco
 
@@ -490,12 +472,10 @@ docker-compose up --no-healthcheck
 
 ### Checklist de seguridad
 
-- [ ] Cambiar `JWT_SECRET` por valor fuerte (32+ caracteres)
+- [ ] Cambiar `SECRET_KEY` por valor fuerte (32+ caracteres)
 - [ ] Cambiar `ENCRYPTION_KEY` (usar comando de generación)
-- [ ] Cambiar `N8N_BASIC_AUTH_PASSWORD`
-- [ ] Configurar `CORS_ORIGIN` solo con dominio permitido
+- [ ] Configurar `CORS_ORIGINS` solo con dominio permitido
 - [ ] Usar HTTPS en producción (certificado SSL/TLS)
-- [ ] No exponer puerto de N8N (5678) al exterior
 - [ ] No exponer puerto de PostgreSQL (5432) al exterior
 - [ ] Configurar firewall: permitir solo puertos 80/443
 - [ ] Verificar que `.env` esté en `.gitignore`
@@ -505,7 +485,7 @@ docker-compose up --no-healthcheck
 ### Generar valores seguros
 
 ```bash
-# JWT_SECRET (32 bytes = 64 caracteres hex)
+# SECRET_KEY (32 bytes = 64 caracteres hex)
 openssl rand -hex 32
 
 # ENCRYPTION_KEY (Fernet compatible)
@@ -599,8 +579,8 @@ Si encuentras problemas:
 
 - [Docker Compose reference](https://docs.docker.com/compose/)
 - [PostgreSQL Docker](https://hub.docker.com/_/postgres)
-- [N8N Documentation](https://docs.n8n.io/)
 - [FastAPI Deployment](https://fastapi.tiangolo.com/deployment/)
+- `EASYPANEL_DEPLOY.md` — deploy vigente (backend en EasyPanel + frontend en Vercel)
 
 ---
 
@@ -609,4 +589,3 @@ Si encuentras problemas:
 Para acceder:
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:5000/docs (Swagger)
-- N8N Admin: http://localhost:5678

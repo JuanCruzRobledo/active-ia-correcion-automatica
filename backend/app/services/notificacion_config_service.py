@@ -7,10 +7,10 @@ Moodle (para refrescar snapshots antes de enviar). Ref: PLAN_NOTIFICACIONES_EMAI
 """
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notificacion import NotificacionCronConfig
+from app.repositories.notificacion_config_repository import NotificacionConfigRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.notificacion import NotifCronConfigResponse, NotifCronConfigUpdate
 
@@ -23,19 +23,16 @@ class NotificacionConfigService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.usuario_repo = UsuarioRepository(db)
+        self.config_repo = NotificacionConfigRepository(db)
 
     async def _get_or_create(self) -> NotificacionCronConfig:
-        result = await self.db.execute(
-            select(NotificacionCronConfig).where(NotificacionCronConfig.id == _CONFIG_ID)
-        )
-        config = result.scalar_one_or_none()
+        # ARCH-001: acceso a datos vía repo, no SQL crudo en el service.
+        config = await self.config_repo.get()
         if config is None:
             config = NotificacionCronConfig(
                 id=_CONFIG_ID, dia_semana=0, hora=7, minuto=0, activo=False
             )
-            self.db.add(config)
-            await self.db.commit()
-            await self.db.refresh(config)
+            config = await self.config_repo.create(config)
         return config
 
     async def get_config(self) -> NotificacionCronConfig:
@@ -86,6 +83,5 @@ class NotificacionConfigService:
         config.minuto = data.minuto
         config.activo = data.activo
         config.remitente = data.remitente
-        await self.db.commit()
-        await self.db.refresh(config)
+        await self.config_repo.save(config)
         return await self._to_response(config)

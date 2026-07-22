@@ -13,6 +13,8 @@
 import axios from 'axios';
 import type { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import toast from 'react-hot-toast';
+import { isAuthEndpoint } from './auth-endpoints';
+import { extractDetailMessage, type ApiErrorDetailShape } from '../utils/apiError';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -64,6 +66,110 @@ apiClient.interceptors.request.use(
   }
 );
 
+/**
+ * Global response-error handler for the axios interceptor.
+ *
+ * Exported so it can be unit-tested directly (feeding it a crafted AxiosError)
+ * without reaching into axios internals. The interceptor below is registered
+ * with this exact function.
+ */
+export function handleResponseError(
+  error: AxiosError<{ message?: string; detail?: ApiErrorDetailShape }>
+): Promise<never> {
+  const status = error.response?.status;
+
+  // For blob responses (file downloads), the error body arrives as a Blob and
+  // can't be parsed as JSON. Skip global toasts — the calling function handles errors.
+  if (error.response?.data instanceof Blob) {
+    return Promise.reject(error);
+  }
+
+  // ERR-005: el `detail` puede ser string, array de validación (Pydantic) u
+  // objeto { error_code, message } (errores de IA). Un único extractor los cubre.
+  const message =
+    error.response?.data?.message ||
+    extractDetailMessage(error.response?.data?.detail);
+
+  // Handle different error status codes
+  switch (status) {
+    case 401:
+      // ERR-004: un 401 en un endpoint de auth (login / cambio de contraseña) NO
+      // es sesión expirada, es credenciales inválidas. Preservamos el error (y su
+      // mensaje real del backend) para que el caller lo muestre, SIN limpiar la
+      // sesión ni redirigir. El resto de los 401 (token expirado en un endpoint
+      // autenticado) mantienen el comportamiento de expiración.
+      if (isAuthEndpoint(error.config?.url)) {
+        return Promise.reject(error);
+      }
+      // Unauthorized - Token expired or invalid
+      toast.error('Sesión expirada. Por favor, inicia sesión nuevamente.');
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem('auth_user');
+      // Redirect to login after a short delay
+      setTimeout(() => {
+        window.location.href = '/login';
+      }, 1500);
+      break;
+
+    case 403:
+      // Forbidden - No permission
+      toast.error(message || 'No tienes permisos para realizar esta acción.');
+      break;
+
+    case 404:
+      // Not found
+      toast.error(message || 'Recurso no encontrado.');
+      break;
+
+    case 409:
+      // Conflict - Duplicate or business logic error
+      toast.error(message || 'El recurso ya existe o hay un conflicto.');
+      break;
+
+    case 422:
+      // Validation error
+      toast.error(message || 'Error de validación. Verifica los datos ingresados.');
+      break;
+
+    case 402:
+      // Payment required (Gemini API key invalid) — handled by specific hooks
+      break;
+
+    case 429:
+      // Too many requests (Gemini rate limit) — handled by specific hooks
+      break;
+
+    case 500:
+    case 502:
+    case 503:
+      // Server errors
+      toast.error(
+        message || 'Error del servidor. Por favor, intenta nuevamente más tarde.'
+      );
+      break;
+
+    default:
+      // Network error or unknown error
+      if (!error.response) {
+        toast.error('Error de conexión. Verifica tu conexión a internet.');
+      } else {
+        toast.error(message || 'Ocurrió un error inesperado.');
+      }
+  }
+
+  // Log error in development
+  if (import.meta.env.DEV) {
+    console.error('[API] Error:', {
+      status,
+      message,
+      url: error.config?.url,
+      method: error.config?.method,
+    });
+  }
+
+  return Promise.reject(error);
+}
+
 // Response interceptor - Handle errors
 apiClient.interceptors.response.use(
   (response) => {
@@ -73,95 +179,7 @@ apiClient.interceptors.response.use(
     }
     return response;
   },
-  (error: AxiosError<{ message?: string; detail?: string | Array<{ msg?: string }> }>) => {
-    const status = error.response?.status;
-
-    // For blob responses (file downloads), the error body arrives as a Blob and
-    // can't be parsed as JSON. Skip global toasts — the calling function handles errors.
-    if (error.response?.data instanceof Blob) {
-      return Promise.reject(error);
-    }
-
-    const rawDetail = error.response?.data?.detail;
-    const message =
-      error.response?.data?.message ||
-      (Array.isArray(rawDetail)
-        ? rawDetail.map((e) => e.msg).filter(Boolean).join('; ')
-        : typeof rawDetail === 'string'
-          ? rawDetail
-          : undefined);
-
-    // Handle different error status codes
-    switch (status) {
-      case 401:
-        // Unauthorized - Token expired or invalid
-        toast.error('Sesión expirada. Por favor, inicia sesión nuevamente.');
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem('auth_user');
-        // Redirect to login after a short delay
-        setTimeout(() => {
-          window.location.href = '/login';
-        }, 1500);
-        break;
-
-      case 403:
-        // Forbidden - No permission
-        toast.error(message || 'No tienes permisos para realizar esta acción.');
-        break;
-
-      case 404:
-        // Not found
-        toast.error(message || 'Recurso no encontrado.');
-        break;
-
-      case 409:
-        // Conflict - Duplicate or business logic error
-        toast.error(message || 'El recurso ya existe o hay un conflicto.');
-        break;
-
-      case 422:
-        // Validation error
-        toast.error(message || 'Error de validación. Verifica los datos ingresados.');
-        break;
-
-      case 402:
-        // Payment required (Gemini API key invalid) — handled by specific hooks
-        break;
-
-      case 429:
-        // Too many requests (Gemini rate limit) — handled by specific hooks
-        break;
-
-      case 500:
-      case 502:
-      case 503:
-        // Server errors
-        toast.error(
-          message || 'Error del servidor. Por favor, intenta nuevamente más tarde.'
-        );
-        break;
-
-      default:
-        // Network error or unknown error
-        if (!error.response) {
-          toast.error('Error de conexión. Verifica tu conexión a internet.');
-        } else {
-          toast.error(message || 'Ocurrió un error inesperado.');
-        }
-    }
-
-    // Log error in development
-    if (import.meta.env.DEV) {
-      console.error('[API] Error:', {
-        status,
-        message,
-        url: error.config?.url,
-        method: error.config?.method,
-      });
-    }
-
-    return Promise.reject(error);
-  }
+  handleResponseError
 );
 
 export default apiClient;

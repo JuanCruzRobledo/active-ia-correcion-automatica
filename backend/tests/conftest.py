@@ -5,7 +5,14 @@ Provides database session fixtures and common test utilities.
 """
 
 import asyncio
+import os
 from typing import AsyncGenerator
+
+# La suite corre sin .env. Sin esto, el validador de arranque de Settings
+# (SEC-003) aborta el import de app.core.config: DEBUG default es False
+# (= producción) y los secretos son los defaults del repo. Los tests son
+# entorno de desarrollo, así que DEBUG=True.
+os.environ.setdefault("DEBUG", "True")
 
 import pytest
 import pytest_asyncio

@@ -522,7 +522,7 @@ export default function CorreccionViewEditModal({
                 <ul className="space-y-2">
                   {fortalezas.map((fortaleza, index) => (
                     <li
-                      key={index}
+                      key={fortaleza}
                       className="flex items-start justify-between bg-success/5 rounded-md p-3 border border-success/20"
                     >
                       <span className="flex items-start gap-2 flex-1 text-sm text-foreground">
@@ -595,7 +595,7 @@ export default function CorreccionViewEditModal({
                 <ol className="space-y-2">
                   {recomendaciones.map((recomendacion, index) => (
                     <li
-                      key={index}
+                      key={recomendacion}
                       className="flex items-start justify-between bg-warning/5 rounded-md p-3 border border-warning/20"
                     >
                       <span className="flex items-start gap-3 flex-1 text-sm text-foreground">
@@ -823,6 +823,33 @@ function CriterioCard({ criterio, isViewMode, onChange }: CriterioCardProps) {
           }
         />
       </div>
+
+      {/* Desglose por subcriterio (rúbricas schema_version >= 2). Tolerante a su
+          ausencia: correcciones viejas o de rúbricas v1 no traen el campo y no
+          se muestra nada acá, igual que hoy (peso-por-subcriterio D8). */}
+      {(criterio.subcriterios_evaluados?.length ?? 0) > 0 && (
+        <div className="border-t border-border/50 pt-3 mt-1 space-y-2">
+          <p className="text-xs font-medium text-muted-foreground">
+            Desglose por subcriterio
+          </p>
+          {(criterio.subcriterios_evaluados || []).map((sub) => (
+            <div
+              key={sub.id}
+              className="rounded-md bg-background/60 border border-border/50 p-2.5 text-xs space-y-1"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-foreground">{sub.id}</span>
+                <span className="text-muted-foreground">
+                  {sub.puntaje_obtenido} / {sub.puntaje_maximo} — {sub.estado}
+                </span>
+              </div>
+              {sub.feedback && (
+                <p className="text-muted-foreground">{sub.feedback}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

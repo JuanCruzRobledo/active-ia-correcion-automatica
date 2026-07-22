@@ -5,7 +5,7 @@ Security utilities for Active-IA.
 Provides functions for:
 - Password hashing and verification (bcrypt)
 - JWT token generation and verification (HS256)
-- API key encryption/decryption (AES-256 via Fernet)
+- API key encryption/decryption (Fernet: AES-128-CBC + HMAC-SHA256)
 
 Ref: docs/specs/11-SEGURIDAD.md
 """
@@ -147,7 +147,7 @@ def decode_token(token: str) -> dict[str, Any]:
 
 
 # =========================================
-# API Key Encryption (AES-256 via Fernet)
+# API Key Encryption (Fernet: AES-128-CBC + HMAC-SHA256)
 # =========================================
 
 
@@ -168,7 +168,10 @@ def encrypt_api_key(api_key: str) -> str:
     """
     Encrypt an API key for secure storage.
 
-    Uses AES-256 encryption via Fernet (symmetric encryption).
+    Uses Fernet symmetric encryption (AES-128-CBC + HMAC-SHA256).
+    ENCRYPTION_KEY must be a Fernet key: 32 random bytes base64-url-safe
+    encoded (44 chars), generated with Fernet.generate_key() — not a raw
+    32-char string.
 
     Args:
         api_key: Plain text API key (e.g., Gemini API key).

@@ -1,29 +1,67 @@
-import { lazy, Suspense } from 'react';
+import { lazy } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import { LoadingState } from '@/shared/components/ui';
 import { AppLayout } from '@/shared/components/layout/AppLayout';
 import { ProtectedRoute } from '@/shared/components/layout/ProtectedRoute';
 import { PublicRoute } from '@/shared/components/layout/PublicRoute';
+// Auth: eager. Son la puerta de entrada (fuera del AppLayout) y no conviene
+// meter un round-trip de Suspense en el camino crítico del login.
 import { LoginPage, ChangePasswordPage } from '@/features/auth/pages';
-import { DashboardPage } from '@/features/dashboard/pages/DashboardPage';
-import { UsuariosPage } from '@/features/usuarios/pages/UsuariosPage';
-import { MateriasPage } from '@/features/materias/pages/MateriasPage';
-import { CohortesPage } from '@/features/cohortes/pages';
-import { TutoresNexoPage } from '@/features/tutores-nexo/pages';
-import { NotificacionesPage } from '@/features/notificaciones/pages';
-import { MateriaDashboardConfigPage } from '@/features/materia-dashboard/pages';
-import { CronConfigPage } from '@/features/cron-config/pages';
-import { ComisionesPage } from '@/features/comisiones/pages/ComisionesPage';
-import { RubricasPage } from '@/features/rubricas/pages/RubricasPage';
-import { EntregasPage } from '@/features/entregas/pages/EntregasPage';
-import { PendientesPage } from '@/features/pendientes/pages';
-import { PorEntregarPage } from '@/features/por-entregar/pages';
-import { GestionPage } from '@/features/gestion/pages';
-import { PerfilPage } from '@/features/perfil/pages/PerfilPage';
-import { CierreCursadaPage } from '@/features/cierre-cursada/pages';
 
-// Lazy: el dashboard de gestores trae Recharts (~350 KB gzip). Se carga solo al
-// entrar a /avance, así no pesa en el bundle principal del resto de la app.
+// PERF-014: el resto de las páginas se cargan lazy (route-level code-splitting).
+// El bundle inicial ya no arrastra pantallas de admin/gestor que la mayoría de
+// los roles no visita. El <Suspense> que las envuelve vive en AppLayout (Outlet).
+// Todas exportan de forma nombrada → mapeamos a `default` para React.lazy.
+const DashboardPage = lazy(() =>
+  import('@/features/dashboard/pages/DashboardPage').then((m) => ({ default: m.DashboardPage }))
+);
+const UsuariosPage = lazy(() =>
+  import('@/features/usuarios/pages/UsuariosPage').then((m) => ({ default: m.UsuariosPage }))
+);
+const MateriasPage = lazy(() =>
+  import('@/features/materias/pages/MateriasPage').then((m) => ({ default: m.MateriasPage }))
+);
+const CohortesPage = lazy(() =>
+  import('@/features/cohortes/pages').then((m) => ({ default: m.CohortesPage }))
+);
+const TutoresNexoPage = lazy(() =>
+  import('@/features/tutores-nexo/pages').then((m) => ({ default: m.TutoresNexoPage }))
+);
+const NotificacionesPage = lazy(() =>
+  import('@/features/notificaciones/pages').then((m) => ({ default: m.NotificacionesPage }))
+);
+const MateriaDashboardConfigPage = lazy(() =>
+  import('@/features/materia-dashboard/pages').then((m) => ({
+    default: m.MateriaDashboardConfigPage,
+  }))
+);
+const CronConfigPage = lazy(() =>
+  import('@/features/cron-config/pages').then((m) => ({ default: m.CronConfigPage }))
+);
+const ComisionesPage = lazy(() =>
+  import('@/features/comisiones/pages/ComisionesPage').then((m) => ({ default: m.ComisionesPage }))
+);
+const RubricasPage = lazy(() =>
+  import('@/features/rubricas/pages/RubricasPage').then((m) => ({ default: m.RubricasPage }))
+);
+const EntregasPage = lazy(() =>
+  import('@/features/entregas/pages/EntregasPage').then((m) => ({ default: m.EntregasPage }))
+);
+const PendientesPage = lazy(() =>
+  import('@/features/pendientes/pages').then((m) => ({ default: m.PendientesPage }))
+);
+const PorEntregarPage = lazy(() =>
+  import('@/features/por-entregar/pages').then((m) => ({ default: m.PorEntregarPage }))
+);
+const GestionPage = lazy(() =>
+  import('@/features/gestion/pages').then((m) => ({ default: m.GestionPage }))
+);
+const PerfilPage = lazy(() =>
+  import('@/features/perfil/pages/PerfilPage').then((m) => ({ default: m.PerfilPage }))
+);
+const CierreCursadaPage = lazy(() =>
+  import('@/features/cierre-cursada/pages').then((m) => ({ default: m.CierreCursadaPage }))
+);
+// El dashboard de gestores trae Recharts (~350 KB gzip); lazy desde siempre.
 const DashboardGestorPage = lazy(() =>
   import('@/features/dashboard-gestor/pages').then((m) => ({
     default: m.DashboardGestorPage,
@@ -94,11 +132,7 @@ export const router = createBrowserRouter([
       },
       {
         path: 'avance',
-        element: (
-          <Suspense fallback={<LoadingState title="Cargando dashboard…" />}>
-            <DashboardGestorPage />
-          </Suspense>
-        ),
+        element: <DashboardGestorPage />,
       },
       // Admin & Coordinador routes
       {

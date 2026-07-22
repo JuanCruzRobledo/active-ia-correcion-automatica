@@ -1,124 +1,137 @@
-# 🚀 Deployment en Easypanel
+# 🚀 Deployment: Backend en Easypanel + Frontend en Vercel
 
-## Pasos para desplegar Active-IA en Easypanel
+## 🗺️ Topología de deploy vigente
 
-### 1️⃣ Configurar Variables de Entorno
+```
+Navegador
+   │
+   ├── Frontend  → Vercel (build estático de Vite, SIN Docker)
+   │                  └── llama al backend vía VITE_API_URL
+   │
+   └── Backend   → Easypanel, app service construido desde `backend/Dockerfile`
+                      ├── PostgreSQL (vía DATABASE_URL)
+                      └── IA: llamada DIRECTA a Gemini / OpenRouter
+                             con la API key de cada usuario (cifrada AES-128-CBC (Fernet))
+```
 
-En Easypanel, ve a tu proyecto → **Environment** y agrega estas variables:
+Puntos clave:
+
+- **Backend**: se despliega como **app service** de Easypanel, construido directo desde
+  `backend/Dockerfile` (no se usa un compose para esto). El contenedor escucha en el
+  puerto **80**, corre `alembic upgrade head` al arrancar y expone health en `/api/v1/health`.
+- **Frontend**: se despliega en **Vercel**, sin Docker. La config vive en `frontend/vercel.json`
+  (framework `vite`, build `npm run build`, output `dist`, SPA rewrite a `/index.html`).
+- **IA**: **no hay orquestador externo ni servicio intermedio**. El backend llama directo al
+  proveedor (Gemini/OpenRouter) usando la API key que cada usuario carga en su perfil, guardada
+  cifrada con AES-128-CBC (Fernet) (`ENCRYPTION_KEY`).
+- **`docker-compose.prod.yml` / `docker-compose.easypanel.yml`**: quedan como **alternativa
+  self-hosted** para levantar todo el stack en un VPS propio. No son el camino principal.
+  Ver [DEPLOYMENT.md](./DEPLOYMENT.md).
+
+---
+
+## 🐍 Backend en Easypanel
+
+### 1️⃣ Crear el app service
+
+1. En Easypanel, creá un **App**
+2. **Source: Git** → conectá el repositorio
+3. **Build: Dockerfile** → path `backend/Dockerfile`, build context `backend/`
+4. Configurá las variables de entorno (paso 2)
+5. **Deploy**
+
+El `CMD` del Dockerfile ya aplica las migraciones (`alembic upgrade head`) antes de levantar
+uvicorn, así que no hace falta un paso manual de migración en cada deploy.
+
+---
+
+### 2️⃣ Variables de entorno del backend
+
+En Easypanel: tu app → **Environment**.
 
 #### **Variables OBLIGATORIAS:**
 
 ```env
-# PostgreSQL
-POSTGRES_DB=active_ia_db
-POSTGRES_USER=active_ia_user
-POSTGRES_PASSWORD=tu_password_seguro_123
+# Base de datos (Postgres accesible desde el backend)
+DATABASE_URL=postgresql+asyncpg://user:password@host:5432/active_ia_db
 
-# Backend Security
+# Seguridad
 SECRET_KEY=genera_con_openssl_rand_hex_32
 ENCRYPTION_KEY=genera_con_python_fernet
 
-# N8N
-N8N_BASIC_AUTH_USER=admin
-N8N_BASIC_AUTH_PASSWORD=tu_password_n8n_seguro
-
-# CORS (tu dominio de Easypanel)
-CORS_ORIGINS=["https://tu-proyecto.easypanel.host","https://*.easypanel.host"]
-
-# Frontend API URL (relativa)
-VITE_API_URL=/api/v1
-
-# Webhook URL (tu dominio de Easypanel)
-WEBHOOK_URL=https://tu-proyecto.easypanel.host/n8n
+# CORS: el dominio del frontend en Vercel
+CORS_ORIGINS=["https://tu-app.vercel.app"]
 ```
+
+> ⚠️ El backend **aborta el arranque** si en producción (`DEBUG=False`) `SECRET_KEY` o
+> `ENCRYPTION_KEY` conservan los valores placeholder del repo. Generalos de verdad.
+>
+> ⚠️ `ENCRYPTION_KEY` cifra las API keys de IA de los usuarios: si la cambiás, las keys ya
+> guardadas dejan de poder descifrarse.
 
 #### **Generar claves de seguridad:**
 
-**En tu terminal local (Windows):**
-
 ```bash
-# Para SECRET_KEY (usar Git Bash o WSL)
+# SECRET_KEY (Git Bash o WSL en Windows)
 openssl rand -hex 32
 
-# Para ENCRYPTION_KEY (si tienes Python)
+# ENCRYPTION_KEY (Fernet)
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
-**Si no tienes OpenSSL, genera SECRET_KEY online:**
-- https://generate-secret.vercel.app/32
+#### **Opcionales** (tienen default en `backend/app/core/config.py`):
 
----
-
-### 2️⃣ Archivo Docker Compose
-
-En Easypanel, usa el archivo: **`docker-compose.easypanel.yml`**
-
-Este archivo ya está optimizado:
-- ✅ Sin `container_name` (Easypanel lo gestiona)
-- ✅ Sin `ports` en nginx (Traefik lo maneja)
-- ✅ Sin `version` (obsoleto)
-- ✅ Labels de Traefik configurados
-- ✅ Validación de variables requeridas
-
----
-
-### 3️⃣ Configuración de Rutas en Easypanel
-
-Easypanel usa **Traefik** para el routing. El archivo ya incluye las labels necesarias:
-
-- **Frontend**: `PathPrefix(/)`  → Todo el tráfico raíz
-- **Backend**: `PathPrefix(/api)` → APIs
-- **N8N**: `PathPrefix(/n8n)` → Workflows
-
-**No necesitas configurar nada extra**, Traefik lo detectará automáticamente.
-
----
-
-### 4️⃣ Deploy desde Git
-
-1. En Easypanel, crea un nuevo **App** o **Service**
-2. Selecciona **Source: Git**
-3. Conecta tu repositorio
-4. Selecciona el archivo: `docker-compose.easypanel.yml`
-5. Configura las variables de entorno (paso 1)
-6. Haz **Deploy**
-
----
-
-### 5️⃣ Verificar Deployment
-
-Después del deploy, verifica:
-
-```bash
-# 1. Ver logs del backend
-# En Easypanel: Services → backend → Logs
-
-# 2. Verificar health checks
-# Todos los servicios deben mostrar "healthy"
-
-# 3. Acceder a la aplicación
-# https://tu-proyecto.easypanel.host/
+```env
+GEMINI_MODEL=gemini-3.5-flash
+OPENROUTER_MODEL=google/gemini-3.5-flash
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+UPLOAD_DIR=/app/uploads
+LOG_LEVEL=INFO
 ```
 
-**Endpoints para verificar:**
-- Frontend: `https://tu-proyecto.easypanel.host/`
-- API Docs: `https://tu-proyecto.easypanel.host/api/v1/docs`
-- N8N: `https://tu-proyecto.easypanel.host/n8n/`
+> La API key de IA **no es una variable de entorno**: la carga cada usuario desde su perfil.
 
 ---
 
-### 6️⃣ Configurar Dominio Personalizado (Opcional)
+### 3️⃣ Dominio del backend
 
-Si quieres usar tu propio dominio:
+1. En Easypanel → **Domains**, asignale un dominio a la app del backend
+2. Easypanel genera el certificado SSL automáticamente
+3. Ese dominio es el que va en `VITE_API_URL` del frontend
 
-1. En Easypanel → **Domains**
-2. Agrega tu dominio: `app.tudominio.com`
-3. Easypanel generará certificado SSL automáticamente
-4. Actualiza las variables de entorno:
-   ```env
-   CORS_ORIGINS=["https://app.tudominio.com"]
-   WEBHOOK_URL=https://app.tudominio.com/n8n
-   ```
+---
+
+## ▲ Frontend en Vercel
+
+### 4️⃣ Crear el proyecto
+
+1. En Vercel, importá el repositorio
+2. **Root Directory**: `frontend`
+3. El resto lo toma de `frontend/vercel.json` (framework `vite`, `npm ci`, `npm run build`,
+   output `dist`)
+
+### 5️⃣ Variables de entorno del frontend
+
+```env
+VITE_API_URL=https://tu-backend.easypanel.host/api/v1
+```
+
+Es una variable de **build** de Vite: si la cambiás, hay que **redeploy** para que tome efecto.
+
+Acordate de que ese dominio de Vercel tiene que estar en el `CORS_ORIGINS` del backend.
+
+---
+
+### 6️⃣ Verificar el deployment
+
+**Backend (Easypanel):**
+- Logs: tu app → **Logs**
+- Health: `https://tu-backend.easypanel.host/api/v1/health` → 200 OK
+- API Docs: `https://tu-backend.easypanel.host/api/v1/docs`
+
+**Frontend (Vercel):**
+- `https://tu-app.vercel.app/` carga la SPA
+- En el navegador (DevTools → Network) las llamadas salen contra `VITE_API_URL` y no dan CORS
 
 ---
 
@@ -130,29 +143,35 @@ The "SECRET_KEY" variable is not set
 ```
 **Solución:** Configurar todas las variables OBLIGATORIAS en Environment
 
-### Error: container_name conflicts
+### Error: el backend no arranca por secretos placeholder
 ```
-container_name is used in backend. It might cause conflicts
+Arranque abortado: hay secretos con valor placeholder en produccion
 ```
-**Solución:** Usar `docker-compose.easypanel.yml` (no tiene container_name)
+**Solución:** Generar `SECRET_KEY` y `ENCRYPTION_KEY` reales (ver paso 2)
 
 ### Error: Build failed
 **Solución:**
 1. Verificar que el repositorio esté actualizado
-2. Verificar que los Dockerfiles existan en `backend/` y `frontend/`
+2. Verificar que el build apunte a `backend/Dockerfile` con context `backend/`
 3. Ver logs de build en Easypanel
 
 ### Error: Backend no conecta con PostgreSQL
 **Solución:**
-1. Verificar que `POSTGRES_PASSWORD` esté configurado
-2. Verificar logs de postgres: `Services → postgres → Logs`
-3. Verificar que el servicio postgres esté "healthy"
+1. Verificar `DATABASE_URL` (host, puerto, credenciales, nombre de la BD)
+2. Verificar que el backend tenga alcance de red hacia esa BD
+3. Ver los logs de arranque: si falla `alembic upgrade head`, es conexión
 
-### Error: Frontend muestra página en blanco
+### Error: Frontend muestra página en blanco / no llega al backend
 **Solución:**
-1. Verificar que `VITE_API_URL=/api/v1` esté configurado
-2. Ver logs del frontend
-3. Verificar que el backend esté respondiendo en `/api/v1/health`
+1. Verificar `VITE_API_URL` en Vercel (y **redeploy**: es variable de build)
+2. Verificar que el dominio de Vercel esté en `CORS_ORIGINS` del backend
+3. Verificar que el backend responda en `/api/v1/health`
+
+### Error: falla la corrección con IA
+**Solución:**
+1. Verificar que el usuario tenga cargada su API key en el perfil
+2. Verificar que `ENCRYPTION_KEY` no haya cambiado desde que se guardó esa key
+3. Ver los logs del backend: la llamada a Gemini/OpenRouter sale desde ahí
 
 ---
 
@@ -161,11 +180,9 @@ container_name is used in backend. It might cause conflicts
 Para actualizar después de hacer cambios:
 
 1. Hacer push a tu repositorio Git
-2. En Easypanel: **Redeploy** o **Rebuild**
-3. Easypanel automáticamente:
-   - Hace pull del código nuevo
-   - Reconstruye las imágenes
-   - Reinicia los servicios
+2. **Backend** → en Easypanel: **Redeploy** o **Rebuild** (pull del código, rebuild de la imagen,
+   `alembic upgrade head` en el arranque, restart)
+3. **Frontend** → Vercel redeploya solo con el push a la rama conectada
 
 ---
 
@@ -183,46 +200,49 @@ Accede desde: **Dashboard → Tu Proyecto → Metrics**
 
 ## 🔐 Backups
 
-### Backup de PostgreSQL en Easypanel:
+### Base de datos
 
-**Opción 1: Backup manual**
 ```bash
-# Conectar al contenedor de postgres
-docker exec -it <postgres-container-id> pg_dump -U active_ia_user active_ia_db > backup.sql
+# Dump del Postgres al que apunta DATABASE_URL
+pg_dump "$DATABASE_URL" > backup.sql
 ```
 
-**Opción 2: Usar volumen persistente**
+### Archivos subidos (entregas)
 
-Easypanel automáticamente crea volúmenes persistentes para:
-- `postgres_data` → Base de datos
-- `backend_uploads` → Archivos subidos
-- `n8n_data` → Workflows de N8N
+El backend guarda los uploads en `UPLOAD_DIR` (default `/app/uploads` dentro del contenedor).
+Ese directorio necesita un **volumen persistente** en Easypanel para sobrevivir a los redeploys.
 
-Estos volúmenes sobreviven a los redeploys.
+El frontend en Vercel no tiene estado: no requiere backup.
 
 ---
 
 ## ✅ Checklist de Deployment
 
-- [ ] Variables de entorno configuradas (SECRET_KEY, ENCRYPTION_KEY, etc.)
-- [ ] Repositorio Git conectado a Easypanel
-- [ ] Archivo `docker-compose.easypanel.yml` seleccionado
-- [ ] Deploy exitoso (todos los servicios "healthy")
-- [ ] Frontend accesible desde el navegador
-- [ ] Backend API respondiendo en `/api/v1/docs`
-- [ ] N8N accesible en `/n8n/`
-- [ ] CORS configurado con tu dominio
+**Backend (Easypanel):**
+- [ ] App creada desde `backend/Dockerfile` (context `backend/`)
+- [ ] `DATABASE_URL` apuntando a un Postgres alcanzable
+- [ ] `SECRET_KEY` y `ENCRYPTION_KEY` generados (no placeholders)
+- [ ] `CORS_ORIGINS` con el dominio de Vercel
+- [ ] Volumen persistente montado en `UPLOAD_DIR`
+- [ ] `/api/v1/health` responde 200 OK
+- [ ] `/api/v1/docs` accesible
+
+**Frontend (Vercel):**
+- [ ] Root Directory = `frontend`
+- [ ] `VITE_API_URL` apuntando al backend
+- [ ] Build exitoso y SPA cargando
+- [ ] Login funcionando (sin errores de CORS en la consola)
 
 ---
 
 ## 🆘 Soporte
 
 Si tienes problemas:
-1. Revisa los **logs** en Easypanel (cada servicio tiene su pestaña de logs)
+1. Revisa los **logs** en Easypanel (backend) y en Vercel (build del frontend)
 2. Verifica los **health checks** (deben estar en verde)
 3. Revisa las **variables de entorno** (no deben estar vacías)
 
 **Logs importantes:**
 - Backend → `/api/v1/health` debe responder 200 OK
+- Backend → `alembic upgrade head` debe completar sin error en el arranque
 - Postgres → "database system is ready to accept connections"
-- N8N → "Editor is now accessible"

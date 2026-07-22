@@ -7,9 +7,11 @@ Business logic for student submission (entrega) management operations.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
 """
 
+import asyncio
 import base64
 import hashlib
-import os
+import json
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import BinaryIO, Literal
@@ -17,8 +19,10 @@ from typing import BinaryIO, Literal
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
+from app.core.upload_limits import validar_tamano_upload, validar_zip_bomb
 from app.models.entrega import Entrega
-from app.models.enums import EstadoEntregaEnum
+from app.models.enums import EstadoEntregaEnum, TipoActividadEnum
 from app.repositories.comision_repository import ComisionRepository
 from app.repositories.entrega_repository import EntregaRepository
 from app.repositories.rubrica_repository import RubricaRepository
@@ -36,8 +40,12 @@ from app.schemas.entrega import (
     HistorialItem,
     HistorialResponse,
 )
+from app.services.actividad_service import ActividadService
 from app.services.consolidacion_service import ConsolidacionService
+from app.services.correccion_service import _limpiar_entrega_error
 from app.services.historial_service import HistorialService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -102,7 +110,12 @@ class EntregaService:
             HTTPException 404: Comision or Rubrica not found.
             HTTPException 409: Entrega already exists and sobrescribir=False.
             HTTPException 400: Invalid file type.
+            HTTPException 413: File exceeds MAX_UPLOAD_SIZE.
         """
+        # Barrera temprana de tamaño (PERF-008): rechazar por el tamaño declarado
+        # (UploadFile.size / Content-Length) antes de cualquier trabajo de DB.
+        validar_tamano_upload(getattr(archivo, "size", None))
+
         # Validate comision exists
         comision = await self.comision_repo.get_active_by_id(data.comision_id)
         if not comision:
@@ -136,6 +149,10 @@ class EntregaService:
         contenido_bytes = await archivo.read()
         archivo_tamanio = len(contenido_bytes)
 
+        # Barrera definitiva de tamaño (PERF-008): el header es falsificable/ausente,
+        # así que se valida el largo real antes de consolidar.
+        validar_tamano_upload(archivo_tamanio)
+
         # Calculate hash
         hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
 
@@ -152,10 +169,12 @@ class EntregaService:
             extensiones_personalizadas,
         )
 
-        # Check if entrega already exists
+        # Check if entrega already exists. CRUD-005: si vamos a sobrescribir, cargar
+        # el contenido para poder snapshotearlo en el historial antes de pisarlo.
         entrega_existente = await self.entrega_repo.get_by_rubrica_alumno(
             rubrica_id=data.rubrica_id,
             alumno_nombre=data.alumno_nombre,
+            load_contenido=sobrescribir,
         )
 
         if entrega_existente:
@@ -188,26 +207,23 @@ class EntregaService:
             entrega_existente.hash_sha256 = hash_sha256
             entrega_existente.estado = EstadoEntregaEnum.SUBIDA
             entrega_existente.subido_por_id = subido_por_id
+            # Al sobrescribir con un archivo nuevo, el error de la corrida anterior
+            # (error_code/error_mensaje/error_at) ya no aplica: se limpia (BUG-013).
+            _limpiar_entrega_error(entrega_existente)
             # Vínculo a Moodle desde la URL pegada (item #4); solo si vino uno nuevo.
             if moodle_user_id is not None:
                 entrega_existente.moodle_user_id = moodle_user_id
 
-            # Note: archivo_ruta would be updated by file storage service
-            # For now, we keep the same path or generate a new one
-            entrega_existente.archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo.filename}"
 
             updated_entrega = await self.entrega_repo.update(entrega_existente)
             return EntregaResponse.model_validate(updated_entrega)
 
         # Create new entrega
-        archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo.filename}"
-
         entrega = Entrega(
             comision_id=data.comision_id,
             rubrica_id=data.rubrica_id,
             alumno_nombre=data.alumno_nombre,
             archivo_nombre=archivo.filename,
-            archivo_ruta=archivo_ruta,
             archivo_tamanio=archivo_tamanio,
             archivo_tipo=archivo_tipo,
             contenido_preview=contenido_preview,
@@ -305,18 +321,25 @@ class EntregaService:
         except HTTPException as e:
             detalle = e.detail if isinstance(e.detail, str) else str(e.detail)
             return ResultadoImportEntrega(status="error", detalle=detalle)
-        except Exception as e:  # noqa: BLE001 — robustez: una entrega no debe romper el lote
-            return ResultadoImportEntrega(status="error", detalle=str(e))
+        except Exception:  # noqa: BLE001 — robustez: una entrega no debe romper el lote
+            # El str(e) (jerga de librería) va SOLO al log; el importador recibe
+            # un mensaje legible (ERR-013).
+            logger.exception(
+                "Error procesando la entrega importada de '%s' (%s)",
+                alumno_nombre, archivo_nombre,
+            )
+            return ResultadoImportEntrega(
+                status="error",
+                detalle="No se pudo procesar la entrega. Revisá el contenido del archivo.",
+            )
 
         hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
-        archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo_nombre}"
 
         entrega = Entrega(
             comision_id=comision_id,
             rubrica_id=rubrica_id,
             alumno_nombre=alumno_nombre,
             archivo_nombre=archivo_nombre,
-            archivo_ruta=archivo_ruta,
             archivo_tamanio=len(contenido_bytes),
             archivo_tipo=archivo_tipo,
             contenido_preview=contenido_preview,
@@ -397,12 +420,14 @@ class EntregaService:
         self,
         *,
         comision_id: int | None = None,
+        comisiones_visibles: list[int] | None = None,
         rubrica_id: int | None = None,
         estado: str | None = None,
         include_archivadas: bool = False,
         solo_archivadas: bool = False,
         fecha_desde: date | None = None,
         fecha_hasta: date | None = None,
+        search: str | None = None,
         page: int = 1,
         per_page: int = 20,
     ) -> EntregaList:
@@ -417,6 +442,7 @@ class EntregaService:
             solo_archivadas: If True, show only archived entregas.
             fecha_desde: Filter from this date (inclusive).
             fecha_hasta: Filter to this date (inclusive).
+            search: PERF-013: filter by alumno_nombre (partial, case-insensitive).
             page: Page number (1-indexed).
             per_page: Items per page.
 
@@ -425,12 +451,14 @@ class EntregaService:
         """
         entregas, total = await self.entrega_repo.get_all(
             comision_id=comision_id,
+            comisiones_visibles=comisiones_visibles,
             rubrica_id=rubrica_id,
             estado=estado,
             include_archivadas=include_archivadas,
             solo_archivadas=solo_archivadas,
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
+            search=search,
             page=page,
             per_page=per_page,
         )
@@ -502,7 +530,6 @@ class EntregaService:
             rubrica_id=entrega.rubrica_id,
             alumno_nombre=entrega.alumno_nombre,
             archivo_nombre=entrega.archivo_nombre,
-            archivo_ruta=entrega.archivo_ruta,
             archivo_tamanio=entrega.archivo_tamanio,
             archivo_tipo=entrega.archivo_tipo,
             contenido_preview=entrega.contenido_preview,
@@ -533,25 +560,70 @@ class EntregaService:
             num_versiones_anteriores=num_versiones,
         )
 
-    async def eliminar_entrega(self, entrega_id: int) -> None:
+    async def eliminar_entrega(self, entrega_id: int, actor_id: int) -> None:
         """
-        Physically delete an entrega (hard delete).
+        CRUD-001: elimina una entrega. Soft delete por defecto (deleted_at);
+        físico con cascada solo si ALLOW_HARD_DELETE. Registra Actividad en ambos
+        casos (hoy es el único dominio del sistema que audita borrados).
 
         Args:
             entrega_id: Entrega's database ID.
+            actor_id: ID del usuario que ejecuta el borrado (para el audit log).
 
         Raises:
-            HTTPException 404: Entrega not found.
+            HTTPException 404: Entrega no encontrada.
+            HTTPException 400: La entrega ya estaba eliminada (soft).
         """
-        entrega = await self.entrega_repo.get_by_id(entrega_id)
-
+        # include_deleted=True para distinguir 404 (no existe) de 400 (ya borrada).
+        entrega = await self.entrega_repo.get_by_id(entrega_id, include_deleted=True)
         if not entrega:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Entrega no encontrada",
             )
 
-        await self.entrega_repo.delete(entrega)
+        # Capturar antes del borrado: el hard delete expira el objeto ORM.
+        alumno = entrega.alumno_nombre
+
+        # CRUD-002: soft delete SIEMPRE (se eliminó el flag ALLOW_HARD_DELETE).
+        if entrega.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La entrega ya está eliminada",
+            )
+        await self.entrega_repo.soft_delete(entrega)
+
+        await ActividadService(self.db).registrar_actividad(
+            tipo=TipoActividadEnum.ENTREGA_ELIMINADA,
+            descripcion=f"Entrega de '{alumno}' eliminada",
+            entidad_id=entrega_id,
+            entidad_nombre=alumno,
+            usuario_id=actor_id,
+        )
+
+    async def restaurar_entrega(self, entrega_id: int, actor_id: int) -> Entrega:
+        """CRUD-001: restaura una entrega borrada (soft delete) y lo audita."""
+        entrega = await self.entrega_repo.get_by_id(entrega_id, include_deleted=True)
+        if not entrega:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Entrega no encontrada",
+            )
+        if not entrega.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="La entrega no está eliminada",
+            )
+
+        await self.entrega_repo.restore(entrega)
+        await ActividadService(self.db).registrar_actividad(
+            tipo=TipoActividadEnum.ENTREGA_RESTAURADA,
+            descripcion=f"Entrega de '{entrega.alumno_nombre}' restaurada",
+            entidad_id=entrega_id,
+            entidad_nombre=entrega.alumno_nombre,
+            usuario_id=actor_id,
+        )
+        return entrega
 
     async def archivar_entregas(
         self,
@@ -586,12 +658,15 @@ class EntregaService:
     async def eliminar_entregas_masivo(
         self,
         ids: list[int],
+        actor_id: int,
     ) -> EntregaAccionMasivaResponse:
         """
-        Bulk hard delete multiple entregas.
+        CRUD-001: baja masiva. Soft delete por defecto; físico solo si
+        ALLOW_HARD_DELETE. Registra UNA Actividad por lote con los IDs en metadatos.
 
         Args:
             ids: List of entrega IDs to delete.
+            actor_id: ID del usuario que ejecuta el borrado (para el audit log).
 
         Returns:
             EntregaAccionMasivaResponse with count of deleted entregas.
@@ -608,7 +683,18 @@ class EntregaService:
                 detail=f"Entregas no encontradas: {missing}",
             )
 
-        count = await self.entrega_repo.delete_by_ids(ids)
+        # CRUD-002: soft delete SIEMPRE (se eliminó el flag ALLOW_HARD_DELETE).
+        count = await self.entrega_repo.soft_delete_by_ids(ids)
+
+        # UNA Actividad por lote (no una por entrega): el detalle vive en metadatos.
+        await ActividadService(self.db).registrar_actividad(
+            tipo=TipoActividadEnum.ENTREGA_ELIMINADA,
+            descripcion=f"Eliminó {count} entrega(s) en lote",
+            entidad_id=ids[0] if ids else 0,
+            entidad_nombre=f"{count} entregas",
+            usuario_id=actor_id,
+            metadatos=json.dumps({"ids": ids, "count": count}),
+        )
         return EntregaAccionMasivaResponse(procesadas=count, ids=ids)
 
     async def obtener_contenido(self, entrega_id: int) -> ContenidoEntrega:
@@ -625,8 +711,10 @@ class EntregaService:
             HTTPException 404: Entrega not found.
             HTTPException 400: Content not available.
         """
-        # Get entrega
-        entrega = await self.entrega_repo.get_by_id(entrega_id)
+        # Get entrega. load_contenido=True: este endpoint devuelve el contenido crudo
+        # (contenido_consolidado o pdf_contenido_b64), columnas deferidas por
+        # PERF-002/PERF-006 → hay que cargarlas explícitamente con undefer acá.
+        entrega = await self.entrega_repo.get_by_id(entrega_id, load_contenido=True)
         if not entrega:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -703,7 +791,10 @@ class EntregaService:
         """
         import io
         import zipfile
-        import tempfile
+
+        # Barrera temprana de tamaño (PERF-008): rechazar el ZIP contenedor por su
+        # tamaño declarado antes de cualquier trabajo de DB.
+        validar_tamano_upload(getattr(archivo_zip, "size", None))
 
         # Validate comision exists
         comision = await self.comision_repo.get_active_by_id(comision_id)
@@ -731,11 +822,18 @@ class EntregaService:
         # Read ZIP content
         contenido_bytes = await archivo_zip.read()
 
+        # Barrera definitiva de tamaño del ZIP contenedor (PERF-008), antes de abrirlo.
+        validar_tamano_upload(len(contenido_bytes))
+
         exitosas: list[EntregaCreada] = []
         errores: list[EntregaError] = []
 
         try:
             with zipfile.ZipFile(io.BytesIO(contenido_bytes), "r") as zip_file:
+                # Anti ZIP-bomb (SEC-005): cortar por tamaño descomprimido acumulado
+                # y por cantidad de entradas ANTES de leer/descomprimir carpetas.
+                validar_zip_bomb(zip_file.filelist)
+
                 # Normalize all paths: Windows ZIPs may use backslashes.
                 # Build a mapping so we can read entries using the original name.
                 original_names = zip_file.namelist()
@@ -813,19 +911,20 @@ class EntregaService:
                             else:
                                 archivo_tipo = "individual"
                         else:
-                            # Multiple loose files - create a ZIP from them
-                            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
-                                with zipfile.ZipFile(tmp_zip, "w") as new_zip:
-                                    for file_path in alumno_files:
-                                        # Remove student folder prefix
-                                        arcname = "/".join(file_path.split("/")[1:])
-                                        if arcname:  # Skip empty paths
-                                            new_zip.writestr(arcname, zip_file.read(normalized_to_original[file_path]))
+                            # Multiple loose files - create a ZIP from them in memory.
+                            # io.BytesIO en vez de NamedTemporaryFile(delete=False): no
+                            # deja archivos temporales huérfanos en disco (BUG-011).
+                            buffer_zip = io.BytesIO()
+                            with zipfile.ZipFile(buffer_zip, "w") as new_zip:
+                                for file_path in alumno_files:
+                                    # Remove student folder prefix
+                                    arcname = "/".join(file_path.split("/")[1:])
+                                    if arcname:  # Skip empty paths
+                                        new_zip.writestr(arcname, zip_file.read(normalized_to_original[file_path]))
 
-                                tmp_zip.seek(0)
-                                contenido_bytes_alumno = tmp_zip.read()
-                                archivo_nombre = f"{alumno_folder}_consolidado.zip"
-                                archivo_tipo = "zip"
+                            contenido_bytes_alumno = buffer_zip.getvalue()
+                            archivo_nombre = f"{alumno_folder}_consolidado.zip"
+                            archivo_tipo = "zip"
 
                         # Calculate hash
                         hash_sha256 = hashlib.sha256(contenido_bytes_alumno).hexdigest()
@@ -845,10 +944,12 @@ class EntregaService:
                             archivo_nombre, extensiones_personalizadas,
                         )
 
-                        # Check if entrega already exists
+                        # Check if entrega already exists. CRUD-005: cargar el
+                        # contenido si se va a sobrescribir, para snapshotearlo.
                         entrega_existente = await self.entrega_repo.get_by_rubrica_alumno(
                             rubrica_id=rubrica_id,
                             alumno_nombre=alumno_nombre,
+                            load_contenido=sobrescribir,
                         )
 
                         sobrescrito = False
@@ -891,7 +992,8 @@ class EntregaService:
                             entrega_existente.hash_sha256 = hash_sha256
                             entrega_existente.estado = EstadoEntregaEnum.SUBIDA
                             entrega_existente.subido_por_id = subido_por_id
-                            entrega_existente.archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo_nombre}"
+                            # Limpiar el error de la corrida anterior al sobrescribir (BUG-013).
+                            _limpiar_entrega_error(entrega_existente)
 
                             updated_entrega = await self.entrega_repo.update(entrega_existente)
                             sobrescrito = True
@@ -899,15 +1001,13 @@ class EntregaService:
 
                         else:
                             # Create new entrega
-                            archivo_ruta = f"/uploads/entregas/{hash_sha256[:8]}_{archivo_nombre}"
-
+                    
                             entrega = Entrega(
                                 comision_id=comision_id,
                                 rubrica_id=rubrica_id,
                                 alumno_nombre=alumno_nombre,
                                 archivo_nombre=archivo_nombre,
-                                archivo_ruta=archivo_ruta,
-                                archivo_tamanio=archivo_tamanio,
+                                                    archivo_tamanio=archivo_tamanio,
                                 archivo_tipo=archivo_tipo,
                                 contenido_preview=contenido_preview,
                                 contenido_consolidado=contenido_consolidado,
@@ -930,7 +1030,7 @@ class EntregaService:
                             )
                         )
 
-                    except Exception as e:
+                    except Exception:
                         # Roll back the session so the next student can still be processed.
                         # Without this, a DB-level error (e.g. null bytes in content)
                         # leaves the SQLAlchemy session in an invalid state and every
@@ -940,11 +1040,17 @@ class EntregaService:
                             await self.db.rollback()
                         except Exception:
                             pass
+                        # El str(e) (jerga SQLAlchemy/encoding) va SOLO al log; el tutor
+                        # recibe un mensaje legible por alumno (ERR-013).
+                        logger.exception(
+                            "Error procesando la entrega masiva de '%s' (carpeta '%s')",
+                            alumno_nombre, alumno_folder,
+                        )
                         errores.append(
                             EntregaError(
                                 alumno_nombre=alumno_nombre,
                                 archivo_nombre=alumno_folder,
-                                error=str(e),
+                                error="No se pudo procesar la entrega de este alumno. Revisá el contenido del archivo.",
                             )
                         )
 
@@ -982,6 +1088,37 @@ class EntregaService:
 
         Returns:
             Tuple of (consolidated_content, list_of_files).
+
+        PERF-005: la consolidación (descompresión del ZIP + armado del string
+        consolidado) es CPU-pura y bloquea el event loop cuando la carga masiva
+        la corre inline por cada alumno. Se delega a un thread con
+        ``asyncio.to_thread``. Solo entran bytes/strings puros al thread: NO se
+        toca la AsyncSession ni el ORM ahí adentro (las queries y commits siguen
+        fuera, en el código async). El resultado consolidado es idéntico —
+        cambia dónde corre, no qué se consolida.
+        """
+        return await asyncio.to_thread(
+            self._consolidar_archivo_sync,
+            contenido_bytes,
+            archivo_tipo,
+            modo,
+            filename,
+            extensiones_personalizadas,
+        )
+
+    def _consolidar_archivo_sync(
+        self,
+        contenido_bytes: bytes,
+        archivo_tipo: str,
+        modo: str,
+        filename: str,
+        extensiones_personalizadas: list[str] | None,
+    ) -> tuple[str, list[str]]:
+        """Parte CPU-pura de la consolidación (corre en un thread vía to_thread).
+
+        ⚠️ NO debe acceder a la AsyncSession ni a atributos ORM lazy: solo
+        opera sobre bytes/strings a través de ``consolidacion_service``, que es
+        stateless y no tiene sesión.
         """
         import io
 

@@ -19,7 +19,7 @@ Ubicacion: `docs/specs/`
 | 07 | [Diseno UI/UX](specs/07-DISENO-UI-UX.md) | Navegacion, wireframes, flujos | Crees componentes o paginas |
 | 08 | [Sistema de Diseno](specs/08-SISTEMA-DISENO-ESTILOS.md) | Colores, tipografia, componentes | Estilices componentes con Tailwind |
 | 09 | [Patrones de Codigo](specs/09-PATRONES-CODIGO.md) | Estructura, convenciones, ejemplos | Dudes sobre estructura de archivos |
-| 10 | [Integraciones](specs/10-INTEGRACIONES.md) | N8N, Gemini, prompts | Implementes correccion IA |
+| 10 | [Integraciones](specs/10-INTEGRACIONES.md) | Gemini / OpenRouter (llamada directa), prompts | Implementes correccion IA |
 | 11 | [Seguridad](specs/11-SEGURIDAD.md) | Auth, encriptacion, protecciones | Implementes auth o manejo de secrets |
 | 12 | [Accesibilidad](specs/12-ACCESIBILIDAD.md) | WCAG, aria, keyboard | Crees componentes UI accesibles |
 | 13 | [Infraestructura](specs/13-INFRAESTRUCTURA-DEPLOY.md) | Docker, variables, deploy | Configures entorno o Docker |
@@ -45,8 +45,6 @@ Ubicacion: `skills/`
 | Documento | Ubicacion | Proposito |
 |-----------|-----------|-----------|
 | [CLAUDE.md](../CLAUDE.md) | Raiz | Entry point para Claude Code |
-| [ESTADO.md](../ESTADO.md) | Raiz | Estado actual y log de sesiones |
-| [ROADMAP.md](../ROADMAP.md) | Raiz | Plan con tareas atomicas |
 | [AGENTS.md](../AGENTS.md) | Raiz | Reglas globales para agentes |
 | [backend/AGENTS.md](../backend/AGENTS.md) | Backend | Reglas especificas backend |
 | [frontend/AGENTS.md](../frontend/AGENTS.md) | Frontend | Reglas especificas frontend |
@@ -88,7 +86,7 @@ Usuario
 | Backend | Python 3.11 + FastAPI + SQLAlchemy 2.0 |
 | Base de datos | PostgreSQL 15+ |
 | Autenticacion | JWT (python-jose) |
-| Integracion IA | N8N + Google Gemini API |
+| Integracion IA | Google Gemini (AI Studio) + OpenRouter (llamada HTTP directa desde el backend) |
 | Deploy | Docker + Docker Compose + Nginx |
 
 ---
@@ -103,4 +101,4 @@ Usuario
 
 ---
 
-*Ultima actualizacion: 2026-01-26*
+*Ultima actualizacion: 2026-07-18*

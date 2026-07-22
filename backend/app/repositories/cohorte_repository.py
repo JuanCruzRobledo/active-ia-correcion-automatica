@@ -78,6 +78,14 @@ class CohorteRepository:
         await self.db.delete(cohorte)
         await self.db.commit()
 
+    async def soft_delete(self, cohorte: Cohorte) -> Cohorte:
+        """CRUD-007: baja lógica (activa=False). Evita el borrado físico y el
+        IntegrityError 500 al borrar una cohorte con cuatrimestres."""
+        cohorte.activa = False
+        await self.db.commit()
+        await self.db.refresh(cohorte)
+        return cohorte
+
 
 class CuatrimestreRepository:
     """Repository for Cuatrimestre model."""
