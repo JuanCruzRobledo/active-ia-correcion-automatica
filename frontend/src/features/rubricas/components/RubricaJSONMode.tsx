@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Upload, Copy, Check } from 'lucide-react';
+import { Upload, Copy, Check, FileJson } from 'lucide-react';
 import { JSON_EXAMPLE } from '../constants/rubrica-constants';
 
 interface Props {
@@ -8,9 +8,10 @@ interface Props {
   jsonError: string | null;
   setJsonError: (error: string | null) => void;
   currentJSON?: string; // JSON actual para copiar (en modo edición)
+  onDownloadJSON?: () => void; // Descargar el JSON portable como archivo (en modo edición)
 }
 
-export function RubricaJSONMode({ jsonText, setJsonText, jsonError, setJsonError, currentJSON }: Props) {
+export function RubricaJSONMode({ jsonText, setJsonText, jsonError, setJsonError, currentJSON, onDownloadJSON }: Props) {
   const [copied, setCopied] = useState(false);
 
   const handleJSONFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -58,6 +59,16 @@ export function RubricaJSONMode({ jsonText, setJsonText, jsonError, setJsonError
               </>
             )}
           </button>
+          {onDownloadJSON && (
+            <button
+              type="button"
+              onClick={onDownloadJSON}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground border border-border rounded hover:bg-muted transition-colors"
+            >
+              <FileJson className="h-3 w-3" />
+              <span>Descargar JSON</span>
+            </button>
+          )}
           <label className="flex items-center gap-1.5 px-2 py-1 text-xs text-accent cursor-pointer hover:underline border border-border rounded hover:bg-muted transition-colors">
             <Upload className="h-3 w-3" />
             Subir .json

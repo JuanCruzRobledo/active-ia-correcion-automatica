@@ -20,6 +20,11 @@ import { useMaterias } from '@/features/materias/hooks';
 import type { Rubrica } from '../types';
 import { criterioSchema } from '../schemas/rubrica-schema';
 import { distribuirPesosIguales } from '../utils/distribuirPesosIguales';
+import {
+  buildRubricaPortableJSON,
+  esModoConsolidacionValido,
+  descargarRubricaJSON,
+} from '../utils/rubricaPortableJson';
 import { RubricaManualMode } from './RubricaManualMode';
 import { PenalizacionesEditor } from './PenalizacionesEditor';
 import { CondicionesEditor } from './CondicionesEditor';
@@ -248,15 +253,19 @@ export function RubricaEditor({
   // Precargar JSON cuando se cambia a modo JSON
   useEffect(() => {
     if (creationMode === 'json' && isEditing && rubrica) {
-      // Si estamos editando y cambiamos a modo JSON, precargar con los datos actuales
-      const currentData = {
+      // Si estamos editando y cambiamos a modo JSON, precargar con los datos actuales.
+      // Usa el shape portable compartido para que precargar/copiar/descargar sean
+      // idénticos e incluyan modo_consolidacion + extensiones_personalizadas.
+      const currentData = buildRubricaPortableJSON({
         titulo: watch('titulo'),
         descripcion: watch('descripcion'),
         metadata: watch('metadata'),
         criterios: watch('criterios'),
         penalizaciones: watch('penalizaciones'),
         condiciones_desaprobacion: watch('condiciones_desaprobacion'),
-      };
+        modo_consolidacion: watch('modo_consolidacion'),
+        extensiones_personalizadas: watch('extensiones_personalizadas'),
+      });
 
       // Solo precargar si el JSON está vacío
       if (!jsonText.trim()) {
@@ -287,11 +296,39 @@ export function RubricaEditor({
       setValue('penalizaciones', parsed.penalizaciones || []);
       setValue('condiciones_desaprobacion', parsed.condiciones_desaprobacion || []);
 
+      // Atajos OPCIONALES: si el JSON los trae, autocompletan; si no vienen (JSONs
+      // viejos, armados a mano, de otra fuente), NO se toca el valor actual/default
+      // del form. Un modo_consolidacion con typo se ignora sin romper la importación.
+      if (esModoConsolidacionValido(parsed.modo_consolidacion)) {
+        setValue('modo_consolidacion', parsed.modo_consolidacion);
+      }
+      if (parsed.extensiones_personalizadas) {
+        setValue('extensiones_personalizadas', parsed.extensiones_personalizadas);
+      }
+
       setCreationMode('manual');
       setJsonText('');
     } catch (error) {
       setJsonError('JSON inválido. Revisa la sintaxis.');
     }
+  };
+
+  // ── Descargar el JSON portable de lo que se está editando (incluye cambios sin
+  //    guardar). No pega a la API: el modal ya tiene todo el estado en el form. ──
+  const handleDownloadJSON = () => {
+    const portable = buildRubricaPortableJSON({
+      titulo: watch('titulo'),
+      descripcion: watch('descripcion'),
+      metadata: watch('metadata'),
+      criterios: watch('criterios'),
+      penalizaciones: watch('penalizaciones'),
+      condiciones_desaprobacion: watch('condiciones_desaprobacion'),
+      modo_consolidacion: watch('modo_consolidacion'),
+      extensiones_personalizadas: watch('extensiones_personalizadas'),
+    });
+    const titulo = watch('titulo') || 'rubrica';
+    const filename = `${watch('tipo')} ${watch('numero')} - ${titulo}.json`;
+    descargarRubricaJSON(portable, filename);
   };
 
   // ── PDF handler ──
@@ -695,15 +732,24 @@ export function RubricaEditor({
             setJsonError={setJsonError}
             currentJSON={
               isEditing || watch('titulo')
-                ? JSON.stringify({
-                    titulo: watch('titulo'),
-                    descripcion: watch('descripcion'),
-                    metadata: watch('metadata'),
-                    criterios: watch('criterios'),
-                    penalizaciones: watch('penalizaciones'),
-                    condiciones_desaprobacion: watch('condiciones_desaprobacion'),
-                  }, null, 2)
+                ? JSON.stringify(
+                    buildRubricaPortableJSON({
+                      titulo: watch('titulo'),
+                      descripcion: watch('descripcion'),
+                      metadata: watch('metadata'),
+                      criterios: watch('criterios'),
+                      penalizaciones: watch('penalizaciones'),
+                      condiciones_desaprobacion: watch('condiciones_desaprobacion'),
+                      modo_consolidacion: watch('modo_consolidacion'),
+                      extensiones_personalizadas: watch('extensiones_personalizadas'),
+                    }),
+                    null,
+                    2
+                  )
                 : undefined
+            }
+            onDownloadJSON={
+              isEditing || watch('titulo') ? handleDownloadJSON : undefined
             }
           />
         )}

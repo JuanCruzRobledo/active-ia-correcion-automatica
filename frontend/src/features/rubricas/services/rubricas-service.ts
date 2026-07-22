@@ -16,6 +16,10 @@ import type {
   RubricaDuplicar,
   RubricasFilters,
 } from '../types';
+import {
+  buildRubricaPortableJSON,
+  descargarRubricaJSON,
+} from '../utils/rubricaPortableJson';
 
 /**
  * Rubricas service with all API operations
@@ -48,6 +52,29 @@ export const rubricasService = {
   getById: async (id: number): Promise<RubricaDetail> => {
     const response = await apiClient.get<RubricaDetail>(`/rubricas/${id}`);
     return response.data;
+  },
+
+  /**
+   * Download the portable JSON of a saved rubrica (client-side).
+   *
+   * `RubricaListItem` no trae `criterios_json` ni el resto de la estructura, así
+   * que primero pide el detalle (`GET /rubricas/{id}`, coordinador/admin-only) y
+   * arma el shape portable con `buildRubricaPortableJSON` (incluye
+   * `modo_consolidacion`). El archivo se genera 100% en el cliente.
+   */
+  downloadJSON: async (id: number, filename: string): Promise<void> => {
+    const detalle = await rubricasService.getById(id);
+    const portable = buildRubricaPortableJSON({
+      titulo: detalle.titulo,
+      descripcion: detalle.descripcion,
+      metadata: detalle.metadata_json,
+      criterios: detalle.criterios_json,
+      penalizaciones: detalle.penalizaciones_json,
+      condiciones_desaprobacion: detalle.condiciones_desaprobacion_json,
+      modo_consolidacion: detalle.modo_consolidacion,
+      extensiones_personalizadas: detalle.extensiones_personalizadas,
+    });
+    descargarRubricaJSON(portable, filename);
   },
 
   /**

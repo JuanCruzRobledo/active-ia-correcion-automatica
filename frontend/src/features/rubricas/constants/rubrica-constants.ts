@@ -57,6 +57,12 @@ export const JSON_EXAMPLE = `{
   "descripcion": "Qué tipo de trabajo evalúa y con qué objetivo",
   "puntaje_maximo": 100,
 
+  // opcional — atajo que autocompleta el "Tipo de proyecto" al importar.
+  // solo_codigo | web_completo | proyecto_completo | personalizado
+  "modo_consolidacion": "solo_codigo",
+  // opcional — solo si modo_consolidacion es "personalizado", ej: [".ipynb", ".sql"]
+  "extensiones_personalizadas": null,
+
   "metadata": {
     "campoLibre": "Información contextual útil para entender el trabajo",
     "otroCampoOpcional": "La metadata es libre y puede tener cualquier clave necesaria"
