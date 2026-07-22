@@ -9,7 +9,7 @@
 
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { FileText, MoreVertical, Pencil, Copy, Trash2, RotateCcw, Download, FileDown, AlertTriangle } from 'lucide-react';
+import { FileText, MoreVertical, Pencil, Copy, Trash2, RotateCcw, Download, FileDown, FileJson, AlertTriangle } from 'lucide-react';
 import {
   useRubricas,
   useRubrica,
@@ -44,6 +44,7 @@ import { useAuth } from '@/features/auth/hooks';
 import { useNovedades } from '@/shared/hooks/useNovedades';
 import { mensajeNovedades } from '@/shared/utils/novedades';
 import { RubricaEditor } from '../components';
+import { rubricasService } from '../services/rubricas-service';
 
 // Mapeo de tipos a labels legibles
 const TIPO_LABELS: Record<TipoRubrica, string> = {
@@ -122,6 +123,11 @@ export const RubricasPage = () => {
     !materiasLoading &&
     (materiasData?.items?.length ?? 0) === 0;
 
+  // Descargar el JSON portable requiere el detalle (GET /rubricas/{id}), endpoint
+  // coordinador/admin-only. Un TUTOR recibiría 403, así que gateamos el ítem en el
+  // front (mejor UX que un toast de error) — mismo criterio de rol que ya usa la página.
+  const puedeDescargarJSON = user?.rol === 'COORDINADOR' || user?.rol === 'ADMIN';
+
   // Form handlers
   const handleOpenCreate = () => {
     setEditingId(null);
@@ -194,6 +200,17 @@ export const RubricasPage = () => {
     } catch (error) {
       console.error('Error descargando guía para estudiantes:', error);
       toast.error('Error al descargar la guía para estudiantes. Por favor, intenta nuevamente.');
+    }
+  };
+
+  const handleDownloadJSON = async (rubrica: RubricaListItem) => {
+    try {
+      const tipoLabel = TIPO_LABELS_FILENAME[rubrica.tipo];
+      const filename = `${tipoLabel} ${rubrica.numero} - ${rubrica.titulo}.json`;
+      await rubricasService.downloadJSON(rubrica.id, filename);
+    } catch (error) {
+      console.error('Error descargando JSON:', error);
+      toast.error('Error al descargar el JSON. Por favor, intenta nuevamente.');
     }
   };
 
@@ -349,6 +366,15 @@ export const RubricasPage = () => {
               onClick: () => handleDownloadPDFResumido(rubrica),
               icon: <FileDown className="w-4 h-4" />,
             },
+            ...(puedeDescargarJSON
+              ? [
+                  {
+                    label: 'Descargar JSON',
+                    onClick: () => handleDownloadJSON(rubrica),
+                    icon: <FileJson className="w-4 h-4" />,
+                  },
+                ]
+              : []),
             rubrica.activa
               ? {
                 label: 'Eliminar',
