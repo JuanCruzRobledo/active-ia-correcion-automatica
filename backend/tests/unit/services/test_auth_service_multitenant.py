@@ -296,3 +296,31 @@ async def test_switch_universidad_superadmin_a_universidad_inactiva_403():
     with pytest.raises(HTTPException) as exc:
         await svc.switch_universidad(user, 999)
     assert exc.value.status_code == 403
+
+
+# =================== 2.0: modo global del superadmin (universidad_id=None) ===================
+
+
+@pytest.mark.asyncio
+async def test_switch_universidad_superadmin_a_modo_global_emite_token_sin_universidad():
+    """D6: 'Todas las universidades' = universidad_activa_id=None. Sólo superadmin."""
+    user = _user(es_superadmin=True)
+    svc = _svc(user)
+
+    res = await svc.switch_universidad(user, None)
+
+    assert res.user.universidad_activa_id is None
+    assert res.user.rol is None
+    assert res.user.es_superadmin is True
+    svc.universidad_repo.get_activa_by_id.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_switch_universidad_no_superadmin_a_modo_global_403():
+    """Triangulación: un no-superadmin NO puede pasar a modo global (universidad_id=None)."""
+    user = _user(es_superadmin=False)
+    svc = _svc(user)
+
+    with pytest.raises(HTTPException) as exc:
+        await svc.switch_universidad(user, None)
+    assert exc.value.status_code == 403

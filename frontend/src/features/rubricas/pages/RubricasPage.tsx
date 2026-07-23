@@ -40,7 +40,7 @@ import {
 import { helpContent } from '@/shared/content/helpContent';
 import { formatDate } from '@/shared/utils';
 import { useMaterias } from '@/features/materias/hooks';
-import { useAuth } from '@/features/auth/hooks';
+import { useTenant } from '@/shared/context/useTenant';
 import { useNovedades } from '@/shared/hooks/useNovedades';
 import { mensajeNovedades } from '@/shared/utils/novedades';
 import { RubricaEditor } from '../components';
@@ -117,16 +117,17 @@ export const RubricasPage = () => {
   const downloadPDFMutation = useDownloadRubricaPDF();
   const downloadPDFResumidoMutation = useDownloadRubricaPDFResumido();
 
-  const { user } = useAuth();
+  // D2: el rol es de la membresía activa (useTenant), no del usuario global.
+  const { rol } = useTenant();
   const sinMateriasAsignadas =
-    user?.rol === 'COORDINADOR' &&
+    rol === 'COORDINADOR' &&
     !materiasLoading &&
     (materiasData?.items?.length ?? 0) === 0;
 
   // Descargar el JSON portable requiere el detalle (GET /rubricas/{id}), endpoint
   // coordinador/admin-only. Un TUTOR recibiría 403, así que gateamos el ítem en el
   // front (mejor UX que un toast de error) — mismo criterio de rol que ya usa la página.
-  const puedeDescargarJSON = user?.rol === 'COORDINADOR' || user?.rol === 'ADMIN';
+  const puedeDescargarJSON = rol === 'COORDINADOR' || rol === 'ADMIN';
 
   // Form handlers
   const handleOpenCreate = () => {
@@ -414,7 +415,7 @@ export const RubricasPage = () => {
       {/* Banner "hay novedades" (item #2, Capa B): otra sesión cambió las rúbricas. */}
       {hayNovedades && (
         <NovedadesBanner
-          mensaje={mensajeNovedades(user?.rol)}
+          mensaje={mensajeNovedades(rol)}
           onActualizar={() => {
             refetch();
             aceptarNovedades();

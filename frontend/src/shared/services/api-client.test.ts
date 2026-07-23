@@ -142,6 +142,53 @@ describe('handleResponseError (interceptor de response de axios)', () => {
     );
   });
 
+  it('409 genérico: muestra el mensaje de conflicto de siempre (no regresión)', async () => {
+    const error = makeAxiosError(409, '/universidades', 'Ya existe una universidad con ese nombre.');
+
+    await expect(handleResponseError(error)).rejects.toBe(error);
+
+    expect(toast.error).toHaveBeenCalledWith('Ya existe una universidad con ese nombre.');
+  });
+
+  it('409 sin universidad activa: muestra un mensaje que invita a elegir universidad, distinto del genérico', async () => {
+    const error = makeAxiosError(409, '/materias', 'Reautenticá para elegir universidad');
+
+    await expect(handleResponseError(error)).rejects.toBe(error);
+
+    const [mensaje] = vi.mocked(toast.error).mock.calls[0];
+    expect(mensaje).toMatch(/eleg[ií].*universidad/i);
+    expect(mensaje).not.toBe('El recurso ya existe o hay un conflicto.');
+  });
+
+  it('424 sin credenciales de Moodle: muestra un mensaje que remite al perfil', async () => {
+    const error = makeAxiosError(
+      424,
+      '/pendientes',
+      'Configurá tus credenciales Moodle en tu perfil'
+    );
+
+    await expect(handleResponseError(error)).rejects.toBe(error);
+
+    expect(toast.error).toHaveBeenCalledWith('Configurá tus credenciales Moodle en tu perfil');
+  });
+
+  it('424 sin mensaje del backend: usa un fallback que también remite al perfil', async () => {
+    const config: InternalAxiosRequestConfig = { url: '/pendientes', headers: new AxiosHeaders() };
+    const response: AxiosResponse = {
+      status: 424,
+      statusText: '',
+      data: {},
+      headers: {},
+      config,
+    };
+    const error = new AxiosError('Request failed with status code 424', 'ERR', config, undefined, response);
+
+    await expect(handleResponseError(error)).rejects.toBe(error);
+
+    const [mensaje] = vi.mocked(toast.error).mock.calls[0];
+    expect(mensaje).toMatch(/perfil/i);
+  });
+
   // ERR-005: el interceptor ahora entiende detail objeto { error_code, message }.
   it('503 con detail objeto { error_code, message }: toastea el message del catálogo', async () => {
     const config: InternalAxiosRequestConfig = { url: '/correcciones', headers: new AxiosHeaders() };

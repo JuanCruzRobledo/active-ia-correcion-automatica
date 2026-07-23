@@ -2,17 +2,21 @@ import { NavLink } from 'react-router-dom';
 import { User, LogOut } from 'lucide-react';
 import { cn } from '@/shared/utils';
 import { useAuth, useLogout } from '@/features/auth/hooks';
+import { useTenant } from '@/shared/context/useTenant';
 import { ThemeToggle } from './ThemeToggle';
+import { UniversidadSelector } from './UniversidadSelector';
 import { navItemsForRole } from './navConfig';
 
 export const Sidebar = () => {
   const { user } = useAuth();
+  const { rol, esSuperadmin } = useTenant();
   const logoutMutation = useLogout();
 
-  const userRole = user?.rol || 'admin';
+  // D2: el rol es de la membresía activa (useTenant), no del usuario global.
+  const userRole = rol || 'admin';
   const userName = user?.nombre || 'Usuario';
 
-  const filteredNavItems = navItemsForRole(userRole);
+  const filteredNavItems = navItemsForRole({ rol, esSuperadmin });
 
   return (
     // h-screen + flex-col: la barra ocupa el alto exacto del viewport. El <nav> es el
@@ -46,6 +50,11 @@ export const Sidebar = () => {
           </NavLink>
         ))}
       </nav>
+
+      {/* Selector de universidad (D1/D5) */}
+      <div className="shrink-0 border-t border-sidebar-border p-3">
+        <UniversidadSelector />
+      </div>
 
       {/* User footer */}
       <div className="shrink-0 border-t border-sidebar-border p-3">

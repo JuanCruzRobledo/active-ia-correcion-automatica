@@ -12,6 +12,7 @@
 
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks';
+import { useTenant } from '@/shared/context/useTenant';
 import { useProfile } from '@/features/perfil/hooks/usePerfil';
 import { ROL } from '@/shared/types';
 import { LoadingState } from '@/shared/components/ui';
@@ -23,6 +24,8 @@ import { DashboardTutor } from '../components/DashboardTutor';
 
 export function DashboardPage() {
   const { user, isLoading } = useAuth();
+  // D2: el rol es de la membresía activa (useTenant), no del usuario global.
+  const { rol } = useTenant();
   const { data: profile } = useProfile();
   const navigate = useNavigate();
 
@@ -40,7 +43,7 @@ export function DashboardPage() {
 
   // El GESTOR entra directo a su dashboard de avance académico (gráfico de torta
   // + selectores). Desde ahí también tiene "Gestión" en el sidebar.
-  if (user.rol === ROL.GESTOR) {
+  if (rol === ROL.GESTOR) {
     return <Navigate to="/avance" replace />;
   }
 
@@ -49,7 +52,7 @@ export function DashboardPage() {
 
   // Render different dashboard based on role
   const renderDashboard = () => {
-    switch (user.rol) {
+    switch (rol) {
       case ROL.ADMIN:
         return <DashboardAdmin />;
       case ROL.COORDINADOR:

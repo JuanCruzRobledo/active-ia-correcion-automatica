@@ -8,11 +8,32 @@ import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import toast from 'react-hot-toast';
 import { useLogin } from './useLogin';
 import { login } from '../services/auth-service';
+import type { UserInfo, SeleccionUniversidadRequerida } from '@/shared/types';
+
+const navigateMock = vi.fn();
 
 vi.mock('react-hot-toast', () => ({
   default: { error: vi.fn(), success: vi.fn() },
 }));
 vi.mock('../services/auth-service');
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>();
+  return { ...actual, useNavigate: () => navigateMock };
+});
+
+function makeUser(over: Partial<UserInfo> = {}): UserInfo {
+  return {
+    id: 1,
+    username: 'tutor1',
+    nombre: 'Tutor Uno',
+    rol: 'TUTOR',
+    primer_login: false,
+    gemini_api_key_valid: false,
+    universidad_activa_id: 7,
+    es_superadmin: false,
+    ...over,
+  };
+}
 
 function makeAxiosError(status: number, detail: string): AxiosError<{ detail?: string }> {
   const config: InternalAxiosRequestConfig = {
@@ -77,5 +98,53 @@ describe('useLogin onError', () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     expect(toast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe('useLogin onSuccess', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('con access_token: muestra el toast de bienvenida y navega a /dashboard', async () => {
+    const user = makeUser();
+    vi.mocked(login).mockResolvedValue({ access_token: 'JWT', token_type: 'bearer', user });
+
+    const { result } = renderHook(() => useLogin(), { wrapper });
+    result.current.mutate({ username: 'tutor1', password: 'x' });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(toast.success).toHaveBeenCalledWith('¡Bienvenido, Tutor Uno!');
+    expect(navigateMock).toHaveBeenCalledWith('/dashboard', { replace: true });
+  });
+
+  it('con access_token y primer_login: navega a /change-password', async () => {
+    const user = makeUser({ primer_login: true });
+    vi.mocked(login).mockResolvedValue({ access_token: 'JWT', token_type: 'bearer', user });
+
+    const { result } = renderHook(() => useLogin(), { wrapper });
+    result.current.mutate({ username: 'tutor1', password: 'x' });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(navigateMock).toHaveBeenCalledWith('/change-password', { replace: true });
+  });
+
+  it('con requiere_seleccion: NO navega ni muestra el toast de bienvenida', async () => {
+    const seleccion: SeleccionUniversidadRequerida = {
+      requiere_seleccion: true,
+      universidades: [{ id: 1, nombre: 'TUPaD', rol: 'TUTOR' }],
+      token_transicion: 'tok-transicion',
+    };
+    vi.mocked(login).mockResolvedValue(seleccion);
+
+    const { result } = renderHook(() => useLogin(), { wrapper });
+    result.current.mutate({ username: 'multiuni', password: 'x' });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
   });
 });

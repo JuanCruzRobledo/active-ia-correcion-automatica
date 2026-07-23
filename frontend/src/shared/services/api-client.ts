@@ -121,9 +121,29 @@ export function handleResponseError(
       toast.error(message || 'Recurso no encontrado.');
       break;
 
-    case 409:
-      // Conflict - Duplicate or business logic error
-      toast.error(message || 'El recurso ya existe o hay un conflicto.');
+    case 409: {
+      // Fase 5 multi-tenant: `get_universidad_activa` responde 409 cuando la
+      // sesión no tiene universidad activa resoluble (token viejo ambiguo:
+      // 0 o 2+ membresías). El backend no manda un error_code para este caso
+      // (sólo el string de detail), así que se distingue por contenido —
+      // NO es el 409 genérico de "recurso duplicado".
+      const sinUniversidadActiva = /eleg[ií].*universidad/i.test(message ?? '');
+      toast.error(
+        sinUniversidadActiva
+          ? 'Elegí una universidad activa para continuar.'
+          : message || 'El recurso ya existe o hay un conflicto.'
+      );
+      break;
+    }
+
+    case 424:
+      // Sin credenciales/campus de Moodle configurados para la universidad
+      // activa (moodle_credentials_resolver.py). El backend ya manda un
+      // mensaje accionable; el fallback también remite al perfil.
+      toast.error(
+        message ||
+          'Faltan las credenciales de Moodle de la universidad activa. Configurala en tu perfil.'
+      );
       break;
 
     case 422:

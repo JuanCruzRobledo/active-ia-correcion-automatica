@@ -155,7 +155,7 @@ class AuthService:
         )
 
     async def seleccionar_universidad(
-        self, token_transicion: str, universidad_id: int
+        self, token_transicion: str, universidad_id: int | None
     ) -> TokenResponse:
         """
         Segundo paso del login en dos pasos: emite el token final.
@@ -198,31 +198,51 @@ class AuthService:
         return await self._resolver_y_emitir(user, universidad_id)
 
     async def switch_universidad(
-        self, current_user: Usuario, universidad_id: int
+        self, current_user: Usuario, universidad_id: int | None
     ) -> TokenResponse:
         """
         Cambia la universidad activa de una sesión ya autenticada.
 
         Args:
             current_user: Usuario autenticado (vía get_current_user).
-            universidad_id: Universidad a la que se quiere cambiar.
+            universidad_id: Universidad a la que se quiere cambiar. `None`
+                SÓLO para el modo global del superadmin (D6, "Todas las
+                universidades"); un no-superadmin con `None` recibe 403.
 
         Returns:
             TokenResponse con el token re-emitido (nueva universidad + rol).
 
         Raises:
             HTTPException 403: Sin membresía activa en la universidad elegida
-                (superadmin: solo si la universidad no existe o está inactiva).
+                (superadmin: solo si la universidad no existe o está inactiva),
+                o `universidad_id=None` pedido por un no-superadmin.
         """
         return await self._resolver_y_emitir(current_user, universidad_id)
 
-    async def _resolver_y_emitir(self, user: Usuario, universidad_id: int) -> TokenResponse:
+    async def _resolver_y_emitir(
+        self, user: Usuario, universidad_id: int | None
+    ) -> TokenResponse:
         """
         Valida acceso a `universidad_id` y emite el token final.
 
         Un superadmin omite la validación de membresía (bypass, decisión OQ2)
         y recibe un `rol` sintético `ADMIN`; el resto requiere membresía activa.
+
+        `universidad_id=None` (D6, modo global) sólo lo puede pedir un
+        superadmin: emite el token sin universidad ni rol, igual que el login
+        directo de superadmin. Un no-superadmin que lo pide recibe 403 — no
+        existe "modo global" fuera del superadmin.
         """
+        if universidad_id is None:
+            if not user.es_superadmin:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Sólo un superadmin puede operar sin universidad activa",
+                )
+            return self._emitir_token(
+                user, universidad_id=None, rol=None, es_superadmin=True
+            )
+
         if user.es_superadmin:
             universidad = await self.universidad_repo.get_activa_by_id(universidad_id)
             if universidad is None:

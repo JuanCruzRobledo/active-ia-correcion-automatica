@@ -15,6 +15,7 @@ import { apiClient } from '@/shared/services/api-client';
 import type {
   LoginRequest,
   LoginResponse,
+  LoginResult,
   ChangePasswordRequest,
   ChangePasswordResponse,
   UserInfo,
@@ -25,21 +26,88 @@ const TOKEN_KEY = 'auth_token';
 const USER_KEY = 'auth_user';
 
 /**
+ * Evento custom disparado cada vez que se persiste una sesión nueva
+ * (login, selección de universidad, switch de universidad).
+ *
+ * `localStorage` NO es reactivo dentro de la misma pestaña — el evento nativo
+ * `storage` sólo dispara en OTRAS pestañas. `TenantProvider` (D1,
+ * shared/context/TenantProvider.tsx) escucha este evento además de `storage`
+ * para reflejar el cambio de sesión sin recargar la página.
+ */
+export const AUTH_SESSION_EVENT = 'auth-session-changed';
+
+function persistirSesion(data: LoginResponse): void {
+  localStorage.setItem(TOKEN_KEY, data.access_token);
+  localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+  window.dispatchEvent(new Event(AUTH_SESSION_EVENT));
+}
+
+/**
  * Login user with username and password.
- * Stores token and user info in localStorage.
+ *
+ * La respuesta es una unión discriminada por `requiere_seleccion`: cuando el
+ * usuario tiene 2+ membresías activas, el backend NO manda `access_token` —
+ * manda la lista de universidades disponibles y un `token_transicion` para el
+ * segundo paso (ver `seleccionarUniversidad`). Sólo se persiste sesión en
+ * `localStorage` cuando la respuesta trae `access_token`; la rama de
+ * selección nunca toca `localStorage` (evita el bug histórico de guardar el
+ * literal `"undefined"` en `auth_token`).
  *
  * @param credentials - Username and password
- * @returns Login response with token and user info
+ * @returns LoginResult: token final o la respuesta intermedia de selección
  */
-export async function login(credentials: LoginRequest): Promise<LoginResponse> {
-  const response = await apiClient.post<LoginResponse>('/auth/login', credentials);
+export async function login(credentials: LoginRequest): Promise<LoginResult> {
+  const response = await apiClient.post<LoginResult>('/auth/login', credentials);
+  const data = response.data;
 
-  const { access_token, user } = response.data;
+  if ('requiere_seleccion' in data) {
+    return data;
+  }
 
-  // Store token and user info
-  localStorage.setItem(TOKEN_KEY, access_token);
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  persistirSesion(data);
+  return data;
+}
 
+/**
+ * Segundo paso del login cuando `login()` devolvió `requiere_seleccion: true`.
+ * Envía el `token_transicion` (como Bearer) y la universidad elegida; con el
+ * token final recibido, persiste la sesión igual que un login directo.
+ *
+ * @param tokenTransicion - Token corto emitido por `/auth/login`
+ * @param universidadId - Universidad elegida por el usuario
+ * @returns LoginResponse con el token final
+ */
+export async function seleccionarUniversidad(
+  tokenTransicion: string,
+  universidadId: number
+): Promise<LoginResponse> {
+  const response = await apiClient.post<LoginResponse>(
+    '/auth/select-universidad',
+    { universidad_id: universidadId },
+    { headers: { Authorization: `Bearer ${tokenTransicion}` } }
+  );
+
+  persistirSesion(response.data);
+  return response.data;
+}
+
+/**
+ * Cambia la universidad activa de una sesión ya autenticada (D1/D4/D6).
+ *
+ * A diferencia de `seleccionarUniversidad`, no usa un token de transición: el
+ * usuario ya está logueado, así que el interceptor de axios adjunta el token
+ * normal. `universidadId=null` es el modo global del superadmin ("Todas las
+ * universidades") — el backend lo interpreta como sin filtro (Fase 4).
+ *
+ * @param universidadId - Universidad elegida, o `null` para modo global (sólo superadmin)
+ * @returns LoginResponse con el token re-emitido
+ */
+export async function switchUniversidad(universidadId: number | null): Promise<LoginResponse> {
+  const response = await apiClient.post<LoginResponse>('/auth/switch-universidad', {
+    universidad_id: universidadId,
+  });
+
+  persistirSesion(response.data);
   return response.data;
 }
 

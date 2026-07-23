@@ -3,10 +3,12 @@ import { Menu, User, LogOut } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/shared/utils';
 import { useAuth, useLogout } from '@/features/auth/hooks';
+import { useTenant } from '@/shared/context/useTenant';
 import { ThemeToggle } from './ThemeToggle';
 import { Sheet } from './Sheet';
 import { primaryNavForRole, overflowNavForRole } from './navConfig';
 import type { NavItem } from './navConfig';
+import { UniversidadSelector } from './UniversidadSelector';
 
 interface BottomNavProps {
   className?: string;
@@ -28,11 +30,14 @@ const labelClass = 'max-w-full truncate text-[10px] leading-tight';
  */
 export const BottomNav = ({ className }: BottomNavProps) => {
   const { user } = useAuth();
+  const { rol, esSuperadmin } = useTenant();
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const userRole = user?.rol || 'admin';
-  const primary = primaryNavForRole(userRole);
-  const overflow = overflowNavForRole(userRole);
+  // D2: el rol es de la membresía activa (useTenant), no del usuario global.
+  const userRole = rol || 'admin';
+  const rolContext = { rol, esSuperadmin };
+  const primary = primaryNavForRole(rolContext);
+  const overflow = overflowNavForRole(rolContext);
   const hasOverflow = overflow.length > 0;
 
   // Si no hay overflow, todos los slots son items; si lo hay, reservamos el 5º para "Más".
@@ -155,6 +160,11 @@ const MoreSheet = ({ open, onClose, items, userName, userRole }: MoreSheetProps)
             ))}
           </nav>
         )}
+
+        {/* Selector de universidad (D1/D5). */}
+        <div className="mt-2 border-t border-border pt-2">
+          <UniversidadSelector />
+        </div>
 
         {/* Acciones de cuenta. */}
         <div className="mt-2 space-y-0.5 border-t border-border pt-2">

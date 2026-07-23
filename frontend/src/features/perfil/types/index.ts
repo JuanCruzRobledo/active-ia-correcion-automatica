@@ -53,8 +53,12 @@ export interface UpdateApiKeyResponse {
   valid: boolean;
 }
 
+/**
+ * Fase 3 multi-tenant (D4): `moodle_host` ya NO se envía — es propiedad de la
+ * Universidad, read-only desde el perfil. Sólo se editan usuario y contraseña
+ * de la membresía (usuario, universidad activa).
+ */
 export interface MoodleCredentialsRequest {
-  moodle_host: string;
   moodle_username: string;
   moodle_password: string;
 }

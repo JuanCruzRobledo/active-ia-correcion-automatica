@@ -103,11 +103,19 @@ class UniversidadDisponible(BaseModel):
 
 
 class SeleccionarUniversidadRequest(BaseModel):
-    """Request body para POST /auth/select-universidad y /auth/switch-universidad."""
+    """Request body para POST /auth/select-universidad y /auth/switch-universidad.
 
-    universidad_id: int = Field(
+    Fase 5 multi-tenant (D6): `universidad_id` acepta `None` para el modo
+    global del superadmin ("Todas las universidades"). Sólo válido para
+    `POST /auth/switch-universidad` con un usuario `es_superadmin`; un
+    no-superadmin que lo intenta recibe 403 (no existe "modo global" fuera
+    del superadmin).
+    """
+
+    universidad_id: int | None = Field(
         ...,
-        description="ID de la universidad a seleccionar/activar",
+        description="ID de la universidad a seleccionar/activar. `null` sólo "
+        "para el modo global del superadmin en switch-universidad.",
     )
 
 

@@ -19,6 +19,7 @@ import {
 import { useMaterias } from '@/features/materias/hooks';
 import { useTutores } from '@/features/usuarios/hooks';
 import { useAuth } from '@/features/auth/hooks';
+import { useTenant } from '@/shared/context/useTenant';
 import type { ComisionDetail } from '../types';
 
 // Validation schema
@@ -58,7 +59,9 @@ export const ComisionForm = ({ isOpen, onClose, comision }: ComisionFormProps) =
   const currentYear = new Date().getFullYear();
 
   const { user } = useAuth();
-  const isTutor = user?.rol === 'TUTOR';
+  // D2: el rol es de la membresía activa (useTenant), no del usuario global.
+  const { rol } = useTenant();
+  const isTutor = rol === 'TUTOR';
   const moodleOnly = isTutor;
   // Skip lookup queries until we know the user's role to avoid 403 toasts
   const canQueryAdminLookups = !!user && !moodleOnly;

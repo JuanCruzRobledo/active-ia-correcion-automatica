@@ -16,8 +16,9 @@ import { HelpButton, LoadingState } from '@/shared/components/ui';
 import { helpContent } from '@/shared/content/helpContent';
 import { formatFechaHoraArg } from '@/shared/utils/fecha';
 
+// Fase 3 multi-tenant (D4): el campus (`moodle_host`) es propiedad de la
+// Universidad activa — read-only acá, NO se pide ni se valida en el form.
 const moodleSchema = z.object({
-  moodle_host: z.string().url('Ingresá una URL válida').min(1),
   moodle_username: z.string().min(1, 'El usuario es requerido'),
   moodle_password: z.string().min(1, 'La contraseña es requerida'),
 });
@@ -58,13 +59,12 @@ export const PerfilPage = () => {
 
   const moodleForm = useForm<MoodleForm>({
     resolver: zodResolver(moodleSchema),
-    defaultValues: { moodle_host: '', moodle_username: '', moodle_password: '' },
+    defaultValues: { moodle_username: '', moodle_password: '' },
   });
 
   useEffect(() => {
     if (profile) {
       moodleForm.reset({
-        moodle_host: profile.moodle_host ?? '',
         moodle_username: profile.moodle_username ?? '',
         moodle_password: '',
       });
@@ -88,7 +88,6 @@ export const PerfilPage = () => {
     onSuccess: (data) => {
       toast.success('Credenciales Moodle guardadas');
       moodleForm.reset({
-        moodle_host: data.moodle_host,
         moodle_username: data.moodle_username,
         moodle_password: '',
       });
@@ -118,6 +117,8 @@ export const PerfilPage = () => {
   const currentPasswordId = useId();
   const newPasswordId = useId();
   const confirmPasswordId = useId();
+  const moodleUsernameId = useId();
+  const moodlePasswordId = useId();
 
   if (isLoading) {
     return <LoadingState title="Cargando tu perfil…" />;
@@ -487,37 +488,34 @@ export const PerfilPage = () => {
             </p>
           </div>
 
+          {/* Campus (moodle_host): propiedad de la universidad activa, read-only (D4). */}
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-1.5">
+              Campus (Host Moodle)
+            </label>
+            {profile.moodle_host ? (
+              <p className="text-base text-foreground">{profile.moodle_host}</p>
+            ) : (
+              <div className="flex items-start gap-3 p-4 rounded-md bg-warning/10 border border-warning/30">
+                <Info className="h-5 w-5 text-warning mt-0.5 flex-shrink-0" />
+                <p className="text-sm text-warning">
+                  Tu universidad activa no tiene un campus de Moodle configurado. Las
+                  operaciones contra Moodle no van a funcionar hasta que se cargue.
+                </p>
+              </div>
+            )}
+          </div>
+
           <form
             onSubmit={moodleForm.handleSubmit((data) => moodleMutation.mutate(data))}
             className="space-y-4"
           >
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
-                Host Moodle
-              </label>
-              <Input
-                type="url"
-                inputMode="url"
-                autoComplete="url"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                placeholder="https://moodle.ejemplo.com"
-                {...moodleForm.register('moodle_host')}
-                className={moodleForm.formState.errors.moodle_host ? 'border-destructive' : ''}
-              />
-              {moodleForm.formState.errors.moodle_host && (
-                <p className="text-sm text-destructive mt-1">
-                  {moodleForm.formState.errors.moodle_host.message}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
+              <label htmlFor={moodleUsernameId} className="block text-sm font-medium text-foreground mb-1.5">
                 Usuario Moodle
               </label>
               <Input
+                id={moodleUsernameId}
                 type="text"
                 autoComplete="username"
                 autoCapitalize="none"
@@ -535,10 +533,11 @@ export const PerfilPage = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1.5">
+              <label htmlFor={moodlePasswordId} className="block text-sm font-medium text-foreground mb-1.5">
                 Contraseña Moodle
               </label>
               <Input
+                id={moodlePasswordId}
                 type="password"
                 autoComplete="current-password"
                 autoCapitalize="none"

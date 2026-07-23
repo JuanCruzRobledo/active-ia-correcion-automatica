@@ -250,3 +250,21 @@ async def test_switch_universidad_requiere_autenticacion():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         resp = await c.post("/api/v1/auth/switch-universidad", json={"universidad_id": 1})
     assert resp.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_switch_universidad_acepta_universidad_id_nulo_modo_global():
+    """0.2/2.0: D6 exige que el endpoint acepte universidad_id=null (modo global)."""
+    _admin_user(es_superadmin=True)
+    with patch("app.routers.auth.AuthService") as cls:
+        cls.return_value.switch_universidad = AsyncMock(
+            return_value=_token_response(
+                es_superadmin=True, rol=None, universidad_activa_id=None
+            )
+        )
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            resp = await c.post(
+                "/api/v1/auth/switch-universidad", json={"universidad_id": None}
+            )
+    assert resp.status_code == 200
+    assert resp.json()["user"]["universidad_activa_id"] is None

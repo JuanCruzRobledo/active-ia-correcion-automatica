@@ -131,15 +131,52 @@ export interface User {
 /**
  * Basic user information returned after login.
  * Mirrors: backend/app/schemas/auth.py::UserInfo
+ *
+ * Fase 1 multi-tenant (multi-tenant-auth-jwt): `rol` refleja el rol del
+ * usuario EN LA UNIVERSIDAD ACTIVA (no un rol global). Es `null` únicamente
+ * para un superadmin que todavía no eligió universidad.
  */
 export interface UserInfo {
   id: number;
   username: string;
   nombre: string;
-  rol: Rol;
+  rol: Rol | null;
   primer_login: boolean;
   gemini_api_key_valid: boolean;
+  /** Universidad en la que el usuario está operando. `null` en modo superadmin sin elegir. */
+  universidad_activa_id: number | null;
+  /** `true` si el usuario es admin global (bypass multi-tenant). */
+  es_superadmin: boolean;
 }
+
+/**
+ * Una opción del selector de universidad (login en dos pasos / selector de tenant).
+ * Mirrors: backend/app/schemas/auth.py::UniversidadDisponible
+ */
+export interface UniversidadDisponible {
+  id: number;
+  nombre: string;
+  rol: Rol;
+}
+
+/**
+ * Respuesta intermedia de login cuando el usuario tiene 2+ membresías activas.
+ * NO incluye `access_token`: hay que llamar a POST /auth/select-universidad.
+ * Mirrors: backend/app/schemas/auth.py::SeleccionUniversidadRequerida
+ */
+export interface SeleccionUniversidadRequerida {
+  requiere_seleccion: true;
+  universidades: UniversidadDisponible[];
+  token_transicion: string;
+}
+
+/**
+ * Unión discriminada de la respuesta de POST /auth/login: o el token final
+ * (LoginResponse, 0/1 universidad o superadmin) o la respuesta intermedia que
+ * pide elegir universidad (2+ membresías activas).
+ * Mirrors: backend/app/schemas/auth.py::LoginResponse (Union)
+ */
+export type LoginResult = LoginResponse | SeleccionUniversidadRequerida;
 
 /**
  * Reduced user information for lists.
@@ -310,7 +347,7 @@ export function hasRole(user: User | UserInfo | null, role: Rol): boolean {
  * Type guard to check if a user has any of the specified roles.
  */
 export function hasAnyRole(user: User | UserInfo | null, roles: Rol[]): boolean {
-  return user ? roles.includes(user.rol) : false;
+  return user?.rol ? roles.includes(user.rol) : false;
 }
 
 /**

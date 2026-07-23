@@ -13,7 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { AxiosError } from 'axios';
 import { login } from '../services/auth-service';
-import type { LoginRequest, LoginResponse } from '@/shared/types';
+import type { LoginRequest, LoginResult } from '@/shared/types';
 import { getErrorMessage } from '@/shared/types';
 
 /**
@@ -48,10 +48,17 @@ import { getErrorMessage } from '@/shared/types';
 export function useLogin() {
   const navigate = useNavigate();
 
-  return useMutation<LoginResponse, Error, LoginRequest>({
+  return useMutation<LoginResult, Error, LoginRequest>({
     mutationFn: login,
 
     onSuccess: (data) => {
+      // Rama de selección de universidad (2+ membresías): no hay sesión
+      // iniciada todavía, así que ni se navega ni se muestra el toast de
+      // bienvenida. LoginPage se encarga de mostrar el segundo paso.
+      if ('requiere_seleccion' in data) {
+        return;
+      }
+
       // Show success message
       toast.success(`¡Bienvenido, ${data.user.nombre}!`);
 

@@ -36,6 +36,7 @@ import { helpContent } from '@/shared/content/helpContent';
 import { formatDate } from '@/shared/utils';
 import { useMaterias } from '@/features/materias/hooks';
 import { useAuth } from '@/features/auth/hooks';
+import { useTenant } from '@/shared/context/useTenant';
 
 export const ComisionesPage = () => {
   const [filters, setFilters] = useState<ComisionesFilters>({
@@ -54,8 +55,10 @@ export const ComisionesPage = () => {
   // Queries
   const { data, isLoading, error } = useComisiones(filters);
   const { user } = useAuth();
-  const isTutor = user?.rol === 'TUTOR';
-  const isAdmin = user?.rol === 'ADMIN';
+  // D2: el rol es de la membresía activa (useTenant), no del usuario global.
+  const { rol } = useTenant();
+  const isTutor = rol === 'TUTOR';
+  const isAdmin = rol === 'ADMIN';
   // Wait for user to load before deciding if we can call admin-only endpoints
   const canListMaterias = !!user && !isTutor;
   const { data: materiasData, isLoading: materiasLoading } = useMaterias(
@@ -66,7 +69,7 @@ export const ComisionesPage = () => {
   const deleteMutation = useDeleteComision();
   const restoreMutation = useRestoreComision();
   const sinMateriasAsignadas =
-    user?.rol === 'COORDINADOR' &&
+    rol === 'COORDINADOR' &&
     !materiasLoading &&
     (materiasData?.items?.length ?? 0) === 0;
 
