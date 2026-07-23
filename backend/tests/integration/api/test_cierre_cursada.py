@@ -46,7 +46,9 @@ from app.models.examen_materia import ExamenMateria
 from app.models.materia import CoordinadorMateria, Materia
 from app.models.rubrica import Rubrica
 from app.models.unidad import Unidad
+from app.models.universidad import Universidad
 from app.models.usuario import Usuario
+from app.models.usuario_universidad import UsuarioUniversidad
 from app.repositories.cierre_cursada_repository import CierreCursadaRepository
 from app.services.cierre_cursada_service import CierreCursadaService
 from app.services.moodle_bulk_parser import construir_indice_nombre_cmid
@@ -137,17 +139,24 @@ async def test_generar_materia_sin_examenes_devuelve_400():
 
 
 @pytest.mark.asyncio
-async def test_generar_sin_credenciales_moodle_devuelve_424_sin_llamar_al_service():
-    # El router chequea _requerir_credenciales_moodle ANTES de tocar el service.
-    _admin_user(moodle_username=None, moodle_password_encrypted=None)
+async def test_generar_sin_credenciales_moodle_devuelve_424():
+    """Fase 3 multi-tenant: el router ya NO pre-chequea `usuario.moodle_*` (campo
+    global viejo) — la resolución de credenciales (D1/D2, universidad activa) vive
+    DENTRO del service, que propaga el HTTPException 424 del resolver tal cual."""
+    _admin_user()
     with patch("app.routers.cierre_cursada.CierreCursadaService") as cls:
-        cls.return_value.generar = AsyncMock()
+        cls.return_value.generar = AsyncMock(
+            side_effect=HTTPException(
+                status.HTTP_424_FAILED_DEPENDENCY,
+                detail="Configurá tus credenciales Moodle en tu perfil",
+            )
+        )
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post(
                 "/api/v1/cierre-cursada/materias/10/generar",
                 json={"cuatrimestre_id": 3},
             )
-        cls.return_value.generar.assert_not_awaited()
+        cls.return_value.generar.assert_awaited_once()
     assert resp.status_code == 424
 
 
@@ -319,6 +328,8 @@ async def db_session():
 
     tablas = [
         Usuario.__table__,
+        Universidad.__table__,
+        UsuarioUniversidad.__table__,
         Cohorte.__table__,
         Cuatrimestre.__table__,
         Materia.__table__,
@@ -408,17 +419,32 @@ def _mock_moodle_service():
     return mock
 
 
-async def _crear_fixture_materia_con_examenes(db_session) -> tuple[Materia, int, Usuario]:
+async def _crear_fixture_materia_con_examenes(db_session) -> tuple[Materia, int, Usuario, int]:
+    """Devuelve (materia, cuatrimestre_id, usuario, universidad_id).
+
+    Fase 3 multi-tenant: las credenciales Moodle viven en la membresía
+    `UsuarioUniversidad` (D1/D2), no en `usuarios.moodle_*` — se crea la
+    universidad + membresía y se devuelve `universidad_id` para pasarlo a
+    `service.generar(...)`.
+    """
     usuario = Usuario(
         username="coord1", password_hash="x", nombre="Coordinador", rol=RolEnum.ADMIN,
-        moodle_username="coord1", moodle_password_encrypted="enc", moodle_host="https://moodle.example.com",
     )
+    universidad = Universidad(nombre="TUPaD", moodle_host="https://moodle.example.com")
     cohorte = Cohorte(codigo="M26", nombre="M26")
-    db_session.add_all([usuario, cohorte])
+    db_session.add_all([usuario, universidad, cohorte])
+    await db_session.flush()
+    db_session.add(UsuarioUniversidad(
+        usuario_id=usuario.id, universidad_id=universidad.id, rol=RolEnum.ADMIN,
+        moodle_username="coord1", moodle_password_encrypted="enc",
+    ))
     await db_session.flush()
 
     cuatrimestre = Cuatrimestre(nombre="1C", cohorte_id=cohorte.id, numero=1)
-    materia = Materia(nombre="Programación 1", codigo="P1", moodle_course_id=555)
+    materia = Materia(
+        nombre="Programación 1", codigo="P1", moodle_course_id=555,
+        universidad_id=universidad.id,
+    )
     db_session.add_all([cuatrimestre, materia])
     await db_session.flush()
 
@@ -437,17 +463,17 @@ async def _crear_fixture_materia_con_examenes(db_session) -> tuple[Materia, int,
     ]
     db_session.add_all(examenes)
     await db_session.commit()
-    return materia, cuatrimestre.id, usuario
+    return materia, cuatrimestre.id, usuario, universidad.id
 
 
 @pytest.mark.asyncio
 async def test_generar_end_to_end_conteos_y_comision_correctos(db_session):
-    materia, cuatrimestre_id, usuario = await _crear_fixture_materia_con_examenes(db_session)
+    materia, cuatrimestre_id, usuario, universidad_id = await _crear_fixture_materia_con_examenes(db_session)
 
     service = CierreCursadaService(db_session)
     service.moodle = _mock_moodle_service()
 
-    run = await service.generar(materia.id, cuatrimestre_id, usuario)
+    run = await service.generar(materia.id, cuatrimestre_id, usuario, universidad_id)
 
     assert run.total_alumnos == 3
     assert run.total_promociona == 1
@@ -470,15 +496,15 @@ async def test_generar_end_to_end_conteos_y_comision_correctos(db_session):
 
 @pytest.mark.asyncio
 async def test_generar_dos_veces_append_only_no_pisa_la_primera(db_session):
-    materia, cuatrimestre_id, usuario = await _crear_fixture_materia_con_examenes(db_session)
+    materia, cuatrimestre_id, usuario, universidad_id = await _crear_fixture_materia_con_examenes(db_session)
 
     service = CierreCursadaService(db_session)
     service.moodle = _mock_moodle_service()
-    primera = await service.generar(materia.id, cuatrimestre_id, usuario)
+    primera = await service.generar(materia.id, cuatrimestre_id, usuario, universidad_id)
 
     service2 = CierreCursadaService(db_session)
     service2.moodle = _mock_moodle_service()
-    segunda = await service2.generar(materia.id, cuatrimestre_id, usuario)
+    segunda = await service2.generar(materia.id, cuatrimestre_id, usuario, universidad_id)
 
     assert primera.id != segunda.id
 

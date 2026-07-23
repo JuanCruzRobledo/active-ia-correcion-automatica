@@ -1,0 +1,56 @@
+## 0. Checkpoint humano + gate OP-1 (gobernanza CRÍTICA/ALTA — credenciales Moodle cifradas)
+
+- [x] 0.1 Revisar y aprobar con el humano las Open Questions del design (OQ1 validación cruzada Moodle, OQ2 crons sin ctx, OQ3 host en el perfil, OQ4 check de startup, OQ5 superadmin sin universidad). RESUELTAS: OQ1 se incluye en Fase 3 (check defensivo), OQ2 config guarda `universidad_id`, OQ3 read-only, OQ4 no se implementa, OQ5 → 409/424. Ver design.md.
+- [ ] 0.2 **GATE OP-1 (BLOQUEANTE DE DEPLOY, no de desarrollo)**: confirmar que `Universidad.moodle_host` de TUPaD está seteado en el entorno objetivo antes de deployar. Decidir a mano el host correcto (en prod había 3 valores divergentes en `usuarios.moodle_host`). Los tests de esta fase usan fixtures con host seteado y no dependen de este gate. Pendiente para el equipo de deploy.
+- [x] 0.3 Confirmar el invariante de aceptación: cero cambio de comportamiento observable en el estado mono-universidad (TUPaD única con host seteado; cada usuario con 1 membresía cuyas credenciales == las viejas globales).
+
+## 1. Tests de caracterización — congelar el comportamiento ACTUAL (ANTES de tocar la fuente)
+
+> Se escriben y deben PASAR contra el código VIEJO (fuente global `usuario.moodle_*`), antes de cualquier cambio de fuente. Congelan la semántica.
+
+- [x] 1.1 Baseline capturado: `pytest` completo → **1470 passed** (+ 1 pre-existing failure `test_pendientes_moodle_returns_424_when_no_credentials`, CompileError JSONB/SQLite no relacionado, + 3 pre-existing collection errors `test_consolidacion_service.py`/`test_entrega_service.py`/`test_rubrica_service.py`, imports rotos no relacionados). Ninguno se tocó.
+- [x] 1.2 Fixture mono-universidad: en vez de un fixture central único, cada test file migrado trae su propio `CredencialesMoodle("host","user","enc")` equivalente al mono-universidad (mismo host+credenciales que el viejo `usuario.moodle_*`) — ver `_svc()`/`_make_service()` en cada `tests/unit/services/test_*` tocado. El E2E de `test_cierre_cursada.py` usa una fixture real (Universidad+UsuarioUniversidad) que reproduce el estado mono-universidad end-to-end.
+- [x] 1.3 Congelado implícito vía TDD por-service (sección 3): cada service se migró con RED (mock del resolver) → GREEN → TRIANGULATE, preservando el comportamiento observable (mismos códigos 424/409, mismo host+credenciales en mono-universidad).
+
+## 2. Resolver único de credenciales Moodle en el Repository (TDD, ARCH-001)
+
+- [x] 2.1 RED: `tests/unit/repositories/test_usuario_repository_credenciales_moodle.py` — caso feliz, sin membresía, membresía inactiva, host NULL, sin credenciales, universidad inactiva, 2 universidades con credenciales distintas (9 casos).
+- [x] 2.2 GREEN: `UsuarioRepository.get_credenciales_moodle` implementado, reusa `get_membresia`. DTO `CredencialesMoodle(NamedTuple)` en `app/repositories/usuario_repository.py`.
+- [x] 2.3 TRIANGULATE: host NULL → terna con `host=None` (el service decide el 424); membresía sin credenciales → terna con `username`/`password_encrypted=None`. Cubierto en el mismo archivo.
+- [x] 2.4 REFACTOR: DTO chico (no filtra el ORM); LOC final `usuario_repository.py` = **472** (< 500) — se eliminó además el viejo `update_moodle_credentials` (escritura a `usuarios.moodle_*`) por quedar DEAD CODE tras 4.2.
+
+## 3. Migración de la fuente service por service (TDD, uno a la vez)
+
+> Orden de menor a mayor riesgo. Para CADA service: RED (adaptar el test de caracterización para esperar la nueva fuente vía resolver) → GREEN (reemplazar `usuario.moodle_*` por el resolver con `universidad_id`) → TRIANGULATE (universidad B con credenciales distintas; host NULL → 424; sin membresía → 424) → REFACTOR. Mantener el 424 existente cuando faltan credenciales. NO tocar los helpers que reciben `moodle_host: str` (siguen recibiendo el host ya resuelto).
+
+- [x] 3.1 `moodle_grade_service.py` (el más barato: ya recibe `ctx`) — `subir_correccion`/`preview_correccion` usan `ctx.universidad_id` + resolver, sin cambiar firma. Permisos/envío de nota intactos. Tests: `test_moodle_grade_subir.py` (+8 casos nuevos: universidad activa, sin membresía, host NULL, sin universidad, materia de otra universidad OQ1, preview).
+- [x] 3.2 `moodle_service.py` — `get_pendientes(user_id, universidad_id)`. Router `pendientes.py` monta `ctx` (antes NO lo tenía) y pasa `ctx.universidad_id`. Tests nuevos: `test_moodle_service_get_pendientes_universidad.py`.
+- [x] 3.3 `moodle_import_service.py` — `importar(...,universidad_id)` / `importar_stream(...,universidad_id)`. Router `moodle_import.py` monta `ctx` (antes NO lo tenía) y pasa `ctx.universidad_id`; se quitó el pre-check obsoleto de `current_user.moodle_*`. Tests adaptados + nuevos en `test_moodle_import_service.py`; integración `test_moodle_import.py` actualizada con override de `get_universidad_activa`.
+- [x] 3.4 `por_entregar_service.py` — `listar(usuario, universidad_id=None)`: parámetro agregado por paridad de firma pero SIN uso (listar es 100% local, no mintea token — desviación documentada en el código, ver informe). El entrypoint real que mintea token es `entregar_masivo_stream` (ya recibía `ctx`): migrado a resolver sin cambiar firma. Router `por_entregar.py` sin pre-check obsoleto. Tests: `test_por_entregar_masivo.py` (+4 casos), integración `test_por_entregar.py` actualizada.
+- [x] 3.5 `cierre_cursada_service.py` — `token_de_usuario(usuario, universidad_id)`, `generar(..., universidad_id=None)` (agregado — implícito, `generar` llama a `token_de_usuario`). Router `cierre_cursada.py` pasa `ctx.universidad_id`, sin pre-check obsoleto. OQ1 wired. Tests: `test_cierre_cursada_universidad.py` (nuevo) + E2E de `test_cierre_cursada.py` migrado a fixture Universidad/UsuarioUniversidad real.
+- [x] 3.6 `unidad_service.py` — `_token_moodle(usuario, universidad_id=None)`, propagado a `listar_actividades_unidad`/`sugerir_secciones_moodle`. Router `unidades.py` pasa `ctx.universidad_id`. OQ1 wired. Tests: `test_unidad_service.py` adaptado + OQ1.
+- [x] 3.7 `gestion_service.py` — `_token`, `_resolver_curso`, `listar_cursos`, `opciones_filtros`, y además `consultar`/`exportar_excel`/`exportar_pendientes_excel` (no listados en el design original pero llaman a `_token`/`_resolver_curso` internamente — desviación necesaria, documentada). Router `gestion.py` pasa `ctx.universidad_id` en los 5 endpoints. OQ1 wired en `_resolver_curso`. Tests: `test_gestion_service.py` + `test_gestion_pendientes.py` adaptados y con casos nuevos.
+- [x] 3.8 `snapshot_service.py` — `token_de_usuario(usuario, universidad_id)`, `generar_todas_para_usuario(..., universidad_id=None)`, `generar(..., universidad_id=None)` (agregado — implícito). Routers `dashboard_gestores.py` (3 endpoints) y `notificacion_service.ejecutar_corrida_semanal` (lee `config.universidad_id`, ver 5.2) actualizados. OQ1 wired. Tests: `test_snapshot_service.py` adaptado + 4 casos nuevos.
+
+## 4. Rediseño del perfil (TDD)
+
+- [x] 4.1 RED: `tests/unit/services/test_usuario_service_moodle_credentials.py` + `tests/integration/api/test_perfil_moodle_multiuniversidad.py` (nuevo, DB SQLite real con Universidad/UsuarioUniversidad).
+- [x] 4.2 GREEN: `update_moodle_credentials_membresia` en el repo (sección 2); `UsuarioService.update_moodle_credentials(user_id, universidad_id, data)` escribe la membresía activa; cifrado (`encrypt_api_key`) sin cambios.
+- [x] 4.3 GREEN: `MoodleCredentialsUpdate` perdió `moodle_host`; `PerfilResponse.moodle_host`/`moodle_username`/`moodle_configured` documentados read-only/desde-membresía. `perfil.py` (`GET /perfil`) y `usuarios.py` (`PATCH /me/moodle-credentials`) montan `ctx`. `PerfilResponse.rol` NO se tocó.
+- [x] 4.4 TRIANGULATE + REFACTOR: `test_patch_moodle_credentials_escribe_en_membresia_activa_sin_afectar_otra` (usuario 2 membresías, edita B, A intacta) + `test_update_moodle_credentials_sin_membresia_activa_es_404` + OQ5 (`universidad_id=None` → 409). LOC: `perfil.py`=223, `usuario_service.py`=350 (ambos < 500).
+
+## 5. Config/cron gate services y validación cruzada (según decisiones del checkpoint)
+
+- [x] 5.1 (OQ1) Check defensivo `verificar_materia_universidad_activa`/`materia_pertenece_a_universidad_activa` (`app/core/permissions.py`) implementado y wired en: `moodle_service.get_pendientes` (filtra materias de otra universidad del lote), `moodle_import_service._resolver_pares` (ídem), `moodle_grade_service.subir_correccion`/`preview_correccion` (409 puntual), `cierre_cursada_service.generar`, `snapshot_service.generar`, `unidad_service.sugerir_secciones_moodle`/`listar_actividades_unidad`, `gestion_service._resolver_curso`. Tests dedicados: `test_permissions_oq1_materia_universidad.py` + un caso 409 por service migrado.
+- [x] 5.2 (OQ2) Migración Alembic `c3f8a1d9b204` agrega `universidad_id` (nullable, FK→universidades) a `notificacion_cron_config` y `snapshot_cron_config`, con backfill a TUPaD. `NotificacionConfigService.actualizar`/`SnapshotConfigService.actualizar` exigen `usuario_id` + `universidad_id` (y credenciales vía `get_credenciales_moodle`) al activar. `scheduler.py` (`_run_snapshot_job`, `_run_notificacion_job`) lee `config.universidad_id`. `NotificacionService.ejecutar_corrida_semanal` relee `config.universidad_id` internamente (no requiere param nuevo). Verificado contra Postgres real (ver 6.2/informe).
+
+## 6. Verificación integral y criterios de aceptación
+
+- [x] 6.1 `grep -rnE "usuario\.moodle_(host|username|password)|current_user\.moodle_(host|username|password)" app/services app/routers` → **0 resultados**.
+- [x] 6.2 Suite completa: **1533 passed** (antes 1470) → **+63 tests, 0 regresiones**. Mismos pre-existing: 1 failure (`test_pendientes_moodle_returns_424_when_no_credentials`, ambiental) + 3 collection errors (imports rotos no relacionados) — sin tocar.
+- [x] 6.3 Test de eje nuevo: cubierto en múltiples services (`test_get_credenciales_moodle_distingue_universidades_del_mismo_usuario`, `test_get_pendientes_distingue_credenciales_por_universidad`, `test_importar_distingue_credenciales_por_universidad`, `test_generar_distingue_credenciales_por_universidad` en cierre_cursada/snapshot, `test_get_perfil_cambia_con_la_universidad_activa`).
+- [x] 6.4 Test del gate OP-1 (host NULL → 424 sin fallback): cubierto en el resolver (`test_moodle_credentials_resolver.py`) y replicado en moodle_grade_service, moodle_service, moodle_import_service, por_entregar_service, cierre_cursada_service, snapshot_service.
+- [x] 6.5 Invariante mono-universidad: confirmado por el E2E de `test_cierre_cursada.py` (fixture Universidad+UsuarioUniversidad real, mismos resultados que antes) y por la equivalencia de comportamiento en cada test adaptado (mismos 424/409/200 que producía la fuente vieja).
+- [x] 6.6 LOC: `moodle_service.py`=1533 (pre-existente, YA estaba sobre 500 antes de esta fase — fuera de alcance refactorizarlo acá), `usuario_repository.py`=472 (< 500, se recortó dead code para volver a estar bajo el límite), `perfil.py`=223 (< 500).
+- [x] 6.7 `openspec validate --strict multi-tenant-moodle-services` → **válido**.
+- [ ] 6.8 CHECKPOINT humano final antes de archivar (gobernanza CRÍTICA/ALTA — credenciales): pendiente — revisar el diff de la fuente de credenciales, el fail-fast OP-1, el reporte de equivalencia mono-universidad, y **recordar el gate OP-1 operativo (0.2) antes de deployar**.

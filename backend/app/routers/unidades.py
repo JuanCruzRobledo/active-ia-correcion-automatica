@@ -53,7 +53,7 @@ async def sugerir_secciones_moodle(
     require_coordinador_or_admin(ctx)
     await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = UnidadService(db)
-    return await service.sugerir_secciones_moodle(materia_id, current_user)
+    return await service.sugerir_secciones_moodle(materia_id, current_user, ctx.universidad_id)
 
 
 # ===================== Unidades (sub-recurso de materia) =====================
@@ -150,7 +150,7 @@ async def listar_actividades_unidad(
     require_coordinador_or_admin(ctx)
     await verificar_acceso_unidad(db, current_user, ctx, unidad_id)
     service = UnidadService(db)
-    return await service.listar_actividades_unidad(unidad_id, current_user)
+    return await service.listar_actividades_unidad(unidad_id, current_user, ctx.universidad_id)
 
 
 @router.put("/unidades/{unidad_id}/componentes", response_model=UnidadResponse)

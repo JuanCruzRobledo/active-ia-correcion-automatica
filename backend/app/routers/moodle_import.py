@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.models import Usuario
 from app.schemas.moodle_import import ImportarMoodleRequest, ImportarMoodleResponse
 from app.services.moodle_import_service import MoodleImportService
@@ -26,6 +26,7 @@ async def importar_pendientes_stream(
     data: ImportarMoodleRequest,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ):
     """
     Importa entregas con progreso en vivo (Server-Sent Events).
@@ -36,14 +37,9 @@ async def importar_pendientes_stream(
     - {"tipo":"resumen", ...conteos...}
     - {"tipo":"error","detail":"..."}  (Moodle no disponible / credenciales)
 
-    Las credenciales se validan ANTES de iniciar el stream (424 si faltan).
+    Las credenciales (de la universidad activa, Fase 3 multi-tenant) se
+    resuelven dentro del stream: si faltan, se emite un evento de error SSE.
     """
-    if not current_user.moodle_username or not current_user.moodle_password_encrypted:
-        raise HTTPException(
-            status_code=status.HTTP_424_FAILED_DEPENDENCY,
-            detail="Configurá tus credenciales Moodle en tu perfil",
-        )
-
     service = MoodleImportService(db)
 
     async def event_gen():
@@ -54,6 +50,7 @@ async def importar_pendientes_stream(
                 rubrica_id=data.rubrica_id,
                 comision_id=data.comision_id,
                 materia_id=data.materia_id,
+                universidad_id=ctx.universidad_id,
             ):
                 yield _sse(ev)
         except (MoodleAuthError, MoodleConnectionError) as e:
@@ -73,6 +70,7 @@ async def importar_pendientes_moodle(
     data: ImportarMoodleRequest,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ):
     """
     Importa las entregas pendientes desde Moodle a Active-IA.
@@ -84,7 +82,8 @@ async def importar_pendientes_moodle(
     Códigos:
     - 200: resumen de la importación (cargadas/duplicadas/omitidas/reentregas/errores).
     - 400: scope inválido o faltan parámetros requeridos.
-    - 424: credenciales Moodle no configuradas o inválidas.
+    - 409: sin universidad activa elegida (superadmin, OQ5).
+    - 424: credenciales/campus Moodle no configurados (universidad activa).
     - 502: Moodle no disponible.
     """
     service = MoodleImportService(db)
@@ -95,6 +94,7 @@ async def importar_pendientes_moodle(
             rubrica_id=data.rubrica_id,
             comision_id=data.comision_id,
             materia_id=data.materia_id,
+            universidad_id=ctx.universidad_id,
         )
     except MoodleAuthError as e:
         return JSONResponse(

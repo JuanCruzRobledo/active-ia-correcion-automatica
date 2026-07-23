@@ -18,9 +18,11 @@ from datetime import datetime
 
 from fastapi import HTTPException, status
 
+from app.core.permissions import verificar_materia_universidad_activa
 from app.repositories.comision_repository import ComisionRepository
 from app.repositories.materia_repository import MateriaRepository
 from app.repositories.rubrica_repository import RubricaRepository
+from app.repositories.usuario_repository import UsuarioRepository
 from app.services.gestion_inactividad import (
     NUNCA,
     RANGO,
@@ -34,6 +36,7 @@ from app.services.gestion_parser import (
     resolver_grupos_alumno,
 )
 from app.services.excel_service import ExcelService
+from app.services.moodle_credentials_resolver import resolver_credenciales_moodle
 from app.services.moodle_service import (
     MoodleAuthError,
     MoodleConnectionError,
@@ -146,10 +149,20 @@ class GestionService:
         self.materia_repo = MateriaRepository(db)
         self.rubrica_repo = RubricaRepository(db)
         self.comision_repo = ComisionRepository(db)
+        self.usuario_repo = UsuarioRepository(db)
         self.moodle = MoodleService(db)
         self.excel = ExcelService(db)
 
-    async def listar_cursos(self, usuario) -> list[CursoGestion]:
+    async def listar_cursos(
+        self, usuario, universidad_id: int | None = None
+    ) -> list[CursoGestion]:
+        """Cursos elegibles (materias con Moodle) para la pantalla de Gestión.
+
+        `universidad_id` se recibe por paridad de firma (Fase 3 multi-tenant)
+        pero NO se usa acá todavía: el filtrado por universidad de la lista de
+        materias es scoping general (Fase 4), no fuente de credenciales/host
+        Moodle (esta llamada no mintea token).
+        """
         materias = await self.materia_repo.get_con_moodle()
         return [
             CursoGestion(
@@ -159,9 +172,11 @@ class GestionService:
             for m in materias
         ]
 
-    async def opciones_filtros(self, usuario, materia_id: int) -> FiltrosDisponibles:
-        materia = await self._resolver_curso(materia_id)
-        token, host = await self._token(usuario)
+    async def opciones_filtros(
+        self, usuario, materia_id: int, universidad_id: int | None = None
+    ) -> FiltrosDisponibles:
+        materia = await self._resolver_curso(materia_id, universidad_id)
+        token, host = await self._token(usuario, universidad_id)
         users = await self.moodle.get_enrolled_users_full(token, host, materia.moodle_course_id)
         mapa = await self._mapa_uid_grupos(token, host, materia.moodle_course_id)
 
@@ -193,12 +208,13 @@ class GestionService:
         filtros: FiltrosGestion,
         *,
         now: int | None = None,
+        universidad_id: int | None = None,
     ) -> ResultadoGestion:
         if now is None:
             now = int(time.time())
 
-        materia = await self._resolver_curso(materia_id)
-        token, host = await self._token(usuario)
+        materia = await self._resolver_curso(materia_id, universidad_id)
+        token, host = await self._token(usuario, universidad_id)
         users = await self.moodle.get_enrolled_users_with_status(token, host, materia.moodle_course_id)
         mapa = await self._mapa_uid_grupos(token, host, materia.moodle_course_id)
 
@@ -260,13 +276,16 @@ class GestionService:
         *,
         agrupar_por: str = "regional",
         now: int | None = None,
+        universidad_id: int | None = None,
     ) -> tuple[bytes, str]:
         """Consulta con los filtros y arma el .xlsx.
 
         `agrupar_por`: "regional" (Excel para Nexos) o "comision" (Excel para Tutores).
         """
-        materia = await self._resolver_curso(materia_id)
-        resultado = await self.consultar(usuario, materia_id, filtros, now=now)
+        materia = await self._resolver_curso(materia_id, universidad_id)
+        resultado = await self.consultar(
+            usuario, materia_id, filtros, now=now, universidad_id=universidad_id
+        )
         # PERF-004: el render openpyxl (CPU-bound) corre en un thread para no bloquear el
         # event loop. `resultado` ya viene materializado (dataclasses simples, sin ORM).
         return await asyncio.to_thread(
@@ -279,6 +298,7 @@ class GestionService:
         materia_id: int,
         *,
         agrupar_por: str = "trabajo",
+        universidad_id: int | None = None,
     ) -> tuple[bytes, str]:
         """Excel de entregas pendientes de corregir del curso (entregadas sin calificar).
 
@@ -290,8 +310,8 @@ class GestionService:
         grupo). Luego, por rúbrica, una sola consulta de submissions (cacheada por
         assignment). NO consulta miembros por comisión.
         """
-        materia = await self._resolver_curso(materia_id)
-        token, host = await self._token(usuario)
+        materia = await self._resolver_curso(materia_id, universidad_id)
+        token, host = await self._token(usuario, universidad_id)
         course_id = materia.moodle_course_id
 
         rubricas = [
@@ -433,26 +453,28 @@ class GestionService:
         grupos = mapa.get(u.get("id")) or u.get("groups", [])
         return [g.get("name", "") for g in grupos]
 
-    async def _resolver_curso(self, materia_id: int):
+    async def _resolver_curso(self, materia_id: int, universidad_id: int | None = None):
         materia = await self.materia_repo.get_by_id(materia_id)
         if not materia or not materia.moodle_course_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Curso no encontrado o sin vínculo a Moodle",
             )
+        # OQ1: guard defensivo — la materia debe pertenecer a la universidad activa
+        # antes de que cualquier caller mintee un token Moodle contra su curso.
+        verificar_materia_universidad_activa(materia, universidad_id)
         return materia
 
-    async def _token(self, usuario) -> tuple[str, str]:
-        if not usuario.moodle_username or not usuario.moodle_password_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_424_FAILED_DEPENDENCY,
-                detail="Configurá tus credenciales Moodle en tu perfil",
-            )
-        host = usuario.moodle_host or ""
+    async def _token(self, usuario, universidad_id: int | None = None) -> tuple[str, str]:
+        """Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa,
+        NUNCA de usuario.moodle_* (campo global viejo)."""
+        host, username, password_encrypted = await resolver_credenciales_moodle(
+            self.usuario_repo, usuario.id, universidad_id
+        )
         token = await self.moodle.get_token(
             user_id=usuario.id,
             moodle_host=host,
-            username=usuario.moodle_username,
-            password_encrypted=usuario.moodle_password_encrypted,
+            username=username,
+            password_encrypted=password_encrypted,
         )
         return token, host

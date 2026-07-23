@@ -18,6 +18,7 @@ import httpx
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import verificar_materia_universidad_activa
 from app.models.avance import AvanceAlumno, AvanceSnapshot
 from app.models.enums import OrigenSnapshotEnum, TipoActividadEnum
 from app.repositories.avance_repository import AvanceRepository
@@ -36,6 +37,7 @@ from app.services.gestion_parser import (
     SIN_REGIONAL,
     resolver_grupos_alumno,
 )
+from app.services.moodle_credentials_resolver import resolver_credenciales_moodle
 from app.services.moodle_service import MoodleService
 
 logger = logging.getLogger(__name__)
@@ -51,28 +53,45 @@ class SnapshotService:
         self.usuario_repo = UsuarioRepository(db)
         self.moodle = MoodleService(db)
 
-    async def token_de_usuario(self, usuario) -> tuple[str, str]:
-        """(token, host) de Moodle de un usuario. Lanza ValueError si sin credenciales."""
-        if not usuario.moodle_username or not usuario.moodle_password_encrypted:
-            raise ValueError("El usuario no tiene credenciales de Moodle configuradas")
-        host = usuario.moodle_host or ""
+    async def token_de_usuario(
+        self, usuario, universidad_id: int | None
+    ) -> tuple[str, str]:
+        """(token, host) de Moodle de la universidad activa.
+
+        Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa
+        (universidad_id), NUNCA de usuario.moodle_* (campo global viejo). Lanza
+        HTTPException 424/409 (ver `resolver_credenciales_moodle`) si faltan.
+        """
+        host, username, password_encrypted = await resolver_credenciales_moodle(
+            self.usuario_repo, usuario.id, universidad_id
+        )
         token = await self.moodle.get_token(
             user_id=usuario.id,
             moodle_host=host,
-            username=usuario.moodle_username,
-            password_encrypted=usuario.moodle_password_encrypted,
+            username=username,
+            password_encrypted=password_encrypted,
         )
         return token, host
 
     async def generar_todas_para_usuario(
-        self, usuario_id: int, *, origen: OrigenSnapshotEnum = OrigenSnapshotEnum.CRON
+        self,
+        usuario_id: int,
+        *,
+        origen: OrigenSnapshotEnum = OrigenSnapshotEnum.CRON,
+        universidad_id: int | None = None,
     ) -> list[AvanceSnapshot]:
         """Genera snapshots de TODAS las materias configuradas, con las credenciales
-        de un usuario (lo usa el cron). Continúa ante errores por materia."""
+        de un usuario (lo usa el cron). Continúa ante errores por materia.
+
+        Fase 3 multi-tenant (OQ2): `universidad_id` viene de la config del cron
+        (`SnapshotCronConfig.universidad_id`) cuando se dispara sin request/ctx.
+        """
         usuario = await self.usuario_repo.get_by_id(usuario_id)
         if usuario is None:
             raise ValueError(f"Usuario {usuario_id} no encontrado")
-        _, host = await self.token_de_usuario(usuario)
+        host, moodle_username, moodle_password_encrypted = await resolver_credenciales_moodle(
+            self.usuario_repo, usuario.id, universidad_id
+        )
 
         materias = await self.materia_repo.get_configuradas_dashboard()
         resultados: list[AvanceSnapshot] = []
@@ -80,12 +99,13 @@ class SnapshotService:
         sesion = self.moodle.crear_cliente_sesion()
         try:
             await self.moodle.login_sesion(
-                sesion, host, usuario.moodle_username, usuario.moodle_password_encrypted
+                sesion, host, moodle_username, moodle_password_encrypted
             )
             for materia in materias:
                 try:
                     snap = await self.generar(
-                        materia.id, usuario=usuario, origen=origen, sesion=sesion
+                        materia.id, usuario=usuario, origen=origen, sesion=sesion,
+                        universidad_id=universidad_id,
                     )
                     resultados.append(snap)
                 except Exception:  # noqa: BLE001 — un fallo por materia no frena las demás
@@ -112,6 +132,7 @@ class SnapshotService:
         origen: OrigenSnapshotEnum = OrigenSnapshotEnum.CRON,
         on_progress: Callable[[int, int], None] | None = None,
         sesion: "httpx.AsyncClient | None" = None,
+        universidad_id: int | None = None,
     ) -> AvanceSnapshot:
         """Genera y persiste el snapshot de avance de una materia (carga MASIVA, §R3).
 
@@ -120,14 +141,16 @@ class SnapshotService:
         calcula el avance de cada alumno EN MEMORIA (avance_mapper, sin tocar Moodle).
 
         Requiere que la materia esté configurada (moodle_course_id + unidad_actual + ≥1
-        Unidad) y que `usuario` tenga credenciales de Moodle. Si se pasa `sesion` (cliente
-        ya logueado) se reusa; si no, abre y cierra una propia.
+        Unidad) y que `usuario` tenga credenciales de Moodle (universidad activa, D1/D2).
+        Si se pasa `sesion` (cliente ya logueado) se reusa; si no, abre y cierra una
+        propia. `universidad_id` también habilita el guard OQ1.
         """
         materia = await self.materia_repo.get_by_id(materia_id)
         if materia is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Materia no encontrada"
             )
+        verificar_materia_universidad_activa(materia, universidad_id)
         if not materia.moodle_course_id or materia.unidad_actual is None or not materia.unidades:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -171,7 +194,17 @@ class SnapshotService:
             for e in materia.examenes
         ]
 
-        token, host = await self.token_de_usuario(usuario)
+        # Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa,
+        # resueltos UNA vez y reusados para el token WS y el login de sesión web.
+        host, moodle_username, moodle_password_encrypted = await resolver_credenciales_moodle(
+            self.usuario_repo, usuario.id, universidad_id
+        )
+        token = await self.moodle.get_token(
+            user_id=usuario.id,
+            moodle_host=host,
+            username=moodle_username,
+            password_encrypted=moodle_password_encrypted,
+        )
 
         # ── 1 login + 2 WS livianos + 2 descargas masivas (constante en N alumnos) ──
         propia = sesion is None
@@ -180,7 +213,7 @@ class SnapshotService:
         try:
             if propia:
                 await self.moodle.login_sesion(
-                    sesion, host, usuario.moodle_username, usuario.moodle_password_encrypted
+                    sesion, host, moodle_username, moodle_password_encrypted
                 )
             enrolled = await self.moodle.get_enrolled_users_full(
                 token, host, course_id, client=sesion

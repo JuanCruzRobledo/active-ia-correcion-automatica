@@ -11,7 +11,7 @@ import io
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from app.core.permissions import require_admin, require_gestor_or_admin
 from app.core.scheduler import reprogramar_desde_config
 from app.models import Usuario
 from app.models.enums import EstadoAvanceEnum, OrigenSnapshotEnum
+from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.dashboard_gestores import (
     AlumnoDetalle,
     AvanceResponse,
@@ -30,14 +31,13 @@ from app.schemas.dashboard_gestores import (
     SnapshotResumenResponse,
 )
 from app.services.dashboard_lectura_service import DashboardLecturaService
+from app.services.moodle_credentials_resolver import resolver_credenciales_moodle
 from app.services.snapshot_config_service import SnapshotConfigService
 from app.services.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/gestion/dashboard", tags=["dashboard-gestores"])
-
-_SIN_CREDENCIALES = "Configurá tus credenciales de Moodle en tu perfil"
 
 
 # ===================== Config del cron (admin) =====================
@@ -81,28 +81,20 @@ async def disparar_snapshot_manual(
     ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[SnapshotResumenResponse]:
     """Dispara el cálculo de snapshot a mano (botón de pruebas), con las credenciales
-    Moodle del usuario actual. Gestor o admin."""
+    Moodle de la universidad activa del usuario actual (Fase 3 multi-tenant). Gestor o admin."""
     require_gestor_or_admin(ctx)
     service = SnapshotService(db)
 
     if materia_id is not None:
-        if not current_user.moodle_username or not current_user.moodle_password_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=_SIN_CREDENCIALES
-            )
         snap = await service.generar(
-            materia_id, usuario=current_user, origen=OrigenSnapshotEnum.MANUAL
+            materia_id, usuario=current_user, origen=OrigenSnapshotEnum.MANUAL,
+            universidad_id=ctx.universidad_id,
         )
         return [snap]
 
-    try:
-        return await service.generar_todas_para_usuario(
-            current_user.id, origen=OrigenSnapshotEnum.MANUAL
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=_SIN_CREDENCIALES
-        )
+    return await service.generar_todas_para_usuario(
+        current_user.id, origen=OrigenSnapshotEnum.MANUAL, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get("/materias-configuradas", response_model=list[MateriaConfiguradaItem])
@@ -130,18 +122,18 @@ async def snapshot_stream(
 ) -> StreamingResponse:
     """Genera snapshots emitiendo el progreso por SSE (X/total alumnos), en vivo.
 
-    Corre con las credenciales del usuario actual. Eventos:
+    Corre con las credenciales de la universidad activa del usuario actual
+    (Fase 3 multi-tenant). Eventos:
     `{tipo: 'progreso', materia_idx, materias_total, procesados, total}` por alumno,
     `{tipo: 'done', materias}` al final, `{tipo: 'error', detalle}` si falla.
     """
     require_gestor_or_admin(ctx)
     service = SnapshotService(db)
-    try:
-        _, host = await service.token_de_usuario(current_user)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=_SIN_CREDENCIALES
-        )
+    # Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa,
+    # resueltos UNA vez y reusados para el token WS y el login de sesión web.
+    host, moodle_username, moodle_password_encrypted = await resolver_credenciales_moodle(
+        UsuarioRepository(db), current_user.id, ctx.universidad_id
+    )
 
     if materia_ids:
         ids = materia_ids
@@ -157,8 +149,7 @@ async def snapshot_stream(
             sesion = service.moodle.crear_cliente_sesion()
             try:
                 await service.moodle.login_sesion(
-                    sesion, host,
-                    current_user.moodle_username, current_user.moodle_password_encrypted,
+                    sesion, host, moodle_username, moodle_password_encrypted,
                 )
                 for idx, mid in enumerate(ids):
                     def on_progress(p: int, t: int, _idx: int = idx, _mid: int = mid):
@@ -179,6 +170,7 @@ async def snapshot_stream(
                         origen=OrigenSnapshotEnum.MANUAL,
                         on_progress=on_progress,
                         sesion=sesion,
+                        universidad_id=ctx.universidad_id,
                     )
                 queue.put_nowait({"tipo": "done", "materias": len(ids)})
             except Exception as e:  # noqa: BLE001

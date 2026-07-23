@@ -87,16 +87,21 @@ async def test_entregar_stream_emite_eventos(auth):
 
 
 @pytest.mark.asyncio
-async def test_entregar_stream_sin_credenciales_es_424():
-    app.dependency_overrides[get_current_user] = lambda: MagicMock(
-        id=1, moodle_username=None, moodle_password_encrypted=None
-    )
-    app.dependency_overrides[get_db] = lambda: AsyncMock()
-    app.dependency_overrides[get_universidad_activa] = _ctx_tutor
-    try:
+async def test_entregar_stream_sin_credenciales_emite_evento_error(auth):
+    """Fase 3 multi-tenant: las credenciales se resuelven DENTRO del stream (D1/D2,
+    universidad activa vía ctx) — sin membresía/credenciales, el resolver dispara
+    un 424 que el service traduce en un evento SSE 'error' (el status HTTP ya es
+    200 porque el streaming arrancó; no hay pre-check síncrono en el router)."""
+
+    async def _fake_stream(usuario, base_url, ctx=None):
+        yield {"tipo": "error", "detail": "Configurá tus credenciales Moodle en tu perfil"}
+
+    with patch("app.routers.por_entregar.PorEntregarService") as cls:
+        cls.return_value.entregar_masivo_stream = _fake_stream
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/api/v1/por-entregar/entregar/stream")
-    finally:
-        app.dependency_overrides.clear()
+            texto = resp.text
 
-    assert resp.status_code == 424
+    assert resp.status_code == 200
+    assert '"tipo": "error"' in texto
+    assert "credenciales" in texto.lower()

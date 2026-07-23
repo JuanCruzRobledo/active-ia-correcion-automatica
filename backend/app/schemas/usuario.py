@@ -172,15 +172,14 @@ class ResetPasswordResponse(BaseModel):
 
 
 class MoodleCredentialsUpdate(BaseModel):
-    """Schema for updating Moodle credentials."""
+    """Schema for updating Moodle credentials.
 
-    moodle_host: str = Field(
-        ...,
-        min_length=1,
-        max_length=255,
-        description="URL base del host Moodle (ej: https://moodle.ejemplo.com)",
-        examples=["https://tup.sied.utn.edu.ar"],
-    )
+    Fase 3 multi-tenant (D4): `moodle_host` ya NO se acepta acá — el campus es
+    propiedad de la `Universidad`, read-only desde el perfil (se muestra en
+    `PerfilResponse.moodle_host`, tomado de la universidad activa). Las
+    credenciales se escriben en la membresía `(usuario, universidad activa)`.
+    """
+
     moodle_username: str = Field(
         ...,
         min_length=1,

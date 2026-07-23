@@ -195,7 +195,13 @@ async def update_moodle_credentials(
     data: MoodleCredentialsUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> MoodleCredentialsResponse:
-    """Actualiza las credenciales Moodle del usuario autenticado."""
+    """Actualiza las credenciales Moodle del usuario autenticado.
+
+    Fase 3 multi-tenant (D4): se escriben en la membresía `(usuario,
+    universidad activa)` — el host de Moodle YA NO se acepta acá (es
+    propiedad de la Universidad, read-only).
+    """
     service = UsuarioService(db)
-    return await service.update_moodle_credentials(current_user.id, data)
+    return await service.update_moodle_credentials(current_user.id, ctx.universidad_id, data)

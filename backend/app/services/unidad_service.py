@@ -11,6 +11,7 @@ Ref: PLAN_DASHBOARD_GESTORES.md §5, §6.1, §8 (T3)
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import verificar_materia_universidad_activa
 from app.models.componente_unidad import ComponenteUnidad
 from app.models.enums import ModoAprobacionEnum
 from app.models.unidad import Unidad
@@ -18,6 +19,7 @@ from app.repositories.cohorte_repository import CuatrimestreRepository
 from app.repositories.materia_repository import MateriaRepository
 from app.repositories.rubrica_repository import RubricaRepository
 from app.repositories.unidad_repository import UnidadRepository
+from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.unidad import (
     MateriaDashboardConfig,
     MateriaDashboardConfigResponse,
@@ -39,6 +41,7 @@ from app.services.avance_mapper import (
     section_id_a_num,
     unidad_de_section_num,
 )
+from app.services.moodle_credentials_resolver import resolver_credenciales_moodle
 from app.services.moodle_service import MoodleService
 
 
@@ -51,6 +54,7 @@ class UnidadService:
         self.materia_repo = MateriaRepository(db)
         self.cuatrimestre_repo = CuatrimestreRepository(db)
         self.rubrica_repo = RubricaRepository(db)
+        self.usuario_repo = UsuarioRepository(db)
         self.moodle = MoodleService(db)
 
     async def _get_materia_or_404(self, materia_id: int):
@@ -162,7 +166,7 @@ class UnidadService:
         return UnidadResponse.model_validate(updated)
 
     async def listar_actividades_unidad(
-        self, unidad_id: int, usuario
+        self, unidad_id: int, usuario, universidad_id: int | None = None
     ) -> list[MoodleActividadItem]:
         """Actividades de Moodle que caen en el rango de la unidad, para elegir componentes.
 
@@ -172,12 +176,13 @@ class UnidadService:
         """
         unidad = await self._get_unidad_or_404(unidad_id)
         materia = await self._get_materia_or_404(unidad.materia_id)
+        verificar_materia_universidad_activa(materia, universidad_id)
         if not materia.moodle_course_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="La materia no tiene vínculo con un curso de Moodle",
             )
-        token, host = await self._token_moodle(usuario)
+        token, host = await self._token_moodle(usuario, universidad_id)
         secciones = await self.moodle.get_course_contents(
             token, host, materia.moodle_course_id
         )
@@ -298,24 +303,27 @@ class UnidadService:
 
     # ===================== Auto-sugerencia de cabeceras (Moodle) =====================
 
-    async def _token_moodle(self, usuario) -> tuple[str, str]:
-        """Token + host de Moodle del usuario actual (mismo patrón que Gestión)."""
-        if not usuario.moodle_username or not usuario.moodle_password_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_424_FAILED_DEPENDENCY,
-                detail="Configurá tus credenciales Moodle en tu perfil",
-            )
-        host = usuario.moodle_host or ""
+    async def _token_moodle(
+        self, usuario, universidad_id: int | None = None
+    ) -> tuple[str, str]:
+        """Token + host de Moodle de la universidad activa (mismo patrón que Gestión).
+
+        Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa
+        (universidad_id), NUNCA de usuario.moodle_* (campo global viejo).
+        """
+        host, username, password_encrypted = await resolver_credenciales_moodle(
+            self.usuario_repo, usuario.id, universidad_id
+        )
         token = await self.moodle.get_token(
             user_id=usuario.id,
             moodle_host=host,
-            username=usuario.moodle_username,
-            password_encrypted=usuario.moodle_password_encrypted,
+            username=username,
+            password_encrypted=password_encrypted,
         )
         return token, host
 
     async def sugerir_secciones_moodle(
-        self, materia_id: int, usuario
+        self, materia_id: int, usuario, universidad_id: int | None = None
     ) -> MoodleSeccionesSugeridas:
         """Trae las secciones del curso de Moodle y auto-detecta las cabeceras de unidad.
 
@@ -323,13 +331,14 @@ class UnidadService:
         cabeceras pre-detectadas (patrón 'N- Tema').
         """
         materia = await self._get_materia_or_404(materia_id)
+        verificar_materia_universidad_activa(materia, universidad_id)
         if not materia.moodle_course_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="La materia no tiene vínculo con un curso de Moodle",
             )
 
-        token, host = await self._token_moodle(usuario)
+        token, host = await self._token_moodle(usuario, universidad_id)
         secciones = await self.moodle.get_course_contents(
             token, host, materia.moodle_course_id
         )

@@ -28,11 +28,13 @@ from app.models.base import async_session_maker
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import materia_pertenece_a_universidad_activa
 from app.repositories.comision_repository import ComisionRepository
 from app.repositories.materia_repository import MateriaRepository
 from app.repositories.rubrica_repository import RubricaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.services.entrega_service import EntregaService
+from app.services.moodle_credentials_resolver import resolver_credenciales_moodle
 from app.services.moodle_url_parser import construir_url_entrega
 from app.services.moodle_service import (
     MoodleAuthError,
@@ -93,6 +95,7 @@ class MoodleImportService:
         rubrica_id: int | None = None,
         comision_id: int | None = None,
         materia_id: int | None = None,
+        universidad_id: int | None = None,
     ) -> ResumenImportacion:
         """Importa las entregas pendientes según el scope.
 
@@ -101,23 +104,20 @@ class MoodleImportService:
           - "materia":         requiere materia_id.
           - "tutor":           todas las comisiones/rúbricas del tutor.
         """
-        usuario = await self.usuario_repo.get_by_id(user_id)
-        if not usuario or not usuario.moodle_username or not usuario.moodle_password_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_424_FAILED_DEPENDENCY,
-                detail="Configurá tus credenciales Moodle en tu perfil",
-            )
-
-        moodle_host = usuario.moodle_host or ""
+        # Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa.
+        moodle_host, moodle_username, moodle_password_encrypted = (
+            await resolver_credenciales_moodle(self.usuario_repo, user_id, universidad_id)
+        )
         token = await self.moodle.get_token(
             user_id=user_id,
             moodle_host=moodle_host,
-            username=usuario.moodle_username,
-            password_encrypted=usuario.moodle_password_encrypted,
+            username=moodle_username,
+            password_encrypted=moodle_password_encrypted,
         )
 
         pares = await self._resolver_pares(
-            user_id, scope, rubrica_id=rubrica_id, comision_id=comision_id, materia_id=materia_id
+            user_id, scope, rubrica_id=rubrica_id, comision_id=comision_id, materia_id=materia_id,
+            universidad_id=universidad_id,
         )
 
         resumen = ResumenImportacion()
@@ -145,6 +145,7 @@ class MoodleImportService:
         rubrica_id: int | None = None,
         comision_id: int | None = None,
         materia_id: int | None = None,
+        universidad_id: int | None = None,
     ) -> AsyncIterator[dict]:
         """Versión con progreso en vivo: yield eventos {tipo:inicio|progreso|resumen}.
 
@@ -152,20 +153,26 @@ class MoodleImportService:
         Fase 2 (procesamiento): descarga/crea en paralelo (sesión propia por tarea) y
         emite un evento 'progreso' por cada entrega terminada (as_completed).
         """
-        usuario = await self.usuario_repo.get_by_id(user_id)
-        if not usuario or not usuario.moodle_username or not usuario.moodle_password_encrypted:
-            raise MoodleAuthError("Configurá tus credenciales Moodle en tu perfil")
-
-        moodle_host = usuario.moodle_host or ""
+        # Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa.
+        # Se traduce el HTTPException del resolver a MoodleAuthError: el caller
+        # (router) ya envuelve este generador en un try/except MoodleAuthError
+        # para emitir el evento SSE {"tipo":"error", ...} en vez de un 500.
+        try:
+            moodle_host, moodle_username, moodle_password_encrypted = (
+                await resolver_credenciales_moodle(self.usuario_repo, user_id, universidad_id)
+            )
+        except HTTPException as e:
+            raise MoodleAuthError(str(e.detail)) from e
         token = await self.moodle.get_token(
             user_id=user_id,
             moodle_host=moodle_host,
-            username=usuario.moodle_username,
-            password_encrypted=usuario.moodle_password_encrypted,
+            username=moodle_username,
+            password_encrypted=moodle_password_encrypted,
         )
 
         pares = await self._resolver_pares(
-            user_id, scope, rubrica_id=rubrica_id, comision_id=comision_id, materia_id=materia_id
+            user_id, scope, rubrica_id=rubrica_id, comision_id=comision_id, materia_id=materia_id,
+            universidad_id=universidad_id,
         )
 
         resumen = ResumenImportacion()
@@ -342,6 +349,7 @@ class MoodleImportService:
         rubrica_id: int | None,
         comision_id: int | None,
         materia_id: int | None,
+        universidad_id: int | None = None,
     ) -> list[_Par]:
         """Resuelve los pares Rúbrica × Comisión con IDs Moodle, según el scope.
 
@@ -376,7 +384,13 @@ class MoodleImportService:
         )
 
         materias = await self.materia_repo.get_by_ids(materia_ids)
-        materias_by_id = {m.id: m for m in materias}
+        # OQ1: guard defensivo — descarta (sin abortar el lote) las materias que
+        # NO pertenecen a la universidad activa, antes de mintear un token
+        # contra su curso.
+        materias_by_id = {
+            m.id: m for m in materias
+            if materia_pertenece_a_universidad_activa(m, universidad_id)
+        }
 
         pares: list[_Par] = []
         for r in rubricas:

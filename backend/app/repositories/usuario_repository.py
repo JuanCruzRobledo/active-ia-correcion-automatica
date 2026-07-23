@@ -10,6 +10,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 3
 """
 
 from datetime import datetime
+from typing import NamedTuple
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,22 @@ from app.models import Usuario
 from app.models.enums import RolEnum
 from app.models.universidad import Universidad
 from app.models.usuario_universidad import UsuarioUniversidad
+
+
+class CredencialesMoodle(NamedTuple):
+    """Terna (host, username, password_encrypted) de la membresía activa.
+
+    Fase 3 multi-tenant (multi-tenant-moodle-services, D2): DTO chico que
+    devuelve `UsuarioRepository.get_credenciales_moodle` — evita filtrar la
+    entidad ORM entera (`UsuarioUniversidad`) a la capa service. Cualquier
+    campo puede venir `None` (sin membresía → el método entero devuelve
+    `None`; con membresía pero sin host/credenciales → el campo puntual es
+    `None`, y el fail-fast lo decide el caller, no el repo).
+    """
+
+    host: str | None
+    username: str | None
+    password_encrypted: str | None
 
 
 class UsuarioRepository:
@@ -278,23 +295,11 @@ class UsuarioRepository:
         )
         return list(result.scalars().all())
 
-    async def update_moodle_credentials(
-        self,
-        user_id: int,
-        username: str,
-        password_encrypted: str,
-        host: str,
-    ) -> Usuario | None:
-        user = await self.get_by_id(user_id)
-        if not user:
-            return None
-        user.moodle_username = username
-        user.moodle_password_encrypted = password_encrypted
-        user.moodle_host = host
-        user.updated_at = datetime.utcnow()
-        await self.db.commit()
-        await self.db.refresh(user)
-        return user
+    # NOTA (Fase 3 multi-tenant, D4): el write-path viejo `update_moodle_credentials`
+    # (escribía usuarios.moodle_* global) se ELIMINÓ acá — reemplazado por
+    # `update_moodle_credentials_membresia` (abajo), que escribe en la membresía
+    # (usuario, universidad activa). Los campos `usuarios.moodle_*` siguen
+    # existiendo en la tabla (conviven hasta Fase 6) pero ya no se escriben.
 
     async def get_membresias_activas(self, usuario_id: int) -> list[UsuarioUniversidad]:
         """
@@ -355,6 +360,54 @@ class UsuarioRepository:
             .options(selectinload(UsuarioUniversidad.universidad))
         )
         return result.scalar_one_or_none()
+
+    async def get_credenciales_moodle(
+        self, usuario_id: int, universidad_id: int
+    ) -> CredencialesMoodle | None:
+        """
+        Resolver ÚNICO de credenciales Moodle (Fase 3 multi-tenant, D2).
+
+        Terna `(moodle_host, moodle_username, moodle_password_encrypted)` de
+        la membresía ACTIVA `(usuario, universidad)` + el host de esa
+        `Universidad` — NUNCA de `usuarios.moodle_*` (campo viejo). Reusa
+        `get_membresia` (ya precarga `.universidad`, selectinload).
+
+        Devuelve `None` si no hay membresía activa (mismo criterio que
+        `get_membresia`); si hay membresía, los campos individuales pueden
+        ser `None` (host/credenciales sin cargar) — el fail-fast 424/D1 lo
+        decide el service, no el repo.
+        """
+        membresia = await self.get_membresia(usuario_id, universidad_id)
+        if membresia is None:
+            return None
+        return CredencialesMoodle(
+            host=membresia.universidad.moodle_host,
+            username=membresia.moodle_username,
+            password_encrypted=membresia.moodle_password_encrypted,
+        )
+
+    async def update_moodle_credentials_membresia(
+        self,
+        usuario_id: int,
+        universidad_id: int,
+        username: str,
+        password_encrypted: str,
+    ) -> UsuarioUniversidad | None:
+        """
+        Escribe las credenciales Moodle en la membresía ACTIVA (usuario, universidad).
+
+        Fase 3 multi-tenant (D4, rediseño del perfil). `moodle_host` NO se
+        escribe acá: es propiedad de la `Universidad`, read-only desde el
+        perfil. Devuelve `None` si no existe la membresía activa.
+        """
+        membresia = await self.get_membresia(usuario_id, universidad_id)
+        if membresia is None:
+            return None
+        membresia.moodle_username = username
+        membresia.moodle_password_encrypted = password_encrypted
+        await self.db.commit()
+        await self.db.refresh(membresia)
+        return membresia
 
     async def hard_delete(self, user: Usuario) -> None:
         """

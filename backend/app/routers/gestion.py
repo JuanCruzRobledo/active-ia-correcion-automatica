@@ -59,7 +59,7 @@ async def listar_cursos(
 ) -> list[CursoGestionResponse]:
     require_gestor_or_admin(ctx)
     service = GestionService(db)
-    cursos = await service.listar_cursos(current_user)
+    cursos = await service.listar_cursos(current_user, ctx.universidad_id)
     return [CursoGestionResponse(**asdict(c)) for c in cursos]
 
 
@@ -72,7 +72,7 @@ async def opciones_filtros(
 ) -> FiltrosDisponiblesResponse:
     require_gestor_or_admin(ctx)
     service = GestionService(db)
-    opciones = await service.opciones_filtros(current_user, materia_id)
+    opciones = await service.opciones_filtros(current_user, materia_id, ctx.universidad_id)
     return FiltrosDisponiblesResponse(**asdict(opciones))
 
 
@@ -86,7 +86,9 @@ async def consultar(
 ) -> ConsultaGestionResponse:
     require_gestor_or_admin(ctx)
     service = GestionService(db)
-    resultado = await service.consultar(current_user, materia_id, _to_filtros(filtros))
+    resultado = await service.consultar(
+        current_user, materia_id, _to_filtros(filtros), universidad_id=ctx.universidad_id
+    )
     return ConsultaGestionResponse(**asdict(resultado))
 
 
@@ -103,7 +105,8 @@ async def exportar_excel(
     require_gestor_or_admin(ctx)
     service = GestionService(db)
     data, filename = await service.exportar_excel(
-        current_user, materia_id, _to_filtros(filtros), agrupar_por=agrupar_por
+        current_user, materia_id, _to_filtros(filtros), agrupar_por=agrupar_por,
+        universidad_id=ctx.universidad_id,
     )
     return StreamingResponse(
         iter([data]),
@@ -125,7 +128,7 @@ async def exportar_pendientes_excel(
     require_gestor_or_admin(ctx)
     service = GestionService(db)
     data, filename = await service.exportar_pendientes_excel(
-        current_user, materia_id, agrupar_por=agrupar_por
+        current_user, materia_id, agrupar_por=agrupar_por, universidad_id=ctx.universidad_id,
     )
     return StreamingResponse(
         iter([data]),

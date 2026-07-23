@@ -313,22 +313,38 @@ class UsuarioService:
         )
 
     async def update_moodle_credentials(
-        self, user_id: int, data: MoodleCredentialsUpdate
+        self, user_id: int, universidad_id: int | None, data: MoodleCredentialsUpdate
     ) -> MoodleCredentialsResponse:
-        user = await self.repo.get_by_id(user_id)
-        if not user:
+        """
+        Guarda las credenciales Moodle en la membresía activa `(usuario, universidad)`.
+
+        Fase 3 multi-tenant (D4): reemplaza el viejo write-path a
+        `usuarios.moodle_*`. El `moodle_host` NO se acepta acá — es propiedad
+        de la `Universidad` de la membresía (read-only, se devuelve en la
+        respuesta para conveniencia del caller).
+
+        Raises:
+            HTTPException 409: sin universidad activa elegida (superadmin, OQ5).
+            HTTPException 404: sin membresía activa (usuario, universidad_id).
+        """
+        if universidad_id is None:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Usuario no encontrado",
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Elegí una universidad activa para configurar tus credenciales Moodle",
             )
         password_encrypted = encrypt_api_key(data.moodle_password)
-        updated = await self.repo.update_moodle_credentials(
-            user_id=user_id,
+        membresia = await self.repo.update_moodle_credentials_membresia(
+            usuario_id=user_id,
+            universidad_id=universidad_id,
             username=data.moodle_username,
             password_encrypted=password_encrypted,
-            host=data.moodle_host,
         )
+        if membresia is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No hay una membresía activa en la universidad activa",
+            )
         return MoodleCredentialsResponse(
-            moodle_username=updated.moodle_username,
-            moodle_host=updated.moodle_host,
+            moodle_username=membresia.moodle_username,
+            moodle_host=membresia.universidad.moodle_host,
         )

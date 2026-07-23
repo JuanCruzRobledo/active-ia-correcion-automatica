@@ -30,13 +30,6 @@ from app.services.moodle_service import MoodleAuthError, MoodleConnectionError
 
 router = APIRouter(prefix="/cierre-cursada", tags=["cierre-cursada"])
 
-_SIN_CREDENCIALES = "Configurá tus credenciales de Moodle en tu perfil"
-
-
-def _requerir_credenciales_moodle(usuario: Usuario) -> None:
-    if not usuario.moodle_username or not usuario.moodle_password_encrypted:
-        raise HTTPException(status.HTTP_424_FAILED_DEPENDENCY, detail=_SIN_CREDENCIALES)
-
 
 def _ascii_filename(filename: str) -> str:
     """El header Content-Disposition debe ser latin-1: limpiamos no-ASCII."""
@@ -53,10 +46,11 @@ async def generar_cierre(
     ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CierreRunResponse:
     await verificar_acceso_materia(db, current_user, ctx, materia_id)
-    _requerir_credenciales_moodle(current_user)
     service = CierreCursadaService(db)
     try:
-        run = await service.generar(materia_id, payload.cuatrimestre_id, current_user)
+        run = await service.generar(
+            materia_id, payload.cuatrimestre_id, current_user, ctx.universidad_id
+        )
     except MoodleAuthError as e:
         raise HTTPException(status.HTTP_424_FAILED_DEPENDENCY, detail=str(e))
     except MoodleConnectionError as e:

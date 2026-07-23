@@ -12,9 +12,10 @@ from datetime import datetime
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from app.repositories.usuario_repository import CredencialesMoodle
 from app.services.entrega_service import ResultadoImportEntrega
 from app.services.moodle_import_service import MoodleImportService, ResumenImportacion, _Par
-from app.services.moodle_service import MoodleFile, MoodleSubmission
+from app.services.moodle_service import MoodleAuthError, MoodleFile, MoodleSubmission
 
 
 def _par():
@@ -204,9 +205,9 @@ async def test_obtener_bytes_multiples_archivos_arma_zip(service):
 async def test_importar_stream_emite_inicio_progreso_resumen():
     svc = MoodleImportService(AsyncMock())
     svc.usuario_repo = AsyncMock()
-    svc.usuario_repo.get_by_id = AsyncMock(return_value=MagicMock(
-        id=7, moodle_username="u", moodle_password_encrypted="e", moodle_host="https://m"
-    ))
+    svc.usuario_repo.get_credenciales_moodle = AsyncMock(
+        return_value=CredencialesMoodle("https://m", "u", "e")
+    )
     svc.moodle = AsyncMock()
     svc.moodle.get_token = AsyncMock(return_value="tok")
     svc.moodle._get_course_assignment_map = AsyncMock(return_value={11237: 478})
@@ -227,7 +228,7 @@ async def test_importar_stream_emite_inicio_progreso_resumen():
 
     with patch("app.services.moodle_import_service.async_session_maker", return_value=cm), \
          patch("app.services.moodle_import_service.EntregaService", return_value=es_inst):
-        eventos = [ev async for ev in svc.importar_stream(7, "tutor")]
+        eventos = [ev async for ev in svc.importar_stream(7, "tutor", universidad_id=1)]
 
     assert any(e["tipo"] == "preparando" for e in eventos)
     inicio = next(e for e in eventos if e["tipo"] == "inicio")
@@ -243,14 +244,64 @@ async def test_importar_stream_emite_inicio_progreso_resumen():
 async def test_importar_stream_sin_trabajo_emite_total_0():
     svc = MoodleImportService(AsyncMock())
     svc.usuario_repo = AsyncMock()
-    svc.usuario_repo.get_by_id = AsyncMock(return_value=MagicMock(
-        id=7, moodle_username="u", moodle_password_encrypted="e", moodle_host="https://m"
-    ))
+    svc.usuario_repo.get_credenciales_moodle = AsyncMock(
+        return_value=CredencialesMoodle("https://m", "u", "e")
+    )
     svc.moodle = AsyncMock()
     svc.moodle.get_token = AsyncMock(return_value="tok")
     svc._resolver_pares = AsyncMock(return_value=[])  # sin pares → sin trabajo
 
-    eventos = [ev async for ev in svc.importar_stream(7, "tutor")]
+    eventos = [ev async for ev in svc.importar_stream(7, "tutor", universidad_id=1)]
     inicio = next(e for e in eventos if e["tipo"] == "inicio")
     assert inicio["total"] == 0
     assert eventos[-1]["tipo"] == "resumen"
+
+
+@pytest.mark.asyncio
+async def test_importar_stream_sin_credenciales_emite_evento_error():
+    """Fase 3 multi-tenant: sin membresía/credenciales en la universidad activa ->
+    el HTTPException 424 del resolver se traduce a MoodleAuthError (consistente
+    con el try/except del router, que envuelve el generador en un evento SSE)."""
+    svc = MoodleImportService(AsyncMock())
+    svc.usuario_repo = AsyncMock()
+    svc.usuario_repo.get_credenciales_moodle = AsyncMock(return_value=None)
+
+    with pytest.raises(MoodleAuthError):
+        async for _ in svc.importar_stream(7, "tutor", universidad_id=1):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_importar_distingue_credenciales_por_universidad(service):
+    """El mismo tutor, 2 universidades -> credenciales DISTINTAS resueltas por universidad_id."""
+    service.usuario_repo = AsyncMock()
+    creds_por_uni = {
+        1: CredencialesMoodle("https://a.edu", "user_a", "pass_a"),
+        2: CredencialesMoodle("https://b.edu", "user_b", "pass_b"),
+    }
+    service.usuario_repo.get_credenciales_moodle = AsyncMock(
+        side_effect=lambda uid, univ_id: creds_por_uni[univ_id]
+    )
+    service.moodle.get_token = AsyncMock(return_value="tok")
+    service._resolver_pares = AsyncMock(return_value=[])
+
+    await service.importar(user_id=7, scope="tutor", universidad_id=1)
+    assert service.moodle.get_token.call_args.kwargs["moodle_host"] == "https://a.edu"
+
+    await service.importar(user_id=7, scope="tutor", universidad_id=2)
+    assert service.moodle.get_token.call_args.kwargs["moodle_host"] == "https://b.edu"
+
+
+@pytest.mark.asyncio
+async def test_importar_host_null_es_424_sin_fallback(service):
+    service.usuario_repo = AsyncMock()
+    service.usuario_repo.get_credenciales_moodle = AsyncMock(
+        return_value=CredencialesMoodle(None, "tutor", "enc")
+    )
+
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc:
+        await service.importar(user_id=7, scope="tutor", universidad_id=1)
+    assert exc.value.status_code == 424
+    assert "campus" in exc.value.detail.lower()

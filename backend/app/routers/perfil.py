@@ -14,7 +14,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.security import decrypt_api_key, encrypt_api_key
 from app.integrations import ia_provider
 from app.models import Usuario
@@ -87,6 +87,8 @@ async def update_email(
 @router.get("", response_model=PerfilResponse)
 async def get_profile(
     current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> PerfilResponse:
     """
     Get current user's profile.
@@ -94,8 +96,26 @@ async def get_profile(
     Returns complete user information including API Key status
     (but not the key itself).
 
+    Fase 3 multi-tenant (D4): `moodle_host`/`moodle_username`/`moodle_configured`
+    se leen de la membresía `(usuario, universidad activa)` — `moodle_host` es
+    read-only (propiedad de la Universidad), NO de `usuarios.moodle_*` (campo
+    global viejo). Sin universidad activa (superadmin sin elegir, OQ5) quedan
+    en `None`/`False` — no rompe el perfil, sólo no hay dato de Moodle que mostrar.
+
     **Permissions**: All authenticated users
     """
+    moodle_username = None
+    moodle_host = None
+    moodle_configured = False
+    if ctx.universidad_id is not None:
+        creds = await UsuarioRepository(db).get_credenciales_moodle(
+            current_user.id, ctx.universidad_id
+        )
+        if creds is not None:
+            moodle_username = creds.username
+            moodle_host = creds.host
+            moodle_configured = bool(creds.username and creds.password_encrypted)
+
     return PerfilResponse(
         id=current_user.id,
         username=current_user.username,
@@ -113,9 +133,9 @@ async def get_profile(
         openrouter_api_key_last_4=_last_4(
             getattr(current_user, "openrouter_api_key_encrypted", None)
         ),
-        moodle_username=current_user.moodle_username,
-        moodle_host=current_user.moodle_host,
-        moodle_configured=bool(current_user.moodle_username and current_user.moodle_password_encrypted),
+        moodle_username=moodle_username,
+        moodle_host=moodle_host,
+        moodle_configured=moodle_configured,
         activo=current_user.activo,
         created_at=current_user.created_at,
         updated_at=current_user.updated_at,

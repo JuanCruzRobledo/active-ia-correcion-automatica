@@ -11,16 +11,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
 
+from app.repositories.usuario_repository import CredencialesMoodle
 from app.services.gestion_service import GestionService
 from app.services.moodle_service import MoodleConnectionError
 
 
-def _usuario(con_creds=True):
-    return MagicMock(
-        id=7, moodle_host="https://m",
-        moodle_username="u" if con_creds else None,
-        moodle_password_encrypted="enc" if con_creds else None,
-    )
+def _usuario():
+    return MagicMock(id=7)
 
 
 def _comision_db(group_id, *tutores):
@@ -43,12 +40,17 @@ def _svc(*, rubricas, comisiones_db, enrolled, instance_map, subs_por_instancia)
     svc = GestionService(AsyncMock())
     svc.materia_repo = AsyncMock()
     svc.materia_repo.get_by_id = AsyncMock(
-        return_value=MagicMock(id=1, nombre="Prog I", moodle_course_id=38)
+        return_value=MagicMock(id=1, nombre="Prog I", moodle_course_id=38, universidad_id=None)
     )
     svc.rubrica_repo = AsyncMock()
     svc.rubrica_repo.get_by_materia = AsyncMock(return_value=rubricas)
     svc.comision_repo = AsyncMock()
     svc.comision_repo.get_by_materia_con_tutores = AsyncMock(return_value=comisiones_db)
+    svc.usuario_repo = AsyncMock()
+    # Fase 3 multi-tenant: la fuente de credenciales es el resolver (repo).
+    svc.usuario_repo.get_credenciales_moodle = AsyncMock(
+        return_value=CredencialesMoodle("https://m", "u", "enc")
+    )
     svc.moodle = AsyncMock()
     svc.moodle.get_token = AsyncMock(return_value="tok")
     svc.moodle.get_enrolled_users_full = AsyncMock(return_value=enrolled)
@@ -80,7 +82,7 @@ async def test_arma_pendiente_con_comision_y_tutor():
         side_effect=lambda pend, nombre, agrupar_por="trabajo": (captura.update(p=pend) or (b"x", "f.xlsx"))
     )
 
-    await svc.exportar_pendientes_excel(_usuario(), materia_id=1, agrupar_por="comision")
+    await svc.exportar_pendientes_excel(_usuario(), materia_id=1, agrupar_por="comision", universidad_id=1)
 
     e = captura["p"][0]
     assert (e.trabajo, e.comision, e.tutor, e.email) == ("TP 1", "M26 C1-02", "Matias Torres", "ana@x")
@@ -102,7 +104,7 @@ async def test_varios_tutores_por_comision_se_juntan():
     )
     svc.excel.exportar_pendientes = MagicMock(return_value=(b"x", "f.xlsx"))
 
-    await svc.exportar_pendientes_excel(_usuario(), materia_id=1)
+    await svc.exportar_pendientes_excel(_usuario(), materia_id=1, universidad_id=1)
 
     e = svc.excel.exportar_pendientes.call_args.args[0][0]
     assert e.tutor == "Ana Mutti, Oscar Londero"
@@ -120,7 +122,7 @@ async def test_comision_sin_tutor_en_db_queda_vacio():
     )
     svc.excel.exportar_pendientes = MagicMock(return_value=(b"x", "f.xlsx"))
 
-    await svc.exportar_pendientes_excel(_usuario(), materia_id=1)
+    await svc.exportar_pendientes_excel(_usuario(), materia_id=1, universidad_id=1)
 
     e = svc.excel.exportar_pendientes.call_args.args[0][0]
     assert e.comision == "M26 C1-02"  # la comisión sale igual del nombre del grupo
@@ -138,7 +140,7 @@ async def test_agrupar_por_se_propaga():
     )
     svc.excel.exportar_pendientes = MagicMock(return_value=(b"x", "f.xlsx"))
 
-    await svc.exportar_pendientes_excel(_usuario(), materia_id=1, agrupar_por="comision")
+    await svc.exportar_pendientes_excel(_usuario(), materia_id=1, agrupar_por="comision", universidad_id=1)
     assert svc.excel.exportar_pendientes.call_args.kwargs["agrupar_por"] == "comision"
 
 
@@ -160,7 +162,7 @@ async def test_rubrica_que_falla_se_saltea():
     svc.excel.exportar_pendientes = MagicMock(return_value=(b"x", "f.xlsx"))
 
     with patch("app.services.gestion_service.asyncio.sleep", AsyncMock()):
-        await svc.exportar_pendientes_excel(_usuario(), materia_id=1)
+        await svc.exportar_pendientes_excel(_usuario(), materia_id=1, universidad_id=1)
 
     pend = svc.excel.exportar_pendientes.call_args.args[0]
     assert {e.trabajo for e in pend} == {"TP OK"}
@@ -169,6 +171,7 @@ async def test_rubrica_que_falla_se_saltea():
 @pytest.mark.asyncio
 async def test_sin_credenciales_moodle_es_424():
     svc = _svc(rubricas=[], comisiones_db=[], enrolled=[], instance_map={}, subs_por_instancia={})
+    svc.usuario_repo.get_credenciales_moodle = AsyncMock(return_value=None)
     with pytest.raises(HTTPException) as exc:
-        await svc.exportar_pendientes_excel(_usuario(con_creds=False), materia_id=1)
+        await svc.exportar_pendientes_excel(_usuario(), materia_id=1, universidad_id=1)
     assert exc.value.status_code == 424

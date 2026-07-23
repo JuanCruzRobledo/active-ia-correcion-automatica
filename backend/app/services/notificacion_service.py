@@ -231,13 +231,20 @@ class NotificacionService:
           tutores (None = todas las comisiones).
 
         Devuelve {tanda_id, alumnos, tutores, nexos} con la cantidad enviada por tipo.
+
+        Fase 3 multi-tenant (OQ2): el cron corre sin request/ctx, así que
+        `universidad_id` sale de la config del cron (`NotificacionCronConfig.
+        universidad_id`) — la misma fila que ya guarda el `usuario_id` de
+        servicio, así ambos quedan atados al mismo par (usuario, universidad).
         """
         tanda_id = tanda_id or uuid.uuid4().hex
-        if refrescar:
-            await self.snapshot_service.generar_todas_para_usuario(usuario_id)
-
         config = await self.config_service.get_config()
         remitente = config.remitente or None
+
+        if refrescar:
+            await self.snapshot_service.generar_todas_para_usuario(
+                usuario_id, universidad_id=config.universidad_id
+            )
 
         avances = await self._cargar_avances_por_materia()
         mapa_materia = {a["materia_id"]: a["materia"] for a in avances}

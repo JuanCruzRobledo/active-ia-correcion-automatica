@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from fastapi import HTTPException
 
+from app.repositories.usuario_repository import CredencialesMoodle
 from app.services.gestion_service import (
     AlumnoGestion,
     FiltrosGestion,
@@ -34,18 +35,20 @@ def _user(uid, first, last, email, roles, groups, lca, suspendido=False):
 
 
 def _usuario():
-    return MagicMock(
-        id=7, moodle_host="https://m",
-        moodle_username="u", moodle_password_encrypted="enc",
-    )
+    return MagicMock(id=7)
 
 
 def _svc(*, users_status=None, users_full=None, materia=True):
     svc = GestionService(AsyncMock())
     svc.materia_repo = AsyncMock()
     svc.materia_repo.get_by_id = AsyncMock(
-        return_value=MagicMock(id=1, nombre="Prog I", codigo="P1", moodle_course_id=38)
+        return_value=MagicMock(id=1, nombre="Prog I", codigo="P1", moodle_course_id=38, universidad_id=None)
         if materia else None
+    )
+    svc.usuario_repo = AsyncMock()
+    # Fase 3 multi-tenant: la fuente de credenciales es el resolver (repo).
+    svc.usuario_repo.get_credenciales_moodle = AsyncMock(
+        return_value=CredencialesMoodle("https://m", "u", "enc")
     )
     svc.moodle = AsyncMock()
     svc.moodle.get_token = AsyncMock(return_value="tok")
@@ -78,7 +81,7 @@ async def test_opciones_filtros_deriva_regionales_y_comisiones():
         _user(3, "C", "C", "c@x", ["student"], ["R-Mendoza", "M26 C1-09"], _lca(1)),  # repetidos
     ]
     svc = _svc(users_full=users)
-    opciones = await svc.opciones_filtros(_usuario(), materia_id=1)
+    opciones = await svc.opciones_filtros(_usuario(), materia_id=1, universidad_id=1)
 
     assert opciones.regionales == ["Mendoza", "Rosario"]          # únicas y ordenadas
     assert opciones.comisiones == ["M26 C1-02", "M26 C1-09"]      # sin Grupo_104
@@ -101,7 +104,7 @@ def _poblacion():
 async def test_consultar_rol_alumno_y_estatus_activo():
     svc = _svc(users_status=_poblacion())
     filtros = FiltrosGestion(rol="student", estatus="activo")
-    res = await svc.consultar(_usuario(), materia_id=1, filtros=filtros, now=NOW)
+    res = await svc.consultar(_usuario(), materia_id=1, filtros=filtros, now=NOW, universidad_id=1)
 
     # Ana y Beto (alumnos activos). Cira suspendida y Profe (teacher) quedan fuera.
     assert res.total == 2
@@ -112,7 +115,7 @@ async def test_consultar_rol_alumno_y_estatus_activo():
 async def test_consultar_estatus_inactivo_trae_suspendidos():
     svc = _svc(users_status=_poblacion())
     filtros = FiltrosGestion(rol="student", estatus="inactivo")
-    res = await svc.consultar(_usuario(), materia_id=1, filtros=filtros, now=NOW)
+    res = await svc.consultar(_usuario(), materia_id=1, filtros=filtros, now=NOW, universidad_id=1)
     assert [a.email for a in res.items] == ["cira@x"]
 
 
@@ -120,7 +123,7 @@ async def test_consultar_estatus_inactivo_trae_suspendidos():
 async def test_consultar_filtro_inactividad_1_mes_banda_cerrada():
     svc = _svc(users_status=_poblacion())
     filtros = FiltrosGestion(rol="student", inactividad_tipo="1_mes")  # 30-59 días
-    res = await svc.consultar(_usuario(), materia_id=1, filtros=filtros, now=NOW)
+    res = await svc.consultar(_usuario(), materia_id=1, filtros=filtros, now=NOW, universidad_id=1)
     # Ana (45 días) entra; Beto (10) no; Cira (nunca) no.
     assert [a.email for a in res.items] == ["ana@x"]
 
@@ -129,14 +132,14 @@ async def test_consultar_filtro_inactividad_1_mes_banda_cerrada():
 async def test_consultar_filtro_regional():
     svc = _svc(users_status=_poblacion())
     filtros = FiltrosGestion(rol="student", regionales=["Rosario"])
-    res = await svc.consultar(_usuario(), materia_id=1, filtros=filtros, now=NOW)
+    res = await svc.consultar(_usuario(), materia_id=1, filtros=filtros, now=NOW, universidad_id=1)
     assert [a.email for a in res.items] == ["beto@x"]
 
 
 @pytest.mark.asyncio
 async def test_consultar_arma_fila_y_humaniza_inactividad():
     svc = _svc(users_status=_poblacion())
-    res = await svc.consultar(_usuario(), materia_id=1, filtros=FiltrosGestion(rol="student"), now=NOW)
+    res = await svc.consultar(_usuario(), materia_id=1, filtros=FiltrosGestion(rol="student"), now=NOW, universidad_id=1)
     por_email = {a.email: a for a in res.items}
     assert por_email["ana@x"].regional == "Mendoza"
     assert por_email["ana@x"].comision == "M26 C1-09"
@@ -152,7 +155,7 @@ async def test_consultar_orden_regional_luego_comision():
         _user(3, "Z", "Z", "z@x", ["student"], ["R-Mendoza", "M26 C1-03"], _lca(5)),
     ]
     svc = _svc(users_status=pobl)
-    res = await svc.consultar(_usuario(), materia_id=1, filtros=FiltrosGestion(), now=NOW)
+    res = await svc.consultar(_usuario(), materia_id=1, filtros=FiltrosGestion(), now=NOW, universidad_id=1)
     # Mendoza(C1-03) < Mendoza(C1-08) < Rosario(C1-05)
     assert [a.email for a in res.items] == ["z@x", "y@x", "x@x"]
 
@@ -162,10 +165,32 @@ async def test_consultar_orden_regional_luego_comision():
 @pytest.mark.asyncio
 async def test_consultar_sin_credenciales_moodle_es_424():
     svc = _svc(users_status=_poblacion())
-    usuario = MagicMock(id=7, moodle_host="https://m", moodle_username=None, moodle_password_encrypted=None)
+    svc.usuario_repo.get_credenciales_moodle = AsyncMock(return_value=None)
     with pytest.raises(HTTPException) as exc:
-        await svc.consultar(usuario, materia_id=1, filtros=FiltrosGestion(), now=NOW)
+        await svc.consultar(_usuario(), materia_id=1, filtros=FiltrosGestion(), now=NOW, universidad_id=1)
     assert exc.value.status_code == 424
+
+
+@pytest.mark.asyncio
+async def test_consultar_resuelve_credenciales_de_la_universidad_activa():
+    """Fase 3 multi-tenant: el service pide la terna al resolver con
+    (usuario.id, universidad_id) — nunca lee usuario.moodle_*."""
+    svc = _svc(users_status=_poblacion())
+    await svc.consultar(_usuario(), materia_id=1, filtros=FiltrosGestion(), now=NOW, universidad_id=9)
+    svc.usuario_repo.get_credenciales_moodle.assert_awaited_once_with(7, 9)
+
+
+@pytest.mark.asyncio
+async def test_consultar_materia_de_otra_universidad_es_409():
+    """OQ1: guard defensivo — la materia debe pertenecer a la universidad activa."""
+    svc = _svc(users_status=_poblacion())
+    svc.materia_repo.get_by_id = AsyncMock(
+        return_value=MagicMock(id=1, moodle_course_id=38, universidad_id=2)
+    )
+    with pytest.raises(HTTPException) as exc:
+        await svc.consultar(_usuario(), materia_id=1, filtros=FiltrosGestion(), now=NOW, universidad_id=1)
+    assert exc.value.status_code == 409
+    svc.moodle.get_token.assert_not_called()
 
 
 @pytest.mark.asyncio

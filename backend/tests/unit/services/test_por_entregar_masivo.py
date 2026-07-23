@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from fastapi import HTTPException
 
 from app.models.enums import RolEnum
+from app.repositories.usuario_repository import CredencialesMoodle
 from app.services.moodle_service import MoodleConnectionError
 from app.services.por_entregar_service import PorEntregarService
 
@@ -50,6 +51,11 @@ def _svc(correcciones, *, grades=None, sub_tms=None, token_ok=True, grades_error
     svc.moodle_sync_repo = AsyncMock()
     svc.moodle_sync_repo.contar_por_correccion = AsyncMock(return_value=0)
     svc.moodle_sync_repo.create = AsyncMock(side_effect=lambda s: s)
+    svc.usuario_repo = AsyncMock()
+    # Fase 3 multi-tenant: la fuente de credenciales es el resolver (repo).
+    svc.usuario_repo.get_credenciales_moodle = AsyncMock(
+        return_value=CredencialesMoodle("https://m", "t", "e")
+    )
     svc.moodle = AsyncMock()
     svc.moodle.get_token = (
         AsyncMock(return_value="tok") if token_ok
@@ -258,6 +264,62 @@ async def test_verificacion_fallida_no_pisa_la_nota():
     resumen = eventos[-1]
     assert resumen["enviadas"] == 0
     assert len(resumen["errores"]) == 1
+    cls.return_value.subir_correccion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_resuelve_credenciales_de_la_universidad_activa():
+    """Fase 3 multi-tenant: el service pide la terna al resolver con
+    (usuario.id, ctx.universidad_id) — nunca lee usuario.moodle_*."""
+    correcciones = [_correccion(1, tipo="TP", moodle_user_id=101)]
+    svc = _svc(correcciones, grades={})
+    ctx = MagicMock(universidad_id=42)
+
+    with patch("app.services.por_entregar_service.MoodleGradeService") as cls, patch(
+        "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
+    ):
+        cls.return_value.subir_correccion = AsyncMock(return_value=MagicMock())
+        await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=ctx))
+
+    svc.usuario_repo.get_credenciales_moodle.assert_awaited_once_with(7, 42)
+    kwargs = svc.moodle.get_token.call_args.kwargs
+    assert kwargs["moodle_host"] == "https://m"
+    assert kwargs["username"] == "t"
+
+
+@pytest.mark.asyncio
+async def test_sin_membresia_en_universidad_activa_emite_error():
+    correcciones = [_correccion(1, tipo="TP", moodle_user_id=101)]
+    svc = _svc(correcciones, grades={})
+    svc.usuario_repo.get_credenciales_moodle = AsyncMock(return_value=None)
+
+    with patch("app.services.por_entregar_service.MoodleGradeService") as cls, patch(
+        "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
+    ):
+        cls.return_value.subir_correccion = AsyncMock()
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
+
+    assert eventos[-1]["tipo"] == "error"
+    cls.return_value.subir_correccion.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_host_null_de_universidad_activa_emite_error_sin_fallback():
+    """D1/OP-1: host NULL de la universidad activa -> evento error, SIN fallback."""
+    correcciones = [_correccion(1, tipo="TP", moodle_user_id=101)]
+    svc = _svc(correcciones, grades={})
+    svc.usuario_repo.get_credenciales_moodle = AsyncMock(
+        return_value=CredencialesMoodle(None, "t", "e")
+    )
+
+    with patch("app.services.por_entregar_service.MoodleGradeService") as cls, patch(
+        "app.services.por_entregar_service.async_session_maker", return_value=_FakeSessionCtx()
+    ):
+        cls.return_value.subir_correccion = AsyncMock()
+        eventos = await _drain(svc.entregar_masivo_stream(_tutor(), "http://test", ctx=MagicMock()))
+
+    assert eventos[-1]["tipo"] == "error"
+    assert "campus" in eventos[-1]["detail"].lower()
     cls.return_value.subir_correccion.assert_not_called()
 
 

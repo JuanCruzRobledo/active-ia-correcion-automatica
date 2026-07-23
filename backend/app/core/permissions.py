@@ -634,6 +634,58 @@ async def filtrar_entregas_accesibles(
     return permitidos, solicitados - permitidos
 
 
+# =========================================
+# Guard defensivo de sync Moodle cross-campus (OQ1, multi-tenant-moodle-services Fase 3)
+# =========================================
+#
+# NO es el aislamiento general de queries por universidad_id (eso es Fase 4).
+# Es una red de seguridad LOCAL en los entrypoints que mintean un token Moodle
+# de la universidad activa y lo usan contra un course_id/group_id de una
+# Materia/Comisión: si esa Materia perteneciera a OTRA universidad, el
+# course_id podría 404 en el campus activo o, peor, coincidir por casualidad
+# con un curso de otra materia. El guard corta ANTES de pegarle a Moodle.
+#
+# `materia.universidad_id` es nullable (Fase 0, backfill histórico): una
+# materia SIN universidad asignada NO se considera mismatch (no rompe el
+# estado mono-universidad actual ni bloquea datos aún no migrados).
+
+
+def verificar_materia_universidad_activa(materia, universidad_id_activa: int | None) -> None:
+    """Guard defensivo (OQ1): la materia debe pertenecer a la universidad activa.
+
+    Lanza HTTPException 409 si `materia.universidad_id` está seteado y
+    difiere de `universidad_id_activa`. No aplica si la materia no tiene
+    `universidad_id` (dato legado sin migrar) — ver nota arriba.
+
+    Args:
+        materia: instancia de `Materia` (o cualquier objeto con `.universidad_id`).
+        universidad_id_activa: `ctx.universidad_id` del request.
+    """
+    if materia is None:
+        return
+    materia_universidad_id = getattr(materia, "universidad_id", None)
+    if materia_universidad_id is None:
+        return
+    if materia_universidad_id != universidad_id_activa:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La materia no pertenece a la universidad activa",
+        )
+
+
+def materia_pertenece_a_universidad_activa(materia, universidad_id_activa: int | None) -> bool:
+    """Versión booleana (sin excepción) para filtrar listas de materias/comisiones
+    en los entrypoints que iteran varias a la vez (p. ej. `moodle_service.get_pendientes`,
+    `moodle_import_service._resolver_pares`): descarta silenciosamente las que no
+    pertenecen a la universidad activa, en vez de abortar todo el lote."""
+    if materia is None:
+        return False
+    materia_universidad_id = getattr(materia, "universidad_id", None)
+    if materia_universidad_id is None:
+        return True
+    return materia_universidad_id == universidad_id_activa
+
+
 async def comisiones_visibles_para(
     db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad
 ) -> list[int] | None:
