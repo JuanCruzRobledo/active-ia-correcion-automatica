@@ -39,7 +39,7 @@ async def db_session():
 
 
 async def _crear_usuario(db, username="tutor1") -> Usuario:
-    u = Usuario(username=username, nombre="Tutor Uno", password_hash="x", rol=RolEnum.TUTOR)
+    u = Usuario(username=username, nombre="Tutor Uno", password_hash="x")
     db.add(u)
     await db.flush()
     return u

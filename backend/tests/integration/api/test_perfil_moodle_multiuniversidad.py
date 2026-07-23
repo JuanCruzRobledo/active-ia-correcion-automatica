@@ -64,7 +64,7 @@ async def db_session():
 
 
 async def _crear_usuario_con_membresias(db) -> tuple[Usuario, Universidad, Universidad]:
-    usuario = Usuario(username="tutor1", nombre="Tutor Uno", password_hash="x", rol=RolEnum.TUTOR)
+    usuario = Usuario(username="tutor1", nombre="Tutor Uno", password_hash="x")
     uni_a = Universidad(nombre="Uni A", moodle_host="https://a.edu")
     uni_b = Universidad(nombre="Uni B", moodle_host="https://b.edu")
     db.add_all([usuario, uni_a, uni_b])
@@ -152,6 +152,62 @@ async def test_patch_moodle_credentials_escribe_en_membresia_activa_sin_afectar_
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         resp_a = await client.get("/api/v1/perfil")
     assert resp_a.json()["moodle_username"] == "user_a"
+
+
+@pytest.mark.asyncio
+async def test_get_perfil_rol_sigue_a_la_universidad_activa(db_session):
+    """Fase 6 multi-tenant (D5, tarea 3.3): `PerfilResponse.rol` es el rol
+    de la MEMBRESÍA activa, no un rol global. Misma persona: TUTOR en A,
+    COORDINADOR en B."""
+    usuario = Usuario(username="ambidiestro", nombre="Ambi Diestro", password_hash="x")
+    uni_a = Universidad(nombre="Uni A2")
+    uni_b = Universidad(nombre="Uni B2")
+    db_session.add_all([usuario, uni_a, uni_b])
+    await db_session.flush()
+    db_session.add(UsuarioUniversidad(usuario_id=usuario.id, universidad_id=uni_a.id, rol=RolEnum.TUTOR))
+    db_session.add(UsuarioUniversidad(usuario_id=usuario.id, universidad_id=uni_b.id, rol=RolEnum.COORDINADOR))
+    await db_session.commit()
+    await db_session.refresh(usuario)
+
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_current_user] = lambda: usuario
+    app.dependency_overrides[get_universidad_activa] = lambda: ContextoUniversidad(
+        universidad_id=uni_a.id, rol=RolEnum.TUTOR, es_superadmin=False
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp_a = await client.get("/api/v1/perfil")
+    assert resp_a.json()["rol"] == "TUTOR"
+
+    app.dependency_overrides[get_universidad_activa] = lambda: ContextoUniversidad(
+        universidad_id=uni_b.id, rol=RolEnum.COORDINADOR, es_superadmin=False
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp_b = await client.get("/api/v1/perfil")
+    assert resp_b.json()["rol"] == "COORDINADOR"
+
+
+@pytest.mark.asyncio
+async def test_get_perfil_superadmin_sin_universidad_informa_admin_sintetico(db_session):
+    """Superadmin en modo global (`ctx.rol is None`): el perfil informa ADMIN
+    en vez de romper la validación del schema (`rol` es requerido)."""
+    usuario = Usuario(
+        username="superadmin1", nombre="Super Admin", password_hash="x",
+        es_superadmin=True,
+    )
+    db_session.add(usuario)
+    await db_session.commit()
+    await db_session.refresh(usuario)
+
+    app.dependency_overrides[get_db] = lambda: db_session
+    app.dependency_overrides[get_current_user] = lambda: usuario
+    app.dependency_overrides[get_universidad_activa] = lambda: ContextoUniversidad(
+        universidad_id=None, rol=None, es_superadmin=True
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        resp = await client.get("/api/v1/perfil")
+
+    assert resp.status_code == 200
+    assert resp.json()["rol"] == "ADMIN"
 
 
 @pytest.mark.asyncio

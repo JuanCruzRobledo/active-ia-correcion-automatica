@@ -288,11 +288,9 @@ async def test_pbt_historico_append_only_dos_corridas_coexisten(db_session):
     """Dos corridas de la MISMA materia persistidas una tras otra: ambas siguen
     existiendo (append-only), listar_runs las devuelve ordenadas por más reciente
     primero, y la segunda NO pisa/reemplaza los datos de la primera."""
-    from app.models.enums import RolEnum
-
     # Fixtures mínimas de FK (materia + cuatrimestre + usuario) para poder persistir un run.
     usuario = Usuario(
-        username="gestor1", password_hash="x", nombre="Gestor", rol=RolEnum.ADMIN,
+        username="gestor1", password_hash="x", nombre="Gestor",
     )
     cohorte = Cohorte(codigo="M26", nombre="M26")
     db_session.add_all([usuario, cohorte])

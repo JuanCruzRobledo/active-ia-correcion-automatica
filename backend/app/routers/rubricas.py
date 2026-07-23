@@ -63,7 +63,7 @@ async def listar_rubricas(
     **Authorization:** Any authenticated user (Admin, Coordinador, Tutor)
     """
     require_any_authenticated(current_user)
-    coordinador_id = current_user.id if current_user.rol == RolEnum.COORDINADOR else None
+    coordinador_id = current_user.id if ctx.rol == RolEnum.COORDINADOR else None
 
     service = RubricaService(db)
     return await service.listar_rubricas(
@@ -118,6 +118,7 @@ async def crear_rubrica(
     current_user=current_user,
     current_user_id=current_user.id,
     universidad_id=ctx.universidad_id,
+    rol=ctx.rol,
 )
 
 
@@ -145,6 +146,7 @@ async def obtener_rubrica(
     rubrica_id,
     current_user=current_user,
     universidad_id=ctx.universidad_id,
+    rol=ctx.rol,
 )
 
 
@@ -178,6 +180,7 @@ async def actualizar_rubrica(
     data,
     current_user=current_user,
     universidad_id=ctx.universidad_id,
+    rol=ctx.rol,
 )
 
 
@@ -203,6 +206,7 @@ async def eliminar_rubrica(
     rubrica_id,
     current_user=current_user,
     universidad_id=ctx.universidad_id,
+    rol=ctx.rol,
 )
 
 
@@ -227,6 +231,7 @@ async def restaurar_rubrica(
     rubrica_id,
     current_user=current_user,
     universidad_id=ctx.universidad_id,
+    rol=ctx.rol,
 )
 
 
@@ -264,6 +269,7 @@ async def duplicar_rubrica(
     data,
     current_user=current_user,
     universidad_id=ctx.universidad_id,
+    rol=ctx.rol,
 )
 
 

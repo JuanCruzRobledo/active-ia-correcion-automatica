@@ -79,7 +79,7 @@ async def _rubrica(db, id_, materia_id, *, activa=True):
 
 async def _usuario(db, id_, *, activo=True):
     db.add(Usuario(id=id_, username=f"u{id_}", nombre=f"U{id_}",
-                   password_hash="x", rol=RolEnum.TUTOR, activo=activo))
+                   password_hash="x", activo=activo))
     await db.flush()
 
 

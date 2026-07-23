@@ -159,7 +159,6 @@ async def _crear_materia(db_session) -> Materia:
 async def _crear_usuario(db_session) -> Usuario:
     usuario = Usuario(
         username="coord1", password_hash="x", nombre="Coordinador",
-        rol="ADMIN",
     )
     db_session.add(usuario)
     await db_session.flush()

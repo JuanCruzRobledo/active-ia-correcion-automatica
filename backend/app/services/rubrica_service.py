@@ -44,24 +44,34 @@ class RubricaService:
         self.materia_repo = MateriaRepository(db)
         self.coordinador_materia_repo = CoordinadorMateriaRepository(db)
 
-    async def _validar_acceso_materia(self, user: Usuario, materia_id: int) -> None:
+    async def _validar_acceso_materia(
+        self, user: Usuario, materia_id: int, *, rol: RolEnum | None = None
+    ) -> None:
         """
         Valida que un coordinador tenga acceso a una materia.
         Los admins siempre tienen acceso.
 
+        Fase 6 multi-tenant (D3, tarea 3.4): el rol que decide el acceso es
+        el de la MEMBRESÍA en la universidad activa (`ctx.rol`), no un rol
+        global — `usuarios.rol` se eliminó en la tarea 5.1 de esta fase, así
+        que `rol` ya no es opcional en la práctica (todo caller real pasa
+        `ctx.rol`); se mantiene `None` como default sólo para que "sin rol"
+        caiga limpiamente en el 403 de abajo, no en un `AttributeError`.
+
         Args:
-            user: Usuario actual.
+            user: Usuario actual (se usa `.id` para el chequeo de asignación).
             materia_id: ID de la materia a validar.
+            rol: Rol de la membresía en la universidad activa (`ctx.rol`).
 
         Raises:
             HTTPException 403: Si el coordinador no está asignado a la materia.
         """
         # Admins tienen acceso a todo
-        if user.rol == RolEnum.ADMIN:
+        if rol == RolEnum.ADMIN:
             return
 
         # Coordinadores solo a sus materias asignadas
-        if user.rol == RolEnum.COORDINADOR:
+        if rol == RolEnum.COORDINADOR:
             tiene_acceso = await self.coordinador_materia_repo.exists(
                 coordinador_id=user.id,
                 materia_id=materia_id,
@@ -143,6 +153,7 @@ class RubricaService:
         current_user_id: int | None = None,
         *,
         universidad_id: int | None = None,
+        rol: RolEnum | None = None,
     ) -> RubricaResponse:
         """
         Create a new rubrica V2.
@@ -164,7 +175,7 @@ class RubricaService:
             HTTPException 400: Invalid estructura V2.
         """
         # Validate user has access to materia
-        await self._validar_acceso_materia(current_user, data.materia_id)
+        await self._validar_acceso_materia(current_user, data.materia_id, rol=rol)
 
         # Validate materia exists
         materia = await self.materia_repo.get_active_by_id(data.materia_id)
@@ -331,6 +342,7 @@ class RubricaService:
         current_user: Usuario | None = None,
         *,
         universidad_id: int | None = None,
+        rol: RolEnum | None = None,
     ) -> RubricaDetailResponse:
         """
         Get a rubrica by ID with materia info.
@@ -360,7 +372,7 @@ class RubricaService:
 
         # Validate user has access to materia (if user is provided)
         if current_user:
-            await self._validar_acceso_materia(current_user, rubrica.materia_id)
+            await self._validar_acceso_materia(current_user, rubrica.materia_id, rol=rol)
 
         # Build materia info
         materia_info = MateriaInfo(
@@ -405,6 +417,7 @@ class RubricaService:
         current_user: Usuario,
         *,
         universidad_id: int | None = None,
+        rol: RolEnum | None = None,
     ) -> RubricaResponse:
         """
         Update an existing rubrica V2.
@@ -435,7 +448,7 @@ class RubricaService:
         )
 
         # Validate user has access to materia
-        await self._validar_acceso_materia(current_user, rubrica.materia_id)
+        await self._validar_acceso_materia(current_user, rubrica.materia_id, rol=rol)
 
         # Update fields
         if data.titulo is not None:
@@ -477,7 +490,12 @@ class RubricaService:
         return RubricaResponse.model_validate(updated_rubrica)
 
     async def eliminar_rubrica(
-        self, rubrica_id: int, current_user: Usuario, *, universidad_id: int | None = None
+        self,
+        rubrica_id: int,
+        current_user: Usuario,
+        *,
+        universidad_id: int | None = None,
+        rol: RolEnum | None = None,
     ) -> None:
         """
         Delete a rubrica — soft or hard depending on ALLOW_HARD_DELETE setting.
@@ -510,11 +528,16 @@ class RubricaService:
             rubrica, universidad_id, detail="Rúbrica no encontrada o ya eliminada"
         )
         # Validar acceso a la materia
-        await self._validar_acceso_materia(current_user, rubrica.materia_id)
+        await self._validar_acceso_materia(current_user, rubrica.materia_id, rol=rol)
         await self.rubrica_repo.soft_delete(rubrica)
 
     async def restaurar_rubrica(
-        self, rubrica_id: int, current_user: Usuario, *, universidad_id: int | None = None
+        self,
+        rubrica_id: int,
+        current_user: Usuario,
+        *,
+        universidad_id: int | None = None,
+        rol: RolEnum | None = None,
     ) -> RubricaResponse:
         """
         Restore a soft-deleted rubrica.
@@ -544,7 +567,7 @@ class RubricaService:
         )
 
         # Validate user has access to materia
-        await self._validar_acceso_materia(current_user, rubrica.materia_id)
+        await self._validar_acceso_materia(current_user, rubrica.materia_id, rol=rol)
 
         if rubrica.activa:
             raise HTTPException(
@@ -563,6 +586,7 @@ class RubricaService:
         current_user: Usuario,
         *,
         universidad_id: int | None = None,
+        rol: RolEnum | None = None,
     ) -> RubricaResponse:
         """
         Duplicate a rubrica to a new year.
@@ -594,7 +618,7 @@ class RubricaService:
         )
 
         # Validate user has access to materia
-        await self._validar_acceso_materia(current_user, rubrica_original.materia_id)
+        await self._validar_acceso_materia(current_user, rubrica_original.materia_id, rol=rol)
 
         # Check if rubrica with new year already exists
         if await self.rubrica_repo.exists(

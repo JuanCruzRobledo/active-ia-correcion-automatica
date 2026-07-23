@@ -50,7 +50,7 @@ async def listar_materias(
     """
     require_coordinador_or_admin(ctx)
 
-    coordinador_id = current_user.id if current_user.rol == RolEnum.COORDINADOR else None
+    coordinador_id = current_user.id if ctx.rol == RolEnum.COORDINADOR else None
 
     service = MateriaService(db)
     return await service.listar_materias(
@@ -128,7 +128,7 @@ async def actualizar_materia(
     await verificar_acceso_materia(db, current_user, ctx, materia_id)
 
     # El coordinador no puede tocar la asignación de coordinadores de la materia.
-    if current_user.rol != RolEnum.ADMIN:
+    if ctx.rol != RolEnum.ADMIN:
         data.coordinador_ids = None
 
     service = MateriaService(db)

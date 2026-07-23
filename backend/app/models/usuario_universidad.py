@@ -6,9 +6,16 @@ Junction con atributos, mismo patrón que ComisionTutor/CoordinadorMateria, pero
 con `rol` scopeado a la membresía (un usuario puede tener rol distinto por
 universidad) y credenciales Moodle por (usuario, universidad).
 
-El tipo PG `rol_enum` ya existe (lo crea `usuarios.rol`): `create_type=False`
-para NO recrearlo (mismo patrón que `componentes_unidad.modo_aprobacion` con
-`modoaprobacionenum`).
+El tipo PG `rol_enum` original lo creaba `usuarios.rol` (`create_type=True`
+ahí, `create_type=False` acá — mismo patrón que `componentes_unidad.
+modo_aprobacion` con `modoaprobacionenum`). Fase 6 multi-tenant
+(multi-tenant-cleanup-rol-global, tarea 5.1) eliminó `usuarios.rol`: esta
+columna pasa a ser la ÚNICA declarante de `rol_enum` en el metadata, así que
+ahora es `create_type=True` acá. El tipo YA EXISTE en cualquier base
+migrada (lo creó la migración original de `usuarios.rol`, que sigue en el
+historial) — `create_type=True` sólo importa para `Base.metadata.create_all()`
+contra una base VACÍA (p. ej. `scripts/init_db.py`, que no usa Alembic), y
+ahí SQLAlchemy hace `checkfirst` (no falla si el tipo ya existe).
 
 Ref: openspec/changes/multi-tenant-modelo-datos/design.md (D3)
 Ref: openspec/changes/multi-tenant-modelo-datos/specs/usuario-universidad-membresia/spec.md
@@ -59,7 +66,7 @@ class UsuarioUniversidad(Base):
         index=True,
     )
     rol: Mapped[RolEnum] = mapped_column(
-        SQLEnum(RolEnum, name="rol_enum", create_type=False),
+        SQLEnum(RolEnum, name="rol_enum", create_type=True),
         nullable=False,
     )
     moodle_username: Mapped[str | None] = mapped_column(String(100), nullable=True)

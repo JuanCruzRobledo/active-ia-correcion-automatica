@@ -47,7 +47,6 @@ async def _crear_usuario(db, username="tutor1", es_superadmin=False) -> Usuario:
         username=username,
         nombre="Usuario Test",
         password_hash="x",
-        rol=RolEnum.TUTOR,
         es_superadmin=es_superadmin,
     )
     db.add(u)

@@ -61,7 +61,6 @@ async def _tutor_con_membresia_sin_credenciales(
         username="tutor_test",
         nombre="Tutor Test",
         password_hash=hash_password("password123"),
-        rol=RolEnum.TUTOR,
     )
     db_session.add(user)
     await db_session.flush()

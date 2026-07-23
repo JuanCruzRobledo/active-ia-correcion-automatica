@@ -96,8 +96,10 @@ class NotificacionService:
             })
         return out
 
-    async def _cargar_tutores(self, mapa_materia: dict[int, str]) -> list[dict]:
-        tutores = await self.usuario_repo.get_tutores()
+    async def _cargar_tutores(
+        self, mapa_materia: dict[int, str], universidad_id: int | None = None
+    ) -> list[dict]:
+        tutores = await self.usuario_repo.get_tutores(universidad_id=universidad_id)
         out: list[dict] = []
         for t in tutores:
             comisiones = await self.comision_repo.get_by_tutor(t.id)
@@ -248,7 +250,11 @@ class NotificacionService:
 
         avances = await self._cargar_avances_por_materia()
         mapa_materia = {a["materia_id"]: a["materia"] for a in avances}
-        tutores = await self._cargar_tutores(mapa_materia) if incluir_tutores else []
+        tutores = (
+            await self._cargar_tutores(mapa_materia, config.universidad_id)
+            if incluir_tutores
+            else []
+        )
         nexos = (
             [
                 {"email": n.email, "nombre": n.nombre, "regional": n.regional}

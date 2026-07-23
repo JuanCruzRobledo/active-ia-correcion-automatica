@@ -38,7 +38,7 @@ async def listar_por_entregar(
     vinculadas a Moodle no se listan, pero se informan en `no_vinculadas`.
     """
     service = PorEntregarService(db)
-    resultado = await service.listar(current_user, ctx.universidad_id)
+    resultado = await service.listar(current_user, ctx.universidad_id, rol=ctx.rol)
     return PorEntregarResponse(**asdict(resultado))
 
 

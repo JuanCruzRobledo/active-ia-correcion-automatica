@@ -46,7 +46,7 @@ async def listar_usuarios(
     Admin ve todos los usuarios. Coordinador solo puede consultar tutores
     (necesario para asignar tutores a comisiones).
     """
-    if current_user.rol == RolEnum.COORDINADOR:
+    if ctx.rol == RolEnum.COORDINADOR:
         if rol != RolEnum.TUTOR:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -57,6 +57,7 @@ async def listar_usuarios(
 
     service = UsuarioService(db)
     return await service.listar_usuarios(
+        universidad_id=ctx.universidad_id,
         activo=activo,
         rol=rol,
         search=search,
@@ -85,7 +86,9 @@ async def crear_usuario(
     require_admin(ctx)
 
     service = UsuarioService(db)
-    return await service.crear_usuario(data, current_user_id=current_user.id)
+    return await service.crear_usuario(
+        data, current_user_id=current_user.id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get("/{user_id}", response_model=UsuarioResponse)
@@ -103,7 +106,7 @@ async def obtener_usuario(
     require_admin(ctx)
 
     service = UsuarioService(db)
-    return await service.obtener_usuario(user_id)
+    return await service.obtener_usuario(user_id, universidad_id=ctx.universidad_id)
 
 
 @router.put("/{user_id}", response_model=UsuarioResponse)
@@ -123,7 +126,7 @@ async def actualizar_usuario(
     require_admin(ctx)
 
     service = UsuarioService(db)
-    return await service.actualizar_usuario(user_id, data)
+    return await service.actualizar_usuario(user_id, data, universidad_id=ctx.universidad_id)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -167,7 +170,7 @@ async def restaurar_usuario(
     require_admin(ctx)
 
     service = UsuarioService(db)
-    return await service.restaurar_usuario(user_id)
+    return await service.restaurar_usuario(user_id, universidad_id=ctx.universidad_id)
 
 
 @router.post("/{user_id}/reset-password", response_model=ResetPasswordResponse)

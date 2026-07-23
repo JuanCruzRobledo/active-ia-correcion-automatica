@@ -90,8 +90,8 @@ async def tutor_con_comisiones(db_session):
     db_session.add(materia)
     await db_session.flush()
 
-    tutor = Usuario(username="tutor1", nombre="Tutor 1", password_hash="x", rol=RolEnum.TUTOR)
-    otro = Usuario(username="tutor2", nombre="Tutor 2", password_hash="x", rol=RolEnum.TUTOR)
+    tutor = Usuario(username="tutor1", nombre="Tutor 1", password_hash="x")
+    otro = Usuario(username="tutor2", nombre="Tutor 2", password_hash="x")
     db_session.add_all([tutor, otro])
     await db_session.flush()
 
@@ -176,7 +176,7 @@ async def test_totales_globales_intactos(db_session, tutor_con_comisiones):
 
 @pytest.mark.asyncio
 async def test_tutor_sin_comisiones_devuelve_ceros(db_session):
-    huerfano = Usuario(username="solo", nombre="Solo", password_hash="x", rol=RolEnum.TUTOR)
+    huerfano = Usuario(username="solo", nombre="Solo", password_hash="x")
     db_session.add(huerfano)
     await db_session.commit()
 

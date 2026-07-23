@@ -72,7 +72,7 @@ async def test_actualizar_borra_moodle_id_cuando_es_null_explicito():
     service = _service_con(rubrica)
 
     result = await service.actualizar_rubrica(
-        10, RubricaUpdate(moodle_assign_id=None), _ADMIN
+        10, RubricaUpdate(moodle_assign_id=None), _ADMIN, rol=RolEnum.ADMIN
     )
 
     assert rubrica.moodle_assign_id is None
@@ -85,7 +85,7 @@ async def test_actualizar_no_toca_moodle_id_si_no_viene_en_el_payload():
     rubrica = _fake_rubrica(moodle_assign_id=123)
     service = _service_con(rubrica)
 
-    await service.actualizar_rubrica(10, RubricaUpdate(titulo="Nuevo título"), _ADMIN)
+    await service.actualizar_rubrica(10, RubricaUpdate(titulo="Nuevo título"), _ADMIN, rol=RolEnum.ADMIN)
 
     assert rubrica.moodle_assign_id == 123
 
@@ -96,7 +96,7 @@ async def test_actualizar_setea_moodle_id_nuevo():
     rubrica = _fake_rubrica(moodle_assign_id=None)
     service = _service_con(rubrica)
 
-    await service.actualizar_rubrica(10, RubricaUpdate(moodle_assign_id=55), _ADMIN)
+    await service.actualizar_rubrica(10, RubricaUpdate(moodle_assign_id=55), _ADMIN, rol=RolEnum.ADMIN)
 
     assert rubrica.moodle_assign_id == 55
 

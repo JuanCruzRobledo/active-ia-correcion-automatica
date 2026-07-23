@@ -171,8 +171,11 @@ async def _crear_materia(db_session, *, codigo: str = "P1", nombre: str = "Progr
 
 
 async def _crear_usuario(db_session, *, username: str, rol: str = "ADMIN") -> Usuario:
+    # `rol` ya no se persiste en `Usuario` (Fase 6 multi-tenant): se conserva
+    # el parámetro por compatibilidad de firma — ningún test de este archivo
+    # lee `.rol` (verificado), sólo lo usa como FK para ordenar comisiones.
     usuario = Usuario(
-        username=username, password_hash="x", nombre=username.capitalize(), rol=rol,
+        username=username, password_hash="x", nombre=username.capitalize(),
     )
     db_session.add(usuario)
     await db_session.flush()

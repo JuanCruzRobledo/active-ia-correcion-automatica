@@ -125,7 +125,13 @@ class MateriaService:
                         detail=f"Usuario {usuario.username} está deshabilitado",
                     )
 
-                if usuario.rol != RolEnum.COORDINADOR:
+                # Fase 6 multi-tenant (D3, hallazgo tarea 3.5): el rol de
+                # COORDINADOR se valida en la membresía de ESTA universidad,
+                # no un rol global.
+                rol_en_universidad = await self.usuario_repo.get_rol_en_universidad(
+                    usuario.id, universidad_id
+                )
+                if rol_en_universidad != RolEnum.COORDINADOR:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Usuario {usuario.username} no tiene rol de coordinador",
@@ -355,7 +361,13 @@ class MateriaService:
                         detail=f"Usuario {usuario.username} está deshabilitado",
                     )
 
-                if usuario.rol != RolEnum.COORDINADOR:
+                # Fase 6 multi-tenant (D3, hallazgo tarea 3.5): la universidad
+                # de LA MATERIA, no `universidad_id` del request (puede ser
+                # `None` en modo superadmin global).
+                rol_en_universidad = await self.usuario_repo.get_rol_en_universidad(
+                    usuario.id, materia.universidad_id
+                )
+                if rol_en_universidad != RolEnum.COORDINADOR:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Usuario {usuario.username} no tiene rol de coordinador",
@@ -517,7 +529,12 @@ class MateriaService:
                     detail=f"Usuario {usuario.username} está deshabilitado",
                 )
 
-            if usuario.rol != RolEnum.COORDINADOR:
+            # Fase 6 multi-tenant (D3, hallazgo tarea 3.5): rol de COORDINADOR
+            # en la universidad de ESTA materia, no un rol global.
+            rol_en_universidad = await self.usuario_repo.get_rol_en_universidad(
+                usuario.id, materia.universidad_id
+            )
+            if rol_en_universidad != RolEnum.COORDINADOR:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Usuario {usuario.username} no tiene rol de coordinador",
@@ -535,13 +552,13 @@ class MateriaService:
                 materia_id=materia_id,
             )
 
-        # Build response
+        # Build response (rol mostrado = ya validado como COORDINADOR arriba).
         coordinadores_list = [
             UsuarioListItem(
                 id=u.id,
                 username=u.username,
                 nombre=u.nombre,
-                rol=u.rol,
+                rol=RolEnum.COORDINADOR,
                 activo=u.activo,
                 created_at=u.created_at,
                 last_login=u.last_login,

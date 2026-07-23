@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import TipoActividadEnum
 from app.repositories.actividad_repository import ActividadRepository
+from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.actividad import (
     ActividadCreate,
     ActividadListResponse,
@@ -24,6 +25,7 @@ class ActividadService:
 
     def __init__(self, db: AsyncSession):
         self.repository = ActividadRepository(db)
+        self.usuario_repo = UsuarioRepository(db)
 
     async def registrar_actividad(
         self,
@@ -81,6 +83,17 @@ class ActividadService:
         # Mapear a response schema
         items = []
         for act in actividades:
+            # Fase 6 multi-tenant (D6, hallazgo tarea 3.5): `usuario.rol`
+            # (global) ya no existe — se muestra el rol de la membresía
+            # activa MÁS ANTIGUA (misma convención "mejor esfuerzo" que el
+            # downgrade de la migración de esta fase). El audit log no tiene
+            # `universidad_id` por acción, así que no hay un contexto de
+            # universidad puntual al que anclar el rol mostrado.
+            usuario_rol = None
+            if act.usuario:
+                rol_membresia = await self.usuario_repo.get_rol_mas_antiguo(act.usuario_id)
+                usuario_rol = rol_membresia.value if rol_membresia else None
+
             item = ActividadResponse(
                 id=act.id,
                 tipo=act.tipo,
@@ -92,7 +105,7 @@ class ActividadService:
                 usuario_nombre=(
                     f"{act.usuario.nombre}" if act.usuario else None
                 ),
-                usuario_rol=act.usuario.rol.value if act.usuario else None,
+                usuario_rol=usuario_rol,
             )
             items.append(item)
 

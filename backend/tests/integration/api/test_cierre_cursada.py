@@ -431,7 +431,7 @@ async def _crear_fixture_materia_con_examenes(db_session) -> tuple[Materia, int,
     `service.generar(...)`.
     """
     usuario = Usuario(
-        username="coord1", password_hash="x", nombre="Coordinador", rol=RolEnum.ADMIN,
+        username="coord1", password_hash="x", nombre="Coordinador",
     )
     universidad = Universidad(nombre="TUPaD", moodle_host="https://moodle.example.com")
     cohorte = Cohorte(codigo="M26", nombre="M26")

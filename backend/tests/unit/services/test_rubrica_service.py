@@ -29,7 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.materia import Materia
 from app.models.rubrica import TipoRubricaEnum, FuenteRubricaEnum
-from app.models.usuario import RolEnum, Usuario
+from app.models.enums import RolEnum
+from app.models.usuario import Usuario
 from app.schemas.rubrica import (
     CriteriosStructure,
     RubricaCreate,
@@ -121,7 +122,6 @@ async def admin(db_session: AsyncSession) -> Usuario:
         username="admin_test",
         nombre="Admin Test",
         password_hash="no-usado-en-estos-tests",
-        rol=RolEnum.ADMIN,
     )
     db_session.add(usuario)
     await db_session.commit()
@@ -149,7 +149,7 @@ class TestRubricaService:
             fuente=FuenteRubricaEnum.MANUAL,
         )
 
-        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
+        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN)
 
         assert rubrica.id is not None
         assert rubrica.titulo == "TP1 - Listas"
@@ -172,7 +172,7 @@ class TestRubricaService:
         data = _rubrica_create(9999, criterios_validos, titulo="TP1")
 
         with pytest.raises(HTTPException) as exc_info:
-            await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
+            await service.crear_rubrica(data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN)
 
         assert exc_info.value.status_code == 404
         assert "no encontrada" in exc_info.value.detail.lower()
@@ -193,11 +193,11 @@ class TestRubricaService:
             tipo=TipoRubricaEnum.PARCIAL_1,
             titulo="Parcial 1",
         )
-        await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
+        await service.crear_rubrica(data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN)
 
         # Mismo tipo, numero, anio y materia -> conflicto
         with pytest.raises(HTTPException) as exc_info:
-            await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
+            await service.crear_rubrica(data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN)
 
         assert exc_info.value.status_code == 409
         assert "ya existe" in exc_info.value.detail.lower()
@@ -240,7 +240,7 @@ class TestRubricaService:
             anio=2025,
         )
         original = await service.crear_rubrica(
-            original_data, admin, universidad_id=UNIV_ID
+            original_data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN
         )
 
         duplicate_data = RubricaDuplicar(
@@ -248,7 +248,7 @@ class TestRubricaService:
             nuevo_titulo="TP1 - Listas (2026)",
         )
         duplicated = await service.duplicar_rubrica(
-            original.id, duplicate_data, admin, universidad_id=UNIV_ID
+            original.id, duplicate_data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN
         )
 
         assert duplicated.id != original.id
@@ -277,7 +277,7 @@ class TestRubricaService:
             anio=2025,
         )
         original = await service.crear_rubrica(
-            data_2025, admin, universidad_id=UNIV_ID
+            data_2025, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN
         )
 
         data_2026 = _rubrica_create(
@@ -287,14 +287,14 @@ class TestRubricaService:
             titulo="Parcial 1 (2026)",
             anio=2026,
         )
-        await service.crear_rubrica(data_2026, admin, universidad_id=UNIV_ID)
+        await service.crear_rubrica(data_2026, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN)
 
         # Duplicar de 2025 a 2026 debe fallar: ya existe
         duplicate_data = RubricaDuplicar(nuevo_anio=2026)
 
         with pytest.raises(HTTPException) as exc_info:
             await service.duplicar_rubrica(
-                original.id, duplicate_data, admin, universidad_id=UNIV_ID
+                original.id, duplicate_data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN
             )
 
         assert exc_info.value.status_code == 409
@@ -311,11 +311,11 @@ class TestRubricaService:
         service = RubricaService(db_session)
 
         data = _rubrica_create(materia.id, criterios_validos, titulo="TP1 Original")
-        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
+        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN)
 
         update_data = RubricaUpdate(titulo="TP1 Actualizado")
         updated = await service.actualizar_rubrica(
-            rubrica.id, update_data, admin, universidad_id=UNIV_ID
+            rubrica.id, update_data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN
         )
 
         assert updated.id == rubrica.id
@@ -338,7 +338,7 @@ class TestRubricaService:
                 titulo=f"TP{i + 1}",
                 numero=i + 1,
             )
-            await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
+            await service.crear_rubrica(data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN)
 
         result = await service.listar_rubricas(
             materia_id=materia.id, universidad_id=UNIV_ID
@@ -364,9 +364,9 @@ class TestRubricaService:
         service = RubricaService(db_session)
 
         data = _rubrica_create(materia.id, criterios_validos, titulo="TP1")
-        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
+        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN)
 
-        await service.eliminar_rubrica(rubrica.id, admin, universidad_id=UNIV_ID)
+        await service.eliminar_rubrica(rubrica.id, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN)
 
         # Ya no aparece entre las activas
         result = await service.listar_rubricas(
@@ -396,11 +396,11 @@ class TestRubricaService:
         service = RubricaService(db_session)
 
         data = _rubrica_create(materia.id, criterios_validos, titulo="TP1")
-        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
-        await service.eliminar_rubrica(rubrica.id, admin, universidad_id=UNIV_ID)
+        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN)
+        await service.eliminar_rubrica(rubrica.id, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN)
 
         restored = await service.restaurar_rubrica(
-            rubrica.id, admin, universidad_id=UNIV_ID
+            rubrica.id, admin, universidad_id=UNIV_ID, rol=RolEnum.ADMIN
         )
 
         assert restored.id == rubrica.id

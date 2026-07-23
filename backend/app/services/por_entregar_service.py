@@ -103,7 +103,7 @@ class PorEntregarService:
         self.moodle = MoodleService(db)
 
     async def listar(
-        self, usuario, universidad_id: int | None = None
+        self, usuario, universidad_id: int | None = None, *, rol=None
     ) -> PorEntregarResultado:
         """Arma el listado de pendientes de subir (todo local, instantáneo).
 
@@ -112,8 +112,12 @@ class PorEntregarService:
         `listar` es 100% local (no consulta Moodle, no mintea token) — el
         único entrypoint de este service que sí habla con Moodle es
         `entregar_masivo_stream` (ya recibe `ctx`, D3).
+
+        Fase 6 multi-tenant (D3, hallazgo tarea 3.5): `rol` es el rol de la
+        membresía en la universidad activa (`ctx.rol`), no `usuario.rol`
+        (global) — mismo principio que el resto del scoping de esta fase.
         """
-        es_admin = usuario.rol == RolEnum.ADMIN
+        es_admin = rol == RolEnum.ADMIN
         correcciones = await self.correccion_repo.get_pendientes_subida_moodle(
             usuario.id, es_admin
         )
@@ -191,7 +195,7 @@ class PorEntregarService:
         Las no-TP (requieren comentario del tutor) NO se tocan: se cuentan como omitidas.
         La idempotencia local y los permisos los garantiza subir_correccion.
         """
-        es_admin = usuario.rol == RolEnum.ADMIN
+        es_admin = ctx.rol == RolEnum.ADMIN
         correcciones = await self.correccion_repo.get_pendientes_subida_moodle(
             usuario.id, es_admin
         )

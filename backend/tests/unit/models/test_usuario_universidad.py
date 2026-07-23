@@ -77,14 +77,12 @@ async def db_session():
 
 
 async def _crear_usuario(db_session, username="tutor1"):
-    from app.models.enums import RolEnum
     from app.models.usuario import Usuario
 
     u = Usuario(
         username=username,
         nombre="Tutor Uno",
         password_hash="x",
-        rol=RolEnum.TUTOR,
     )
     db_session.add(u)
     await db_session.flush()

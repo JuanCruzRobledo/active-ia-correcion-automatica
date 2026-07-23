@@ -8,11 +8,10 @@ Ref: docs/specs/06-MODELO-DATOS.md seccion 3.1
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Enum as SQLEnum, String, Text, text
+from sqlalchemy import Boolean, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
-from app.models.enums import RolEnum
 
 if TYPE_CHECKING:
     from app.models.actividad import Actividad
@@ -47,11 +46,6 @@ class Usuario(Base, TimestampMixin):
     # recibe el PDF de sus comisiones). Ver PLAN_NOTIFICACIONES_EMAIL.md §4.1.
     email: Mapped[str | None] = mapped_column(String(150), nullable=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    rol: Mapped[RolEnum] = mapped_column(
-        SQLEnum(RolEnum, name="rol_enum", create_type=True),
-        nullable=False,
-        index=True,
-    )
 
     # API Key de Gemini Studio (Google, encriptada con AES-128-CBC (Fernet)).
     # Corresponde al modo de corrección correction_provider == "gemini".
@@ -68,10 +62,6 @@ class Usuario(Base, TimestampMixin):
         nullable=True,
     )
 
-    # Credenciales Moodle (password cifrado con AES-128-CBC (Fernet))
-    moodle_username: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    moodle_password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    moodle_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
     gemini_api_key_valid: Mapped[bool] = mapped_column(default=False)
 
     # Validez de la API key de OpenRouter (último health check OK).
@@ -153,13 +143,12 @@ class Usuario(Base, TimestampMixin):
         back_populates="usuario",
         lazy="raise",
     )
-    # Fase 0 multi-tenant: membresías del usuario en cada universidad (rol scopeado
-    # + credenciales Moodle por membresía). Convive con `rol`/`moodle_*` (viejos,
-    # todavía la fuente de verdad hasta Fase 2). PERF-001: mismo criterio que
-    # entregas_subidas/correcciones_realizadas — NINGÚN código ni schema la lee
-    # todavía (Fase 0 es solo modelo), así que lazy="raise" evita precargarla en
-    # cada query de Usuario (y romper fixtures de tests que arman un subset de
-    # tablas sin usuario_universidad). Se revisa cuando Fase 3/4 la consuma.
+    # Membresías del usuario en cada universidad: rol scopeado + credenciales
+    # Moodle por membresía. Fase 6 multi-tenant (multi-tenant-cleanup-rol-global):
+    # ÚNICA fuente de verdad del rol — `usuarios.rol`/`moodle_*` (columnas
+    # globales viejas) se eliminaron. PERF-001: lazy="raise" evita precargar
+    # esta colección en cada query de Usuario (fixtures de tests que arman un
+    # subset de tablas sin usuario_universidad no se rompen).
     universidades: Mapped[list["UsuarioUniversidad"]] = relationship(
         "UsuarioUniversidad",
         back_populates="usuario",
@@ -167,4 +156,4 @@ class Usuario(Base, TimestampMixin):
     )
 
     def __repr__(self) -> str:
-        return f"<Usuario(id={self.id}, username='{self.username}', rol={self.rol})>"
+        return f"<Usuario(id={self.id}, username='{self.username}')>"

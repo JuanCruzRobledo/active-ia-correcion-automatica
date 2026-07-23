@@ -68,7 +68,10 @@ async def db_session():
 
 
 async def _usuario(db, username, rol) -> Usuario:
-    u = Usuario(username=username, nombre=f"N {username}", password_hash="x", rol=rol)
+    # `rol` ya no se persiste en `Usuario` (Fase 6 multi-tenant): se conserva
+    # el parámetro por compatibilidad de firma con los callers, pero ningún
+    # test de este archivo lee `.rol` (verificado) — no hace falta membresía.
+    u = Usuario(username=username, nombre=f"N {username}", password_hash="x")
     db.add(u)
     await db.flush()
     return u

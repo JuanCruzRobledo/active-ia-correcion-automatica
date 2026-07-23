@@ -18,6 +18,7 @@ from app.core.dependencies import ContextoUniversidad, get_current_user, get_db,
 from app.core.security import decrypt_api_key, encrypt_api_key
 from app.integrations import ia_provider
 from app.models import Usuario
+from app.models.enums import RolEnum
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.perfil import (
     PerfilResponse,
@@ -116,12 +117,19 @@ async def get_profile(
             moodle_host = creds.host
             moodle_configured = bool(creds.username and creds.password_encrypted)
 
+    # Fase 6 multi-tenant (D5): el rol informado es el de la membresía en la
+    # universidad ACTIVA (`ctx.rol`), no un rol global de `current_user`. Un
+    # superadmin sin universidad elegida no tiene membresía real — `ctx.rol`
+    # es `None` en ese caso puntual; se informa ADMIN (mismo sintético que ya
+    # usa `get_universidad_activa` cuando el superadmin SÍ eligió universidad).
+    rol_perfil = ctx.rol if ctx.rol is not None else RolEnum.ADMIN
+
     return PerfilResponse(
         id=current_user.id,
         username=current_user.username,
         nombre=current_user.nombre,
         email=current_user.email,
-        rol=current_user.rol,
+        rol=rol_perfil,
         primer_login=current_user.primer_login,
         gemini_api_key_valid=current_user.gemini_api_key_valid,
         gemini_api_key_last_4=_last_4(current_user.gemini_api_key_encrypted),

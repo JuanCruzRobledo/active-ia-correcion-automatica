@@ -71,7 +71,7 @@ async def db_session():
 
 
 async def _tutor(db, username) -> Usuario:
-    u = Usuario(username=username, nombre=username, password_hash="x", rol=RolEnum.TUTOR)
+    u = Usuario(username=username, nombre=username, password_hash="x")
     db.add(u)
     await db.flush()
     return u

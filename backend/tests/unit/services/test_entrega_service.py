@@ -35,7 +35,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.comision import Comision
 from app.models.materia import Materia
 from app.models.rubrica import Rubrica, TipoRubricaEnum
-from app.models.usuario import RolEnum, Usuario
+from app.models.enums import RolEnum
+from app.models.usuario import Usuario
 from app.schemas.entrega import EntregaCreate
 from app.services.entrega_service import EntregaService
 
@@ -139,7 +140,6 @@ async def subidor(db_session: AsyncSession) -> Usuario:
         username="subidor_test",
         nombre="Subidor Test",
         password_hash="no-usado-en-estos-tests",
-        rol=RolEnum.ADMIN,
     )
     db_session.add(usuario)
     await db_session.commit()

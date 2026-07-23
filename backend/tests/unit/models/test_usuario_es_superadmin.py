@@ -1,8 +1,14 @@
 """
-Fase 0 multi-tenant: `usuarios.es_superadmin` (flag de admin global) y
-convivencia de los campos viejos de Usuario.
+Fase 0 multi-tenant: `usuarios.es_superadmin` (flag de admin global).
+
+Fase 6 multi-tenant (multi-tenant-cleanup-rol-global, tarea 5.1): los campos
+viejos (`rol`, `moodle_username`, `moodle_password_encrypted`, `moodle_host`)
+se ELIMINARON de `Usuario` — el rol y las credenciales Moodle viven
+únicamente en la membresía (`UsuarioUniversidad`). Spec: "No queda rastro
+del rol global" (usuarios-scoping-por-universidad/spec.md).
 
 Ref: openspec/changes/multi-tenant-modelo-datos/specs/usuario-universidad-membresia/spec.md
+Ref: openspec/changes/multi-tenant-cleanup-rol-global/specs/usuarios-scoping-por-universidad/spec.md
 """
 
 import pytest
@@ -19,11 +25,14 @@ def test_es_superadmin_existe_como_boolean_not_null_default_false():
     assert str(col.server_default.arg).strip("'\"") in ("false", "0")
 
 
-def test_los_campos_viejos_siguen_presentes():
+def test_los_campos_viejos_ya_no_existen():
+    """Fase 6 multi-tenant (D-, tarea 5.1): spec 'No queda rastro del rol
+    global' — `usuarios` no conserva ni el rol ni las credenciales Moodle
+    globales; viven únicamente en la membresía."""
     from app.models.usuario import Usuario
 
     cols = {c.name for c in Usuario.__table__.columns}
-    assert {"rol", "moodle_username", "moodle_password_encrypted", "moodle_host"} <= cols
+    assert not ({"rol", "moodle_username", "moodle_password_encrypted", "moodle_host"} & cols)
 
 
 @pytest_asyncio.fixture
@@ -42,10 +51,9 @@ async def db_session():
 
 @pytest.mark.asyncio
 async def test_usuario_nuevo_queda_con_es_superadmin_false(db_session):
-    from app.models.enums import RolEnum
     from app.models.usuario import Usuario
 
-    u = Usuario(username="tutor1", nombre="Tutor Uno", password_hash="x", rol=RolEnum.TUTOR)
+    u = Usuario(username="tutor1", nombre="Tutor Uno", password_hash="x")
     db_session.add(u)
     await db_session.commit()
 
@@ -54,14 +62,12 @@ async def test_usuario_nuevo_queda_con_es_superadmin_false(db_session):
 
 @pytest.mark.asyncio
 async def test_usuario_puede_marcarse_como_superadmin_explicitamente(db_session):
-    from app.models.enums import RolEnum
     from app.models.usuario import Usuario
 
     u = Usuario(
         username="admin1",
         nombre="Admin Uno",
         password_hash="x",
-        rol=RolEnum.ADMIN,
         es_superadmin=True,
     )
     db_session.add(u)

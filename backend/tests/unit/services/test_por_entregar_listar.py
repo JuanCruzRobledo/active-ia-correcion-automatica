@@ -50,7 +50,7 @@ def _tutor():
 @pytest.mark.asyncio
 async def test_tp_aprobado_etiqueta_y_automatico():
     svc = _service([_correccion(1, nota=85, tipo="TP")])
-    res = await svc.listar(_tutor())
+    res = await svc.listar(_tutor(), rol=RolEnum.TUTOR)
 
     assert len(res.items) == 1
     item = res.items[0]
@@ -65,14 +65,14 @@ async def test_tp_aprobado_etiqueta_y_automatico():
 @pytest.mark.asyncio
 async def test_tp_desaprobado_por_umbral():
     svc = _service([_correccion(1, nota=55, tipo="TP")])
-    res = await svc.listar(_tutor())
+    res = await svc.listar(_tutor(), rol=RolEnum.TUTOR)
     assert res.items[0].etiqueta_nota == "Desaprobado"
 
 
 @pytest.mark.asyncio
 async def test_no_tp_requiere_comentario_y_etiqueta_numerica():
     svc = _service([_correccion(1, nota=90, tipo="PARCIAL_1")])
-    res = await svc.listar(_tutor())
+    res = await svc.listar(_tutor(), rol=RolEnum.TUTOR)
 
     item = res.items[0]
     assert item.requiere_comentario_tutor is True
@@ -83,7 +83,7 @@ async def test_no_tp_requiere_comentario_y_etiqueta_numerica():
 async def test_ultimo_intento_error_se_etiqueta():
     estados = {1: (MoodleSyncEstado.ERROR, "Moodle 502")}
     svc = _service([_correccion(1, tipo="TP")], estados=estados)
-    res = await svc.listar(_tutor())
+    res = await svc.listar(_tutor(), rol=RolEnum.TUTOR)
 
     item = res.items[0]
     assert item.estado_ultimo_intento == "error"
@@ -98,7 +98,7 @@ async def test_contadores_automaticas_y_requieren():
         _correccion(3, tipo="FINAL"),
     ]
     svc = _service(correcciones, no_vinculadas=4)
-    res = await svc.listar(_tutor())
+    res = await svc.listar(_tutor(), rol=RolEnum.TUTOR)
 
     assert res.total_pendientes == 3
     assert res.total_automaticas == 2  # los dos TP
@@ -110,7 +110,7 @@ async def test_contadores_automaticas_y_requieren():
 async def test_admin_consulta_todas_las_comisiones():
     admin = MagicMock(id=1, rol=RolEnum.ADMIN)
     svc = _service([_correccion(1)])
-    await svc.listar(admin)
+    await svc.listar(admin, rol=RolEnum.ADMIN)
 
     # es_admin=True debe propagarse a los repos
     svc.correccion_repo.get_pendientes_subida_moodle.assert_awaited_once_with(1, True)
@@ -120,5 +120,5 @@ async def test_admin_consulta_todas_las_comisiones():
 @pytest.mark.asyncio
 async def test_tutor_solo_sus_comisiones():
     svc = _service([])
-    await svc.listar(_tutor())
+    await svc.listar(_tutor(), rol=RolEnum.TUTOR)
     svc.correccion_repo.get_pendientes_subida_moodle.assert_awaited_once_with(7, False)

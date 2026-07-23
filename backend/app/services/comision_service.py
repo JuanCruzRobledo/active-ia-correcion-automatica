@@ -113,6 +113,10 @@ class ComisionService:
             )
 
         # Validate tutors if provided
+        # Fase 6 multi-tenant (D3, hallazgo tarea 3.5): el rol de TUTOR se
+        # valida en la membresía de la universidad de LA MATERIA (no un rol
+        # global) — un candidato puede ser TUTOR en otra universidad y
+        # COORDINADOR (o nada) acá.
         valid_tutores = []
         if data.tutor_ids:
             for tutor_id in data.tutor_ids:
@@ -124,7 +128,10 @@ class ComisionService:
                         detail=f"Usuario con ID {tutor_id} no encontrado o inactivo",
                     )
 
-                if usuario.rol != RolEnum.TUTOR:
+                rol_en_materia = await self.usuario_repo.get_rol_en_universidad(
+                    usuario.id, materia.universidad_id
+                )
+                if rol_en_materia != RolEnum.TUTOR:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"El usuario {usuario.username} no tiene rol de TUTOR",
@@ -376,7 +383,10 @@ class ComisionService:
                         detail=f"Usuario con ID {tutor_id} no encontrado o inactivo",
                     )
 
-                if usuario.rol != RolEnum.TUTOR:
+                rol_en_comision = await self.usuario_repo.get_rol_en_universidad(
+                    usuario.id, comision.universidad_id
+                )
+                if rol_en_comision != RolEnum.TUTOR:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"El usuario {usuario.username} no tiene rol de TUTOR",
@@ -552,7 +562,8 @@ class ComisionService:
             comision, universidad_id, detail="Comisión no encontrada o inactiva"
         )
 
-        # Validate all tutors exist and have TUTOR role
+        # Validate all tutors exist and have TUTOR role (en la universidad de
+        # ESTA comisión — D3, hallazgo tarea 3.5, mismo criterio que arriba).
         valid_tutores = []
         for tutor_id in data.tutor_ids:
             usuario = await self.usuario_repo.get_active_by_id(tutor_id)
@@ -563,7 +574,10 @@ class ComisionService:
                     detail=f"Usuario con ID {tutor_id} no encontrado o inactivo",
                 )
 
-            if usuario.rol != RolEnum.TUTOR:
+            rol_en_comision = await self.usuario_repo.get_rol_en_universidad(
+                usuario.id, comision.universidad_id
+            )
+            if rol_en_comision != RolEnum.TUTOR:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"El usuario {usuario.username} no tiene rol de TUTOR",
@@ -581,14 +595,15 @@ class ComisionService:
                 comision_id=comision_id,
             )
 
-        # Build response
+        # Build response (rol mostrado = el de la membresía en ESTA
+        # universidad, ya validado arriba — TUTOR para todos).
         tutores_list = [
             UsuarioListItem(
                 id=u.id,
                 username=u.username,
                 nombre=u.nombre,
                 email=u.email,
-                rol=u.rol,
+                rol=RolEnum.TUTOR,
                 activo=u.activo,
                 created_at=u.created_at,
             )

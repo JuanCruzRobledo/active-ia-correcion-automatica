@@ -87,7 +87,6 @@ async def test_smoke_login_usuario_tupad_una_universidad_devuelve_token_valido(d
         username="tutor_smoke",
         nombre="Tutor Smoke",
         password_hash="hash-real-irrelevante-para-este-smoke",
-        rol=RolEnum.TUTOR,
     )
     db_session.add(user)
     await db_session.flush()
@@ -132,7 +131,6 @@ async def test_smoke_login_credenciales_invalidas_sigue_401(db_session):
         username="tutor_smoke2",
         nombre="Tutor Smoke 2",
         password_hash="hash-real-irrelevante-para-este-smoke",
-        rol=RolEnum.TUTOR,
     )
     db_session.add(user)
     await db_session.commit()

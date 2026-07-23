@@ -114,6 +114,22 @@ async def test_corrida_usa_remitente_del_config():
 
 
 @pytest.mark.asyncio
+async def test_corrida_propaga_universidad_de_la_config_a_get_tutores():
+    """Fase 6 multi-tenant (tarea 1.7): `_cargar_tutores` debe acotar
+    `get_tutores` a la universidad de `NotificacionCronConfig.universidad_id`
+    — antes de esta fase `get_tutores()` no filtraba y el cron podía
+    notificar tutores de otras universidades."""
+    service = _make_service()
+    service.config_service.get_config.return_value = MagicMock(
+        remitente=None, universidad_id=7
+    )
+
+    await service.ejecutar_corrida_semanal(usuario_id=1)
+
+    service.usuario_repo.get_tutores.assert_awaited_once_with(universidad_id=7)
+
+
+@pytest.mark.asyncio
 async def test_corrida_sin_destinatarios_no_envia():
     service = _make_service()
     service.avance_repo.get_alumnos_de_snapshot.return_value = []  # nadie con faltantes
