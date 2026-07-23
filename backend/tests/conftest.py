@@ -14,9 +14,15 @@ from typing import AsyncGenerator
 # entorno de desarrollo, así que DEBUG=True.
 os.environ.setdefault("DEBUG", "True")
 
+import json
+import sqlite3
+
 import pytest
 import pytest_asyncio
+from sqlalchemy import ARRAY
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
 from app.models.base import Base
@@ -24,6 +30,28 @@ from app.models.base import Base
 
 # Database URL for testing (SQLite in-memory)
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+# El esquema usa JSONB y ARRAY (Postgres) en varias tablas; SQLite no sabe
+# renderizarlos y `Base.metadata.create_all` revienta con CompileError.
+#
+# Varios módulos de test ya registraban esto por su cuenta, pero @compiles y
+# register_adapter son GLOBALES AL PROCESO: si el registro vive en un módulo
+# suelto, que funcione o no depende del orden de importación de pytest. Vive
+# acá para que sea determinístico y una sola vez.
+
+
+@compiles(JSONB, "sqlite")
+def _compilar_jsonb_en_sqlite(element, compiler, **kw):  # noqa: D401
+    return "JSON"
+
+
+@compiles(ARRAY, "sqlite")
+def _compilar_array_en_sqlite(element, compiler, **kw):  # noqa: D401
+    return "JSON"
+
+
+sqlite3.register_adapter(dict, json.dumps)
+sqlite3.register_adapter(list, json.dumps)
 
 
 @pytest.fixture(scope="session")

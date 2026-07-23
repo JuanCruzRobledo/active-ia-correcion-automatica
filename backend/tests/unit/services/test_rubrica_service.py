@@ -8,28 +8,97 @@ Tests cover:
 - Listing and filtering rubricas
 - Soft deleting and restoring rubricas
 - Criterios validation (sum must be 100)
+
+Nota de mantenimiento: este archivo venía del commit inicial del repo y nunca
+llegó a ejecutarse — importaba `CriteriosSchema`, un símbolo que jamás existió,
+así que pytest cortaba en la colección. Se reescribió contra la API real
+conservando la intención de los 10 tests originales. La API había derivado en:
+`RubricaCreate` se aplanó (`nombre` -> `titulo`, y `criterios_json` pasó a ser
+`list[dict]` en vez de un `CriteriosStructure` anidado), los métodos del
+service reciben `current_user`, y `universidad_id` entró con
+multi-tenant-scoping-queries (Fase 4).
 """
 
+from typing import Any
+
 import pytest
+import pytest_asyncio
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.materia import Materia
-from app.models.rubrica import Rubrica, TipoRubricaEnum, FuenteRubricaEnum
+from app.models.rubrica import TipoRubricaEnum, FuenteRubricaEnum
+from app.models.usuario import RolEnum, Usuario
 from app.schemas.rubrica import (
     CriteriosStructure,
-    CriterioSchema,
     RubricaCreate,
-    RubricaUpdate,
     RubricaDuplicar,
+    RubricaUpdate,
 )
 from app.services.rubrica_service import RubricaService
 
+# multi-tenant-scoping-queries (Fase 4): universidad_id es NOT NULL en Materia
+# y las firmas del service reciben el scope de la universidad activa.
+UNIV_ID = 1
+
+
+def _criterio(id_: str, nombre: str, peso: int) -> dict[str, Any]:
+    """Criterio como dict, con el subcriterio mínimo que exige el schema."""
+    descripcion = f"Descripción de {nombre}"
+    return {
+        "id": id_,
+        "nombre": nombre,
+        "descripcion": descripcion,
+        "peso": peso,
+        "subcriterios": [
+            {
+                "id": f"{id_}.1",
+                "descripcion": descripcion,
+                "evidencias": [f"Se verifica {nombre.lower()}"],
+            }
+        ],
+    }
+
 
 @pytest.fixture
+def criterios_validos() -> list[dict[str, Any]]:
+    """Criterios cuyos pesos suman exactamente 100."""
+    return [
+        _criterio("C1", "Funcionalidad", 40),
+        _criterio("C2", "Buenas prácticas", 30),
+        _criterio("C3", "Documentación", 30),
+    ]
+
+
+def _rubrica_create(
+    materia_id: int,
+    criterios: list[dict[str, Any]],
+    *,
+    tipo: TipoRubricaEnum = TipoRubricaEnum.TP,
+    titulo: str = "TP1 - Listas",
+    numero: int = 1,
+    anio: int = 2026,
+    **overrides: Any,
+) -> RubricaCreate:
+    kwargs: dict[str, Any] = {
+        "materia_id": materia_id,
+        "tipo": tipo,
+        "numero": numero,
+        "anio": anio,
+        "titulo": titulo,
+        "descripcion": "Evalúa el manejo de listas y buenas prácticas.",
+        "criterios_json": criterios,
+    }
+    kwargs.update(overrides)
+    return RubricaCreate(**kwargs)
+
+
+@pytest_asyncio.fixture
 async def materia(db_session: AsyncSession) -> Materia:
     """Create a test materia."""
     materia = Materia(
+        universidad_id=UNIV_ID,
         codigo="PROG1",
         nombre="Programación 1",
         descripcion="Materia de programación inicial",
@@ -41,32 +110,23 @@ async def materia(db_session: AsyncSession) -> Materia:
     return materia
 
 
-@pytest.fixture
-def criterios_validos() -> CriteriosStructure:
-    """Create valid criterios structure (sum = 100)."""
-    return CriteriosStructure(
-        puntaje_maximo=100,
-        criterios=[
-            CriterioSchema(
-                id="c1",
-                nombre="Funcionalidad",
-                descripcion="El código funciona correctamente",
-                puntaje_maximo=40,
-            ),
-            CriterioSchema(
-                id="c2",
-                nombre="Buenas prácticas",
-                descripcion="Código limpio y bien estructurado",
-                puntaje_maximo=30,
-            ),
-            CriterioSchema(
-                id="c3",
-                nombre="Documentación",
-                descripcion="Comentarios y documentación adecuada",
-                puntaje_maximo=30,
-            ),
-        ],
+@pytest_asyncio.fixture
+async def admin(db_session: AsyncSession) -> Usuario:
+    """Admin user: `_validar_acceso_materia` le da acceso a toda materia.
+
+    `password_hash` se setea literal a propósito: `hash_password()` depende de
+    passlib+bcrypt y estos tests no ejercitan autenticación.
+    """
+    usuario = Usuario(
+        username="admin_test",
+        nombre="Admin Test",
+        password_hash="no-usado-en-estos-tests",
+        rol=RolEnum.ADMIN,
     )
+    db_session.add(usuario)
+    await db_session.commit()
+    await db_session.refresh(usuario)
+    return usuario
 
 
 @pytest.mark.asyncio
@@ -76,51 +136,43 @@ class TestRubricaService:
     async def test_crear_rubrica_success(
         self,
         db_session: AsyncSession,
+        admin: Usuario,
         materia: Materia,
-        criterios_validos: CriteriosStructure,
+        criterios_validos: list[dict[str, Any]],
     ):
         """Test creating a rubrica successfully."""
         service = RubricaService(db_session)
 
-        data = RubricaCreate(
-            materia_id=materia.id,
-            tipo=TipoRubricaEnum.TP,
-            nombre="TP1 - Listas",
-            numero=1,
-            anio=2026,
-            criterios_json=criterios_validos,
+        data = _rubrica_create(
+            materia.id,
+            criterios_validos,
             fuente=FuenteRubricaEnum.MANUAL,
         )
 
-        rubrica = await service.crear_rubrica(data)
+        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
 
         assert rubrica.id is not None
-        assert rubrica.nombre == "TP1 - Listas"
+        assert rubrica.titulo == "TP1 - Listas"
         assert rubrica.tipo == TipoRubricaEnum.TP
         assert rubrica.numero == 1
         assert rubrica.anio == 2026
         assert rubrica.activa is True
-        assert rubrica.criterios_json["puntaje_maximo"] == 100
+        assert rubrica.puntaje_maximo == 100
+        assert len(rubrica.criterios_json) == 3
 
     async def test_crear_rubrica_materia_not_found(
         self,
         db_session: AsyncSession,
-        criterios_validos: CriteriosStructure,
+        admin: Usuario,
+        criterios_validos: list[dict[str, Any]],
     ):
         """Test creating rubrica with non-existent materia fails."""
         service = RubricaService(db_session)
 
-        data = RubricaCreate(
-            materia_id=9999,  # Non-existent
-            tipo=TipoRubricaEnum.TP,
-            nombre="TP1",
-            numero=1,
-            anio=2026,
-            criterios_json=criterios_validos,
-        )
+        data = _rubrica_create(9999, criterios_validos, titulo="TP1")
 
         with pytest.raises(HTTPException) as exc_info:
-            await service.crear_rubrica(data)
+            await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
 
         assert exc_info.value.status_code == 404
         assert "no encontrada" in exc_info.value.detail.lower()
@@ -128,143 +180,122 @@ class TestRubricaService:
     async def test_crear_rubrica_duplicada(
         self,
         db_session: AsyncSession,
+        admin: Usuario,
         materia: Materia,
-        criterios_validos: CriteriosStructure,
+        criterios_validos: list[dict[str, Any]],
     ):
         """Test creating duplicate rubrica fails."""
         service = RubricaService(db_session)
 
-        # Create first rubrica
-        data = RubricaCreate(
-            materia_id=materia.id,
+        data = _rubrica_create(
+            materia.id,
+            criterios_validos,
             tipo=TipoRubricaEnum.PARCIAL_1,
-            nombre="Parcial 1",
-            numero=1,
-            anio=2026,
-            criterios_json=criterios_validos,
+            titulo="Parcial 1",
         )
-        await service.crear_rubrica(data)
+        await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
 
-        # Try to create duplicate (same tipo, numero, anio, materia)
+        # Mismo tipo, numero, anio y materia -> conflicto
         with pytest.raises(HTTPException) as exc_info:
-            await service.crear_rubrica(data)
+            await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
 
         assert exc_info.value.status_code == 409
         assert "ya existe" in exc_info.value.detail.lower()
 
-    async def test_crear_rubrica_criterios_invalidos_suma(
-        self,
-        db_session: AsyncSession,
-        materia: Materia,
-    ):
-        """Test creating rubrica with invalid criterios sum fails."""
-        service = RubricaService(db_session)
+    async def test_crear_rubrica_criterios_invalidos_suma(self):
+        """Una rúbrica cuyos pesos no suman 100 es rechazada.
 
-        # Sum = 90, not 100
-        criterios_invalidos = CriteriosStructure(
-            puntaje_maximo=100,
-            criterios=[
-                CriterioSchema(
-                    id="c1",
-                    nombre="Criterio 1",
-                    descripcion="Descripción",
-                    puntaje_maximo=50,
-                ),
-                CriterioSchema(
-                    id="c2",
-                    nombre="Criterio 2",
-                    descripcion="Descripción",
-                    puntaje_maximo=40,  # 50 + 40 = 90
-                ),
-            ],
-        )
+        El chequeo dejó de vivir en el service: hoy es el `model_validator`
+        `CriteriosStructure.validar_suma_pesos`, así que corta al construir el
+        schema y nunca llega a `crear_rubrica`. La intención del test original
+        se mantiene: pesos que no suman 100 no se pueden persistir.
+        """
+        with pytest.raises(ValidationError) as exc_info:
+            CriteriosStructure(
+                titulo="TP1",
+                descripcion="Rúbrica con pesos que no suman 100.",
+                puntaje_maximo=100,
+                criterios=[
+                    _criterio("C1", "Criterio 1", 50),
+                    _criterio("C2", "Criterio 2", 40),  # 50 + 40 = 90
+                ],
+            )
 
-        data = RubricaCreate(
-            materia_id=materia.id,
-            tipo=TipoRubricaEnum.TP,
-            nombre="TP1",
-            numero=1,
-            anio=2026,
-            criterios_json=criterios_invalidos,
-        )
-
-        with pytest.raises(HTTPException) as exc_info:
-            await service.crear_rubrica(data)
-
-        assert exc_info.value.status_code == 400
-        assert "suma" in exc_info.value.detail.lower()
+        assert "suma" in str(exc_info.value).lower()
 
     async def test_duplicar_rubrica_success(
         self,
         db_session: AsyncSession,
+        admin: Usuario,
         materia: Materia,
-        criterios_validos: CriteriosStructure,
+        criterios_validos: list[dict[str, Any]],
     ):
         """Test duplicating rubrica to new year."""
         service = RubricaService(db_session)
 
-        # Create original rubrica
-        original_data = RubricaCreate(
-            materia_id=materia.id,
-            tipo=TipoRubricaEnum.TP,
-            nombre="TP1 - Listas (2025)",
-            numero=1,
+        original_data = _rubrica_create(
+            materia.id,
+            criterios_validos,
+            titulo="TP1 - Listas (2025)",
             anio=2025,
-            criterios_json=criterios_validos,
         )
-        original = await service.crear_rubrica(original_data)
+        original = await service.crear_rubrica(
+            original_data, admin, universidad_id=UNIV_ID
+        )
 
-        # Duplicate to 2026
         duplicate_data = RubricaDuplicar(
             nuevo_anio=2026,
-            nuevo_nombre="TP1 - Listas (2026)",
+            nuevo_titulo="TP1 - Listas (2026)",
         )
-        duplicated = await service.duplicar_rubrica(original.id, duplicate_data)
+        duplicated = await service.duplicar_rubrica(
+            original.id, duplicate_data, admin, universidad_id=UNIV_ID
+        )
 
         assert duplicated.id != original.id
         assert duplicated.anio == 2026
-        assert duplicated.nombre == "TP1 - Listas (2026)"
+        assert duplicated.titulo == "TP1 - Listas (2026)"
         assert duplicated.tipo == original.tipo
         assert duplicated.numero == original.numero
         assert duplicated.materia_id == original.materia_id
-        assert duplicated.criterios_json["puntaje_maximo"] == 100
+        assert duplicated.puntaje_maximo == 100
 
     async def test_duplicar_rubrica_already_exists(
         self,
         db_session: AsyncSession,
+        admin: Usuario,
         materia: Materia,
-        criterios_validos: CriteriosStructure,
+        criterios_validos: list[dict[str, Any]],
     ):
         """Test duplicating rubrica fails if already exists for new year."""
         service = RubricaService(db_session)
 
-        # Create rubrica for 2025
-        data_2025 = RubricaCreate(
-            materia_id=materia.id,
+        data_2025 = _rubrica_create(
+            materia.id,
+            criterios_validos,
             tipo=TipoRubricaEnum.PARCIAL_1,
-            nombre="Parcial 1 (2025)",
-            numero=1,
+            titulo="Parcial 1 (2025)",
             anio=2025,
-            criterios_json=criterios_validos,
         )
-        original = await service.crear_rubrica(data_2025)
+        original = await service.crear_rubrica(
+            data_2025, admin, universidad_id=UNIV_ID
+        )
 
-        # Create rubrica for 2026 (same tipo, numero)
-        data_2026 = RubricaCreate(
-            materia_id=materia.id,
+        data_2026 = _rubrica_create(
+            materia.id,
+            criterios_validos,
             tipo=TipoRubricaEnum.PARCIAL_1,
-            nombre="Parcial 1 (2026)",
-            numero=1,
+            titulo="Parcial 1 (2026)",
             anio=2026,
-            criterios_json=criterios_validos,
         )
-        await service.crear_rubrica(data_2026)
+        await service.crear_rubrica(data_2026, admin, universidad_id=UNIV_ID)
 
-        # Try to duplicate from 2025 to 2026 (should fail)
+        # Duplicar de 2025 a 2026 debe fallar: ya existe
         duplicate_data = RubricaDuplicar(nuevo_anio=2026)
 
         with pytest.raises(HTTPException) as exc_info:
-            await service.duplicar_rubrica(original.id, duplicate_data)
+            await service.duplicar_rubrica(
+                original.id, duplicate_data, admin, universidad_id=UNIV_ID
+            )
 
         assert exc_info.value.status_code == 409
         assert "ya existe" in exc_info.value.detail.lower()
@@ -272,94 +303,84 @@ class TestRubricaService:
     async def test_actualizar_rubrica_success(
         self,
         db_session: AsyncSession,
+        admin: Usuario,
         materia: Materia,
-        criterios_validos: CriteriosStructure,
+        criterios_validos: list[dict[str, Any]],
     ):
         """Test updating rubrica successfully."""
         service = RubricaService(db_session)
 
-        # Create rubrica
-        data = RubricaCreate(
-            materia_id=materia.id,
-            tipo=TipoRubricaEnum.TP,
-            nombre="TP1 Original",
-            numero=1,
-            anio=2026,
-            criterios_json=criterios_validos,
-        )
-        rubrica = await service.crear_rubrica(data)
+        data = _rubrica_create(materia.id, criterios_validos, titulo="TP1 Original")
+        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
 
-        # Update rubrica
-        update_data = RubricaUpdate(nombre="TP1 Actualizado")
-        updated = await service.actualizar_rubrica(rubrica.id, update_data)
+        update_data = RubricaUpdate(titulo="TP1 Actualizado")
+        updated = await service.actualizar_rubrica(
+            rubrica.id, update_data, admin, universidad_id=UNIV_ID
+        )
 
         assert updated.id == rubrica.id
-        assert updated.nombre == "TP1 Actualizado"
+        assert updated.titulo == "TP1 Actualizado"
 
     async def test_listar_rubricas_filtros(
         self,
         db_session: AsyncSession,
+        admin: Usuario,
         materia: Materia,
-        criterios_validos: CriteriosStructure,
+        criterios_validos: list[dict[str, Any]],
     ):
         """Test listing rubricas with filters."""
         service = RubricaService(db_session)
 
-        # Create multiple rubricas
         for i in range(3):
-            data = RubricaCreate(
-                materia_id=materia.id,
-                tipo=TipoRubricaEnum.TP,
-                nombre=f"TP{i+1}",
+            data = _rubrica_create(
+                materia.id,
+                criterios_validos,
+                titulo=f"TP{i + 1}",
                 numero=i + 1,
-                anio=2026,
-                criterios_json=criterios_validos,
             )
-            await service.crear_rubrica(data)
+            await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
 
-        # List all
-        result = await service.listar_rubricas(materia_id=materia.id)
+        result = await service.listar_rubricas(
+            materia_id=materia.id, universidad_id=UNIV_ID
+        )
         assert result.total == 3
         assert len(result.items) == 3
 
-        # Filter by tipo
         result_tp = await service.listar_rubricas(
-            materia_id=materia.id, tipo=TipoRubricaEnum.TP.value
+            materia_id=materia.id,
+            tipo=TipoRubricaEnum.TP.value,
+            universidad_id=UNIV_ID,
         )
         assert result_tp.total == 3
 
     async def test_eliminar_rubrica_soft_delete(
         self,
         db_session: AsyncSession,
+        admin: Usuario,
         materia: Materia,
-        criterios_validos: CriteriosStructure,
+        criterios_validos: list[dict[str, Any]],
     ):
         """Test soft deleting rubrica."""
         service = RubricaService(db_session)
 
-        # Create rubrica
-        data = RubricaCreate(
-            materia_id=materia.id,
-            tipo=TipoRubricaEnum.TP,
-            nombre="TP1",
-            numero=1,
-            anio=2026,
-            criterios_json=criterios_validos,
-        )
-        rubrica = await service.crear_rubrica(data)
+        data = _rubrica_create(materia.id, criterios_validos, titulo="TP1")
+        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
 
-        # Delete rubrica
-        await service.eliminar_rubrica(rubrica.id)
+        await service.eliminar_rubrica(rubrica.id, admin, universidad_id=UNIV_ID)
 
-        # Verify it's soft deleted
+        # Ya no aparece entre las activas
         result = await service.listar_rubricas(
-            materia_id=materia.id, include_inactive=False
+            materia_id=materia.id,
+            include_inactive=False,
+            universidad_id=UNIV_ID,
         )
         assert result.total == 0
 
-        # Verify it exists when including inactive
+        # Pero sigue existiendo: es baja lógica, no física
         result_with_inactive = await service.listar_rubricas(
-            materia_id=materia.id, include_inactive=True
+            materia_id=materia.id,
+            include_inactive=True,
+            universidad_id=UNIV_ID,
         )
         assert result_with_inactive.total == 1
         assert result_with_inactive.items[0].activa is False
@@ -367,30 +388,25 @@ class TestRubricaService:
     async def test_restaurar_rubrica(
         self,
         db_session: AsyncSession,
+        admin: Usuario,
         materia: Materia,
-        criterios_validos: CriteriosStructure,
+        criterios_validos: list[dict[str, Any]],
     ):
         """Test restoring a soft-deleted rubrica."""
         service = RubricaService(db_session)
 
-        # Create and delete rubrica
-        data = RubricaCreate(
-            materia_id=materia.id,
-            tipo=TipoRubricaEnum.TP,
-            nombre="TP1",
-            numero=1,
-            anio=2026,
-            criterios_json=criterios_validos,
-        )
-        rubrica = await service.crear_rubrica(data)
-        await service.eliminar_rubrica(rubrica.id)
+        data = _rubrica_create(materia.id, criterios_validos, titulo="TP1")
+        rubrica = await service.crear_rubrica(data, admin, universidad_id=UNIV_ID)
+        await service.eliminar_rubrica(rubrica.id, admin, universidad_id=UNIV_ID)
 
-        # Restore rubrica
-        restored = await service.restaurar_rubrica(rubrica.id)
+        restored = await service.restaurar_rubrica(
+            rubrica.id, admin, universidad_id=UNIV_ID
+        )
 
         assert restored.id == rubrica.id
         assert restored.activa is True
 
-        # Verify it appears in active list
-        result = await service.listar_rubricas(materia_id=materia.id)
+        result = await service.listar_rubricas(
+            materia_id=materia.id, universidad_id=UNIV_ID
+        )
         assert result.total == 1

@@ -91,7 +91,10 @@ class UsuarioInfo(BaseModel):
 
     id: int
     nombre: str
-    email: str
+    # `Usuario.email` es nullable=True en el modelo y la mayoría de los usuarios
+    # reales no lo tienen cargado. Declararlo `str` hacía fallar la validación
+    # de EntregaDetailResponse (500) para toda entrega subida por uno de ellos.
+    email: str | None = None
 
     model_config = {"from_attributes": True}
 
