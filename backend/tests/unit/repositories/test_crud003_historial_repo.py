@@ -21,6 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 sqlite3.register_adapter(dict, json.dumps)
 sqlite3.register_adapter(list, json.dumps)
 
@@ -131,7 +134,7 @@ async def test_list_by_entrega_vacio(db_session):
 async def _mk_correccion(db, entrega_id=1, raw=None):
     from app.models.correccion import Correccion
 
-    c = Correccion(
+    c = Correccion(universidad_id=UNIV_ID, 
         entrega_id=entrega_id,
         nota=Decimal("90.00"),
         criterios_json={"criterios": []},

@@ -36,7 +36,7 @@ async def listar_examenes(
     """Lista los exámenes de una materia. Admin o coordinador de la materia."""
     require_coordinador_or_admin(ctx)
     await verificar_acceso_materia(db, current_user, ctx, materia_id)
-    return await ExamenService(db).listar(materia_id)
+    return await ExamenService(db).listar(materia_id, universidad_id=ctx.universidad_id)
 
 
 @router.post(
@@ -54,7 +54,9 @@ async def crear_examen(
     """Da de alta un examen (numeración automática). Admin o coordinador de la materia."""
     require_coordinador_or_admin(ctx)
     await verificar_acceso_materia(db, current_user, ctx, materia_id)
-    return await ExamenService(db).crear(materia_id, data, usuario_id=current_user.id)
+    return await ExamenService(db).crear(
+        materia_id, data, usuario_id=current_user.id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.put("/examenes/{examen_id}", response_model=ExamenMateriaResponse)
@@ -68,7 +70,9 @@ async def actualizar_examen(
     """Edita un examen. Admin o coordinador de la materia."""
     require_coordinador_or_admin(ctx)
     await verificar_acceso_examen(db, current_user, ctx, examen_id)
-    return await ExamenService(db).actualizar(examen_id, data)
+    return await ExamenService(db).actualizar(
+        examen_id, data, universidad_id=ctx.universidad_id
+    )
 
 
 @router.delete("/examenes/{examen_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -81,4 +85,4 @@ async def eliminar_examen(
     """Elimina un examen (y sus recuperatorios por cascade). Admin o coordinador de la materia."""
     require_coordinador_or_admin(ctx)
     await verificar_acceso_examen(db, current_user, ctx, examen_id)
-    await ExamenService(db).eliminar(examen_id)
+    await ExamenService(db).eliminar(examen_id, universidad_id=ctx.universidad_id)

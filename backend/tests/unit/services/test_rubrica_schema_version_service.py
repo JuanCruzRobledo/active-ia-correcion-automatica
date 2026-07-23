@@ -68,7 +68,9 @@ def _service_con(rubrica: SimpleNamespace | None = None) -> RubricaService:
     service.materia_repo = MagicMock()
     service.coordinador_materia_repo = MagicMock()
     service.materia_repo.get_active_by_id = AsyncMock(
-        return_value=SimpleNamespace(id=1, codigo="PROG1", nombre="Programación 1")
+        return_value=SimpleNamespace(
+            id=1, codigo="PROG1", nombre="Programación 1", universidad_id=1
+        )
     )
     service.rubrica_repo.exists = AsyncMock(return_value=False)
     # CRUD-011: el chequeo de conflicto pasó de exists() a get_by_materia_tipo_numero().

@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
-from app.core.permissions import verificar_acceso_materia
+from app.core.permissions import verificar_acceso_materia, verificar_pertenencia_universidad
 from app.models import Usuario
 from app.repositories.materia_repository import MateriaRepository
 from app.schemas.cierre_cursada import (
@@ -69,6 +69,9 @@ async def descargar_excel(
     run = await service.obtener_run(run_id)
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Corrida no encontrada")
+    verificar_pertenencia_universidad(
+        run, ctx.universidad_id, detail="Corrida no encontrada"
+    )
     await verificar_acceso_materia(db, current_user, ctx, run.materia_id)
 
     materia = await MateriaRepository(db).get_by_id(run.materia_id)
@@ -94,5 +97,5 @@ async def historial(
 ) -> CierreHistorialResponse:
     await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = CierreCursadaService(db)
-    runs = await service.listar_historial(materia_id)
+    runs = await service.listar_historial(materia_id, universidad_id=ctx.universidad_id)
     return CierreHistorialResponse(runs=[CierreRunResponse.model_validate(r) for r in runs])

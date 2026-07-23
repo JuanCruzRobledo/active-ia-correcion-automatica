@@ -271,7 +271,9 @@ async def obtener_correccion(
     await verificar_acceso_correccion(db, current_user, ctx, correccion_id)
 
     service = CorreccionService(db)
-    return await service.obtener_correccion(correccion_id)
+    return await service.obtener_correccion(
+        correccion_id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get(
@@ -300,7 +302,9 @@ async def obtener_correccion_por_entrega(
     await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     service = CorreccionService(db)
-    return await service.obtener_por_entrega(entrega_id)
+    return await service.obtener_por_entrega(
+        entrega_id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get(
@@ -454,6 +458,7 @@ async def corregir_global(
     background_tasks: BackgroundTasks,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CorregirGlobalAceptadoResponse:
     """
     Corrige TODAS las entregas SUBIDA del tutor (cross-materia/comisión/rúbrica).
@@ -476,7 +481,9 @@ async def corregir_global(
         )
 
     entrega_repo = EntregaRepository(db)
-    ids = await entrega_repo.get_subidas_ids_by_tutor(current_user.id, limite=GLOBAL_BATCH_MAX)
+    ids = await entrega_repo.get_subidas_ids_by_tutor(
+        current_user.id, limite=GLOBAL_BATCH_MAX, universidad_id=ctx.universidad_id
+    )
     if not ids:
         return CorregirGlobalAceptadoResponse(
             mensaje="No hay entregas pendientes para corregir.", total_encoladas=0
@@ -502,18 +509,25 @@ async def corregir_global(
 async def progreso_global(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ProgresoGlobalResponse:
     """Conteo de estados de las entregas del tutor (para el feedback de progreso)."""
     require_any_authenticated(current_user)
 
     entrega_repo = EntregaRepository(db)
-    counts = await entrega_repo.contar_estados_by_tutor(current_user.id)
+    counts = await entrega_repo.contar_estados_by_tutor(
+        current_user.id, universidad_id=ctx.universidad_id
+    )
     subidas = counts.get("SUBIDA", 0)
     pendientes = counts.get("PENDIENTE", 0)
     corregidas = counts.get("CORREGIDA", 0)
     error = counts.get("ERROR", 0)
     errores_por_codigo = (
-        await entrega_repo.contar_errores_by_tutor(current_user.id) if error else {}
+        await entrega_repo.contar_errores_by_tutor(
+            current_user.id, universidad_id=ctx.universidad_id
+        )
+        if error
+        else {}
     )
     return ProgresoGlobalResponse(
         subidas=subidas,

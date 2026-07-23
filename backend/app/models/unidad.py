@@ -38,10 +38,10 @@ class Unidad(Base, TimestampMixin):
         index=True,
     )
     # Fase 0 multi-tenant: denormalizada, propagada desde materia.universidad_id en
-    # el backfill. Nullable por ahora (NOT NULL vía migración R7, post-backfill).
-    universidad_id: Mapped[int | None] = mapped_column(
+    # el backfill. NOT NULL desde migración R7 (Fase 0); Fase 4 alinea el type hint.
+    universidad_id: Mapped[int] = mapped_column(
         ForeignKey("universidades.id"),
-        nullable=True,
+        nullable=False,
         index=True,
     )
     numero: Mapped[int] = mapped_column(

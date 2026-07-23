@@ -60,6 +60,7 @@ async def listar_materias(
         page=page,
         per_page=per_page,
         coordinador_id=coordinador_id,
+        universidad_id=ctx.universidad_id,
     )
 
 
@@ -84,7 +85,9 @@ async def crear_materia(
     require_admin(ctx)
 
     service = MateriaService(db)
-    return await service.crear_materia(data, current_user_id=current_user.id)
+    return await service.crear_materia(
+        data, current_user_id=current_user.id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get("/{materia_id}", response_model=MateriaDetailResponse)
@@ -103,7 +106,7 @@ async def obtener_materia(
     await verificar_acceso_materia(db, current_user, ctx, materia_id)
 
     service = MateriaService(db)
-    return await service.obtener_materia(materia_id)
+    return await service.obtener_materia(materia_id, universidad_id=ctx.universidad_id)
 
 
 @router.put("/{materia_id}", response_model=MateriaDetailResponse)
@@ -129,7 +132,9 @@ async def actualizar_materia(
         data.coordinador_ids = None
 
     service = MateriaService(db)
-    return await service.actualizar_materia(materia_id, data)
+    return await service.actualizar_materia(
+        materia_id, data, universidad_id=ctx.universidad_id
+    )
 
 
 @router.delete("/{materia_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -148,7 +153,7 @@ async def eliminar_materia(
     require_admin(ctx)
 
     service = MateriaService(db)
-    await service.eliminar_materia(materia_id)
+    await service.eliminar_materia(materia_id, universidad_id=ctx.universidad_id)
 
 
 @router.post("/{materia_id}/restore", response_model=MateriaResponse)
@@ -166,7 +171,7 @@ async def restaurar_materia(
     require_admin(ctx)
 
     service = MateriaService(db)
-    return await service.restaurar_materia(materia_id)
+    return await service.restaurar_materia(materia_id, universidad_id=ctx.universidad_id)
 
 
 @router.post("/{materia_id}/coordinadores", response_model=CoordinadoresResponse)
@@ -187,4 +192,6 @@ async def asignar_coordinadores(
     require_admin(ctx)
 
     service = MateriaService(db)
-    return await service.asignar_coordinadores(materia_id, data)
+    return await service.asignar_coordinadores(
+        materia_id, data, universidad_id=ctx.universidad_id
+    )

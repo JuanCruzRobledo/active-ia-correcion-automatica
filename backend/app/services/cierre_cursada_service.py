@@ -321,7 +321,9 @@ class CierreCursadaService:
                 )
             )
 
+        # Fase 4 multi-tenant: universidad_id se PROPAGA desde la materia.
         run = CierreCursadaRun(
+            universidad_id=materia.universidad_id,
             materia_id=materia_id,
             cuatrimestre_id=cuatrimestre_id,
             examenes_snapshot=examenes_config,
@@ -356,8 +358,12 @@ class CierreCursadaService:
         )
         return creado
 
-    async def listar_historial(self, materia_id: int) -> list[CierreCursadaRun]:
-        return await self.cierre_repo.listar_runs(materia_id)
+    async def listar_historial(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> list[CierreCursadaRun]:
+        return await self.cierre_repo.listar_runs(
+            materia_id, universidad_id=universidad_id
+        )
 
     async def obtener_run(self, run_id: int) -> CierreCursadaRun | None:
         return await self.cierre_repo.get_run(run_id)

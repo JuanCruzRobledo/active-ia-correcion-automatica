@@ -20,14 +20,21 @@ class DashboardService:
     """Service for dashboard statistics."""
 
     @staticmethod
-    async def get_admin_stats(db: AsyncSession) -> AdminStatsResponse:
+    async def get_admin_stats(
+        db: AsyncSession, *, universidad_id: int | None = None
+    ) -> AdminStatsResponse:
         """
         Get admin dashboard statistics.
 
         Returns counts of active (not soft-deleted) entities:
         - Materias, Comisiones, Usuarios, Rubricas
+
+        Fase 4 multi-tenant (OQ3): scopeado a `universidad_id`; None = superadmin
+        sin universidad activa, agrega todas.
         """
-        counts = await DashboardRepository(db).get_admin_counts()
+        counts = await DashboardRepository(db).get_admin_counts(
+            universidad_id=universidad_id
+        )
         return AdminStatsResponse(
             materias=counts["materias"],
             comisiones=counts["comisiones"],
@@ -37,7 +44,7 @@ class DashboardService:
 
     @staticmethod
     async def get_coordinador_stats(
-        db: AsyncSession, user_id: int
+        db: AsyncSession, user_id: int, *, universidad_id: int | None = None
     ) -> CoordinadorStatsResponse:
         """
         Get coordinador dashboard statistics.
@@ -47,6 +54,10 @@ class DashboardService:
         - Number of rubricas for coordinador's materias
         - Number of pending entregas across all comisiones
         - Progress of corrections per comision
+
+        Fase 4 multi-tenant: `universidad_id` (D2, defensa en profundidad) — si
+        alguna `materia_id` de la asignación de coordinador fuera de otra
+        universidad, los conteos la excluyen en vez de sumarla.
         """
         repo = DashboardRepository(db)
 
@@ -59,10 +70,18 @@ class DashboardService:
                 corrections_progress=[],
             )
 
-        comisiones_count = await repo.contar_comisiones_activas_en_materias(materia_ids)
-        rubricas_count = await repo.contar_rubricas_activas_en_materias(materia_ids)
-        pendientes_count = await repo.contar_pendientes_en_materias(materia_ids)
-        progress_rows = await repo.get_progreso_por_comision_de_materias(materia_ids)
+        comisiones_count = await repo.contar_comisiones_activas_en_materias(
+            materia_ids, universidad_id=universidad_id
+        )
+        rubricas_count = await repo.contar_rubricas_activas_en_materias(
+            materia_ids, universidad_id=universidad_id
+        )
+        pendientes_count = await repo.contar_pendientes_en_materias(
+            materia_ids, universidad_id=universidad_id
+        )
+        progress_rows = await repo.get_progreso_por_comision_de_materias(
+            materia_ids, universidad_id=universidad_id
+        )
 
         corrections_progress = [
             CorrectionProgressItem(
@@ -84,7 +103,9 @@ class DashboardService:
         )
 
     @staticmethod
-    async def get_tutor_stats(db: AsyncSession, user_id: int) -> TutorStatsResponse:
+    async def get_tutor_stats(
+        db: AsyncSession, user_id: int, *, universidad_id: int | None = None
+    ) -> TutorStatsResponse:
         """
         Get tutor dashboard statistics.
 
@@ -93,6 +114,8 @@ class DashboardService:
         - Number of pending entregas
         - Number of corrected entregas
         - Details of each comision
+
+        Fase 4 multi-tenant: `universidad_id` (D2, defensa en profundidad).
         """
         repo = DashboardRepository(db)
 
@@ -106,9 +129,15 @@ class DashboardService:
             )
 
         comisiones_count = len(comision_ids)
-        pendientes_count = await repo.contar_pendientes_en_comisiones(comision_ids)
-        corregidas_count = await repo.contar_corregidas_en_comisiones(comision_ids)
-        details_rows = await repo.get_detalle_comisiones(comision_ids)
+        pendientes_count = await repo.contar_pendientes_en_comisiones(
+            comision_ids, universidad_id=universidad_id
+        )
+        corregidas_count = await repo.contar_corregidas_en_comisiones(
+            comision_ids, universidad_id=universidad_id
+        )
+        details_rows = await repo.get_detalle_comisiones(
+            comision_ids, universidad_id=universidad_id
+        )
 
         comisiones_details = [
             ComisionDetailItem(

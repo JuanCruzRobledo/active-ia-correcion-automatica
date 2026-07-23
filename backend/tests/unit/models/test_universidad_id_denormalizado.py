@@ -1,9 +1,15 @@
 """
 Fase 0 multi-tenant: columna `universidad_id` denormalizada en las 9 tablas del
-árbol de Materia (nullable en esta fase), y unicidad de `materias.codigo`
-scopeada por universidad.
+árbol de Materia, y unicidad de `materias.codigo` scopeada por universidad.
+
+Fase 4 (multi-tenant-scoping-queries, OQ4-D7 estricto): la columna se endureció a
+NOT NULL en la DB real vía la migración R7 (Fase 0) y el modelo SQLAlchemy se
+alinea acá a `Mapped[int]` (ya no `Mapped[int | None]`), cerrando la divergencia
+modelo/DB que dejaba pasar filas sin universidad en el motor de test (SQLite
+in-memory generado desde `Base.metadata`, no desde las migraciones Alembic).
 
 Ref: openspec/changes/multi-tenant-modelo-datos/specs/universidad-id-denormalizado/spec.md
+Ref: openspec/changes/multi-tenant-scoping-queries/design.md (D7, OQ4)
 """
 
 import pytest
@@ -22,29 +28,31 @@ TABLAS_DEL_ARBOL = [
 
 
 @pytest.mark.parametrize("module_path,class_name", TABLAS_DEL_ARBOL)
-def test_tabla_tiene_universidad_id_fk_nullable(module_path, class_name):
+def test_tabla_tiene_universidad_id_fk(module_path, class_name):
     import importlib
 
     module = importlib.import_module(module_path)
     model = getattr(module, class_name)
 
     col = model.__table__.columns["universidad_id"]
-    assert col.nullable is True, f"{class_name}.universidad_id debe ser nullable en Fase 0"
     assert any(
         fk.column.table.name == "universidades" for fk in col.foreign_keys
     ), f"{class_name}.universidad_id debe ser FK a universidades.id"
 
 
 @pytest.mark.parametrize("module_path,class_name", TABLAS_DEL_ARBOL)
-def test_tabla_no_tiene_universidad_id_not_null_todavia(module_path, class_name):
-    """Fase 0 endurece a NOT NULL vía migración (R7), no en el modelo aún."""
+def test_tabla_tiene_universidad_id_not_null(module_path, class_name):
+    """Fase 4 (D7 estricto, OQ4): NOT NULL en el modelo, alineado a la DB real
+    (migración R7 de Fase 0 ya lo exigía; acá se cierra la divergencia)."""
     import importlib
 
     module = importlib.import_module(module_path)
     model = getattr(module, class_name)
 
     col = model.__table__.columns["universidad_id"]
-    assert col.nullable is True
+    assert col.nullable is False, (
+        f"{class_name}.universidad_id debe ser NOT NULL desde Fase 4"
+    )
 
 
 def test_materia_ya_no_tiene_unique_global_en_codigo():

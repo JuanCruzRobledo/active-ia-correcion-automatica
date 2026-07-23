@@ -89,6 +89,7 @@ class RubricaRepository:
         include_inactive: bool = False,
         page: int = 1,
         per_page: int = 20,
+        universidad_id: int | None = None,
     ) -> tuple[list[Rubrica], int]:
         """
         Get all rubricas with optional filters and pagination.
@@ -130,6 +131,9 @@ class RubricaRepository:
         if anio is not None:
             query = query.where(Rubrica.anio == anio)
 
+        if universidad_id is not None:
+            query = query.where(Rubrica.universidad_id == universidad_id)
+
         # Count total
         count_query = select(func.count()).select_from(query.subquery())
         total_result = await self.db.execute(count_query)
@@ -153,6 +157,8 @@ class RubricaRepository:
         self,
         materia_id: int,
         anio: int | None = None,
+        *,
+        universidad_id: int | None = None,
     ) -> list[Rubrica]:
         """
         Get all active rubricas for a materia.
@@ -160,6 +166,7 @@ class RubricaRepository:
         Args:
             materia_id: ID of the materia.
             anio: Optional year filter.
+            universidad_id: Fase 4 multi-tenant, defensa en profundidad. None = sin filtro.
 
         Returns:
             List of active rubricas for the materia.
@@ -171,6 +178,9 @@ class RubricaRepository:
 
         if anio is not None:
             query = query.where(Rubrica.anio == anio)
+
+        if universidad_id is not None:
+            query = query.where(Rubrica.universidad_id == universidad_id)
 
         query = query.order_by(
             Rubrica.anio.desc(),
@@ -209,6 +219,8 @@ class RubricaRepository:
         tipo: str,
         numero: int,
         anio: int,
+        *,
+        universidad_id: int | None = None,
     ) -> Rubrica | None:
         """
         Get rubrica by unique combination of materia, tipo, numero, and anio.
@@ -218,18 +230,20 @@ class RubricaRepository:
             tipo: Rubrica type.
             numero: Rubrica number.
             anio: Academic year.
+            universidad_id: Fase 4 multi-tenant, defensa en profundidad. None = sin filtro.
 
         Returns:
             Rubrica object if found, None otherwise.
         """
-        result = await self.db.execute(
-            select(Rubrica).where(
-                Rubrica.materia_id == materia_id,
-                Rubrica.tipo == tipo,
-                Rubrica.numero == numero,
-                Rubrica.anio == anio,
-            )
+        query = select(Rubrica).where(
+            Rubrica.materia_id == materia_id,
+            Rubrica.tipo == tipo,
+            Rubrica.numero == numero,
+            Rubrica.anio == anio,
         )
+        if universidad_id is not None:
+            query = query.where(Rubrica.universidad_id == universidad_id)
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def get_active_by_id(self, rubrica_id: int) -> Rubrica | None:
@@ -255,6 +269,7 @@ class RubricaRepository:
         materia_ids: list[int],
         *,
         rubrica_id: int | None = None,
+        universidad_id: int | None = None,
     ) -> list[Rubrica]:
         """Rúbricas ACTIVAS con moodle_assign_id (cmid) de las materias dadas, para
         los flujos de Moodle. rubrica_id acota a una sola rúbrica (import con scope).
@@ -266,6 +281,8 @@ class RubricaRepository:
         )
         if rubrica_id is not None:
             stmt = stmt.where(Rubrica.id == rubrica_id)
+        if universidad_id is not None:
+            stmt = stmt.where(Rubrica.universidad_id == universidad_id)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 

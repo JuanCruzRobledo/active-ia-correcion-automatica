@@ -32,6 +32,9 @@ from app.models.materia import Materia
 from app.models.usuario import Usuario
 from app.services.comision_service import ComisionService
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 @compiles(JSONB, "sqlite")
 def _jsonb_como_json_en_sqlite(element, compiler, **kw):  # noqa: D401
@@ -77,7 +80,7 @@ async def _tutor(db, username) -> Usuario:
 async def _entregas(db, comision_id, n):
     for i in range(n):
         db.add(
-            Entrega(
+            Entrega(universidad_id=UNIV_ID, 
                 comision_id=comision_id,
                 rubrica_id=1,
                 alumno_nombre=f"C{comision_id}-Alumno {i}",
@@ -96,16 +99,16 @@ async def seeded(db_session):
     - C-uno:   1 tutor,  0 entregas   → (1, 0)
     - C-cero:  0 tutores, 0 entregas  → (0, 0)
     """
-    materia = Materia(nombre="Programación 1", codigo="P1")
+    materia = Materia(universidad_id=UNIV_ID, nombre="Programación 1", codigo="P1")
     db_session.add(materia)
     await db_session.flush()
 
     t1 = await _tutor(db_session, "tutor1")
     t2 = await _tutor(db_session, "tutor2")
 
-    c_multi = Comision(materia_id=materia.id, nombre="C1-2", anio=2026, activa=True)
-    c_uno = Comision(materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
-    c_cero = Comision(materia_id=materia.id, nombre="C1-3", anio=2026, activa=True)
+    c_multi = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-2", anio=2026, activa=True)
+    c_uno = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
+    c_cero = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-3", anio=2026, activa=True)
     db_session.add_all([c_multi, c_uno, c_cero])
     await db_session.flush()
 

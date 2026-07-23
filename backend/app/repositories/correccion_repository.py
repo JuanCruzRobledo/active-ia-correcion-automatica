@@ -144,6 +144,7 @@ class CorreccionRepository:
         editado_manualmente: bool | None = None,
         page: int = 1,
         per_page: int = 20,
+        universidad_id: int | None = None,
     ) -> tuple[list[Correccion], int]:
         """
         Get all correcciones with optional filters and pagination.
@@ -155,6 +156,7 @@ class CorreccionRepository:
             editado_manualmente: Filter by manual edit flag.
             page: Page number (1-indexed).
             per_page: Items per page.
+            universidad_id: Fase 4 multi-tenant (D1). None = sin filtro.
 
         Returns:
             Tuple of (list of correcciones, total count).
@@ -182,6 +184,9 @@ class CorreccionRepository:
                 Correccion.editado_manualmente == editado_manualmente
             )
 
+        if universidad_id is not None:
+            query = query.where(Correccion.universidad_id == universidad_id)
+
         # Count total
         count_query = select(func.count()).select_from(query.subquery())
         total_result = await self.db.execute(count_query)
@@ -203,6 +208,7 @@ class CorreccionRepository:
         comision_id: int | None = None,
         rubrica_id: int | None = None,
         batch_size: int = 500,
+        universidad_id: int | None = None,
     ) -> list[Correccion]:
         """PERF-009: devuelve TODAS las correcciones que matchean el filtro, SIN el tope
         de ``per_page`` de ``get_all``.
@@ -228,6 +234,7 @@ class CorreccionRepository:
             lote, _ = await self.get_all(
                 comision_id=comision_id,
                 rubrica_id=rubrica_id,
+                universidad_id=universidad_id,
                 page=page,
                 per_page=batch_size,
             )
@@ -301,18 +308,19 @@ class CorreccionRepository:
         await self.db.commit()
 
     async def get_statistics_by_rubrica(
-        self, rubrica_id: int
+        self, rubrica_id: int, *, universidad_id: int | None = None
     ) -> dict[str, float]:
         """
         Get statistics for correcciones of a specific rubrica.
 
         Args:
             rubrica_id: Rubrica ID.
+            universidad_id: Fase 4 multi-tenant, defensa en profundidad. None = sin filtro.
 
         Returns:
             Dictionary with statistics (avg_nota, min_nota, max_nota, count).
         """
-        result = await self.db.execute(
+        query = (
             select(
                 func.avg(Correccion.nota).label("avg_nota"),
                 func.min(Correccion.nota).label("min_nota"),
@@ -323,6 +331,9 @@ class CorreccionRepository:
             .join(Entrega)
             .where(Entrega.rubrica_id == rubrica_id)
         )
+        if universidad_id is not None:
+            query = query.where(Correccion.universidad_id == universidad_id)
+        result = await self.db.execute(query)
 
         row = result.one()
 
@@ -359,7 +370,7 @@ class CorreccionRepository:
         return list(result.scalars().all())
 
     async def get_pendientes_subida_moodle(
-        self, tutor_id: int, es_admin: bool
+        self, tutor_id: int, es_admin: bool, *, universidad_id: int | None = None
     ) -> list[Correccion]:
         """Correcciones listas para subir a Moodle pero aún NO enviadas.
 
@@ -409,6 +420,9 @@ class CorreccionRepository:
             .order_by(Materia.nombre, Rubrica.titulo, Entrega.alumno_nombre)
         )
 
+        if universidad_id is not None:
+            query = query.where(Correccion.universidad_id == universidad_id)
+
         if not es_admin:
             tutor_exists = (
                 select(ComisionTutor.id)
@@ -424,7 +438,7 @@ class CorreccionRepository:
         return list(result.scalars().all())
 
     async def contar_no_vinculadas_moodle(
-        self, tutor_id: int, es_admin: bool
+        self, tutor_id: int, es_admin: bool, *, universidad_id: int | None = None
     ) -> int:
         """Cuenta las correcciones CORREGIDA (no enviadas) que NO se pueden subir a Moodle.
 
@@ -467,6 +481,9 @@ class CorreccionRepository:
             )
         )
 
+        if universidad_id is not None:
+            query = query.where(Correccion.universidad_id == universidad_id)
+
         if not es_admin:
             tutor_exists = (
                 select(ComisionTutor.id)
@@ -482,18 +499,19 @@ class CorreccionRepository:
         return int(result.scalar() or 0)
 
     async def get_by_entrega_ids_corregidas(
-        self, entrega_ids: list[int]
+        self, entrega_ids: list[int], *, universidad_id: int | None = None
     ) -> list[Correccion]:
         """
         Get correcciones for the given entrega IDs, filtering to CORREGIDA state only.
 
         Args:
             entrega_ids: List of entrega IDs requested by the user.
+            universidad_id: Fase 4 multi-tenant, defensa en profundidad. None = sin filtro.
 
         Returns:
             List of Correccion objects with relations loaded (only CORREGIDA entregas).
         """
-        result = await self.db.execute(
+        query = (
             select(Correccion)
             .options(
                 selectinload(Correccion.entrega).selectinload(Entrega.comision).selectinload(Comision.materia),
@@ -506,4 +524,7 @@ class CorreccionRepository:
                 Entrega.estado == EstadoEntregaEnum.CORREGIDA,
             )
         )
+        if universidad_id is not None:
+            query = query.where(Correccion.universidad_id == universidad_id)
+        result = await self.db.execute(query)
         return list(result.scalars().all())

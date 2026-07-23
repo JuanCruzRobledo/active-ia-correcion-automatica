@@ -165,7 +165,9 @@ async def test_eliminar_entrega_propia_ok():
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         MockSvc.return_value.eliminar_entrega = AsyncMock(return_value=None)
         await eliminar_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
-        MockSvc.return_value.eliminar_entrega.assert_awaited_once_with(42, actor_id=5)
+        MockSvc.return_value.eliminar_entrega.assert_awaited_once_with(
+            42, actor_id=5, universidad_id=1
+        )
 
 
 @pytest.mark.asyncio
@@ -493,7 +495,9 @@ async def test_restore_con_pertenencia_ok():
         MockSvc.return_value.restaurar_entrega = AsyncMock(return_value=None)
         MockSvc.return_value.obtener_entrega = AsyncMock(return_value="DETALLE")
         res = await restaurar_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
-        MockSvc.return_value.restaurar_entrega.assert_awaited_once_with(42, actor_id=5)
+        MockSvc.return_value.restaurar_entrega.assert_awaited_once_with(
+            42, actor_id=5, universidad_id=1
+        )
     assert res == "DETALLE"
 
 

@@ -98,6 +98,7 @@ async def listar_entregas(
         search=search,
         page=page,
         per_page=per_page,
+        universidad_id=ctx.universidad_id,
     )
 
 
@@ -336,7 +337,7 @@ async def obtener_entrega(
     await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     service = EntregaService(db)
-    return await service.obtener_entrega(entrega_id)
+    return await service.obtener_entrega(entrega_id, universidad_id=ctx.universidad_id)
 
 
 @router.get("/{entrega_id}/contenido", response_model=ContenidoEntrega)
@@ -365,7 +366,7 @@ async def obtener_contenido_entrega(
     await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     service = EntregaService(db)
-    return await service.obtener_contenido(entrega_id)
+    return await service.obtener_contenido(entrega_id, universidad_id=ctx.universidad_id)
 
 
 @router.delete("/{entrega_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -389,7 +390,9 @@ async def eliminar_entrega(
     await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     service = EntregaService(db)
-    await service.eliminar_entrega(entrega_id, actor_id=current_user.id)
+    await service.eliminar_entrega(
+        entrega_id, actor_id=current_user.id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.post("/{entrega_id}/restore", response_model=EntregaDetailResponse)
@@ -409,5 +412,7 @@ async def restaurar_entrega(
     await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     service = EntregaService(db)
-    await service.restaurar_entrega(entrega_id, actor_id=current_user.id)
-    return await service.obtener_entrega(entrega_id)
+    await service.restaurar_entrega(
+        entrega_id, actor_id=current_user.id, universidad_id=ctx.universidad_id
+    )
+    return await service.obtener_entrega(entrega_id, universidad_id=ctx.universidad_id)

@@ -11,7 +11,10 @@ Ref: PLAN_DASHBOARD_GESTORES.md §5, §6.1, §8 (T3)
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.permissions import verificar_materia_universidad_activa
+from app.core.permissions import (
+    verificar_materia_universidad_activa,
+    verificar_pertenencia_universidad,
+)
 from app.models.componente_unidad import ComponenteUnidad
 from app.models.enums import ModoAprobacionEnum
 from app.models.unidad import Unidad
@@ -57,33 +60,49 @@ class UnidadService:
         self.usuario_repo = UsuarioRepository(db)
         self.moodle = MoodleService(db)
 
-    async def _get_materia_or_404(self, materia_id: int):
+    async def _get_materia_or_404(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ):
         materia = await self.materia_repo.get_by_id(materia_id)
         if materia is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Materia no encontrada"
             )
+        # Fase 4 multi-tenant (D3): centralizado acá — cubre a TODOS los callers
+        # de este helper (listar/crear/actualizar/eliminar unidad, config dashboard, etc).
+        verificar_pertenencia_universidad(
+            materia, universidad_id, detail="Materia no encontrada"
+        )
         return materia
 
-    async def _get_unidad_or_404(self, unidad_id: int) -> Unidad:
+    async def _get_unidad_or_404(
+        self, unidad_id: int, *, universidad_id: int | None = None
+    ) -> Unidad:
         unidad = await self.unidad_repo.get_by_id(unidad_id)
         if unidad is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Unidad no encontrada"
             )
+        verificar_pertenencia_universidad(
+            unidad, universidad_id, detail="Unidad no encontrada"
+        )
         return unidad
 
     # ===================== Unidades =====================
 
-    async def listar_unidades(self, materia_id: int) -> list[UnidadResponse]:
-        await self._get_materia_or_404(materia_id)
-        unidades = await self.unidad_repo.get_by_materia(materia_id)
+    async def listar_unidades(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> list[UnidadResponse]:
+        await self._get_materia_or_404(materia_id, universidad_id=universidad_id)
+        unidades = await self.unidad_repo.get_by_materia(
+            materia_id, universidad_id=universidad_id
+        )
         return [UnidadResponse.model_validate(u) for u in unidades]
 
     async def crear_unidad(
-        self, materia_id: int, data: UnidadCreate
+        self, materia_id: int, data: UnidadCreate, *, universidad_id: int | None = None
     ) -> UnidadResponse:
-        await self._get_materia_or_404(materia_id)
+        materia = await self._get_materia_or_404(materia_id, universidad_id=universidad_id)
         if await self.unidad_repo.exists_numero(materia_id, data.numero):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -94,7 +113,9 @@ class UnidadService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"La sección de Moodle {data.moodle_section_id} ya está asignada a otra unidad",
             )
+        # Fase 4 multi-tenant: universidad_id se PROPAGA desde la materia.
         unidad = Unidad(
+            universidad_id=materia.universidad_id,
             materia_id=materia_id,
             numero=data.numero,
             moodle_section_id=data.moodle_section_id,
@@ -104,9 +125,9 @@ class UnidadService:
         return UnidadResponse.model_validate(created)
 
     async def actualizar_unidad(
-        self, unidad_id: int, data: UnidadUpdate
+        self, unidad_id: int, data: UnidadUpdate, *, universidad_id: int | None = None
     ) -> UnidadResponse:
-        unidad = await self._get_unidad_or_404(unidad_id)
+        unidad = await self._get_unidad_or_404(unidad_id, universidad_id=universidad_id)
         if data.numero is not None and data.numero != unidad.numero:
             if await self.unidad_repo.exists_numero(
                 unidad.materia_id, data.numero, exclude_id=unidad_id
@@ -130,22 +151,28 @@ class UnidadService:
         updated = await self.unidad_repo.update(unidad)
         return UnidadResponse.model_validate(updated)
 
-    async def eliminar_unidad(self, unidad_id: int) -> None:
-        unidad = await self._get_unidad_or_404(unidad_id)
+    async def eliminar_unidad(
+        self, unidad_id: int, *, universidad_id: int | None = None
+    ) -> None:
+        unidad = await self._get_unidad_or_404(unidad_id, universidad_id=universidad_id)
         # delete() desvincula las rúbricas (unidad_id=NULL) antes de borrar
         await self.unidad_repo.delete(unidad)
 
     # ===================== Componentes de la unidad (dinámicos) =====================
 
     async def set_componentes_unidad(
-        self, unidad_id: int, data: UnidadComponentesUpdate
+        self,
+        unidad_id: int,
+        data: UnidadComponentesUpdate,
+        *,
+        universidad_id: int | None = None,
     ) -> UnidadResponse:
         """Reemplaza el set completo de componentes evaluables de la unidad. §9.bis F.
 
         El orden de la lista define el campo `orden`. Los componentes viejos se borran
         (cascade delete-orphan de la relación).
         """
-        unidad = await self._get_unidad_or_404(unidad_id)
+        unidad = await self._get_unidad_or_404(unidad_id, universidad_id=universidad_id)
         unidad.componentes = [
             ComponenteUnidad(
                 tipo=c.tipo,
@@ -225,7 +252,7 @@ class UnidadService:
 
         El ORDEN de `data.secciones` define el número de unidad (1..N).
         """
-        await self._get_materia_or_404(materia_id)
+        materia = await self._get_materia_or_404(materia_id)
         section_ids = [s.moodle_section_id for s in data.secciones]
         if len(section_ids) != len(set(section_ids)):
             raise HTTPException(
@@ -236,7 +263,9 @@ class UnidadService:
             (idx, s.moodle_section_id, s.nombre)
             for idx, s in enumerate(data.secciones, start=1)
         ]
-        creadas = await self.unidad_repo.sincronizar(materia_id, nuevas)
+        creadas = await self.unidad_repo.sincronizar(
+            materia_id, nuevas, universidad_id=materia.universidad_id
+        )
         return [UnidadResponse.model_validate(u) for u in creadas]
 
     # ===================== Config dashboard de la Materia =====================

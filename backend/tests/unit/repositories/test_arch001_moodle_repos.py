@@ -26,6 +26,9 @@ from app.repositories.comision_repository import ComisionRepository
 from app.repositories.materia_repository import MateriaRepository
 from app.repositories.rubrica_repository import RubricaRepository
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 sqlite3.register_adapter(dict, json.dumps)
 sqlite3.register_adapter(list, json.dumps)
 
@@ -55,14 +58,14 @@ async def db():
 
 
 async def _materia(db, id_, nombre="M"):
-    m = Materia(id=id_, nombre=nombre, codigo=f"C{id_}")
+    m = Materia(universidad_id=UNIV_ID, id=id_, nombre=nombre, codigo=f"C{id_}")
     db.add(m)
     await db.flush()
     return m
 
 
 async def _comision(db, id_, materia_id, *, activa=True, moodle_group_id=10, tutor_id=5):
-    c = Comision(id=id_, materia_id=materia_id, nombre=f"Com{id_}", anio=2026,
+    c = Comision(universidad_id=UNIV_ID, id=id_, materia_id=materia_id, nombre=f"Com{id_}", anio=2026,
                  activa=activa, moodle_group_id=moodle_group_id)
     db.add(c)
     await db.flush()
@@ -73,7 +76,7 @@ async def _comision(db, id_, materia_id, *, activa=True, moodle_group_id=10, tut
 
 
 async def _rubrica(db, id_, materia_id, *, activa=True, moodle_assign_id=99):
-    r = Rubrica(
+    r = Rubrica(universidad_id=UNIV_ID, 
         id=id_, materia_id=materia_id, tipo=TipoRubricaEnum.TP, numero=id_, anio=2026,
         titulo=f"R{id_}", descripcion="d", puntaje_maximo=100, metadata_json={},
         criterios_json=[], penalizaciones_json=[], condiciones_desaprobacion_json=[],

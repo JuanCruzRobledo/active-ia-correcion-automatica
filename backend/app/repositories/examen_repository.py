@@ -26,11 +26,14 @@ class ExamenRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_materia(self, materia_id: int) -> list[ExamenMateria]:
+    async def get_by_materia(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> list[ExamenMateria]:
+        query = select(ExamenMateria).where(ExamenMateria.materia_id == materia_id)
+        if universidad_id is not None:
+            query = query.where(ExamenMateria.universidad_id == universidad_id)
         result = await self.db.execute(
-            select(ExamenMateria)
-            .where(ExamenMateria.materia_id == materia_id)
-            .order_by(ExamenMateria.orden.asc(), ExamenMateria.id.asc())
+            query.order_by(ExamenMateria.orden.asc(), ExamenMateria.id.asc())
         )
         return list(result.scalars().all())
 

@@ -686,6 +686,63 @@ def materia_pertenece_a_universidad_activa(materia, universidad_id_activa: int |
     return materia_universidad_id == universidad_id_activa
 
 
+# =========================================
+# Check de pertenencia GENERAL por id, semántica 404 (Fase 4, D3)
+# =========================================
+#
+# Distinto del guard 409 de arriba (Fase 3, sync Moodle cross-campus): este es
+# el check que se monta en TODO acceso por id a un recurso de las 9 entidades
+# scopeadas (materia, comision, entrega, correccion, unidad, rubrica, examen,
+# cierre_cursada_run, avance_snapshot). Un 403 revelaría que el recurso EXISTE
+# en otra universidad; 404 lo vuelve indistinguible de un id inexistente
+# (mismo criterio que `filtrar_entregas_accesibles`, OQ1 del design).
+
+
+def verificar_pertenencia_universidad(
+    recurso,
+    universidad_id_activa: int | None,
+    *,
+    detail: str = "Recurso no encontrado",
+) -> None:
+    """Valida que `recurso` pertenezca a la universidad activa. 404 si no.
+
+    Firma calcada de `verificar_materia_universidad_activa` (Fase 3): recibe el
+    `int | None` ya resuelto (`ctx.universidad_id`), NO el `ContextoUniversidad`
+    completo — mantiene consistencia con el resto de las firmas de servicio
+    (D4: "un solo valor viaja"), y permite usarlo también desde flujos sin
+    request/JWT (p. ej. el cron) que ya resuelven su propio `universidad_id`.
+
+    - `universidad_id_activa is None` (superadmin SIN universidad activa elegida):
+      bypass total, no valida nada (ve cualquier recurso de cualquier universidad).
+    - `recurso is None` (no existe): 404.
+    - `recurso.universidad_id != universidad_id_activa`: 404 (NO 403 — no revela
+      que el recurso existe en otra universidad).
+    - Resto (recurso de la universidad activa, incluido un superadmin que SÍ
+      eligió universidad y por ende queda scopeado como cualquier miembro): pasa.
+
+    Args:
+        recurso: instancia de modelo (o cualquier objeto con `.universidad_id`).
+        universidad_id_activa: `ctx.universidad_id` de la universidad activa del
+            request (None = superadmin sin universidad elegida, bypass).
+        detail: mensaje del 404. Usar el MISMO texto que el "no encontrado" propio
+            de la entidad en el call site (p. ej. "Materia no encontrada"), para
+            que el caso cross-tenant sea indistinguible del caso "no existe".
+
+    Raises:
+        HTTPException 404: recurso inexistente o de otra universidad.
+    """
+    if universidad_id_activa is None:
+        return
+    if (
+        recurso is None
+        or getattr(recurso, "universidad_id", None) != universidad_id_activa
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=detail,
+        )
+
+
 async def comisiones_visibles_para(
     db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad
 ) -> list[int] | None:

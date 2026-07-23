@@ -29,18 +29,20 @@ class AvanceRepository:
 
     # ----- Lectura (Dashboard) -----
 
-    async def get_ultimo_snapshot(self, materia_id: int) -> AvanceSnapshot | None:
+    async def get_ultimo_snapshot(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> AvanceSnapshot | None:
         """El snapshot más reciente de una materia (o None si no hay)."""
+        query = select(AvanceSnapshot).where(AvanceSnapshot.materia_id == materia_id)
+        if universidad_id is not None:
+            query = query.where(AvanceSnapshot.universidad_id == universidad_id)
         result = await self.db.execute(
-            select(AvanceSnapshot)
-            .where(AvanceSnapshot.materia_id == materia_id)
-            .order_by(AvanceSnapshot.generado_en.desc())
-            .limit(1)
+            query.order_by(AvanceSnapshot.generado_en.desc()).limit(1)
         )
         return result.scalar_one_or_none()
 
     async def get_ultimos_snapshots(
-        self, materia_ids: list[int]
+        self, materia_ids: list[int], *, universidad_id: int | None = None
     ) -> list[AvanceSnapshot]:
         """El snapshot MÁS RECIENTE de cada materia dada, en UNA sola query.
 
@@ -79,22 +81,30 @@ class AvanceRepository:
         )
         ids_ultimos = select(ranked.c.sid).where(ranked.c.rn == 1)
 
-        result = await self.db.execute(
-            select(AvanceSnapshot).where(AvanceSnapshot.id.in_(ids_ultimos))
-        )
+        query = select(AvanceSnapshot).where(AvanceSnapshot.id.in_(ids_ultimos))
+        if universidad_id is not None:
+            query = query.where(AvanceSnapshot.universidad_id == universidad_id)
+        result = await self.db.execute(query)
         return list(result.scalars().all())
 
     async def contar_por_estado(
-        self, snapshot_ids: list[int]
+        self, snapshot_ids: list[int], *, universidad_id: int | None = None
     ) -> dict[EstadoAvanceEnum, int]:
-        """Cantidad de alumnos por estado en los snapshots dados."""
+        """Cantidad de alumnos por estado en los snapshots dados.
+
+        universidad_id: Fase 4 multi-tenant, defensa en profundidad (D2) — si algún
+        snapshot_id fuera de otra universidad, el join lo excluye. None = sin filtro.
+        """
         if not snapshot_ids:
             return {}
-        result = await self.db.execute(
-            select(AvanceAlumno.estado, func.count())
-            .where(AvanceAlumno.snapshot_id.in_(snapshot_ids))
-            .group_by(AvanceAlumno.estado)
+        query = select(AvanceAlumno.estado, func.count()).where(
+            AvanceAlumno.snapshot_id.in_(snapshot_ids)
         )
+        if universidad_id is not None:
+            query = query.join(
+                AvanceSnapshot, AvanceSnapshot.id == AvanceAlumno.snapshot_id
+            ).where(AvanceSnapshot.universidad_id == universidad_id)
+        result = await self.db.execute(query.group_by(AvanceAlumno.estado))
         return {estado: total for estado, total in result.all()}
 
     async def get_alumnos_de_snapshot(self, snapshot_id: int) -> list[AvanceAlumno]:

@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 from app.main import app
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
+from app.models.enums import RolEnum
 
 
 def _set_user(**attrs):
@@ -14,6 +15,11 @@ def _set_user(**attrs):
     user = MagicMock(**base)
     app.dependency_overrides[get_current_user] = lambda: user
     app.dependency_overrides[get_db] = lambda: AsyncMock()
+    # Fase 4 multi-tenant: corregir_global / progreso_global ahora montan `ctx`
+    # para scopear por universidad activa.
+    app.dependency_overrides[get_universidad_activa] = lambda: ContextoUniversidad(
+        universidad_id=1, rol=RolEnum.TUTOR, es_superadmin=False
+    )
     return user
 
 

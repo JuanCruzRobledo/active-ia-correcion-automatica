@@ -105,7 +105,9 @@ async def listar_materias_configuradas(
 ) -> list[MateriaConfiguradaItem]:
     """Materias listas para snapshot (con fecha de su último snapshot). Gestor o admin."""
     require_gestor_or_admin(ctx)
-    return await DashboardLecturaService(db).materias_configuradas()
+    return await DashboardLecturaService(db).materias_configuradas(
+        universidad_id=ctx.universidad_id
+    )
 
 
 # ===================== Disparo manual con progreso en vivo (SSE) =====================
@@ -138,7 +140,9 @@ async def snapshot_stream(
     if materia_ids:
         ids = materia_ids
     else:
-        materias = await service.materia_repo.get_configuradas_dashboard()
+        materias = await service.materia_repo.get_configuradas_dashboard(
+            universidad_id=ctx.universidad_id
+        )
         ids = [m.id for m in materias]
 
     async def event_gen():
@@ -209,7 +213,7 @@ async def obtener_arbol(
 ) -> list[CohorteArbol]:
     """Árbol cohorte → cuatrimestre → materias para los selectores. Gestor o admin."""
     require_gestor_or_admin(ctx)
-    return await DashboardLecturaService(db).obtener_arbol()
+    return await DashboardLecturaService(db).obtener_arbol(universidad_id=ctx.universidad_id)
 
 
 @router.get("/avance", response_model=AvanceResponse)
@@ -222,7 +226,9 @@ async def obtener_avance(
 ) -> AvanceResponse:
     """Conteos por estado del último snapshot + título dinámico (gráfico de torta)."""
     require_gestor_or_admin(ctx)
-    return await DashboardLecturaService(db).avance(cuatrimestre_id, materia_id)
+    return await DashboardLecturaService(db).avance(
+        cuatrimestre_id, materia_id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get("/avance/detalle", response_model=list[AlumnoDetalle])
@@ -236,7 +242,9 @@ async def obtener_detalle(
 ) -> list[AlumnoDetalle]:
     """Lista de alumnos en un estado (alimenta el modal de detalle). Gestor o admin."""
     require_gestor_or_admin(ctx)
-    return await DashboardLecturaService(db).detalle(cuatrimestre_id, estado, materia_id)
+    return await DashboardLecturaService(db).detalle(
+        cuatrimestre_id, estado, materia_id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get("/avance/excel")
@@ -250,7 +258,7 @@ async def descargar_avance_excel(
     """Excel del avance: hoja Resumen (torta + conteos) + 1 hoja por estado. Gestor o admin."""
     require_gestor_or_admin(ctx)
     contenido, filename = await DashboardLecturaService(db).avance_excel(
-        cuatrimestre_id, materia_id
+        cuatrimestre_id, materia_id, universidad_id=ctx.universidad_id
     )
     return StreamingResponse(
         io.BytesIO(contenido),

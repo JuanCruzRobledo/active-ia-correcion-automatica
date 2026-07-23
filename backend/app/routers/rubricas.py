@@ -45,6 +45,7 @@ async def listar_rubricas(
     per_page: int = Query(20, ge=1, le=100, description="Items por página"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> RubricaList:
     """
     List all rubricas with optional filters and pagination.
@@ -73,6 +74,7 @@ async def listar_rubricas(
         include_inactive=include_inactive,
         page=page,
         per_page=per_page,
+        universidad_id=ctx.universidad_id,
     )
 
 
@@ -115,6 +117,7 @@ async def crear_rubrica(
     data,
     current_user=current_user,
     current_user_id=current_user.id,
+    universidad_id=ctx.universidad_id,
 )
 
 
@@ -141,6 +144,7 @@ async def obtener_rubrica(
     return await service.obtener_rubrica(
     rubrica_id,
     current_user=current_user,
+    universidad_id=ctx.universidad_id,
 )
 
 
@@ -173,6 +177,7 @@ async def actualizar_rubrica(
     rubrica_id,
     data,
     current_user=current_user,
+    universidad_id=ctx.universidad_id,
 )
 
 
@@ -197,6 +202,7 @@ async def eliminar_rubrica(
     await service.eliminar_rubrica(
     rubrica_id,
     current_user=current_user,
+    universidad_id=ctx.universidad_id,
 )
 
 
@@ -220,6 +226,7 @@ async def restaurar_rubrica(
     return await service.restaurar_rubrica(
     rubrica_id,
     current_user=current_user,
+    universidad_id=ctx.universidad_id,
 )
 
 
@@ -256,6 +263,7 @@ async def duplicar_rubrica(
     rubrica_id,
     data,
     current_user=current_user,
+    universidad_id=ctx.universidad_id,
 )
 
 

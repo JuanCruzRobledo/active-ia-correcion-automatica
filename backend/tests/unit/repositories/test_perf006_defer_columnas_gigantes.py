@@ -50,6 +50,9 @@ from app.repositories.correccion_repository import CorreccionRepository
 from app.repositories.entrega_repository import EntregaRepository
 from app.services.entrega_service import EntregaService
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 # SQLite no soporta ARRAY/JSONB nativos; se compilan a JSON sólo en el dialecto de tests.
 @compiles(JSONB, "sqlite")
@@ -86,13 +89,13 @@ async def db_session():
 
 async def _seed(db) -> dict:
     """Una entrega de código, una entrega PDF y una corrección con raw_response."""
-    materia = Materia(nombre="Programación 1", codigo="P1")
+    materia = Materia(universidad_id=UNIV_ID, nombre="Programación 1", codigo="P1")
     db.add(materia)
     await db.flush()
-    comi = Comision(materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
+    comi = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
     db.add(comi)
     await db.flush()
-    rubrica = Rubrica(
+    rubrica = Rubrica(universidad_id=UNIV_ID, 
         materia_id=materia.id,
         titulo="TP1",
         descripcion="Rúbrica de prueba",
@@ -105,7 +108,7 @@ async def _seed(db) -> dict:
     db.add(rubrica)
     await db.flush()
 
-    entrega_codigo = Entrega(
+    entrega_codigo = Entrega(universidad_id=UNIV_ID, 
         comision_id=comi.id,
         rubrica_id=rubrica.id,
         alumno_nombre="Ada Lovelace",
@@ -116,7 +119,7 @@ async def _seed(db) -> dict:
         archivos_incluidos=None,
         estado=EstadoEntregaEnum.SUBIDA,
     )
-    entrega_pdf = Entrega(
+    entrega_pdf = Entrega(universidad_id=UNIV_ID, 
         comision_id=comi.id,
         rubrica_id=rubrica.id,
         alumno_nombre="Alan Turing",
@@ -130,7 +133,7 @@ async def _seed(db) -> dict:
     db.add_all([entrega_codigo, entrega_pdf])
     await db.flush()
 
-    correccion = Correccion(
+    correccion = Correccion(universidad_id=UNIV_ID, 
         entrega_id=entrega_codigo.id,
         nota=85,
         criterios_json={"criterios": [{"id": "c1", "puntaje_obtenido": 85}]},

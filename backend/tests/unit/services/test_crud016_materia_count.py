@@ -17,6 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import sessionmaker
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 sqlite3.register_adapter(dict, json.dumps)
 sqlite3.register_adapter(list, json.dumps)
 
@@ -54,15 +57,15 @@ async def test_contar_comisiones_activas_por_materia(db_session):
     from app.models.materia import Materia
     from app.repositories.comision_repository import ComisionRepository
 
-    m1 = Materia(nombre="M1", codigo="M1")
-    m2 = Materia(nombre="M2", codigo="M2")
+    m1 = Materia(universidad_id=UNIV_ID, nombre="M1", codigo="M1")
+    m2 = Materia(universidad_id=UNIV_ID, nombre="M2", codigo="M2")
     db_session.add_all([m1, m2])
     await db_session.flush()
     db_session.add_all([
-        Comision(materia_id=m1.id, nombre="A", anio=2026, activa=True),
-        Comision(materia_id=m1.id, nombre="B", anio=2026, activa=True),
-        Comision(materia_id=m1.id, nombre="C", anio=2026, activa=False),  # inactiva no cuenta
-        Comision(materia_id=m2.id, nombre="D", anio=2026, activa=True),
+        Comision(universidad_id=UNIV_ID, materia_id=m1.id, nombre="A", anio=2026, activa=True),
+        Comision(universidad_id=UNIV_ID, materia_id=m1.id, nombre="B", anio=2026, activa=True),
+        Comision(universidad_id=UNIV_ID, materia_id=m1.id, nombre="C", anio=2026, activa=False),  # inactiva no cuenta
+        Comision(universidad_id=UNIV_ID, materia_id=m2.id, nombre="D", anio=2026, activa=True),
     ])
     await db_session.commit()
 

@@ -33,6 +33,9 @@ from app.models.materia import Materia
 from app.repositories.avance_repository import AvanceRepository
 from app.repositories.materia_repository import MateriaRepository
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 @compiles(JSONB, "sqlite")
 def _jsonb(element, compiler, **kw):  # noqa: D401
@@ -65,7 +68,7 @@ async def db_session():
 
 
 async def _snap(db, materia_id, generado_en, total=0) -> AvanceSnapshot:
-    s = AvanceSnapshot(
+    s = AvanceSnapshot(universidad_id=UNIV_ID, 
         materia_id=materia_id, generado_en=generado_en, total_alumnos=total
     )
     db.add(s)
@@ -78,9 +81,9 @@ async def _snap(db, materia_id, generado_en, total=0) -> AvanceSnapshot:
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_get_ultimos_snapshots_uno_por_materia_el_mas_reciente(db_session):
-    m1 = Materia(nombre="Prog 1", codigo="P1")
-    m2 = Materia(nombre="Prog 2", codigo="P2")
-    m3_sin = Materia(nombre="Redes", codigo="RED")  # sin snapshots
+    m1 = Materia(universidad_id=UNIV_ID, nombre="Prog 1", codigo="P1")
+    m2 = Materia(universidad_id=UNIV_ID, nombre="Prog 2", codigo="P2")
+    m3_sin = Materia(universidad_id=UNIV_ID, nombre="Redes", codigo="RED")  # sin snapshots
     db_session.add_all([m1, m2, m3_sin])
     await db_session.flush()
 
@@ -107,8 +110,8 @@ async def test_get_ultimos_snapshots_uno_por_materia_el_mas_reciente(db_session)
 async def test_get_ultimos_snapshots_coincide_con_get_ultimo_snapshot(db_session):
     """Paridad: para cada materia, get_ultimos_snapshots devuelve el MISMO snapshot
     que el get_ultimo_snapshot del loop viejo."""
-    m1 = Materia(nombre="Prog 1", codigo="P1")
-    m2 = Materia(nombre="Prog 2", codigo="P2")
+    m1 = Materia(universidad_id=UNIV_ID, nombre="Prog 1", codigo="P1")
+    m2 = Materia(universidad_id=UNIV_ID, nombre="Prog 2", codigo="P2")
     db_session.add_all([m1, m2])
     await db_session.flush()
     await _snap(db_session, m1.id, datetime(2026, 6, 1))
@@ -145,10 +148,10 @@ async def test_get_by_cuatrimestres_agrupa_y_coincide_con_por_cuatrimestre(db_se
     # q1: 2 materias activas + 1 inactiva (no debe aparecer). q2: 1 materia.
     db_session.add_all(
         [
-            Materia(nombre="Beta", codigo="B", cuatrimestre_id=q1.id, activa=True),
-            Materia(nombre="Alfa", codigo="A", cuatrimestre_id=q1.id, activa=True),
-            Materia(nombre="Zeta", codigo="Z", cuatrimestre_id=q1.id, activa=False),
-            Materia(nombre="Gamma", codigo="G", cuatrimestre_id=q2.id, activa=True),
+            Materia(universidad_id=UNIV_ID, nombre="Beta", codigo="B", cuatrimestre_id=q1.id, activa=True),
+            Materia(universidad_id=UNIV_ID, nombre="Alfa", codigo="A", cuatrimestre_id=q1.id, activa=True),
+            Materia(universidad_id=UNIV_ID, nombre="Zeta", codigo="Z", cuatrimestre_id=q1.id, activa=False),
+            Materia(universidad_id=UNIV_ID, nombre="Gamma", codigo="G", cuatrimestre_id=q2.id, activa=True),
         ]
     )
     await db_session.commit()

@@ -10,6 +10,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 5
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import verificar_pertenencia_universidad
 from app.models.comision import Comision
 from app.models.enums import RolEnum, TipoActividadEnum
 from app.repositories.comision_repository import (
@@ -52,7 +53,11 @@ class ComisionService:
         self.usuario_repo = UsuarioRepository(db)
 
     async def crear_comision(
-        self, data: ComisionCreate, current_user_id: int | None = None
+        self,
+        data: ComisionCreate,
+        current_user_id: int | None = None,
+        *,
+        universidad_id: int | None = None,
     ) -> ComisionDetailResponse:
         """
         Create a new comision.
@@ -60,12 +65,16 @@ class ComisionService:
         Args:
             data: Comision creation data (materia_id, nombre, anio, tutor_ids).
             current_user_id: ID of the user creating this comision (for audit log).
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id` — valida que
+                la materia pertenezca a la universidad activa (404 si es de otra),
+                defensa en profundidad además de `verificar_acceso_materia` (que
+                solo chequea rol/asignación, no universidad).
 
         Returns:
             ComisionDetailResponse with comision data and tutors.
 
         Raises:
-            HTTPException 404: Materia not found.
+            HTTPException 404: Materia not found (o de otra universidad).
             HTTPException 409: Comision with same materia+nombre+anio exists.
             HTTPException 400: Invalid tutor.
         """
@@ -76,6 +85,9 @@ class ComisionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Materia no encontrada o inactiva",
             )
+        verificar_pertenencia_universidad(
+            materia, universidad_id, detail="Materia no encontrada o inactiva"
+        )
 
         # Check if comision already exists (materia + nombre + anio). CRUD-011: si el
         # conflicto es con una comisión ELIMINADA, decirlo y ofrecer restaurar.
@@ -83,6 +95,7 @@ class ComisionService:
             materia_id=data.materia_id,
             nombre=data.nombre,
             anio=data.anio,
+            universidad_id=materia.universidad_id,
         )
         if conflicto is not None:
             if not conflicto.activa:
@@ -120,7 +133,10 @@ class ComisionService:
                 valid_tutores.append(usuario)
 
         # Create comision
+        # Fase 4 multi-tenant: universidad_id se PROPAGA desde la materia (denormalización
+        # en cascada, mismo patrón del backfill de Fase 0). No viene del request.
         comision = Comision(
+            universidad_id=materia.universidad_id,
             materia_id=data.materia_id,
             nombre=data.nombre,
             anio=data.anio,
@@ -159,6 +175,7 @@ class ComisionService:
         include_inactive: bool = False,
         page: int = 1,
         per_page: int = 20,
+        universidad_id: int | None = None,
     ) -> ComisionList:
         """
         List comisiones with optional filters and pagination.
@@ -171,6 +188,8 @@ class ComisionService:
             include_inactive: Include soft-deleted comisiones.
             page: Page number (1-indexed).
             per_page: Items per page.
+            universidad_id: Fase 4 multi-tenant (D6). `ctx.universidad_id`; None =
+                sin filtro (bypass superadmin sin universidad activa).
 
         Returns:
             ComisionList with paginated results.
@@ -183,6 +202,7 @@ class ComisionService:
             include_inactive=include_inactive,
             page=page,
             per_page=per_page,
+            universidad_id=universidad_id,
         )
 
         # PERF-007: conteos de tutores y entregas de TODAS las comisiones de la página
@@ -219,18 +239,21 @@ class ComisionService:
             per_page=per_page,
         )
 
-    async def obtener_comision(self, comision_id: int) -> ComisionDetailResponse:
+    async def obtener_comision(
+        self, comision_id: int, *, universidad_id: int | None = None
+    ) -> ComisionDetailResponse:
         """
         Get a comision by ID with materia and tutores info.
 
         Args:
             comision_id: Comision's database ID.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             ComisionDetailResponse with full comision data.
 
         Raises:
-            HTTPException 404: Comision not found.
+            HTTPException 404: Comision not found (o de otra universidad).
         """
         comision = await self.comision_repo.get_by_id_with_relations(comision_id)
 
@@ -239,6 +262,9 @@ class ComisionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Comisión no encontrada",
             )
+        verificar_pertenencia_universidad(
+            comision, universidad_id, detail="Comisión no encontrada"
+        )
 
         # Build materia info
         materia_info = MateriaInfo(
@@ -284,6 +310,8 @@ class ComisionService:
         self,
         comision_id: int,
         data: ComisionUpdate,
+        *,
+        universidad_id: int | None = None,
     ) -> ComisionDetailResponse:
         """
         Update an existing comision.
@@ -291,12 +319,13 @@ class ComisionService:
         Args:
             comision_id: Comision's database ID.
             data: Comision update data (nombre, tutor_ids).
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             ComisionDetailResponse with updated comision data and tutors.
 
         Raises:
-            HTTPException 404: Comision not found.
+            HTTPException 404: Comision not found (o de otra universidad).
             HTTPException 409: Updated nombre conflicts with existing comision.
             HTTPException 400: Invalid tutor.
         """
@@ -307,6 +336,9 @@ class ComisionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Comisión no encontrada",
             )
+        verificar_pertenencia_universidad(
+            comision, universidad_id, detail="Comisión no encontrada"
+        )
 
         # Update only provided fields
         if data.nombre is not None:
@@ -369,6 +401,8 @@ class ComisionService:
         self,
         comision_id: int,
         data: ComisionMoodleUpdate,
+        *,
+        universidad_id: int | None = None,
     ) -> ComisionDetailResponse:
         """
         Update only Moodle config fields (moodle_group_id, moodle_group_code).
@@ -376,12 +410,13 @@ class ComisionService:
         Args:
             comision_id: Comision's database ID.
             data: Moodle config fields to update.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             ComisionDetailResponse with updated comision data.
 
         Raises:
-            HTTPException 404: Comision not found.
+            HTTPException 404: Comision not found (o de otra universidad).
         """
         comision = await self.comision_repo.get_by_id(comision_id)
 
@@ -390,6 +425,9 @@ class ComisionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Comisión no encontrada",
             )
+        verificar_pertenencia_universidad(
+            comision, universidad_id, detail="Comisión no encontrada"
+        )
 
         # CRUD-010: nullable -> model_fields_set para poder desvincular (null explícito).
         if "moodle_group_id" in data.model_fields_set:
@@ -408,7 +446,9 @@ class ComisionService:
             comision_id=comision_id,
         )
 
-    async def eliminar_comision(self, comision_id: int) -> None:
+    async def eliminar_comision(
+        self, comision_id: int, *, universidad_id: int | None = None
+    ) -> None:
         """
         Delete a comision — soft or hard depending on ALLOW_HARD_DELETE setting.
 
@@ -422,9 +462,10 @@ class ComisionService:
 
         Args:
             comision_id: Comision's database ID.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Raises:
-            HTTPException 404: Comision not found.
+            HTTPException 404: Comision not found (o de otra universidad).
         """
         from app.core.config import settings
 
@@ -435,20 +476,26 @@ class ComisionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Comisión no encontrada o ya eliminada",
             )
+        verificar_pertenencia_universidad(
+            comision, universidad_id, detail="Comisión no encontrada o ya eliminada"
+        )
         await self.comision_repo.soft_delete(comision)
 
-    async def restaurar_comision(self, comision_id: int) -> ComisionResponse:
+    async def restaurar_comision(
+        self, comision_id: int, *, universidad_id: int | None = None
+    ) -> ComisionResponse:
         """
         Restore a soft-deleted comision.
 
         Args:
             comision_id: Comision's database ID.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             ComisionResponse with restored comision data.
 
         Raises:
-            HTTPException 404: Comision not found.
+            HTTPException 404: Comision not found (o de otra universidad).
             HTTPException 400: Comision is not deleted.
         """
         comision = await self.comision_repo.get_by_id(comision_id)
@@ -458,6 +505,9 @@ class ComisionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Comisión no encontrada",
             )
+        verificar_pertenencia_universidad(
+            comision, universidad_id, detail="Comisión no encontrada"
+        )
 
         if comision.activa:
             raise HTTPException(
@@ -473,6 +523,8 @@ class ComisionService:
         self,
         comision_id: int,
         data: TutoresAssign,
+        *,
+        universidad_id: int | None = None,
     ) -> TutoresResponse:
         """
         Assign tutors to a comision (replaces existing assignments).
@@ -480,12 +532,13 @@ class ComisionService:
         Args:
             comision_id: Comision's database ID.
             data: TutoresAssign with list of tutor IDs.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             TutoresResponse with assigned tutors.
 
         Raises:
-            HTTPException 404: Comision not found or tutor not found.
+            HTTPException 404: Comision not found or tutor not found (o de otra universidad).
             HTTPException 400: User is not a tutor or is inactive.
         """
         # Validate comision exists
@@ -495,6 +548,9 @@ class ComisionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Comisión no encontrada o inactiva",
             )
+        verificar_pertenencia_universidad(
+            comision, universidad_id, detail="Comisión no encontrada o inactiva"
+        )
 
         # Validate all tutors exist and have TUTOR role
         valid_tutores = []

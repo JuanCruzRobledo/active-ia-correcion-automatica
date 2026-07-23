@@ -268,7 +268,7 @@ def _run_minimo(materia_id: int, cuatrimestre_id: int, generado_por_id: int) -> 
         nota_final=6,
         habilitado_final="No aplica (promocionó)",
     )
-    run = CierreCursadaRun(
+    run = CierreCursadaRun(universidad_id=UNIV_ID, 
         materia_id=materia_id,
         cuatrimestre_id=cuatrimestre_id,
         umbral_tp_pct=50.0,
@@ -298,7 +298,7 @@ async def test_pbt_historico_append_only_dos_corridas_coexisten(db_session):
     db_session.add_all([usuario, cohorte])
     await db_session.flush()
     cuatrimestre = Cuatrimestre(nombre="1C", cohorte_id=cohorte.id, numero=1)
-    materia = Materia(nombre="Programación 1", codigo="P1")
+    materia = Materia(universidad_id=UNIV_ID, nombre="Programación 1", codigo="P1")
     db_session.add_all([cuatrimestre, materia])
     await db_session.flush()
 
@@ -349,7 +349,7 @@ def test_excel_cierre_usa_paleta_y_bordes_de_excel_estilos():
         tp_ok=True, autoeval_ok=True, p1_max=60.0, p2_max=60.0, tpi_max=60.0,
         estado=EstadoCierreEnum.PROMOCIONA, nota_final=6, habilitado_final="No aplica (promocionó)",
     )
-    run = CierreCursadaRun(
+    run = CierreCursadaRun(universidad_id=UNIV_ID, 
         id=1, materia_id=1, cuatrimestre_id=1, umbral_tp_pct=50.0,
         reglas_snapshot={}, generado_por_id=1, total_alumnos=1,
         total_promociona=1, total_regulariza=0, total_recursa=0,
@@ -450,6 +450,9 @@ def test_bug_alumno_grupo_separado_se_resuelve_por_mapa_autoritativo():
 # **Validates: Requirements 3.7**
 
 from hypothesis import given, strategies as st  # noqa: E402
+
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
 
 
 @given(ids_grupos=st.lists(st.sampled_from([100, 200, 300, 999, None]), min_size=0, max_size=6))

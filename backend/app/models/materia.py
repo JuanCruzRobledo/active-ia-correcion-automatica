@@ -36,10 +36,10 @@ class Materia(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     # Fase 0 multi-tenant (openspec/changes/multi-tenant-modelo-datos): denormalizada
     # en cascada, raíz del árbol (el resto de las tablas la propagan desde acá).
-    # Nullable por ahora (se endurece a NOT NULL vía migración R7, post-backfill).
-    universidad_id: Mapped[int | None] = mapped_column(
+    # NOT NULL desde migración R7 (Fase 0); Fase 4 alinea el type hint.
+    universidad_id: Mapped[int] = mapped_column(
         ForeignKey("universidades.id"),
-        nullable=True,
+        nullable=False,
         index=True,
     )
     codigo: Mapped[str] = mapped_column(

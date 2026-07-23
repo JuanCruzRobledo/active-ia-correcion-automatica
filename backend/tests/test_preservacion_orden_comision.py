@@ -81,6 +81,9 @@ from app.repositories.cierre_cursada_repository import CierreCursadaRepository
 from app.repositories.comision_repository import ComisionRepository
 from app.services.excel_cierre_cursada import _agrupar_por_comision, generar_excel_cierre
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 # SQLite no tiene JSONB nativo; se compila como JSON (mismo patrón que
 # test_orden_natural_comision.py / test_cierre_cursada_service.py — sólo afecta al
@@ -161,7 +164,7 @@ async def db_session():
 
 
 async def _crear_materia(db_session, *, codigo: str = "P1", nombre: str = "Programación 1") -> Materia:
-    materia = Materia(nombre=nombre, codigo=codigo)
+    materia = Materia(universidad_id=UNIV_ID, nombre=nombre, codigo=codigo)
     db_session.add(materia)
     await db_session.flush()
     return materia
@@ -266,10 +269,10 @@ async def test_prop3_anio_desc_es_criterio_primario_del_listado(db_session):
     orden alfabético por nombre. **Validates: Requirements 3.3**"""
     materia = await _crear_materia(db_session)
     db_session.add_all([
-        Comision(materia_id=materia.id, nombre="COMI-2", anio=2025),
-        Comision(materia_id=materia.id, nombre="COMI-1", anio=2026),
-        Comision(materia_id=materia.id, nombre="COMI-2", anio=2026),
-        Comision(materia_id=materia.id, nombre="COMI-1", anio=2025),
+        Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="COMI-2", anio=2025),
+        Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="COMI-1", anio=2026),
+        Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="COMI-2", anio=2026),
+        Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="COMI-1", anio=2025),
     ])
     await db_session.commit()
 
@@ -288,9 +291,9 @@ async def test_prop3_filtro_por_materia_no_altera_conjunto_ni_total(db_session):
     materia_a = await _crear_materia(db_session, codigo="P1", nombre="Programación 1")
     materia_b = await _crear_materia(db_session, codigo="P2", nombre="Programación 2")
     db_session.add_all([
-        Comision(materia_id=materia_a.id, nombre="COMI-1", anio=2026),
-        Comision(materia_id=materia_a.id, nombre="COMI-2", anio=2026),
-        Comision(materia_id=materia_b.id, nombre="COMI-1", anio=2026),
+        Comision(universidad_id=UNIV_ID, materia_id=materia_a.id, nombre="COMI-1", anio=2026),
+        Comision(universidad_id=UNIV_ID, materia_id=materia_a.id, nombre="COMI-2", anio=2026),
+        Comision(universidad_id=UNIV_ID, materia_id=materia_b.id, nombre="COMI-1", anio=2026),
     ])
     await db_session.commit()
 
@@ -311,9 +314,9 @@ async def test_prop3_filtro_por_anio_tutor_y_coordinador(db_session):
     coordinador = await _crear_usuario(db_session, username="coord1", rol="COORDINADOR")
     db_session.add(CoordinadorMateria(coordinador_id=coordinador.id, materia_id=materia.id))
 
-    c_2025 = Comision(materia_id=materia.id, nombre="COMI-1", anio=2025)
-    c_2026_con_tutor = Comision(materia_id=materia.id, nombre="COMI-1", anio=2026)
-    c_2026_sin_tutor = Comision(materia_id=materia.id, nombre="COMI-2", anio=2026)
+    c_2025 = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="COMI-1", anio=2025)
+    c_2026_con_tutor = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="COMI-1", anio=2026)
+    c_2026_sin_tutor = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="COMI-2", anio=2026)
     db_session.add_all([c_2025, c_2026_con_tutor, c_2026_sin_tutor])
     await db_session.flush()
     db_session.add(ComisionTutor(comision_id=c_2026_con_tutor.id, tutor_id=tutor.id))
@@ -342,7 +345,7 @@ async def test_prop3_paginacion_concatena_al_mismo_orden_y_total_no_cambia(db_se
     ve afectado por `page`/`per_page`). **Validates: Requirements 3.7**"""
     materia = await _crear_materia(db_session)
     db_session.add_all([
-        Comision(materia_id=materia.id, nombre=f"COMI-{i}", anio=2026) for i in range(1, 6)
+        Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre=f"COMI-{i}", anio=2026) for i in range(1, 6)
     ])
     await db_session.commit()
 
@@ -405,7 +408,7 @@ def test_prop4_intra_bloque_ordena_por_apellido_nombre():
     sin importar el orden de llegada -- independiente del criterio de orden de
     comisiones (Property 1), que sólo reordena los BLOQUES.
     **Validates: Requirements 3.5**"""
-    run = CierreCursadaRun(
+    run = CierreCursadaRun(universidad_id=UNIV_ID, 
         id=1, materia_id=1, cuatrimestre_id=1, examenes_snapshot=[],
         generado_por_id=1, total_alumnos=3,
         total_promociona=3, total_regulariza=0, total_recursa=0,
@@ -467,7 +470,7 @@ async def test_prop4_desempate_nombre_comision_identico_por_apellido_nombre(db_s
     await db_session.flush()
     usuario = await _crear_usuario(db_session, username="admin1")
 
-    run = CierreCursadaRun(
+    run = CierreCursadaRun(universidad_id=UNIV_ID, 
         materia_id=materia.id, cuatrimestre_id=cuatrimestre.id,
         generado_por_id=usuario.id, total_alumnos=3,
     )
@@ -515,7 +518,7 @@ async def test_prop5_nulos_al_final_en_corrida_de_cierre(db_session):
     await db_session.flush()
     usuario = await _crear_usuario(db_session, username="admin2")
 
-    run = CierreCursadaRun(
+    run = CierreCursadaRun(universidad_id=UNIV_ID, 
         materia_id=materia.id, cuatrimestre_id=cuatrimestre.id,
         generado_por_id=usuario.id, total_alumnos=4,
     )
@@ -546,7 +549,7 @@ async def test_prop5_nulos_al_final_en_reporte_de_avance(db_session):
     `None` quedan al FINAL, sin excepción, en `get_alumnos_de_snapshot` y en
     `get_alumnos_por_estado`. **Validates: Requirements 3.6**"""
     materia = await _crear_materia(db_session)
-    snapshot = AvanceSnapshot(materia_id=materia.id, total_alumnos=4)
+    snapshot = AvanceSnapshot(universidad_id=UNIV_ID, materia_id=materia.id, total_alumnos=4)
     snapshot.alumnos = [
         _alumno_avance("COMI-2", "Aa", "Bb"),
         _alumno_avance(None, "Cc", "Dd"),

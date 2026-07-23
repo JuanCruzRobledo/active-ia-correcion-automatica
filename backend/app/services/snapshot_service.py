@@ -308,7 +308,9 @@ class SnapshotService:
             if on_progress is not None:
                 on_progress(i, total)
 
+        # Fase 4 multi-tenant: universidad_id se PROPAGA desde la materia.
         snapshot = AvanceSnapshot(
+            universidad_id=materia.universidad_id,
             materia_id=materia_id,
             unidad_actual=materia.unidad_actual,
             riesgo_medio_desde=materia.riesgo_medio_desde,

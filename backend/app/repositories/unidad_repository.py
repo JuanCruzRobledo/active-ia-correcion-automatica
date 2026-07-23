@@ -24,12 +24,13 @@ class UnidadRepository:
         result = await self.db.execute(select(Unidad).where(Unidad.id == unidad_id))
         return result.scalar_one_or_none()
 
-    async def get_by_materia(self, materia_id: int) -> list[Unidad]:
-        result = await self.db.execute(
-            select(Unidad)
-            .where(Unidad.materia_id == materia_id)
-            .order_by(Unidad.numero.asc())
-        )
+    async def get_by_materia(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> list[Unidad]:
+        query = select(Unidad).where(Unidad.materia_id == materia_id)
+        if universidad_id is not None:
+            query = query.where(Unidad.universidad_id == universidad_id)
+        result = await self.db.execute(query.order_by(Unidad.numero.asc()))
         return list(result.scalars().all())
 
     async def exists_numero(
@@ -80,7 +81,11 @@ class UnidadRepository:
         await self.db.commit()
 
     async def sincronizar(
-        self, materia_id: int, nuevas: list[tuple[int, int, str | None]]
+        self,
+        materia_id: int,
+        nuevas: list[tuple[int, int, str | None]],
+        *,
+        universidad_id: int | None = None,
     ) -> list[Unidad]:
         """UPSERT de las unidades de la materia matcheando por moodle_section_id.
 
@@ -123,6 +128,7 @@ class UnidadRepository:
                 resultado.append(existente)
             else:
                 unidad = Unidad(
+                    universidad_id=universidad_id,
                     materia_id=materia_id,
                     numero=numero,
                     moodle_section_id=section_id,

@@ -54,6 +54,9 @@ from app.services.cierre_cursada_service import CierreCursadaService
 from app.services.moodle_bulk_parser import construir_indice_nombre_cmid
 from app.services.moodle_service import MoodleAuthError, MoodleConnectionError
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 # ===================================================================================
 # Nivel 1 — contrato HTTP (mockeando el service completo)
@@ -227,7 +230,7 @@ async def test_excel_run_exitoso_devuelve_xlsx_con_layout_corregido():
         "Pérez", "Bruno", "bruno@x.com", "REGULARIZA", global_valor=None, nota_final=None
     )
     run = SimpleNamespace(
-        id=1, materia_id=10, cuatrimestre_id=3,
+        id=1, materia_id=10, cuatrimestre_id=3, universidad_id=1,
         examenes_snapshot=examenes_snapshot,
         generado_por_id=1, total_alumnos=2,
         total_promociona=1, total_regulariza=1, total_recursa=0,
@@ -448,17 +451,17 @@ async def _crear_fixture_materia_con_examenes(db_session) -> tuple[Materia, int,
     db_session.add_all([cuatrimestre, materia])
     await db_session.flush()
 
-    comision = Comision(materia_id=materia.id, nombre="Comisión 1", anio=2026, moodle_group_id=342)
+    comision = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="Comisión 1", anio=2026, moodle_group_id=342)
     db_session.add(comision)
     await db_session.flush()
     db_session.add(ComisionTutor(comision_id=comision.id, tutor_id=usuario.id))
 
     examenes = [
-        ExamenMateria(materia_id=materia.id, tipo="PARCIAL", moodle_cmid=101,
+        ExamenMateria(universidad_id=UNIV_ID, materia_id=materia.id, tipo="PARCIAL", moodle_cmid=101,
                        modo_aprobacion="NUMERICO", nota_minima=60, orden=1),
-        ExamenMateria(materia_id=materia.id, tipo="PARCIAL", moodle_cmid=102,
+        ExamenMateria(universidad_id=UNIV_ID, materia_id=materia.id, tipo="PARCIAL", moodle_cmid=102,
                        modo_aprobacion="NUMERICO", nota_minima=60, orden=2),
-        ExamenMateria(materia_id=materia.id, tipo="GLOBAL", moodle_cmid=103,
+        ExamenMateria(universidad_id=UNIV_ID, materia_id=materia.id, tipo="GLOBAL", moodle_cmid=103,
                        modo_aprobacion="NUMERICO", nota_minima=6, orden=3),
     ]
     db_session.add_all(examenes)

@@ -33,6 +33,9 @@ from app.models.rubrica import Rubrica
 from app.models.usuario import Usuario
 from app.repositories.entrega_repository import EntregaRepository
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 # SQLite no soporta ARRAY/JSONB nativos; se compilan a JSON sólo en el dialecto de tests.
 @compiles(JSONB, "sqlite")
@@ -68,11 +71,11 @@ async def db_session():
 
 async def _seed(db) -> tuple[int, int]:
     """Dos comisiones con entregas variadas. Devuelve (comi_a_id, comi_b_id)."""
-    materia = Materia(nombre="Programación 1", codigo="P1")
+    materia = Materia(universidad_id=UNIV_ID, nombre="Programación 1", codigo="P1")
     db.add(materia)
     await db.flush()
-    comi_a = Comision(materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
-    comi_b = Comision(materia_id=materia.id, nombre="C1-2", anio=2026, activa=True)
+    comi_a = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
+    comi_b = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-2", anio=2026, activa=True)
     db.add_all([comi_a, comi_b])
     await db.flush()
 
@@ -81,7 +84,7 @@ async def _seed(db) -> tuple[int, int]:
     def _mk(comi_id, estado, *, archivado=False, created=None):
         nonlocal rid
         rid += 1
-        return Entrega(
+        return Entrega(universidad_id=UNIV_ID, 
             comision_id=comi_id,
             rubrica_id=1,  # FK no forzada en SQLite; el count no la usa
             alumno_nombre=f"Alumno {rid}",

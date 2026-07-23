@@ -38,7 +38,7 @@ async def get_admin_stats(
     **Permissions**: Admin only
     """
     require_admin(ctx)
-    return await DashboardService.get_admin_stats(db)
+    return await DashboardService.get_admin_stats(db, universidad_id=ctx.universidad_id)
 
 
 @router.get("/coordinador/stats", response_model=CoordinadorStatsResponse)
@@ -59,7 +59,9 @@ async def get_coordinador_stats(
     **Permissions**: Coordinador only
     """
     require_coordinador(ctx)
-    return await DashboardService.get_coordinador_stats(db, current_user.id)
+    return await DashboardService.get_coordinador_stats(
+        db, current_user.id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get("/tutor/stats", response_model=TutorStatsResponse)
@@ -80,4 +82,6 @@ async def get_tutor_stats(
     **Permissions**: Tutor only
     """
     require_tutor(ctx)
-    return await DashboardService.get_tutor_stats(db, current_user.id)
+    return await DashboardService.get_tutor_stats(
+        db, current_user.id, universidad_id=ctx.universidad_id
+    )

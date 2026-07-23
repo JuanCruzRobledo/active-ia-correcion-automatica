@@ -70,7 +70,7 @@ async def listar_unidades(
     require_coordinador_or_admin(ctx)
     await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = UnidadService(db)
-    return await service.listar_unidades(materia_id)
+    return await service.listar_unidades(materia_id, universidad_id=ctx.universidad_id)
 
 
 @router.post(
@@ -89,7 +89,7 @@ async def crear_unidad(
     require_coordinador_or_admin(ctx)
     await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = UnidadService(db)
-    return await service.crear_unidad(materia_id, data)
+    return await service.crear_unidad(materia_id, data, universidad_id=ctx.universidad_id)
 
 
 @router.put("/unidades/{unidad_id}", response_model=UnidadResponse)
@@ -104,7 +104,9 @@ async def actualizar_unidad(
     require_coordinador_or_admin(ctx)
     await verificar_acceso_unidad(db, current_user, ctx, unidad_id)
     service = UnidadService(db)
-    return await service.actualizar_unidad(unidad_id, data)
+    return await service.actualizar_unidad(
+        unidad_id, data, universidad_id=ctx.universidad_id
+    )
 
 
 @router.put("/materias/{materia_id}/unidades/sync", response_model=list[UnidadResponse])
@@ -133,7 +135,7 @@ async def eliminar_unidad(
     require_coordinador_or_admin(ctx)
     await verificar_acceso_unidad(db, current_user, ctx, unidad_id)
     service = UnidadService(db)
-    await service.eliminar_unidad(unidad_id)
+    await service.eliminar_unidad(unidad_id, universidad_id=ctx.universidad_id)
 
 
 # ===================== Componentes de la unidad (dinámicos) =====================
@@ -165,7 +167,9 @@ async def set_componentes_unidad(
     require_coordinador_or_admin(ctx)
     await verificar_acceso_unidad(db, current_user, ctx, unidad_id)
     service = UnidadService(db)
-    return await service.set_componentes_unidad(unidad_id, data)
+    return await service.set_componentes_unidad(
+        unidad_id, data, universidad_id=ctx.universidad_id
+    )
 
 
 # ===================== Config dashboard de la Materia =====================
