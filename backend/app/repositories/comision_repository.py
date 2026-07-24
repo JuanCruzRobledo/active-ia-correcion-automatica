@@ -66,13 +66,21 @@ class ComisionRepository:
         # PERF-012: se eager-loadea también el usuario de cada tutor (con load_only de
         # las columnas que usa la respuesta), para que el service NO haga un
         # get_by_id(tutor_id) por tutor en loop.
+        # CRUD-017: 'activo' DEBE estar en load_only: el service filtra tutores
+        # inactivos con tutor.activo; si falta, ese acceso dispara un lazy-load
+        # fuera del greenlet async → MissingGreenlet → 500.
         result = await self.db.execute(
             select(Comision)
             .options(
                 selectinload(Comision.materia),
                 selectinload(Comision.tutores)
                 .selectinload(ComisionTutor.tutor)
-                .load_only(Usuario.id, Usuario.username, Usuario.nombre),
+                .load_only(
+                    Usuario.id,
+                    Usuario.username,
+                    Usuario.nombre,
+                    Usuario.activo,
+                ),
             )
             .where(Comision.id == comision_id)
         )
