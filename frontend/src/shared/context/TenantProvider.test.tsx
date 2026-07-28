@@ -117,6 +117,34 @@ describe('useTenant / TenantProvider (D1: contexto reactivo sobre localStorage)'
     expect(clearSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('cambiarUniversidad cancela las queries en vuelo ANTES de limpiar la caché (fix ventana de carrera D4)', async () => {
+    setSession(makeUser({ rol: 'TUTOR', universidad_activa_id: 1 }));
+    vi.mocked(switchUniversidad).mockImplementation(async (id) => {
+      setSession(makeUser({ rol: 'COORDINADOR', universidad_activa_id: id ?? undefined as never }));
+      window.dispatchEvent(new Event(AUTH_SESSION_EVENT));
+      return { access_token: 'JWT2', token_type: 'bearer', user: makeUser({ universidad_activa_id: 2 }) };
+    });
+
+    const { result } = renderHook(() => useTenant(), { wrapper: Wrapper });
+
+    const orden: string[] = [];
+    vi.spyOn(queryClient, 'cancelQueries').mockImplementation(async () => {
+      orden.push('cancelQueries');
+    });
+    vi.spyOn(queryClient, 'clear').mockImplementation(() => {
+      orden.push('clear');
+    });
+
+    await act(async () => {
+      await result.current.cambiarUniversidad(2);
+    });
+
+    // Sin cancelar primero, una respuesta tardía del tenant anterior podría
+    // reescribirse en la caché ya "limpia" del tenant nuevo si el mismo query
+    // key sigue montado — por eso el orden importa, no solo que ambas se llamen.
+    expect(orden).toEqual(['cancelQueries', 'clear']);
+  });
+
   it('switch fallido: NO llama a queryClient.clear() y la sesión anterior queda intacta', async () => {
     setSession(makeUser({ rol: 'TUTOR', universidad_activa_id: 1 }));
     vi.mocked(switchUniversidad).mockRejectedValue(new Error('403'));

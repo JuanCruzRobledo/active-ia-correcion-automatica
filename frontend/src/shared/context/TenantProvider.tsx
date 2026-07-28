@@ -12,6 +12,10 @@
  * TOTALIDAD de la caché de React Query con `queryClient.clear()`, nunca
  * `invalidateQueries()` selectivo — `invalidate` deja servidos los datos
  * viejos mientras revalida, lo que filtraría datos de un tenant a otro.
+ * Antes de `clear()` se cancelan las queries en vuelo (`cancelQueries()`):
+ * sin esto, una respuesta tardía del tenant anterior que resuelve después
+ * del switch puede reescribirse en la caché ya "limpia" del tenant nuevo si
+ * el mismo query key sigue montado.
  *
  * El hook `useTenant()` vive en `./useTenant.ts` (y el Context crudo en
  * `./tenant-context.ts`): este archivo sólo exporta el componente
@@ -52,6 +56,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     // (el listener de arriba actualiza `user`). Si falla, no se persiste nada
     // — la sesión anterior queda intacta y NO se limpia la caché.
     await switchUniversidad(universidadId);
+    await queryClient.cancelQueries();
     queryClient.clear();
   };
 
