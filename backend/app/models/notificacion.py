@@ -80,6 +80,14 @@ class NotificacionCronConfig(Base, TimestampMixin):
     usuario_id: Mapped[int | None] = mapped_column(
         ForeignKey("usuarios.id"), nullable=True
     )
+    # Fase 3 multi-tenant (OQ2): universidad activa para el cron (sin JWT/ctx).
+    # Nullable a nivel DB (mismo patrón que usuario_id de arriba: singleton que
+    # empieza sin configurar); el service exige AMBOS al activar el cron
+    # (NotificacionConfigService.actualizar). R8 backfillea TUPaD en las filas
+    # existentes al migrar (openspec/changes/multi-tenant-moodle-services).
+    universidad_id: Mapped[int | None] = mapped_column(
+        ForeignKey("universidades.id"), nullable=True
+    )
     # 0 = lunes ... 6 = domingo (convención APScheduler day_of_week numérica).
     dia_semana: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"

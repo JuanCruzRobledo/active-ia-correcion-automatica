@@ -286,6 +286,11 @@ def register_routers(app: FastAPI) -> None:
 
     app.include_router(public_docs_router, prefix="/api/v1")
 
+    # Fase 5 multi-tenant (multi-tenant-frontend-workspace) — ABM de universidades
+    from app.routers.universidades import router as universidades_router
+
+    app.include_router(universidades_router, prefix="/api/v1")
+
 
 # Crear instancia de la aplicacion
 app = create_application()

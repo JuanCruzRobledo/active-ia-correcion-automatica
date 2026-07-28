@@ -10,7 +10,7 @@ Ref: docs/specs/15-ACTIVIDAD-RECIENTE-AUDITORIA.md
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import require_admin
 from app.models import Usuario
 from app.models.enums import TipoActividadEnum
@@ -31,6 +31,7 @@ async def get_actividades_recientes(
     tipo: TipoActividadEnum | None = Query(None, description="Filtrar por tipo de actividad"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ActividadListResponse:
     """
     Obtiene las actividades más recientes del sistema.
@@ -44,7 +45,7 @@ async def get_actividades_recientes(
     - Creación de rúbricas
     """
     # Verificar que el usuario es admin
-    require_admin(current_user)
+    require_admin(ctx)
 
     service = ActividadService(db)
     return await service.get_actividades_recientes(

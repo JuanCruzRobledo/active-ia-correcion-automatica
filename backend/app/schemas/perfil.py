@@ -56,9 +56,20 @@ class PerfilResponse(BaseModel):
         None,
         description="Últimos 4 caracteres de la API key de OpenRouter si está configurada",
     )
-    moodle_username: str | None = Field(None, description="Usuario Moodle configurado")
-    moodle_host: str | None = Field(None, description="Host Moodle configurado")
-    moodle_configured: bool = Field(default=False, description="True si tiene credenciales Moodle")
+    moodle_username: str | None = Field(
+        None, description="Usuario Moodle configurado (de la membresía en la universidad activa)"
+    )
+    moodle_host: str | None = Field(
+        None,
+        description=(
+            "Host Moodle de la universidad activa — READ-ONLY (Fase 3 multi-tenant: "
+            "propiedad de la Universidad, no editable desde el perfil)"
+        ),
+    )
+    moodle_configured: bool = Field(
+        default=False,
+        description="True si la membresía activa tiene credenciales Moodle configuradas",
+    )
     activo: bool
     created_at: datetime
     updated_at: datetime

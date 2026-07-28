@@ -19,6 +19,12 @@ from app.services.entrega_service import EntregaService
 def service():
     svc = EntregaService(AsyncMock())
     svc.entrega_repo = AsyncMock()
+    # Fase 4 multi-tenant: crear_o_actualizar_desde_bytes resuelve la comisión
+    # para propagarle universidad_id a la entrega nueva.
+    svc.comision_repo = AsyncMock()
+    svc.comision_repo.get_active_by_id = AsyncMock(
+        return_value=MagicMock(universidad_id=1)
+    )
     svc.consolidacion_service = MagicMock()
     svc.consolidacion_service.consolidar_zip = MagicMock(return_value=("codigo consolidado", ["main.py"]))
     svc.consolidacion_service.consolidar_archivo_individual = MagicMock(return_value=("codigo", ["main.py"]))

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import (
     filtrar_entregas_accesibles,
     verificar_acceso_comision_o_materia,
@@ -54,6 +54,7 @@ async def descargar_pdf_correccion(
     correccion_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     """
     Download PDF feedback document for a correction.
@@ -63,7 +64,7 @@ async def descargar_pdf_correccion(
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-01
     """
     # SEC-004: el guard va ANTES de generar el PDF de devolución del alumno.
-    await verificar_acceso_correccion(db, current_user, correccion_id)
+    await verificar_acceso_correccion(db, current_user, ctx, correccion_id)
 
     # Generate PDF
     pdf_service = PDFService(db)
@@ -101,6 +102,7 @@ async def descargar_pdfs_lote(
     rubrica_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     """
     Download ZIP file with PDFs for all corrected entregas.
@@ -110,7 +112,7 @@ async def descargar_pdfs_lote(
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-02
     """
     # SEC-004: el ZIP contiene las devoluciones de toda la comisión.
-    await verificar_acceso_comision_o_materia(db, current_user, comision_id)
+    await verificar_acceso_comision_o_materia(db, current_user, ctx, comision_id)
 
     pdf_service = PDFService(db)
     zip_bytes, zip_filename = await pdf_service.generar_zip_pdfs(
@@ -139,6 +141,7 @@ async def descargar_pdfs_seleccionados(
     data: EntregaDescargarPDFsRequest,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     """
     Download ZIP with PDFs for a user-selected subset of corrected entregas.
@@ -151,7 +154,7 @@ async def descargar_pdfs_seleccionados(
     # SEC-004: partición. El ZIP se arma solo con las accesibles; los omitidos
     # viajan en un header (la respuesta es binaria, no hay JSON donde ponerlos).
     permitidos, denegados = await filtrar_entregas_accesibles(
-        db, current_user, data.entrega_ids
+        db, current_user, ctx, data.entrega_ids
     )
     if not permitidos:
         raise HTTPException(
@@ -185,6 +188,7 @@ async def exportar_notas_excel(
     rubrica_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     """
     Export grades to Excel format.
@@ -194,7 +198,7 @@ async def exportar_notas_excel(
     **Ref:** docs/specs/03-REQUISITOS-FUNCIONALES.md HU-DOC-03
     """
     # SEC-004: el Excel es el acta OFICIAL de notas completa de la comisión.
-    await verificar_acceso_comision_o_materia(db, current_user, comision_id)
+    await verificar_acceso_comision_o_materia(db, current_user, ctx, comision_id)
 
     excel_service = ExcelService(db)
     excel_bytes, excel_filename = await excel_service.exportar_notas_excel(

@@ -33,6 +33,8 @@ from app.models.enums import (
     TipoRubricaEnum,
 )
 from app.models.usuario import Usuario
+from app.models.universidad import Universidad
+from app.models.usuario_universidad import UsuarioUniversidad
 from app.models.cohorte import Cohorte, Cuatrimestre
 from app.models.materia import CoordinadorMateria, Materia
 from app.models.unidad import Unidad
@@ -77,6 +79,8 @@ __all__ = [
     "EstadoCierreEnum",
     # Models
     "Usuario",
+    "Universidad",
+    "UsuarioUniversidad",
     "Cohorte",
     "Cuatrimestre",
     "Materia",

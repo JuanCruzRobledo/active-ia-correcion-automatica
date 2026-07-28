@@ -45,6 +45,13 @@ class AvanceSnapshot(Base):
         nullable=False,
         index=True,
     )
+    # Fase 0 multi-tenant: denormalizada, propagada desde materia.universidad_id en
+    # el backfill. NOT NULL desde migración R7 (Fase 0); Fase 4 alinea el type hint.
+    universidad_id: Mapped[int] = mapped_column(
+        ForeignKey("universidades.id"),
+        nullable=False,
+        index=True,
+    )
     generado_en: Mapped[datetime] = mapped_column(
         default=datetime.utcnow,
         nullable=False,
@@ -162,6 +169,14 @@ class SnapshotCronConfig(Base, TimestampMixin):
     # Usuario de cuyas credenciales Moodle se vale el cron (uno de la lista de usuarios).
     usuario_id: Mapped[int | None] = mapped_column(
         ForeignKey("usuarios.id"), nullable=True
+    )
+    # Fase 3 multi-tenant (OQ2): universidad activa para el cron (sin JWT/ctx).
+    # Nullable a nivel DB (mismo patrón que usuario_id: singleton que empieza sin
+    # configurar); el service exige AMBOS al activar el cron
+    # (SnapshotConfigService.actualizar). R8 backfillea TUPaD en las filas
+    # existentes al migrar (openspec/changes/multi-tenant-moodle-services).
+    universidad_id: Mapped[int | None] = mapped_column(
+        ForeignKey("universidades.id"), nullable=True
     )
     hora: Mapped[int] = mapped_column(Integer, nullable=False, default=3, server_default="3")
     minuto: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")

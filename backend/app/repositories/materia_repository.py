@@ -76,19 +76,24 @@ class MateriaRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_codigo(self, codigo: str) -> Materia | None:
+    async def get_by_codigo(
+        self, codigo: str, *, universidad_id: int | None = None
+    ) -> Materia | None:
         """
         Get materia by codigo.
 
         Args:
             codigo: Materia's unique code.
+            universidad_id: Fase 4 multi-tenant. `codigo` es único por
+                (universidad_id, codigo) — None = sin filtro (bypass superadmin).
 
         Returns:
             Materia object if found, None otherwise.
         """
-        result = await self.db.execute(
-            select(Materia).where(Materia.codigo == codigo.upper())
-        )
+        query = select(Materia).where(Materia.codigo == codigo.upper())
+        if universidad_id is not None:
+            query = query.where(Materia.universidad_id == universidad_id)
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def get_all(
@@ -100,6 +105,7 @@ class MateriaRepository:
         page: int = 1,
         per_page: int = 20,
         coordinador_id: int | None = None,
+        universidad_id: int | None = None,
     ) -> tuple[list[Materia], int]:
         """
         Get all materias with optional filters and pagination.
@@ -112,6 +118,8 @@ class MateriaRepository:
             page: Page number (1-indexed).
             per_page: Items per page.
             coordinador_id: If set, filter to materias assigned to this coordinator.
+            universidad_id: Fase 4 multi-tenant (D1): None = sin filtro (bypass
+                superadmin sin universidad activa); si se pasa, filtra por ella.
 
         Returns:
             Tuple of (list of materias, total count).
@@ -140,6 +148,11 @@ class MateriaRepository:
                 (Materia.codigo.ilike(search_term))
                 | (Materia.nombre.ilike(search_term))
             )
+
+        # Fase 4 multi-tenant (D1): va ANTES del count_query, que se deriva de este
+        # `query` (subquery) — así el total paginado también queda scopeado.
+        if universidad_id is not None:
+            query = query.where(Materia.universidad_id == universidad_id)
 
         # Count total
         count_query = select(func.count()).select_from(query.subquery())
@@ -174,35 +187,35 @@ class MateriaRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_con_moodle(self) -> list[Materia]:
+    async def get_con_moodle(self, *, universidad_id: int | None = None) -> list[Materia]:
         """Materias activas vinculadas a un curso de Moodle (moodle_course_id no nulo).
 
         Son los cursos que el Gestor puede elegir en la pantalla "Gestión".
         """
-        result = await self.db.execute(
-            select(Materia)
-            .where(
-                Materia.activa == True,  # noqa: E712
-                Materia.moodle_course_id.isnot(None),
-            )
-            .order_by(Materia.nombre.asc())
+        query = select(Materia).where(
+            Materia.activa == True,  # noqa: E712
+            Materia.moodle_course_id.isnot(None),
         )
+        if universidad_id is not None:
+            query = query.where(Materia.universidad_id == universidad_id)
+        result = await self.db.execute(query.order_by(Materia.nombre.asc()))
         return list(result.scalars().all())
 
-    async def get_by_cuatrimestre(self, cuatrimestre_id: int) -> list[Materia]:
+    async def get_by_cuatrimestre(
+        self, cuatrimestre_id: int, *, universidad_id: int | None = None
+    ) -> list[Materia]:
         """Materias activas de un cuatrimestre (para los selectores del dashboard)."""
-        result = await self.db.execute(
-            select(Materia)
-            .where(
-                Materia.cuatrimestre_id == cuatrimestre_id,
-                Materia.activa == True,  # noqa: E712
-            )
-            .order_by(Materia.nombre.asc())
+        query = select(Materia).where(
+            Materia.cuatrimestre_id == cuatrimestre_id,
+            Materia.activa == True,  # noqa: E712
         )
+        if universidad_id is not None:
+            query = query.where(Materia.universidad_id == universidad_id)
+        result = await self.db.execute(query.order_by(Materia.nombre.asc()))
         return list(result.scalars().all())
 
     async def get_by_cuatrimestres(
-        self, cuatrimestre_ids: list[int]
+        self, cuatrimestre_ids: list[int], *, universidad_id: int | None = None
     ) -> list[Materia]:
         """Materias activas de VARIOS cuatrimestres en UNA query (árbol del dashboard).
 
@@ -213,38 +226,39 @@ class MateriaRepository:
 
         Args:
             cuatrimestre_ids: IDs de cuatrimestres.
+            universidad_id: Fase 4 multi-tenant. None = sin filtro.
 
         Returns:
             Lista de materias activas de esos cuatrimestres, ordenadas por nombre.
         """
         if not cuatrimestre_ids:
             return []
-        result = await self.db.execute(
-            select(Materia)
-            .where(
-                Materia.cuatrimestre_id.in_(cuatrimestre_ids),
-                Materia.activa == True,  # noqa: E712
-            )
-            .order_by(Materia.nombre.asc())
+        query = select(Materia).where(
+            Materia.cuatrimestre_id.in_(cuatrimestre_ids),
+            Materia.activa == True,  # noqa: E712
         )
+        if universidad_id is not None:
+            query = query.where(Materia.universidad_id == universidad_id)
+        result = await self.db.execute(query.order_by(Materia.nombre.asc()))
         return list(result.scalars().all())
 
-    async def get_configuradas_dashboard(self) -> list[Materia]:
+    async def get_configuradas_dashboard(
+        self, *, universidad_id: int | None = None
+    ) -> list[Materia]:
         """Materias listas para el snapshot de avance (Dashboard de Gestores).
 
         Activas + con moodle_course_id + cuatrimestre + unidad_actual. (La existencia
         de unidades la valida el SnapshotService al generar.)
         """
-        result = await self.db.execute(
-            select(Materia)
-            .where(
-                Materia.activa == True,  # noqa: E712
-                Materia.moodle_course_id.isnot(None),
-                Materia.cuatrimestre_id.isnot(None),
-                Materia.unidad_actual.isnot(None),
-            )
-            .order_by(Materia.id.asc())
+        query = select(Materia).where(
+            Materia.activa == True,  # noqa: E712
+            Materia.moodle_course_id.isnot(None),
+            Materia.cuatrimestre_id.isnot(None),
+            Materia.unidad_actual.isnot(None),
         )
+        if universidad_id is not None:
+            query = query.where(Materia.universidad_id == universidad_id)
+        result = await self.db.execute(query.order_by(Materia.id.asc()))
         return list(result.scalars().all())
 
     async def exists_codigo(self, codigo: str) -> bool:
@@ -327,25 +341,30 @@ class MateriaRepository:
         await self.db.refresh(materia)
         return materia
 
-    async def get_by_coordinador(self, coordinador_id: int) -> list[Materia]:
+    async def get_by_coordinador(
+        self, coordinador_id: int, *, universidad_id: int | None = None
+    ) -> list[Materia]:
         """
         Get all active materias assigned to a coordinator.
 
         Args:
             coordinador_id: ID of the coordinator user.
+            universidad_id: Fase 4 multi-tenant. None = sin filtro.
 
         Returns:
             List of active materias for the coordinator.
         """
-        result = await self.db.execute(
+        query = (
             select(Materia)
             .join(CoordinadorMateria)
             .where(
                 CoordinadorMateria.coordinador_id == coordinador_id,
                 Materia.activa == True,  # noqa: E712
             )
-            .order_by(Materia.nombre.asc())
         )
+        if universidad_id is not None:
+            query = query.where(Materia.universidad_id == universidad_id)
+        result = await self.db.execute(query.order_by(Materia.nombre.asc()))
         return list(result.scalars().all())
 
     async def hard_delete_with_cascade(self, materia: Materia) -> None:
@@ -466,7 +485,9 @@ class CoordinadorMateriaRepository:
         """
         self.db = db
 
-    async def contar_por_materias(self, materia_ids: list[int]) -> dict[int, int]:
+    async def contar_por_materias(
+        self, materia_ids: list[int], *, universidad_id: int | None = None
+    ) -> dict[int, int]:
         """Nº de coordinadores por materia en UNA query agregada (GROUP BY).
 
         Reemplaza el N+1 de ``listar_materias`` (``get_coordinadores_for_materia``
@@ -475,18 +496,25 @@ class CoordinadorMateriaRepository:
         no aparecen en el dict (se interpretan como 0).
 
         Args:
-            materia_ids: IDs de las materias a contar.
+            materia_ids: IDs de las materias a contar (ya scopeados aguas arriba).
+            universidad_id: Fase 4 multi-tenant — defensa en profundidad (D2): si
+                alguno de los `materia_ids` fuera de otra universidad, el join
+                contra `Materia` lo excluye en vez de dejarlo fugarse. None = sin
+                filtro extra.
 
         Returns:
             dict {materia_id: num_coordinadores}.
         """
         if not materia_ids:
             return {}
-        result = await self.db.execute(
-            select(CoordinadorMateria.materia_id, func.count(CoordinadorMateria.id))
-            .where(CoordinadorMateria.materia_id.in_(materia_ids))
-            .group_by(CoordinadorMateria.materia_id)
-        )
+        query = select(
+            CoordinadorMateria.materia_id, func.count(CoordinadorMateria.id)
+        ).where(CoordinadorMateria.materia_id.in_(materia_ids))
+        if universidad_id is not None:
+            query = query.join(Materia, Materia.id == CoordinadorMateria.materia_id).where(
+                Materia.universidad_id == universidad_id
+            )
+        result = await self.db.execute(query.group_by(CoordinadorMateria.materia_id))
         return {mid: int(n) for mid, n in result.all()}
 
     async def get_coordinadores_for_materia(

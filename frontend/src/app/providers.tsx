@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { TenantProvider } from '@/shared/context/TenantProvider';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,7 +23,9 @@ interface QueryProviderProps {
 export const QueryProvider = ({ children }: QueryProviderProps) => {
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      {/* TenantProvider (D1) va DENTRO de QueryClientProvider: cambiarUniversidad
+          necesita useQueryClient() para el queryClient.clear() de D4. */}
+      <TenantProvider>{children}</TenantProvider>
       {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
     </QueryClientProvider>
   );

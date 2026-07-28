@@ -56,6 +56,13 @@ class Correccion(Base, TimestampMixin):
         unique=True,
         nullable=False,
     )
+    # Fase 0 multi-tenant: denormalizada, propagada desde entrega.universidad_id en
+    # el backfill. NOT NULL desde migración R7 (Fase 0); Fase 4 alinea el type hint.
+    universidad_id: Mapped[int] = mapped_column(
+        ForeignKey("universidades.id"),
+        nullable=False,
+        index=True,
+    )
     nota: Mapped[Decimal] = mapped_column(
         Numeric(5, 2),
         nullable=False,

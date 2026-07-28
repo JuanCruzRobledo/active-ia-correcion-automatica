@@ -48,6 +48,13 @@ class Entrega(Base, TimestampMixin, SoftDeleteMixin):
         nullable=False,
         index=True,
     )
+    # Fase 0 multi-tenant: denormalizada, propagada desde comision.universidad_id
+    # en el backfill. NOT NULL desde migración R7 (Fase 0); Fase 4 alinea el type hint.
+    universidad_id: Mapped[int] = mapped_column(
+        ForeignKey("universidades.id"),
+        nullable=False,
+        index=True,
+    )
     alumno_nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     archivo_nombre: Mapped[str] = mapped_column(String(255), nullable=False)
     archivo_tamanio: Mapped[int] = mapped_column(Integer, default=0)

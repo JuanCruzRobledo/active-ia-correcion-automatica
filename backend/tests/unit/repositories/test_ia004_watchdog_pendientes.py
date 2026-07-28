@@ -28,6 +28,9 @@ from app.models.materia import Materia
 from app.models.rubrica import Rubrica
 from app.repositories.entrega_repository import EntregaRepository
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 sqlite3.register_adapter(dict, json.dumps)
 sqlite3.register_adapter(list, json.dumps)
 
@@ -58,13 +61,13 @@ async def db_session():
 
 
 async def _setup(db):
-    m = Materia(nombre="M", codigo="M"); db.add(m); await db.flush()
-    c = Comision(materia_id=m.id, nombre="C", anio=2026, activa=True); db.add(c); await db.flush()
+    m = Materia(universidad_id=UNIV_ID, nombre="M", codigo="M"); db.add(m); await db.flush()
+    c = Comision(universidad_id=UNIV_ID, materia_id=m.id, nombre="C", anio=2026, activa=True); db.add(c); await db.flush()
     rid = [0]
 
     def _mk(estado):
         rid[0] += 1
-        return Entrega(comision_id=c.id, rubrica_id=1, alumno_nombre=f"A{rid[0]}",
+        return Entrega(universidad_id=UNIV_ID, comision_id=c.id, rubrica_id=1, alumno_nombre=f"A{rid[0]}",
                        archivo_nombre="a.py", archivo_tipo="individual", estado=estado)
 
     db.add_all([
@@ -113,6 +116,6 @@ async def test_watchdog_no_toca_subida_ni_corregida(db_session):
 
 @pytest.mark.asyncio
 async def test_watchdog_sin_pendientes_devuelve_cero(db_session):
-    m = Materia(nombre="M", codigo="M"); db_session.add(m); await db_session.commit()
+    m = Materia(universidad_id=UNIV_ID, nombre="M", codigo="M"); db_session.add(m); await db_session.commit()
     repo = EntregaRepository(db_session)
     assert await repo.reset_pendientes_interrumpidas() == 0

@@ -10,6 +10,7 @@ número/etiqueta visible por tipo reusando examen_mapper.
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import verificar_pertenencia_universidad
 from app.models.enums import TipoActividadEnum, TipoExamenEnum
 from app.models.examen_materia import ExamenMateria
 from app.repositories.examen_repository import ExamenRepository
@@ -32,20 +33,30 @@ class ExamenService:
         self.examen_repo = ExamenRepository(db)
         self.materia_repo = MateriaRepository(db)
 
-    async def _get_materia_or_404(self, materia_id: int):
+    async def _get_materia_or_404(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ):
         materia = await self.materia_repo.get_by_id(materia_id)
         if materia is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Materia no encontrada"
             )
+        verificar_pertenencia_universidad(
+            materia, universidad_id, detail="Materia no encontrada"
+        )
         return materia
 
-    async def _get_examen_or_404(self, examen_id: int) -> ExamenMateria:
+    async def _get_examen_or_404(
+        self, examen_id: int, *, universidad_id: int | None = None
+    ) -> ExamenMateria:
         examen = await self.examen_repo.get_by_id(examen_id)
         if examen is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Examen no encontrado"
             )
+        verificar_pertenencia_universidad(
+            examen, universidad_id, detail="Examen no encontrado"
+        )
         return examen
 
     # Tipos que pueden SER rescatados (padre de un recuperatorio/extensión/extraordinaria).
@@ -94,19 +105,30 @@ class ExamenService:
             {"id": e.id, "tipo": e.tipo.value, "orden": e.orden} for e in examenes
         ]
 
-    async def listar(self, materia_id: int) -> list[ExamenMateriaResponse]:
-        await self._get_materia_or_404(materia_id)
-        examenes = await self.examen_repo.get_by_materia(materia_id)
+    async def listar(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> list[ExamenMateriaResponse]:
+        await self._get_materia_or_404(materia_id, universidad_id=universidad_id)
+        examenes = await self.examen_repo.get_by_materia(
+            materia_id, universidad_id=universidad_id
+        )
         numeros = numeros_por_tipo(self._config(examenes))
         return [self._a_response(e, numeros) for e in examenes]
 
     async def crear(
-        self, materia_id: int, data: ExamenMateriaCreate, usuario_id: int | None = None
+        self,
+        materia_id: int,
+        data: ExamenMateriaCreate,
+        usuario_id: int | None = None,
+        *,
+        universidad_id: int | None = None,
     ) -> ExamenMateriaResponse:
-        await self._get_materia_or_404(materia_id)
+        materia = await self._get_materia_or_404(materia_id, universidad_id=universidad_id)
         await self._validar_vinculo(materia_id, data.recupera_examen_id)
         orden = await self.examen_repo.max_orden(materia_id) + 1
+        # Fase 4 multi-tenant: universidad_id se PROPAGA desde la materia.
         examen = ExamenMateria(
+            universidad_id=materia.universidad_id,
             materia_id=materia_id,
             tipo=data.tipo,
             moodle_cmid=data.moodle_cmid,
@@ -130,9 +152,13 @@ class ExamenService:
         return resp
 
     async def actualizar(
-        self, examen_id: int, data: ExamenMateriaUpdate
+        self,
+        examen_id: int,
+        data: ExamenMateriaUpdate,
+        *,
+        universidad_id: int | None = None,
     ) -> ExamenMateriaResponse:
-        examen = await self._get_examen_or_404(examen_id)
+        examen = await self._get_examen_or_404(examen_id, universidad_id=universidad_id)
         # No puede recuperarse a sí mismo.
         if data.recupera_examen_id == examen_id:
             raise HTTPException(
@@ -151,6 +177,8 @@ class ExamenService:
         numeros = numeros_por_tipo(self._config(examenes))
         return self._a_response(actualizado, numeros)
 
-    async def eliminar(self, examen_id: int) -> None:
-        examen = await self._get_examen_or_404(examen_id)
+    async def eliminar(
+        self, examen_id: int, *, universidad_id: int | None = None
+    ) -> None:
+        examen = await self._get_examen_or_404(examen_id, universidad_id=universidad_id)
         await self.examen_repo.delete(examen)

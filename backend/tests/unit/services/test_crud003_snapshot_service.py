@@ -67,7 +67,7 @@ from app.models.enums import EstadoEntregaEnum as _E  # noqa: E402
 
 def _fake_entrega():
     return SimpleNamespace(
-        id=1, archivo_tipo="txt", contenido_consolidado="print(1)",
+        id=1, universidad_id=1, archivo_tipo="txt", contenido_consolidado="print(1)",
         contenido_preview="print(1)", pdf_contenido_b64=None, rubrica_id=5,
         alumno_nombre="Juan", comision=SimpleNamespace(materia=SimpleNamespace(nombre="P1")),
         estado=EstadoEntregaEnum.SUBIDA, error_code=None, error_mensaje=None, error_at=None,

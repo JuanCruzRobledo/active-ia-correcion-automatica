@@ -34,7 +34,7 @@ import { Badge } from '@/shared/components/ui/Badge';
 import { Spinner } from '@/shared/components/ui/Spinner';
 import { HelpButton, LoadingState, ResponsiveTable, ConfirmDialog, NovedadesBanner } from '@/shared/components/ui';
 import type { TableColumn } from '@/shared/components/ui';
-import { useAuth } from '@/features/auth/hooks/useAuth';
+import { useTenant } from '@/shared/context/useTenant';
 import { useNovedades } from '@/shared/hooks/useNovedades';
 import { mensajeNovedades } from '@/shared/utils/novedades';
 import { helpContent } from '@/shared/content/helpContent';
@@ -191,7 +191,8 @@ export const EntregasPage = () => {
   const archivarMutation = useArchivarEntregas();
   const deleteMasivoMutation = useDeleteEntregasMasivo();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  // D2: el rol es de la membresía activa (useTenant), no del usuario global.
+  const { rol } = useTenant();
   // Banner "hay novedades": avisa si el backend cambió sin pisar lo que se está viendo.
   const { hayNovedades, aceptar: aceptarNovedades } = useNovedades('entregas', {
     enabled: !!selectedComisionId && !!selectedRubricaId,
@@ -909,7 +910,7 @@ export const EntregasPage = () => {
       {/* Banner "hay novedades" (item #2, Capa B): el backend cambió mientras mirabas. */}
       {hayNovedades && (
         <NovedadesBanner
-          mensaje={mensajeNovedades(user?.rol)}
+          mensaje={mensajeNovedades(rol)}
           onActualizar={() => {
             refetch();
             aceptarNovedades();

@@ -7,27 +7,66 @@ Tests cover:
 - Handling duplicates (overwrite vs error)
 - Soft deleting entregas
 - Validation of required fields
+
+Nota de mantenimiento: este archivo venía del commit inicial del repo y nunca
+llegó a ejecutarse — importaba `CargaMasivaRequest`, un símbolo que jamás
+existió, así que pytest cortaba en la colección. Se reescribió contra la API
+real conservando la intención de los 11 tests originales. La API había
+derivado en: `EntregaCreate` se redujo a `alumno_nombre`/`comision_id`/
+`rubrica_id` y el archivo pasó a viajar como `UploadFile` aparte;
+`crear_entrega_masiva` recibe argumentos planos en vez de un schema;
+`eliminar_entrega` pide `actor_id`; y `universidad_id` entró con
+multi-tenant-scoping-queries (Fase 4), donde el service lo propaga desde el
+padre ya cargado.
+
+Es el único lugar de la suite que ejercita `crear_entrega_individual` y
+`crear_entrega_masiva` de verdad: el resto de los tests los mockea.
 """
 
 import io
 import zipfile
-from datetime import datetime
+from typing import Any
 
 import pytest
-from fastapi import HTTPException
+import pytest_asyncio
+from fastapi import HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.comision import Comision
 from app.models.materia import Materia
 from app.models.rubrica import Rubrica, TipoRubricaEnum
-from app.schemas.entrega import EntregaCreate, CargaMasivaRequest
+from app.models.enums import RolEnum
+from app.models.usuario import Usuario
+from app.schemas.entrega import EntregaCreate
 from app.services.entrega_service import EntregaService
 
+# multi-tenant-scoping-queries (Fase 4): universidad_id es NOT NULL en toda la
+# rama Materia -> Comision -> Rubrica -> Entrega.
+UNIV_ID = 1
 
-@pytest.fixture
+
+def crear_zip_simple(contenido: str = "print('hello')") -> bytes:
+    """Create a simple ZIP file with one Python file."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("main.py", contenido)
+    return buffer.getvalue()
+
+
+def _upload(contenido: bytes, filename: str) -> UploadFile:
+    """UploadFile en memoria: el service usa .size, .filename y await .read()."""
+    return UploadFile(
+        file=io.BytesIO(contenido),
+        filename=filename,
+        size=len(contenido),
+    )
+
+
+@pytest_asyncio.fixture
 async def materia(db_session: AsyncSession) -> Materia:
     """Create a test materia."""
     materia = Materia(
+        universidad_id=UNIV_ID,
         codigo="PROG1",
         nombre="Programación 1",
         activa=True,
@@ -38,10 +77,11 @@ async def materia(db_session: AsyncSession) -> Materia:
     return materia
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def comision(db_session: AsyncSession, materia: Materia) -> Comision:
     """Create a test comision."""
     comision = Comision(
+        universidad_id=UNIV_ID,
         materia_id=materia.id,
         nombre="Comisión A",
         anio=2026,
@@ -53,26 +93,34 @@ async def comision(db_session: AsyncSession, materia: Materia) -> Comision:
     return comision
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def rubrica(db_session: AsyncSession, materia: Materia) -> Rubrica:
     """Create a test rubrica."""
-    rubrica = Rubrica(
-        materia_id=materia.id,
-        tipo=TipoRubricaEnum.TP,
-        nombre="TP1 - Listas",
-        numero=1,
-        anio=2026,
-        criterios_json={
-            "puntaje_maximo": 100,
-            "criterios": [
+    criterios: list[dict[str, Any]] = [
+        {
+            "id": "C1",
+            "nombre": "Funcionalidad",
+            "descripcion": "Código funciona",
+            "peso": 100,
+            "subcriterios": [
                 {
-                    "id": "c1",
-                    "nombre": "Funcionalidad",
-                    "descripcion": "Código funciona",
-                    "puntaje_maximo": 100,
+                    "id": "C1.1",
+                    "descripcion": "El código corre sin errores",
+                    "evidencias": ["Se ejecuta sin excepciones"],
                 }
             ],
-        },
+        }
+    ]
+    rubrica = Rubrica(
+        universidad_id=UNIV_ID,
+        materia_id=materia.id,
+        tipo=TipoRubricaEnum.TP,
+        titulo="TP1 - Listas",
+        descripcion="Evalúa el manejo de listas.",
+        puntaje_maximo=100,
+        numero=1,
+        anio=2026,
+        criterios_json=criterios,
         activa=True,
     )
     db_session.add(rubrica)
@@ -81,12 +129,22 @@ async def rubrica(db_session: AsyncSession, materia: Materia) -> Rubrica:
     return rubrica
 
 
-def crear_zip_simple(contenido: str = "print('hello')") -> bytes:
-    """Create a simple ZIP file with one Python file."""
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("main.py", contenido)
-    return buffer.getvalue()
+@pytest_asyncio.fixture
+async def subidor(db_session: AsyncSession) -> Usuario:
+    """Usuario que sube las entregas y actúa de actor en el borrado.
+
+    `password_hash` se setea literal a propósito: `hash_password()` depende de
+    passlib+bcrypt y estos tests no ejercitan autenticación.
+    """
+    usuario = Usuario(
+        username="subidor_test",
+        nombre="Subidor Test",
+        password_hash="no-usado-en-estos-tests",
+    )
+    db_session.add(usuario)
+    await db_session.commit()
+    await db_session.refresh(usuario)
+    return usuario
 
 
 @pytest.mark.asyncio
@@ -98,24 +156,21 @@ class TestEntregaService:
         db_session: AsyncSession,
         comision: Comision,
         rubrica: Rubrica,
+        subidor: Usuario,
     ):
         """Test creating individual entrega successfully."""
         service = EntregaService(db_session)
-
-        zip_bytes = crear_zip_simple("print('hello world')")
 
         data = EntregaCreate(
             comision_id=comision.id,
             rubrica_id=rubrica.id,
             alumno_nombre="Pérez, Juan",
-            archivo_bytes=zip_bytes,
-            archivo_nombre="tp1.zip",
-            modo_consolidacion="solo_codigo",
         )
 
         entrega = await service.crear_entrega_individual(
             data=data,
-            subido_por_id=1,
+            archivo=_upload(crear_zip_simple("print('hello world')"), "tp1.zip"),
+            subido_por_id=subidor.id,
         )
 
         assert entrega.id is not None
@@ -123,29 +178,29 @@ class TestEntregaService:
         assert entrega.comision_id == comision.id
         assert entrega.rubrica_id == rubrica.id
         assert entrega.archivo_nombre == "tp1.zip"
-        assert entrega.activa is True
-        assert "print('hello world')" in entrega.contenido_consolidado
+        assert entrega.archivado is False
 
     async def test_crear_entrega_individual_comision_not_found(
         self,
         db_session: AsyncSession,
         rubrica: Rubrica,
+        subidor: Usuario,
     ):
         """Test creating entrega with non-existent comision fails."""
         service = EntregaService(db_session)
-
-        zip_bytes = crear_zip_simple()
 
         data = EntregaCreate(
             comision_id=9999,  # Non-existent
             rubrica_id=rubrica.id,
             alumno_nombre="Test Student",
-            archivo_bytes=zip_bytes,
-            archivo_nombre="test.zip",
         )
 
         with pytest.raises(HTTPException) as exc_info:
-            await service.crear_entrega_individual(data, subido_por_id=1)
+            await service.crear_entrega_individual(
+                data=data,
+                archivo=_upload(crear_zip_simple(), "test.zip"),
+                subido_por_id=subidor.id,
+            )
 
         assert exc_info.value.status_code == 404
 
@@ -153,22 +208,23 @@ class TestEntregaService:
         self,
         db_session: AsyncSession,
         comision: Comision,
+        subidor: Usuario,
     ):
         """Test creating entrega with non-existent rubrica fails."""
         service = EntregaService(db_session)
-
-        zip_bytes = crear_zip_simple()
 
         data = EntregaCreate(
             comision_id=comision.id,
             rubrica_id=9999,  # Non-existent
             alumno_nombre="Test Student",
-            archivo_bytes=zip_bytes,
-            archivo_nombre="test.zip",
         )
 
         with pytest.raises(HTTPException) as exc_info:
-            await service.crear_entrega_individual(data, subido_por_id=1)
+            await service.crear_entrega_individual(
+                data=data,
+                archivo=_upload(crear_zip_simple(), "test.zip"),
+                subido_por_id=subidor.id,
+            )
 
         assert exc_info.value.status_code == 404
 
@@ -177,30 +233,28 @@ class TestEntregaService:
         db_session: AsyncSession,
         comision: Comision,
         rubrica: Rubrica,
+        subidor: Usuario,
     ):
         """Test creating an individual PDF entrega."""
         service = EntregaService(db_session)
-
-        pdf_bytes = b"%PDF-1.4 mock pdf content"
 
         data = EntregaCreate(
             comision_id=comision.id,
             rubrica_id=rubrica.id,
             alumno_nombre="Pérez, Juan",
-            archivo_bytes=pdf_bytes,
-            archivo_nombre="documento.pdf",
-            modo_consolidacion="solo_codigo", # Should be ignored
         )
 
         entrega = await service.crear_entrega_individual(
             data=data,
-            subido_por_id=1,
+            archivo=_upload(b"%PDF-1.4 mock pdf content", "documento.pdf"),
+            subido_por_id=subidor.id,
+            modo_consolidacion="solo_codigo",  # se ignora para PDF
         )
 
+        # `contenido_consolidado` no viaja en EntregaResponse (PERF-006: es una
+        # columna deferred); el marcador de PDF se ve en el preview.
         assert entrega.id is not None
         assert entrega.archivo_tipo == "pdf"
-        assert entrega.contenido_consolidado is None
-        assert entrega.pdf_contenido_b64 is not None
         assert "[Entrega en formato PDF]" in entrega.contenido_preview
 
     async def test_crear_entrega_duplicada_sin_sobrescribir(
@@ -208,33 +262,29 @@ class TestEntregaService:
         db_session: AsyncSession,
         comision: Comision,
         rubrica: Rubrica,
+        subidor: Usuario,
     ):
         """Test creating duplicate entrega without overwrite fails."""
         service = EntregaService(db_session)
 
-        zip_bytes = crear_zip_simple()
-
-        # Create first entrega
         data = EntregaCreate(
             comision_id=comision.id,
             rubrica_id=rubrica.id,
             alumno_nombre="Pérez, Juan",
-            archivo_bytes=zip_bytes,
-            archivo_nombre="tp1_v1.zip",
         )
-        await service.crear_entrega_individual(data, subido_por_id=1)
-
-        # Try to create duplicate (same alumno + rubrica)
-        data2 = EntregaCreate(
-            comision_id=comision.id,
-            rubrica_id=rubrica.id,
-            alumno_nombre="Pérez, Juan",
-            archivo_bytes=zip_bytes,
-            archivo_nombre="tp1_v2.zip",
+        await service.crear_entrega_individual(
+            data=data,
+            archivo=_upload(crear_zip_simple(), "tp1_v1.zip"),
+            subido_por_id=subidor.id,
         )
 
+        # Mismo alumno + misma rúbrica, sin sobrescribir -> conflicto
         with pytest.raises(HTTPException) as exc_info:
-            await service.crear_entrega_individual(data2, subido_por_id=1)
+            await service.crear_entrega_individual(
+                data=data,
+                archivo=_upload(crear_zip_simple(), "tp1_v2.zip"),
+                subido_por_id=subidor.id,
+            )
 
         assert exc_info.value.status_code == 409
         assert "ya existe" in exc_info.value.detail.lower()
@@ -244,105 +294,95 @@ class TestEntregaService:
         db_session: AsyncSession,
         comision: Comision,
         rubrica: Rubrica,
+        subidor: Usuario,
     ):
         """Test creating duplicate entrega with overwrite succeeds."""
         service = EntregaService(db_session)
 
-        zip_bytes_v1 = crear_zip_simple("print('version 1')")
-        zip_bytes_v2 = crear_zip_simple("print('version 2')")
-
-        # Create first entrega
-        data_v1 = EntregaCreate(
+        data = EntregaCreate(
             comision_id=comision.id,
             rubrica_id=rubrica.id,
             alumno_nombre="Pérez, Juan",
-            archivo_bytes=zip_bytes_v1,
-            archivo_nombre="tp1_v1.zip",
         )
-        entrega_v1 = await service.crear_entrega_individual(data_v1, subido_por_id=1)
 
-        # Create duplicate with overwrite
-        data_v2 = EntregaCreate(
-            comision_id=comision.id,
-            rubrica_id=rubrica.id,
-            alumno_nombre="Pérez, Juan",
-            archivo_bytes=zip_bytes_v2,
-            archivo_nombre="tp1_v2.zip",
+        entrega_v1 = await service.crear_entrega_individual(
+            data=data,
+            archivo=_upload(crear_zip_simple("print('version 1')"), "tp1_v1.zip"),
+            subido_por_id=subidor.id,
+        )
+
+        entrega_v2 = await service.crear_entrega_individual(
+            data=data,
+            archivo=_upload(crear_zip_simple("print('version 2')"), "tp1_v2.zip"),
+            subido_por_id=subidor.id,
             sobrescribir=True,
         )
-        entrega_v2 = await service.crear_entrega_individual(data_v2, subido_por_id=1)
 
-        # Should have same ID (overwritten)
+        # Se pisa la misma fila, no se crea una nueva
         assert entrega_v2.id == entrega_v1.id
-        assert "version 2" in entrega_v2.contenido_consolidado
-        assert "version 1" not in entrega_v2.contenido_consolidado
+        assert entrega_v2.archivo_nombre == "tp1_v2.zip"
 
     async def test_crear_entrega_masiva_pdf(
         self,
         db_session: AsyncSession,
         comision: Comision,
         rubrica: Rubrica,
+        subidor: Usuario,
     ):
-        """Test creating masiva containing both a PDF and a normal code submission."""
+        """Masiva con dos alumnos: uno entrega código y el otro un PDF."""
         service = EntregaService(db_session)
 
-        # Build a ZIP file containing 2 students: one with python code, one with PDF
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("García, Ana/main.py", "print('codigo')")
             zf.writestr("Pérez, Juan/documento.pdf", b"%PDF-1.4 mock pdf")
 
-        data = CargaMasivaRequest(
+        resultado = await service.crear_entrega_masiva(
             comision_id=comision.id,
             rubrica_id=rubrica.id,
-            archivo_bytes=buffer.getvalue(),
-            modo_consolidacion="solo_codigo",
-        )
-
-        resultado = await service.crear_entrega_masiva(
-            data=data,
-            subido_por_id=1,
+            archivo_zip=_upload(buffer.getvalue(), "entregas.zip"),
+            subido_por_id=subidor.id,
         )
 
         assert resultado.total_procesadas == 2
         assert resultado.total_exitosas == 2
-        
-        # Verify db entries
+
         resultado_db = await service.listar_entregas(comision_id=comision.id)
         assert resultado_db.total == 2
-        
-        # Check specific types
-        entregas_pdf = [e for e in resultado_db.items if e.alumno_nombre == "Pérez, Juan"]
-        entregas_codigo = [e for e in resultado_db.items if e.alumno_nombre == "García, Ana"]
+
+        entregas_pdf = [
+            e for e in resultado_db.items if e.alumno_nombre == "Pérez, Juan"
+        ]
+        entregas_codigo = [
+            e for e in resultado_db.items if e.alumno_nombre == "García, Ana"
+        ]
 
         assert len(entregas_pdf) == 1
         assert len(entregas_codigo) == 1
-        
-        assert entregas_pdf[0].archivo_tipo == 'pdf'
-        assert entregas_codigo[0].archivo_tipo == 'zip'
+        assert entregas_pdf[0].archivo_tipo == "pdf"
 
     async def test_listar_entregas_por_comision(
         self,
         db_session: AsyncSession,
         comision: Comision,
         rubrica: Rubrica,
+        subidor: Usuario,
     ):
         """Test listing entregas by comision."""
         service = EntregaService(db_session)
 
-        # Create multiple entregas
         for i in range(3):
-            zip_bytes = crear_zip_simple(f"print('student {i}')")
             data = EntregaCreate(
                 comision_id=comision.id,
                 rubrica_id=rubrica.id,
                 alumno_nombre=f"Alumno {i}",
-                archivo_bytes=zip_bytes,
-                archivo_nombre=f"tp{i}.zip",
             )
-            await service.crear_entrega_individual(data, subido_por_id=1)
+            await service.crear_entrega_individual(
+                data=data,
+                archivo=_upload(crear_zip_simple(f"print('student {i}')"), f"tp{i}.zip"),
+                subido_por_id=subidor.id,
+            )
 
-        # List entregas
         result = await service.listar_entregas(comision_id=comision.id)
 
         assert result.total == 3
@@ -353,23 +393,23 @@ class TestEntregaService:
         db_session: AsyncSession,
         comision: Comision,
         rubrica: Rubrica,
+        subidor: Usuario,
     ):
         """Test listing entregas by rubrica."""
         service = EntregaService(db_session)
 
-        # Create entregas for this rubrica
         for i in range(2):
-            zip_bytes = crear_zip_simple()
             data = EntregaCreate(
                 comision_id=comision.id,
                 rubrica_id=rubrica.id,
                 alumno_nombre=f"Alumno {i}",
-                archivo_bytes=zip_bytes,
-                archivo_nombre=f"tp{i}.zip",
             )
-            await service.crear_entrega_individual(data, subido_por_id=1)
+            await service.crear_entrega_individual(
+                data=data,
+                archivo=_upload(crear_zip_simple(), f"tp{i}.zip"),
+                subido_por_id=subidor.id,
+            )
 
-        # List by rubrica
         result = await service.listar_entregas(rubrica_id=rubrica.id)
 
         assert result.total == 2
@@ -379,51 +419,55 @@ class TestEntregaService:
         db_session: AsyncSession,
         comision: Comision,
         rubrica: Rubrica,
+        subidor: Usuario,
     ):
         """Test soft deleting entrega."""
         service = EntregaService(db_session)
 
-        # Create entrega
-        zip_bytes = crear_zip_simple()
         data = EntregaCreate(
             comision_id=comision.id,
             rubrica_id=rubrica.id,
             alumno_nombre="Test Student",
-            archivo_bytes=zip_bytes,
-            archivo_nombre="test.zip",
         )
-        entrega = await service.crear_entrega_individual(data, subido_por_id=1)
+        entrega = await service.crear_entrega_individual(
+            data=data,
+            archivo=_upload(crear_zip_simple(), "test.zip"),
+            subido_por_id=subidor.id,
+        )
 
-        # Delete entrega
-        await service.eliminar_entrega(entrega.id)
+        await service.eliminar_entrega(entrega.id, actor_id=subidor.id)
 
-        # Verify soft deleted
+        # Baja lógica: desaparece del listado activo
         result = await service.listar_entregas(comision_id=comision.id)
-        assert result.total == 0  # Should not appear in active list
+        assert result.total == 0
 
     async def test_obtener_entrega_con_correccion(
         self,
         db_session: AsyncSession,
         comision: Comision,
         rubrica: Rubrica,
+        subidor: Usuario,
     ):
         """Test getting entrega with correction included."""
         service = EntregaService(db_session)
 
-        # Create entrega
-        zip_bytes = crear_zip_simple()
         data = EntregaCreate(
             comision_id=comision.id,
             rubrica_id=rubrica.id,
             alumno_nombre="Test Student",
-            archivo_bytes=zip_bytes,
-            archivo_nombre="test.zip",
         )
-        entrega = await service.crear_entrega_individual(data, subido_por_id=1)
+        entrega = await service.crear_entrega_individual(
+            data=data,
+            archivo=_upload(crear_zip_simple(), "test.zip"),
+            subido_por_id=subidor.id,
+        )
 
-        # Get entrega
         detail = await service.obtener_entrega(entrega.id)
 
         assert detail.id == entrega.id
         assert detail.alumno_nombre == "Test Student"
-        assert detail.correccion is None  # No correction yet
+        assert detail.tiene_correccion is False  # todavía no se corrigió
+        # Regresión: `obtener_entrega` arma un HistorialResponse para contar
+        # versiones. Construirlo con los nombres de campo equivocados hacía
+        # explotar el endpoint entero con 500.
+        assert detail.num_versiones_anteriores == 0

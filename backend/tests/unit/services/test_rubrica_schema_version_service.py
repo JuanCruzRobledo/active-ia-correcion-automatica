@@ -68,7 +68,9 @@ def _service_con(rubrica: SimpleNamespace | None = None) -> RubricaService:
     service.materia_repo = MagicMock()
     service.coordinador_materia_repo = MagicMock()
     service.materia_repo.get_active_by_id = AsyncMock(
-        return_value=SimpleNamespace(id=1, codigo="PROG1", nombre="Programación 1")
+        return_value=SimpleNamespace(
+            id=1, codigo="PROG1", nombre="Programación 1", universidad_id=1
+        )
     )
     service.rubrica_repo.exists = AsyncMock(return_value=False)
     # CRUD-011: el chequeo de conflicto pasó de exists() a get_by_materia_tipo_numero().
@@ -104,7 +106,7 @@ async def test_crear_rubrica_persiste_schema_version_1_por_default():
             descripcion="desc",
             criterios_json=[_CRITERIO_V1],
         )
-        result = await service.crear_rubrica(data, _ADMIN, current_user_id=1)
+        result = await service.crear_rubrica(data, _ADMIN, current_user_id=1, rol=RolEnum.ADMIN)
 
     assert result.schema_version == 1
 
@@ -129,7 +131,7 @@ async def test_crear_rubrica_persiste_schema_version_2_explicito():
             criterios_json=[criterio_v2],
             schema_version=2,
         )
-        result = await service.crear_rubrica(data, _ADMIN, current_user_id=1)
+        result = await service.crear_rubrica(data, _ADMIN, current_user_id=1, rol=RolEnum.ADMIN)
 
     assert result.schema_version == 2
 
@@ -146,6 +148,7 @@ async def test_actualizar_rubrica_setea_schema_version_cuando_viene():
         10,
         RubricaUpdate(criterios_json=[criterio_v2], schema_version=2),
         _ADMIN,
+        rol=RolEnum.ADMIN,
     )
 
     assert rubrica.schema_version == 2
@@ -157,7 +160,7 @@ async def test_actualizar_rubrica_preserva_schema_version_si_no_viene():
     rubrica = _fake_rubrica(schema_version=1)
     service = _service_con(rubrica)
 
-    await service.actualizar_rubrica(10, RubricaUpdate(titulo="Nuevo título"), _ADMIN)
+    await service.actualizar_rubrica(10, RubricaUpdate(titulo="Nuevo título"), _ADMIN, rol=RolEnum.ADMIN)
 
     assert rubrica.schema_version == 1
 
@@ -167,7 +170,7 @@ async def test_obtener_rubrica_expone_schema_version_en_detalle():
     rubrica = _fake_rubrica(schema_version=2)
     service = _service_con(rubrica)
 
-    detalle = await service.obtener_rubrica(10, _ADMIN)
+    detalle = await service.obtener_rubrica(10, _ADMIN, rol=RolEnum.ADMIN)
 
     assert detalle.schema_version == 2
 

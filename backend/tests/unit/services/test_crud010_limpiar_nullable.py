@@ -8,6 +8,7 @@ VACIAR un campo nullable era ignorado en silencio (200 OK, sin cambio). El fix u
 moodle_assign_id), aplicado SOLO a los campos nullable.
 """
 
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -68,29 +69,41 @@ async def test_materia_null_explicito_limpia_moodle_course_id():
 # ===================== usuario.email =====================
 
 
+def _usuario_mock(**overrides) -> SimpleNamespace:
+    """`Usuario` ya no tiene columna `rol` (Fase 6 multi-tenant) — el rol de
+    la membresía lo resuelve el repo mockeado, no un atributo del usuario."""
+    base = dict(
+        id=1, nombre="Juan", email="j@x.com", username="juan",
+        primer_login=False, gemini_api_key_valid=False, activo=True,
+        created_at=datetime(2026, 1, 1), updated_at=datetime(2026, 1, 1), last_login=None,
+    )
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
 @pytest.mark.asyncio
 async def test_usuario_null_explicito_limpia_email():
     svc = UsuarioService.__new__(UsuarioService)
-    user = SimpleNamespace(nombre="Juan", rol="TUTOR", email="j@x.com")
+    user = _usuario_mock()
     svc.repo = SimpleNamespace(
-        get_by_id=AsyncMock(return_value=user), update=AsyncMock(return_value=user)
+        get_by_id=AsyncMock(return_value=user),
+        update=AsyncMock(return_value=user),
+        get_rol_mas_antiguo=AsyncMock(return_value=None),
     )
-    with patch("app.services.usuario_service.UsuarioResponse") as MockResp:
-        MockResp.model_validate.return_value = "OK"
-        await svc.actualizar_usuario(1, UsuarioUpdate(email=None))
+    await svc.actualizar_usuario(1, UsuarioUpdate(email=None))
     assert user.email is None
 
 
 @pytest.mark.asyncio
 async def test_usuario_email_ausente_preserva():
     svc = UsuarioService.__new__(UsuarioService)
-    user = SimpleNamespace(nombre="Juan", rol="TUTOR", email="j@x.com")
+    user = _usuario_mock()
     svc.repo = SimpleNamespace(
-        get_by_id=AsyncMock(return_value=user), update=AsyncMock(return_value=user)
+        get_by_id=AsyncMock(return_value=user),
+        update=AsyncMock(return_value=user),
+        get_rol_mas_antiguo=AsyncMock(return_value=None),
     )
-    with patch("app.services.usuario_service.UsuarioResponse") as MockResp:
-        MockResp.model_validate.return_value = "OK"
-        await svc.actualizar_usuario(1, UsuarioUpdate(nombre="Juancho"))
+    await svc.actualizar_usuario(1, UsuarioUpdate(nombre="Juancho"))
     assert user.email == "j@x.com"
 
 

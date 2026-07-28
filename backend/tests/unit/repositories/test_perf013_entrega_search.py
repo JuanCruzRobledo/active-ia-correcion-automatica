@@ -36,6 +36,9 @@ from app.models.rubrica import Rubrica
 from app.models.usuario import Usuario
 from app.repositories.entrega_repository import EntregaRepository
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 # SQLite no soporta ARRAY/JSONB nativos; se compilan a JSON sólo en el dialecto de tests.
 @compiles(JSONB, "sqlite")
@@ -71,10 +74,10 @@ async def db_session():
 
 async def _seed(db) -> int:
     """Una comisión con 4 alumnos de nombres variados. Devuelve comision_id."""
-    materia = Materia(nombre="Programación 1", codigo="P1")
+    materia = Materia(universidad_id=UNIV_ID, nombre="Programación 1", codigo="P1")
     db.add(materia)
     await db.flush()
-    comi = Comision(materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
+    comi = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
     db.add(comi)
     await db.flush()
 
@@ -83,7 +86,7 @@ async def _seed(db) -> int:
     def _mk(nombre):
         nonlocal rid
         rid += 1
-        return Entrega(
+        return Entrega(universidad_id=UNIV_ID, 
             comision_id=comi.id,
             rubrica_id=1,  # FK no forzada en SQLite
             alumno_nombre=nombre,

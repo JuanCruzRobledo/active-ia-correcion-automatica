@@ -30,7 +30,9 @@ from app.models.enums import MoodleSyncEstado, RolEnum
 from app.models.moodle_sync import MoodleSync
 from app.repositories.correccion_repository import CorreccionRepository
 from app.repositories.moodle_sync_repository import MoodleSyncRepository
+from app.repositories.usuario_repository import UsuarioRepository
 from app.services.comentario_template_service import ComentarioTemplateService
+from app.services.moodle_credentials_resolver import resolver_credenciales_moodle
 from app.services.moodle_grade_service import MoodleGradeService
 from app.services.moodle_service import (
     MoodleAuthError,
@@ -97,11 +99,25 @@ class PorEntregarService:
         self.db = db
         self.correccion_repo = CorreccionRepository(db)
         self.moodle_sync_repo = MoodleSyncRepository(db)
+        self.usuario_repo = UsuarioRepository(db)
         self.moodle = MoodleService(db)
 
-    async def listar(self, usuario) -> PorEntregarResultado:
-        """Arma el listado de pendientes de subir (todo local, instantáneo)."""
-        es_admin = usuario.rol == RolEnum.ADMIN
+    async def listar(
+        self, usuario, universidad_id: int | None = None, *, rol=None
+    ) -> PorEntregarResultado:
+        """Arma el listado de pendientes de subir (todo local, instantáneo).
+
+        `universidad_id` se recibe por paridad de firma con el resto de los
+        entrypoints Moodle migrados (Fase 3 multi-tenant) pero NO se usa acá:
+        `listar` es 100% local (no consulta Moodle, no mintea token) — el
+        único entrypoint de este service que sí habla con Moodle es
+        `entregar_masivo_stream` (ya recibe `ctx`, D3).
+
+        Fase 6 multi-tenant (D3, hallazgo tarea 3.5): `rol` es el rol de la
+        membresía en la universidad activa (`ctx.rol`), no `usuario.rol`
+        (global) — mismo principio que el resto del scoping de esta fase.
+        """
+        es_admin = rol == RolEnum.ADMIN
         correcciones = await self.correccion_repo.get_pendientes_subida_moodle(
             usuario.id, es_admin
         )
@@ -161,7 +177,7 @@ class PorEntregarService:
         )
 
     async def entregar_masivo_stream(
-        self, usuario, base_url: str
+        self, usuario, base_url: str, ctx
     ) -> AsyncIterator[dict]:
         """Sube en bloque las correcciones de comentario automático (TP), con progreso.
 
@@ -179,7 +195,7 @@ class PorEntregarService:
         Las no-TP (requieren comentario del tutor) NO se tocan: se cuentan como omitidas.
         La idempotencia local y los permisos los garantiza subir_correccion.
         """
-        es_admin = usuario.rol == RolEnum.ADMIN
+        es_admin = ctx.rol == RolEnum.ADMIN
         correcciones = await self.correccion_repo.get_pendientes_subida_moodle(
             usuario.id, es_admin
         )
@@ -193,14 +209,21 @@ class PorEntregarService:
             return
 
         # ── Verificación contra Moodle: ¿cuáles ya están calificadas allá? ──
-        moodle_host = usuario.moodle_host or ""
+        # Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa
+        # (ctx.universidad_id), NUNCA de usuario.moodle_* (campo global viejo).
         try:
+            moodle_host, moodle_username, moodle_password_encrypted = (
+                await resolver_credenciales_moodle(self.usuario_repo, usuario.id, ctx.universidad_id)
+            )
             token = await self.moodle.get_token(
                 user_id=usuario.id,
                 moodle_host=moodle_host,
-                username=usuario.moodle_username,
-                password_encrypted=usuario.moodle_password_encrypted,
+                username=moodle_username,
+                password_encrypted=moodle_password_encrypted,
             )
+        except HTTPException as e:
+            yield {"tipo": "error", "detail": str(e.detail)}
+            return
         except (MoodleAuthError, MoodleConnectionError) as e:
             yield {"tipo": "error", "detail": str(e)}
             return
@@ -264,6 +287,7 @@ class PorEntregarService:
                             correccion_id=correccion.id,
                             comentario_final=render.comentario,
                             usuario=usuario,
+                            ctx=ctx,
                             base_url=base_url,
                             # Re-entrega (item #3b): forzamos para pisar la nota vieja con la
                             # nueva (el alumno re-entregó después). El resto, sin forzar.

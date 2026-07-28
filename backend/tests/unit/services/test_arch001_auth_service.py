@@ -8,6 +8,12 @@ de acceso a datos.
 Regla de persistencia:
 - change_password -> update()  (SÍ bumpea updated_at, como hoy)
 - login handlers  -> save()    (NO bumpea updated_at, como hoy)
+
+Nota (multi-tenant-auth-jwt, Fase 1): `_user`/`_svc` ganaron `es_superadmin`
+y `get_membresias_activas` para reflejar el estado real post-Fase-0 (todo
+usuario no-superadmin tiene exactamente 1 membresía activa en TUPaD tras el
+backfill) — `authenticate` ahora consulta esa membresía antes de emitir el
+token. La lógica de credenciales/lockout que este archivo cubre no cambió.
 """
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -25,11 +31,19 @@ def _user(**over):
         id=1, username="admin", nombre="Admin", rol=RolEnum.ADMIN,
         password_hash="hash", activo=True, locked_until=None,
         failed_login_attempts=0, primer_login=False, gemini_api_key_valid=True,
-        last_login=None, updated_at=None,
+        last_login=None, updated_at=None, es_superadmin=False,
     )
     for k, v in over.items():
         setattr(u, k, v)
     return u
+
+
+def _membresia_tupad(user, rol=None):
+    return SimpleNamespace(
+        universidad_id=1,
+        rol=rol or user.rol,
+        universidad=SimpleNamespace(id=1, nombre="TUPaD"),
+    )
 
 
 def _svc(user=None):
@@ -38,6 +52,12 @@ def _svc(user=None):
     svc.usuario_repo.get_by_username = AsyncMock(return_value=user)
     svc.usuario_repo.update = AsyncMock(side_effect=lambda u: u)
     svc.usuario_repo.save = AsyncMock(side_effect=lambda u: u)
+    # Backfill de Fase 0: todo usuario no-superadmin tiene exactamente 1
+    # membresía activa (TUPaD) con su rol viejo copiado.
+    svc.usuario_repo.get_membresias_activas = AsyncMock(
+        return_value=[_membresia_tupad(user)] if user is not None else []
+    )
+    svc.universidad_repo = MagicMock()
     return svc
 
 

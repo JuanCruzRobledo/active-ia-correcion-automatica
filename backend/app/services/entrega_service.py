@@ -20,6 +20,7 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.permissions import verificar_pertenencia_universidad
 from app.core.upload_limits import validar_tamano_upload, validar_zip_bomb
 from app.models.entrega import Entrega
 from app.models.enums import EstadoEntregaEnum, TipoActividadEnum
@@ -219,7 +220,9 @@ class EntregaService:
             return EntregaResponse.model_validate(updated_entrega)
 
         # Create new entrega
+        # Fase 4 multi-tenant: universidad_id se PROPAGA desde la comision.
         entrega = Entrega(
+            universidad_id=comision.universidad_id,
             comision_id=data.comision_id,
             rubrica_id=data.rubrica_id,
             alumno_nombre=data.alumno_nombre,
@@ -335,7 +338,12 @@ class EntregaService:
 
         hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
 
+        # Fase 4 multi-tenant: universidad_id se PROPAGA desde la comision. `comision_id`
+        # ya fue validado aguas arriba (ver docstring), pero acá no llega el objeto
+        # completo — se resuelve con un lookup barato por PK.
+        comision = await self.comision_repo.get_active_by_id(comision_id)
         entrega = Entrega(
+            universidad_id=comision.universidad_id if comision else None,
             comision_id=comision_id,
             rubrica_id=rubrica_id,
             alumno_nombre=alumno_nombre,
@@ -430,6 +438,7 @@ class EntregaService:
         search: str | None = None,
         page: int = 1,
         per_page: int = 20,
+        universidad_id: int | None = None,
     ) -> EntregaList:
         """
         List entregas with optional filters and pagination.
@@ -445,6 +454,7 @@ class EntregaService:
             search: PERF-013: filter by alumno_nombre (partial, case-insensitive).
             page: Page number (1-indexed).
             per_page: Items per page.
+            universidad_id: Fase 4 multi-tenant (D1). None = sin filtro.
 
         Returns:
             EntregaList with paginated results.
@@ -461,6 +471,7 @@ class EntregaService:
             search=search,
             page=page,
             per_page=per_page,
+            universidad_id=universidad_id,
         )
 
         # Build list items
@@ -496,18 +507,21 @@ class EntregaService:
             per_page=per_page,
         )
 
-    async def obtener_entrega(self, entrega_id: int) -> EntregaDetailResponse:
+    async def obtener_entrega(
+        self, entrega_id: int, *, universidad_id: int | None = None
+    ) -> EntregaDetailResponse:
         """
         Get an entrega by ID with full details.
 
         Args:
             entrega_id: Entrega's database ID.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             EntregaDetailResponse with full entrega data.
 
         Raises:
-            HTTPException 404: Entrega not found.
+            HTTPException 404: Entrega not found (o de otra universidad).
         """
         entrega = await self.entrega_repo.get_by_id_with_relations(entrega_id)
 
@@ -516,6 +530,9 @@ class EntregaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Entrega no encontrada",
             )
+        verificar_pertenencia_universidad(
+            entrega, universidad_id, detail="Entrega no encontrada"
+        )
 
         # Count historical versions
         historial_response = await self.historial_service.obtener_historial(
@@ -560,7 +577,9 @@ class EntregaService:
             num_versiones_anteriores=num_versiones,
         )
 
-    async def eliminar_entrega(self, entrega_id: int, actor_id: int) -> None:
+    async def eliminar_entrega(
+        self, entrega_id: int, actor_id: int, *, universidad_id: int | None = None
+    ) -> None:
         """
         CRUD-001: elimina una entrega. Soft delete por defecto (deleted_at);
         físico con cascada solo si ALLOW_HARD_DELETE. Registra Actividad en ambos
@@ -569,9 +588,10 @@ class EntregaService:
         Args:
             entrega_id: Entrega's database ID.
             actor_id: ID del usuario que ejecuta el borrado (para el audit log).
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Raises:
-            HTTPException 404: Entrega no encontrada.
+            HTTPException 404: Entrega no encontrada (o de otra universidad).
             HTTPException 400: La entrega ya estaba eliminada (soft).
         """
         # include_deleted=True para distinguir 404 (no existe) de 400 (ya borrada).
@@ -581,6 +601,9 @@ class EntregaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Entrega no encontrada",
             )
+        verificar_pertenencia_universidad(
+            entrega, universidad_id, detail="Entrega no encontrada"
+        )
 
         # Capturar antes del borrado: el hard delete expira el objeto ORM.
         alumno = entrega.alumno_nombre
@@ -601,7 +624,9 @@ class EntregaService:
             usuario_id=actor_id,
         )
 
-    async def restaurar_entrega(self, entrega_id: int, actor_id: int) -> Entrega:
+    async def restaurar_entrega(
+        self, entrega_id: int, actor_id: int, *, universidad_id: int | None = None
+    ) -> Entrega:
         """CRUD-001: restaura una entrega borrada (soft delete) y lo audita."""
         entrega = await self.entrega_repo.get_by_id(entrega_id, include_deleted=True)
         if not entrega:
@@ -609,6 +634,9 @@ class EntregaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Entrega no encontrada",
             )
+        verificar_pertenencia_universidad(
+            entrega, universidad_id, detail="Entrega no encontrada"
+        )
         if not entrega.is_deleted:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -697,18 +725,21 @@ class EntregaService:
         )
         return EntregaAccionMasivaResponse(procesadas=count, ids=ids)
 
-    async def obtener_contenido(self, entrega_id: int) -> ContenidoEntrega:
+    async def obtener_contenido(
+        self, entrega_id: int, *, universidad_id: int | None = None
+    ) -> ContenidoEntrega:
         """
         Get the full consolidated content of an entrega.
 
         Args:
             entrega_id: ID of the entrega.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             ContenidoEntrega with full content and metadata.
 
         Raises:
-            HTTPException 404: Entrega not found.
+            HTTPException 404: Entrega not found (o de otra universidad).
             HTTPException 400: Content not available.
         """
         # Get entrega. load_contenido=True: este endpoint devuelve el contenido crudo
@@ -720,6 +751,9 @@ class EntregaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Entrega no encontrada",
             )
+        verificar_pertenencia_universidad(
+            entrega, universidad_id, detail="Entrega no encontrada"
+        )
 
         # PDF submissions: return base64 content directly (no text consolidation)
         if entrega.archivo_tipo == "pdf":
@@ -1001,8 +1035,10 @@ class EntregaService:
 
                         else:
                             # Create new entrega
-                    
+                            # Fase 4 multi-tenant: universidad_id se PROPAGA desde la
+                            # comision (ya cargada al validar la comisión al inicio del método).
                             entrega = Entrega(
+                                universidad_id=comision.universidad_id,
                                 comision_id=comision_id,
                                 rubrica_id=rubrica_id,
                                 alumno_nombre=alumno_nombre,

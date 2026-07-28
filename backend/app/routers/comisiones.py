@@ -11,9 +11,10 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 5
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import (
     require_admin,
+    verificar_acceso_comision_o_materia,
     verificar_acceso_materia,
     verificar_acceso_materia_de_comision,
 )
@@ -46,6 +47,7 @@ async def listar_comisiones(
     per_page: int = Query(20, ge=1, le=100, description="Items por página"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ComisionList:
     """
     List all comisiones with optional filters and pagination.
@@ -60,10 +62,15 @@ async def listar_comisiones(
     - `per_page`: Items per page (max 100)
 
     **Authorization:** All roles. Tutors see only their assigned comisiones;
-    coordinadores and admins see all.
+    coordinadores y admins ven todas (scopeadas a su universidad activa).
+
+    Fase 4 multi-tenant (D6, deuda de Fase 2): el rol de filtrado se resuelve
+    desde `ctx.rol` (universidad activa), NO desde `current_user.rol` (rol
+    global legado) — un mismo usuario puede tener roles distintos en distintas
+    universidades. El resultado además queda scopeado por `ctx.universidad_id`.
     """
-    tutor_id = current_user.id if current_user.rol == RolEnum.TUTOR else None
-    coordinador_id = current_user.id if current_user.rol == RolEnum.COORDINADOR else None
+    tutor_id = current_user.id if ctx.rol == RolEnum.TUTOR else None
+    coordinador_id = current_user.id if ctx.rol == RolEnum.COORDINADOR else None
 
     service = ComisionService(db)
     return await service.listar_comisiones(
@@ -74,6 +81,7 @@ async def listar_comisiones(
         include_inactive=include_inactive,
         page=page,
         per_page=per_page,
+        universidad_id=ctx.universidad_id,
     )
 
 
@@ -82,6 +90,7 @@ async def crear_comision(
     data: ComisionCreate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ComisionDetailResponse:
     """
     Create a new comision with optional tutor assignments.
@@ -105,10 +114,12 @@ async def crear_comision(
     """
     # Admin: cualquier materia. Coordinador: solo las que tiene asignadas (403 si no).
     # Cualquier otro rol: 403.
-    await verificar_acceso_materia(db, current_user, data.materia_id)
+    await verificar_acceso_materia(db, current_user, ctx, data.materia_id)
 
     service = ComisionService(db)
-    return await service.crear_comision(data, current_user_id=current_user.id)
+    return await service.crear_comision(
+        data, current_user_id=current_user.id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get("/{comision_id}", response_model=ComisionDetailResponse)
@@ -116,6 +127,7 @@ async def obtener_comision(
     comision_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ComisionDetailResponse:
     """
     Get a comision by ID with full details.
@@ -125,18 +137,21 @@ async def obtener_comision(
     - Materia info (codigo, nombre)
     - List of assigned tutores with assignment dates
 
-    **Authorization:** Admin, coordinador, or tutor assigned to this comision.
+    **Authorization:** Admin/superadmin, coordinador de la materia de la
+    comisión, o tutor asignado a la comisión.
+
+    Fase 4 multi-tenant (D6, deuda de Fase 2): el chequeo inline
+    `current_user.rol == TUTOR` se reemplaza por el guard de pertenencia real
+    `verificar_acceso_comision_o_materia` (resuelto por `ctx`, no por el rol
+    global), que además cubre al COORDINADOR de la materia (antes solo ADMIN y
+    TUTOR estaban contemplados; un GESTOR ahora recibe 403 en vez de acceso
+    implícito). Se suma el check de pertenencia a la universidad activa (404
+    si la comisión es de otra universidad).
     """
+    await verificar_acceso_comision_o_materia(db, current_user, ctx, comision_id)
+
     service = ComisionService(db)
-
-    if current_user.rol == RolEnum.TUTOR:
-        if not await service.tutor_esta_asignado(current_user.id, comision_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No estás asignado a esta comisión",
-            )
-
-    return await service.obtener_comision(comision_id)
+    return await service.obtener_comision(comision_id, universidad_id=ctx.universidad_id)
 
 
 @router.patch("/{comision_id}/moodle", response_model=ComisionDetailResponse)
@@ -145,31 +160,30 @@ async def actualizar_moodle_comision(
     data: ComisionMoodleUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ComisionDetailResponse:
     """
     Update only the Moodle configuration of a comision.
 
     **Updatable fields:** `moodle_group_id`, `moodle_group_code`.
 
-    **Authorization:** Admin, or tutor assigned to this comision.
+    **Authorization:** Admin/superadmin, coordinador de la materia de la
+    comisión, o tutor asignado a la comisión.
     Tutors can keep Moodle config in sync without admin intervention so the
     pendientes panel works for their own assigned comisiones.
+
+    Fase 4 multi-tenant (D6, deuda de Fase 2): `current_user.rol` inline
+    reemplazado por el guard de pertenencia `verificar_acceso_comision_o_materia`
+    resuelto por `ctx` (mismo guard que `obtener_comision`; ver esa nota sobre el
+    COORDINADOR ahora incluido). Se suma el check de pertenencia a la
+    universidad activa (404 si la comisión es de otra universidad).
     """
+    await verificar_acceso_comision_o_materia(db, current_user, ctx, comision_id)
+
     service = ComisionService(db)
-
-    if current_user.rol == RolEnum.TUTOR:
-        if not await service.tutor_esta_asignado(current_user.id, comision_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="No estás asignado a esta comisión",
-            )
-    elif current_user.rol != RolEnum.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No tenés permisos para modificar esta comisión",
-        )
-
-    return await service.actualizar_moodle_config(comision_id, data)
+    return await service.actualizar_moodle_config(
+        comision_id, data, universidad_id=ctx.universidad_id
+    )
 
 
 @router.put("/{comision_id}", response_model=ComisionDetailResponse)
@@ -178,6 +192,7 @@ async def actualizar_comision(
     data: ComisionUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ComisionDetailResponse:
     """
     Update an existing comision with optional tutor reassignment.
@@ -196,10 +211,12 @@ async def actualizar_comision(
 
     **Authorization:** Admin (cualquiera) o Coordinador de la materia de la comisión.
     """
-    await verificar_acceso_materia_de_comision(db, current_user, comision_id)
+    await verificar_acceso_materia_de_comision(db, current_user, ctx, comision_id)
 
     service = ComisionService(db)
-    return await service.actualizar_comision(comision_id, data)
+    return await service.actualizar_comision(
+        comision_id, data, universidad_id=ctx.universidad_id
+    )
 
 
 @router.delete("/{comision_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -207,6 +224,7 @@ async def eliminar_comision(
     comision_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> None:
     """
     Soft delete a comision.
@@ -216,10 +234,10 @@ async def eliminar_comision(
 
     **Authorization:** Admin only
     """
-    require_admin(current_user)
+    require_admin(ctx)
 
     service = ComisionService(db)
-    await service.eliminar_comision(comision_id)
+    await service.eliminar_comision(comision_id, universidad_id=ctx.universidad_id)
 
 
 @router.post("/{comision_id}/restore", response_model=ComisionResponse)
@@ -227,6 +245,7 @@ async def restaurar_comision(
     comision_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ComisionResponse:
     """
     Restore a soft-deleted comision.
@@ -235,10 +254,10 @@ async def restaurar_comision(
 
     **Authorization:** Admin only
     """
-    require_admin(current_user)
+    require_admin(ctx)
 
     service = ComisionService(db)
-    return await service.restaurar_comision(comision_id)
+    return await service.restaurar_comision(comision_id, universidad_id=ctx.universidad_id)
 
 
 @router.post("/{comision_id}/tutores", response_model=TutoresResponse)
@@ -247,6 +266,7 @@ async def asignar_tutores(
     data: TutoresAssign,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> TutoresResponse:
     """
     Assign tutors to a comision.
@@ -263,7 +283,9 @@ async def asignar_tutores(
 
     **Authorization:** Admin (cualquiera) o Coordinador de la materia de la comisión.
     """
-    await verificar_acceso_materia_de_comision(db, current_user, comision_id)
+    await verificar_acceso_materia_de_comision(db, current_user, ctx, comision_id)
 
     service = ComisionService(db)
-    return await service.asignar_tutores(comision_id, data)
+    return await service.asignar_tutores(
+        comision_id, data, universidad_id=ctx.universidad_id
+    )

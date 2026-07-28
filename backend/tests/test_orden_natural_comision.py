@@ -73,6 +73,9 @@ from app.repositories.cierre_cursada_repository import CierreCursadaRepository
 from app.repositories.comision_repository import ComisionRepository
 from app.services.excel_cierre_cursada import _agrupar_por_comision
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 # SQLite no tiene JSONB nativo; se compila como JSON (mismo patrón que
 # test_cierre_cursada_service.py / test_cierre_cursada.py — sólo afecta al dialecto de
@@ -147,7 +150,7 @@ async def db_session():
 
 
 async def _crear_materia(db_session) -> Materia:
-    materia = Materia(nombre="Programación 1", codigo="P1")
+    materia = Materia(universidad_id=UNIV_ID, nombre="Programación 1", codigo="P1")
     db_session.add(materia)
     await db_session.flush()
     return materia
@@ -156,7 +159,6 @@ async def _crear_materia(db_session) -> Materia:
 async def _crear_usuario(db_session) -> Usuario:
     usuario = Usuario(
         username="coord1", password_hash="x", nombre="Coordinador",
-        rol="ADMIN",
     )
     db_session.add(usuario)
     await db_session.flush()
@@ -225,8 +227,8 @@ async def test_bug_superficie2_listado_comi10_antes_de_comi2_mismo_anio(db_sessi
     **Validates: Requirements 1.1, 2.1**"""
     materia = await _crear_materia(db_session)
     db_session.add_all([
-        Comision(materia_id=materia.id, nombre="COMI-10", anio=2026),
-        Comision(materia_id=materia.id, nombre="COMI-2", anio=2026),
+        Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="COMI-10", anio=2026),
+        Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="COMI-2", anio=2026),
     ])
     await db_session.commit()
 
@@ -262,7 +264,7 @@ async def test_bug_superficie3_corrida_cierre_comi10_antes_de_comi2(db_session):
     cuatrimestre = await _crear_cuatrimestre(db_session)
     usuario = await _crear_usuario(db_session)
 
-    run = CierreCursadaRun(
+    run = CierreCursadaRun(universidad_id=UNIV_ID, 
         materia_id=materia.id, cuatrimestre_id=cuatrimestre.id,
         generado_por_id=usuario.id, total_alumnos=2,
     )
@@ -305,7 +307,7 @@ async def test_bug_superficie4_avance_comi21_antes_de_comi3(db_session):
     esta aserción valida el comportamiento esperado.
     **Validates: Requirements 1.4, 2.4**"""
     materia = await _crear_materia(db_session)
-    snapshot = AvanceSnapshot(materia_id=materia.id, total_alumnos=2)
+    snapshot = AvanceSnapshot(universidad_id=UNIV_ID, materia_id=materia.id, total_alumnos=2)
     snapshot.alumnos = [
         _alumno_avance("COMI-21", "Aa", "Bb"),
         _alumno_avance("COMI-3", "Cc", "Dd"),

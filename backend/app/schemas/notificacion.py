@@ -20,6 +20,8 @@ class NotifCronConfigResponse(BaseModel):
 
     usuario_id: int | None = None
     usuario_nombre: str | None = None
+    # Fase 3 multi-tenant (OQ2): universidad activa del cron (sin JWT/ctx).
+    universidad_id: int | None = None
     dia_semana: int
     hora: int
     minuto: int
@@ -31,6 +33,9 @@ class NotifCronConfigUpdate(BaseModel):
     """Actualización de la config del cron semanal."""
 
     usuario_id: int | None = None
+    # Fase 3 multi-tenant (OQ2): universidad activa del cron (sin JWT/ctx). Se
+    # exige junto con usuario_id al activar (NotificacionConfigService.actualizar).
+    universidad_id: int | None = None
     dia_semana: int = Field(0, ge=0, le=6, description="0=lunes … 6=domingo")
     hora: int = Field(7, ge=0, le=23)
     minuto: int = Field(0, ge=0, le=59)

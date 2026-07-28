@@ -22,6 +22,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import HTTPException
 
+from app.core.dependencies import ContextoUniversidad
 from app.core.permissions import (
     comisiones_visibles_para,
     filtrar_entregas_accesibles,
@@ -31,10 +32,18 @@ from app.core.permissions import (
 )
 from app.models.enums import RolEnum
 
+# Fase 2 multi-tenant (D3): los guards de pertenencia suman `ctx` (fuente del
+# "acceso total") y conservan `usuario` (para las joins por usuario.id).
 ADMIN = SimpleNamespace(id=1, rol=RolEnum.ADMIN)
 TUTOR = SimpleNamespace(id=5, rol=RolEnum.TUTOR)
 COORD = SimpleNamespace(id=7, rol=RolEnum.COORDINADOR)
 GESTOR = SimpleNamespace(id=9, rol=RolEnum.GESTOR)
+
+CTX_ADMIN = ContextoUniversidad(universidad_id=1, rol=RolEnum.ADMIN, es_superadmin=False)
+CTX_TUTOR = ContextoUniversidad(universidad_id=1, rol=RolEnum.TUTOR, es_superadmin=False)
+CTX_COORD = ContextoUniversidad(universidad_id=1, rol=RolEnum.COORDINADOR, es_superadmin=False)
+CTX_GESTOR = ContextoUniversidad(universidad_id=1, rol=RolEnum.GESTOR, es_superadmin=False)
+CTX_SUPERADMIN = ContextoUniversidad(universidad_id=None, rol=None, es_superadmin=True)
 
 
 def _db_first(*rows):
@@ -75,21 +84,21 @@ _ES_COORDINADOR = (10, None, 777)
 @pytest.mark.asyncio
 async def test_comision_admin_pasa_sin_consultar_db():
     db = AsyncMock()
-    await verificar_acceso_comision_o_materia(db, ADMIN, 99)
+    await verificar_acceso_comision_o_materia(db, ADMIN, CTX_ADMIN, 99)
     db.execute.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_comision_tutor_asignado_ok():
     db = _db_first(_ES_TUTOR)
-    await verificar_acceso_comision_o_materia(db, TUTOR, 10)  # no lanza
+    await verificar_acceso_comision_o_materia(db, TUTOR, CTX_TUTOR, 10)  # no lanza
 
 
 @pytest.mark.asyncio
 async def test_comision_tutor_ajeno_403():
     db = _db_first(_SIN_PERTENENCIA)
     with pytest.raises(HTTPException) as exc:
-        await verificar_acceso_comision_o_materia(db, TUTOR, 10)
+        await verificar_acceso_comision_o_materia(db, TUTOR, CTX_TUTOR, 10)
     assert exc.value.status_code == 403
 
 
@@ -97,14 +106,14 @@ async def test_comision_tutor_ajeno_403():
 async def test_comision_coordinador_de_la_materia_ok():
     """El eje que hoy falta: coordinador entra aunque no sea tutor de la comision."""
     db = _db_first(_ES_COORDINADOR)
-    await verificar_acceso_comision_o_materia(db, COORD, 10)  # no lanza
+    await verificar_acceso_comision_o_materia(db, COORD, CTX_COORD, 10)  # no lanza
 
 
 @pytest.mark.asyncio
 async def test_comision_coordinador_de_otra_materia_403():
     db = _db_first(_SIN_PERTENENCIA)
     with pytest.raises(HTTPException) as exc:
-        await verificar_acceso_comision_o_materia(db, COORD, 10)
+        await verificar_acceso_comision_o_materia(db, COORD, CTX_COORD, 10)
     assert exc.value.status_code == 403
 
 
@@ -113,7 +122,7 @@ async def test_comision_gestor_403():
     """GESTOR es rol de reportes de Moodle: no toca el flujo de correccion."""
     db = _db_first(_SIN_PERTENENCIA)
     with pytest.raises(HTTPException) as exc:
-        await verificar_acceso_comision_o_materia(db, GESTOR, 10)
+        await verificar_acceso_comision_o_materia(db, GESTOR, CTX_GESTOR, 10)
     assert exc.value.status_code == 403
 
 
@@ -121,7 +130,7 @@ async def test_comision_gestor_403():
 async def test_comision_inexistente_404():
     db = _db_first(_COMISION_INEXISTENTE)
     with pytest.raises(HTTPException) as exc:
-        await verificar_acceso_comision_o_materia(db, TUTOR, 404404)
+        await verificar_acceso_comision_o_materia(db, TUTOR, CTX_TUTOR, 404404)
     assert exc.value.status_code == 404
 
 
@@ -129,8 +138,16 @@ async def test_comision_inexistente_404():
 async def test_comision_resuelve_pertenencia_en_una_sola_query():
     """La union de los dos ejes NO debe costar dos round-trips."""
     db = _db_first(_ES_COORDINADOR)
-    await verificar_acceso_comision_o_materia(db, COORD, 10)
+    await verificar_acceso_comision_o_materia(db, COORD, CTX_COORD, 10)
     assert db.execute.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_comision_superadmin_pasa_sin_consultar_db():
+    """Eje NUEVO (OQ1): el superadmin bypassa el guard de pertenencia."""
+    db = AsyncMock()
+    await verificar_acceso_comision_o_materia(db, GESTOR, CTX_SUPERADMIN, 99)
+    db.execute.assert_not_called()
 
 
 # ===================== verificar_acceso_entrega =====================
@@ -140,14 +157,14 @@ async def test_comision_resuelve_pertenencia_en_una_sola_query():
 async def test_entrega_propia_ok():
     # 1a query: entrega -> comision_id 10. 2a query: pertenencia -> es tutor.
     db = _db_first((42, 10), _ES_TUTOR)
-    await verificar_acceso_entrega(db, TUTOR, 42)  # no lanza
+    await verificar_acceso_entrega(db, TUTOR, CTX_TUTOR, 42)  # no lanza
 
 
 @pytest.mark.asyncio
 async def test_entrega_ajena_403():
     db = _db_first((42, 10), _SIN_PERTENENCIA)
     with pytest.raises(HTTPException) as exc:
-        await verificar_acceso_entrega(db, TUTOR, 42)
+        await verificar_acceso_entrega(db, TUTOR, CTX_TUTOR, 42)
     assert exc.value.status_code == 403
 
 
@@ -155,14 +172,23 @@ async def test_entrega_ajena_403():
 async def test_entrega_inexistente_404():
     db = _db_first(None)
     with pytest.raises(HTTPException) as exc:
-        await verificar_acceso_entrega(db, TUTOR, 404404)
+        await verificar_acceso_entrega(db, TUTOR, CTX_TUTOR, 404404)
     assert exc.value.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_entrega_admin_pasa_sin_consultar_db():
     db = AsyncMock()
-    await verificar_acceso_entrega(db, ADMIN, 42)
+    await verificar_acceso_entrega(db, ADMIN, CTX_ADMIN, 42)
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_entrega_superadmin_sin_universidad_activa_pasa():
+    """Eje NUEVO (OQ1 / OQ scenario del spec): superadmin con
+    universidad_activa_id=None igual bypassa el guard de pertenencia."""
+    db = AsyncMock()
+    await verificar_acceso_entrega(db, TUTOR, CTX_SUPERADMIN, 42)
     db.execute.assert_not_called()
 
 
@@ -175,7 +201,7 @@ async def test_entrega_no_selecciona_columnas_deferred():
     de permisos: el codigo fuente completo del alumno, en cada request.
     """
     db = _db_first((42, 10), _ES_TUTOR)
-    await verificar_acceso_entrega(db, TUTOR, 42)
+    await verificar_acceso_entrega(db, TUTOR, CTX_TUTOR, 42)
 
     query_compilada = str(db.execute.call_args_list[0].args[0])
     assert "contenido_consolidado" not in query_compilada
@@ -189,14 +215,14 @@ async def test_entrega_no_selecciona_columnas_deferred():
 async def test_correccion_propia_ok():
     # 1a query: correccion -> join entrega -> comision_id 10. 2a: pertenencia.
     db = _db_first((99, 10), _ES_COORDINADOR)
-    await verificar_acceso_correccion(db, COORD, 99)  # no lanza
+    await verificar_acceso_correccion(db, COORD, CTX_COORD, 99)  # no lanza
 
 
 @pytest.mark.asyncio
 async def test_correccion_ajena_403():
     db = _db_first((99, 10), _SIN_PERTENENCIA)
     with pytest.raises(HTTPException) as exc:
-        await verificar_acceso_correccion(db, TUTOR, 99)
+        await verificar_acceso_correccion(db, TUTOR, CTX_TUTOR, 99)
     assert exc.value.status_code == 403
 
 
@@ -204,14 +230,14 @@ async def test_correccion_ajena_403():
 async def test_correccion_inexistente_404():
     db = _db_first(None)
     with pytest.raises(HTTPException) as exc:
-        await verificar_acceso_correccion(db, TUTOR, 404404)
+        await verificar_acceso_correccion(db, TUTOR, CTX_TUTOR, 404404)
     assert exc.value.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_correccion_admin_pasa_sin_consultar_db():
     db = AsyncMock()
-    await verificar_acceso_correccion(db, ADMIN, 99)
+    await verificar_acceso_correccion(db, ADMIN, CTX_ADMIN, 99)
     db.execute.assert_not_called()
 
 
@@ -221,7 +247,9 @@ async def test_correccion_admin_pasa_sin_consultar_db():
 @pytest.mark.asyncio
 async def test_lote_mixto_particiona_permitidos_y_denegados():
     db = _db_scalars([1, 2])  # solo 1 y 2 son accesibles
-    permitidos, denegados = await filtrar_entregas_accesibles(db, TUTOR, [1, 2, 3, 4])
+    permitidos, denegados = await filtrar_entregas_accesibles(
+        db, TUTOR, CTX_TUTOR, [1, 2, 3, 4]
+    )
     assert permitidos == {1, 2}
     assert denegados == {3, 4}
 
@@ -229,7 +257,19 @@ async def test_lote_mixto_particiona_permitidos_y_denegados():
 @pytest.mark.asyncio
 async def test_lote_admin_recibe_todo_sin_consultar_db():
     db = AsyncMock()
-    permitidos, denegados = await filtrar_entregas_accesibles(db, ADMIN, [1, 2, 3])
+    permitidos, denegados = await filtrar_entregas_accesibles(db, ADMIN, CTX_ADMIN, [1, 2, 3])
+    assert permitidos == {1, 2, 3}
+    assert denegados == set()
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_lote_superadmin_recibe_todo_sin_consultar_db():
+    """Eje NUEVO (OQ1): el superadmin bypassa el guard de lote."""
+    db = AsyncMock()
+    permitidos, denegados = await filtrar_entregas_accesibles(
+        db, GESTOR, CTX_SUPERADMIN, [1, 2, 3]
+    )
     assert permitidos == {1, 2, 3}
     assert denegados == set()
     db.execute.assert_not_called()
@@ -239,7 +279,9 @@ async def test_lote_admin_recibe_todo_sin_consultar_db():
 async def test_lote_ids_inexistentes_caen_en_denegados():
     """Deliberado: no distinguir 404 de 403 evita el oraculo de enumeracion."""
     db = _db_scalars([1])
-    permitidos, denegados = await filtrar_entregas_accesibles(db, TUTOR, [1, 999999])
+    permitidos, denegados = await filtrar_entregas_accesibles(
+        db, TUTOR, CTX_TUTOR, [1, 999999]
+    )
     assert permitidos == {1}
     assert denegados == {999999}
 
@@ -247,7 +289,7 @@ async def test_lote_ids_inexistentes_caen_en_denegados():
 @pytest.mark.asyncio
 async def test_lote_sin_ninguno_accesible_devuelve_permitidos_vacio():
     db = _db_scalars([])
-    permitidos, denegados = await filtrar_entregas_accesibles(db, TUTOR, [1, 2, 3])
+    permitidos, denegados = await filtrar_entregas_accesibles(db, TUTOR, CTX_TUTOR, [1, 2, 3])
     assert permitidos == set()
     assert denegados == {1, 2, 3}
 
@@ -255,7 +297,7 @@ async def test_lote_sin_ninguno_accesible_devuelve_permitidos_vacio():
 @pytest.mark.asyncio
 async def test_lote_lista_vacia_no_consulta_db():
     db = AsyncMock()
-    permitidos, denegados = await filtrar_entregas_accesibles(db, TUTOR, [])
+    permitidos, denegados = await filtrar_entregas_accesibles(db, TUTOR, CTX_TUTOR, [])
     assert permitidos == set()
     assert denegados == set()
     db.execute.assert_not_called()
@@ -266,7 +308,7 @@ async def test_lote_de_100_ids_ejecuta_exactamente_una_query():
     """Anti N+1: el lote se resuelve con un IN, no con un guard por ID."""
     ids = list(range(1, 101))
     db = _db_scalars(ids)
-    permitidos, _ = await filtrar_entregas_accesibles(db, TUTOR, ids)
+    permitidos, _ = await filtrar_entregas_accesibles(db, TUTOR, CTX_TUTOR, ids)
     assert permitidos == set(ids)
     assert db.execute.call_count == 1
 
@@ -275,7 +317,7 @@ async def test_lote_de_100_ids_ejecuta_exactamente_una_query():
 async def test_lote_no_selecciona_columnas_deferred():
     ids = [1, 2, 3]
     db = _db_scalars(ids)
-    await filtrar_entregas_accesibles(db, TUTOR, ids)
+    await filtrar_entregas_accesibles(db, TUTOR, CTX_TUTOR, ids)
 
     query_compilada = str(db.execute.call_args_list[0].args[0])
     assert "contenido_consolidado" not in query_compilada
@@ -289,30 +331,38 @@ async def test_lote_no_selecciona_columnas_deferred():
 async def test_scoping_admin_devuelve_none_sin_consultar_db():
     """None = sin filtro. El admin ve todo."""
     db = AsyncMock()
-    assert await comisiones_visibles_para(db, ADMIN) is None
+    assert await comisiones_visibles_para(db, ADMIN, CTX_ADMIN) is None
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_scoping_superadmin_devuelve_none_sin_consultar_db():
+    """Eje NUEVO (OQ1): el superadmin ve todo, igual que el admin."""
+    db = AsyncMock()
+    assert await comisiones_visibles_para(db, GESTOR, CTX_SUPERADMIN) is None
     db.execute.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_scoping_tutor_devuelve_sus_comisiones():
     db = _db_scalars([10, 11])
-    assert await comisiones_visibles_para(db, TUTOR) == [10, 11]
+    assert await comisiones_visibles_para(db, TUTOR, CTX_TUTOR) == [10, 11]
 
 
 @pytest.mark.asyncio
 async def test_scoping_coordinador_devuelve_comisiones_de_sus_materias():
     db = _db_scalars([20, 21, 22])
-    assert await comisiones_visibles_para(db, COORD) == [20, 21, 22]
+    assert await comisiones_visibles_para(db, COORD, CTX_COORD) == [20, 21, 22]
 
 
 @pytest.mark.asyncio
 async def test_scoping_gestor_no_ve_ninguna_comision():
     db = _db_scalars([])
-    assert await comisiones_visibles_para(db, GESTOR) == []
+    assert await comisiones_visibles_para(db, GESTOR, CTX_GESTOR) == []
 
 
 @pytest.mark.asyncio
 async def test_scoping_resuelve_ambos_ejes_en_una_sola_query():
     db = _db_scalars([10, 20])
-    await comisiones_visibles_para(db, COORD)
+    await comisiones_visibles_para(db, COORD, CTX_COORD)
     assert db.execute.call_count == 1

@@ -11,15 +11,16 @@ import io
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import require_admin, require_gestor_or_admin
 from app.core.scheduler import reprogramar_desde_config
 from app.models import Usuario
 from app.models.enums import EstadoAvanceEnum, OrigenSnapshotEnum
+from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.dashboard_gestores import (
     AlumnoDetalle,
     AvanceResponse,
@@ -30,14 +31,13 @@ from app.schemas.dashboard_gestores import (
     SnapshotResumenResponse,
 )
 from app.services.dashboard_lectura_service import DashboardLecturaService
+from app.services.moodle_credentials_resolver import resolver_credenciales_moodle
 from app.services.snapshot_config_service import SnapshotConfigService
 from app.services.snapshot_service import SnapshotService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/gestion/dashboard", tags=["dashboard-gestores"])
-
-_SIN_CREDENCIALES = "Configurá tus credenciales de Moodle en tu perfil"
 
 
 # ===================== Config del cron (admin) =====================
@@ -47,9 +47,10 @@ _SIN_CREDENCIALES = "Configurá tus credenciales de Moodle en tu perfil"
 async def obtener_cron_config(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CronConfigResponse:
     """Config actual del cron de snapshots. Solo admin."""
-    require_admin(current_user)
+    require_admin(ctx)
     return await SnapshotConfigService(db).obtener()
 
 
@@ -58,9 +59,10 @@ async def actualizar_cron_config(
     data: CronConfigUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CronConfigResponse:
     """Actualiza usuario/hora/activo del cron y lo reprograma en caliente. Solo admin."""
-    require_admin(current_user)
+    require_admin(ctx)
     result = await SnapshotConfigService(db).actualizar(data)
     await reprogramar_desde_config()
     return result
@@ -76,40 +78,36 @@ async def disparar_snapshot_manual(
     ),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[SnapshotResumenResponse]:
     """Dispara el cálculo de snapshot a mano (botón de pruebas), con las credenciales
-    Moodle del usuario actual. Gestor o admin."""
-    require_gestor_or_admin(current_user)
+    Moodle de la universidad activa del usuario actual (Fase 3 multi-tenant). Gestor o admin."""
+    require_gestor_or_admin(ctx)
     service = SnapshotService(db)
 
     if materia_id is not None:
-        if not current_user.moodle_username or not current_user.moodle_password_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=_SIN_CREDENCIALES
-            )
         snap = await service.generar(
-            materia_id, usuario=current_user, origen=OrigenSnapshotEnum.MANUAL
+            materia_id, usuario=current_user, origen=OrigenSnapshotEnum.MANUAL,
+            universidad_id=ctx.universidad_id,
         )
         return [snap]
 
-    try:
-        return await service.generar_todas_para_usuario(
-            current_user.id, origen=OrigenSnapshotEnum.MANUAL
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=_SIN_CREDENCIALES
-        )
+    return await service.generar_todas_para_usuario(
+        current_user.id, origen=OrigenSnapshotEnum.MANUAL, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get("/materias-configuradas", response_model=list[MateriaConfiguradaItem])
 async def listar_materias_configuradas(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[MateriaConfiguradaItem]:
     """Materias listas para snapshot (con fecha de su último snapshot). Gestor o admin."""
-    require_gestor_or_admin(current_user)
-    return await DashboardLecturaService(db).materias_configuradas()
+    require_gestor_or_admin(ctx)
+    return await DashboardLecturaService(db).materias_configuradas(
+        universidad_id=ctx.universidad_id
+    )
 
 
 # ===================== Disparo manual con progreso en vivo (SSE) =====================
@@ -122,26 +120,29 @@ async def snapshot_stream(
     ),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     """Genera snapshots emitiendo el progreso por SSE (X/total alumnos), en vivo.
 
-    Corre con las credenciales del usuario actual. Eventos:
+    Corre con las credenciales de la universidad activa del usuario actual
+    (Fase 3 multi-tenant). Eventos:
     `{tipo: 'progreso', materia_idx, materias_total, procesados, total}` por alumno,
     `{tipo: 'done', materias}` al final, `{tipo: 'error', detalle}` si falla.
     """
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     service = SnapshotService(db)
-    try:
-        _, host = await service.token_de_usuario(current_user)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_424_FAILED_DEPENDENCY, detail=_SIN_CREDENCIALES
-        )
+    # Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa,
+    # resueltos UNA vez y reusados para el token WS y el login de sesión web.
+    host, moodle_username, moodle_password_encrypted = await resolver_credenciales_moodle(
+        UsuarioRepository(db), current_user.id, ctx.universidad_id
+    )
 
     if materia_ids:
         ids = materia_ids
     else:
-        materias = await service.materia_repo.get_configuradas_dashboard()
+        materias = await service.materia_repo.get_configuradas_dashboard(
+            universidad_id=ctx.universidad_id
+        )
         ids = [m.id for m in materias]
 
     async def event_gen():
@@ -152,8 +153,7 @@ async def snapshot_stream(
             sesion = service.moodle.crear_cliente_sesion()
             try:
                 await service.moodle.login_sesion(
-                    sesion, host,
-                    current_user.moodle_username, current_user.moodle_password_encrypted,
+                    sesion, host, moodle_username, moodle_password_encrypted,
                 )
                 for idx, mid in enumerate(ids):
                     def on_progress(p: int, t: int, _idx: int = idx, _mid: int = mid):
@@ -174,6 +174,7 @@ async def snapshot_stream(
                         origen=OrigenSnapshotEnum.MANUAL,
                         on_progress=on_progress,
                         sesion=sesion,
+                        universidad_id=ctx.universidad_id,
                     )
                 queue.put_nowait({"tipo": "done", "materias": len(ids)})
             except Exception as e:  # noqa: BLE001
@@ -208,10 +209,11 @@ async def snapshot_stream(
 async def obtener_arbol(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[CohorteArbol]:
     """Árbol cohorte → cuatrimestre → materias para los selectores. Gestor o admin."""
-    require_gestor_or_admin(current_user)
-    return await DashboardLecturaService(db).obtener_arbol()
+    require_gestor_or_admin(ctx)
+    return await DashboardLecturaService(db).obtener_arbol(universidad_id=ctx.universidad_id)
 
 
 @router.get("/avance", response_model=AvanceResponse)
@@ -220,10 +222,13 @@ async def obtener_avance(
     materia_id: int | None = Query(None, description="Materia puntual; omitir = todas (Todos)"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> AvanceResponse:
     """Conteos por estado del último snapshot + título dinámico (gráfico de torta)."""
-    require_gestor_or_admin(current_user)
-    return await DashboardLecturaService(db).avance(cuatrimestre_id, materia_id)
+    require_gestor_or_admin(ctx)
+    return await DashboardLecturaService(db).avance(
+        cuatrimestre_id, materia_id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get("/avance/detalle", response_model=list[AlumnoDetalle])
@@ -233,10 +238,13 @@ async def obtener_detalle(
     materia_id: int | None = Query(None),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[AlumnoDetalle]:
     """Lista de alumnos en un estado (alimenta el modal de detalle). Gestor o admin."""
-    require_gestor_or_admin(current_user)
-    return await DashboardLecturaService(db).detalle(cuatrimestre_id, estado, materia_id)
+    require_gestor_or_admin(ctx)
+    return await DashboardLecturaService(db).detalle(
+        cuatrimestre_id, estado, materia_id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get("/avance/excel")
@@ -245,11 +253,12 @@ async def descargar_avance_excel(
     materia_id: int | None = Query(None),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     """Excel del avance: hoja Resumen (torta + conteos) + 1 hoja por estado. Gestor o admin."""
-    require_gestor_or_admin(current_user)
+    require_gestor_or_admin(ctx)
     contenido, filename = await DashboardLecturaService(db).avance_excel(
-        cuatrimestre_id, materia_id
+        cuatrimestre_id, materia_id, universidad_id=ctx.universidad_id
     )
     return StreamingResponse(
         io.BytesIO(contenido),

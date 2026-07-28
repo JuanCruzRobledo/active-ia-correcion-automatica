@@ -25,7 +25,7 @@ import {
 } from '@/shared/components/ui';
 import { helpContent } from '@/shared/content/helpContent';
 import { formatDate } from '@/shared/utils';
-import { useAuth } from '@/features/auth/hooks';
+import { useTenant } from '@/shared/context/useTenant';
 
 interface MateriaPageFilters {
   activa: 'TODOS' | 'true' | 'false';
@@ -44,10 +44,11 @@ export const MateriasPage = () => {
   });
   const isFirstRender = useRef(true);
   const navigate = useNavigate();
-  const { user } = useAuth();
+  // D2: el rol es de la membresía activa (useTenant), no del usuario global.
+  const { rol } = useTenant();
   // El coordinador edita/configura SUS materias pero no crea, borra ni reasigna
   // coordinadores (eso es del admin). El backend lo refuerza (verificar_acceso_materia).
-  const isAdmin = user?.rol === 'ADMIN';
+  const isAdmin = rol === 'ADMIN';
 
   // Debounce: actualiza el filtro 400ms después de que el usuario deja de escribir
   useEffect(() => {

@@ -32,6 +32,9 @@ from app.models.materia import Materia
 from app.models.usuario import Usuario
 from app.services.dashboard_service import DashboardService
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 @compiles(JSONB, "sqlite")
 def _jsonb(element, compiler, **kw):  # noqa: D401
@@ -65,7 +68,7 @@ async def db_session():
 
 async def _entrega(db, comision_id, estado, i):
     db.add(
-        Entrega(
+        Entrega(universidad_id=UNIV_ID, 
             comision_id=comision_id,
             rubrica_id=1,
             alumno_nombre=f"C{comision_id}-{estado.value}-{i}",
@@ -83,18 +86,18 @@ async def tutor_con_comisiones(db_session):
     Comisión A: 2 SUBIDA, 1 PENDIENTE, 2 CORREGIDA, 1 ERROR → pendientes=3, alumnos=6
     Comisión B: 0 SUBIDA/PENDIENTE, 1 CORREGIDA          → pendientes=0, alumnos=1
     """
-    materia = Materia(nombre="Programación 1", codigo="P1")
+    materia = Materia(universidad_id=UNIV_ID, nombre="Programación 1", codigo="P1")
     db_session.add(materia)
     await db_session.flush()
 
-    tutor = Usuario(username="tutor1", nombre="Tutor 1", password_hash="x", rol=RolEnum.TUTOR)
-    otro = Usuario(username="tutor2", nombre="Tutor 2", password_hash="x", rol=RolEnum.TUTOR)
+    tutor = Usuario(username="tutor1", nombre="Tutor 1", password_hash="x")
+    otro = Usuario(username="tutor2", nombre="Tutor 2", password_hash="x")
     db_session.add_all([tutor, otro])
     await db_session.flush()
 
-    a = Comision(materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
-    b = Comision(materia_id=materia.id, nombre="C1-2", anio=2026, activa=True)
-    ajena = Comision(materia_id=materia.id, nombre="C1-9", anio=2026, activa=True)
+    a = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
+    b = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-2", anio=2026, activa=True)
+    ajena = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-9", anio=2026, activa=True)
     db_session.add_all([a, b, ajena])
     await db_session.flush()
 
@@ -173,7 +176,7 @@ async def test_totales_globales_intactos(db_session, tutor_con_comisiones):
 
 @pytest.mark.asyncio
 async def test_tutor_sin_comisiones_devuelve_ceros(db_session):
-    huerfano = Usuario(username="solo", nombre="Solo", password_hash="x", rol=RolEnum.TUTOR)
+    huerfano = Usuario(username="solo", nombre="Solo", password_hash="x")
     db_session.add(huerfano)
     await db_session.commit()
 

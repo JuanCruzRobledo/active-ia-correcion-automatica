@@ -26,6 +26,7 @@ from app.services.correccion_service import CorreccionService
 def _fake_entrega(**overrides) -> SimpleNamespace:
     base = dict(
         id=1,
+        universidad_id=1,
         archivo_tipo="txt",
         contenido_consolidado="print(1)",
         contenido_preview="print(1)",

@@ -33,6 +33,9 @@ from app.models.usuario import Usuario
 from app.services.comision_service import ComisionService
 from app.services.materia_service import MateriaService
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 @compiles(JSONB, "sqlite")
 def _jsonb(element, compiler, **kw):  # noqa: D401
@@ -65,7 +68,10 @@ async def db_session():
 
 
 async def _usuario(db, username, rol) -> Usuario:
-    u = Usuario(username=username, nombre=f"N {username}", password_hash="x", rol=rol)
+    # `rol` ya no se persiste en `Usuario` (Fase 6 multi-tenant): se conserva
+    # el parámetro por compatibilidad de firma con los callers, pero ningún
+    # test de este archivo lee `.rol` (verificado) — no hace falta membresía.
+    u = Usuario(username=username, nombre=f"N {username}", password_hash="x")
     db.add(u)
     await db.flush()
     return u
@@ -76,12 +82,12 @@ async def _usuario(db, username, rol) -> Usuario:
 # ---------------------------------------------------------------------------
 @pytest.mark.asyncio
 async def test_obtener_comision_tutores_eager_sin_get_by_id_en_loop(db_session, monkeypatch):
-    materia = Materia(nombre="Programación 1", codigo="P1")
+    materia = Materia(universidad_id=UNIV_ID, nombre="Programación 1", codigo="P1")
     db_session.add(materia)
     await db_session.flush()
     t1 = await _usuario(db_session, "tutor1", RolEnum.TUTOR)
     t2 = await _usuario(db_session, "tutor2", RolEnum.TUTOR)
-    comi = Comision(materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
+    comi = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
     db_session.add(comi)
     await db_session.flush()
     db_session.add_all(
@@ -113,10 +119,10 @@ async def test_obtener_comision_tutores_eager_sin_get_by_id_en_loop(db_session, 
 
 @pytest.mark.asyncio
 async def test_obtener_comision_sin_tutores(db_session):
-    materia = Materia(nombre="Álgebra", codigo="ALG")
+    materia = Materia(universidad_id=UNIV_ID, nombre="Álgebra", codigo="ALG")
     db_session.add(materia)
     await db_session.flush()
-    comi = Comision(materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
+    comi = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
     db_session.add(comi)
     await db_session.commit()
 
@@ -132,9 +138,9 @@ async def test_listar_materias_num_coordinadores_identico_al_loop(db_session):
     c1 = await _usuario(db_session, "coord1", RolEnum.COORDINADOR)
     c2 = await _usuario(db_session, "coord2", RolEnum.COORDINADOR)
 
-    m_dos = Materia(nombre="Programación 1", codigo="P1")
-    m_uno = Materia(nombre="Programación 2", codigo="P2")
-    m_cero = Materia(nombre="Redes", codigo="RED")
+    m_dos = Materia(universidad_id=UNIV_ID, nombre="Programación 1", codigo="P1")
+    m_uno = Materia(universidad_id=UNIV_ID, nombre="Programación 2", codigo="P2")
+    m_cero = Materia(universidad_id=UNIV_ID, nombre="Redes", codigo="RED")
     db_session.add_all([m_dos, m_uno, m_cero])
     await db_session.flush()
 

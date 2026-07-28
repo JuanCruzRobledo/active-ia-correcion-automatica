@@ -13,8 +13,20 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.dependencies import ContextoUniversidad
 from app.models import Usuario
 from app.models.enums import RolEnum
+
+
+def _acceso_total(ctx: ContextoUniversidad) -> bool:
+    """Unico punto de decision de "acceso total" (D5, multi-tenant-permisos).
+
+    True si el usuario es superadmin (bypass global, no depende de una
+    universidad concreta -- OQ1) o si su rol en la universidad activa es
+    ADMIN. Reutilizado por los guards de pertenencia (Grupo B) para no
+    repetir la condicion.
+    """
+    return ctx.es_superadmin or ctx.rol == RolEnum.ADMIN
 
 
 # =========================================
@@ -22,127 +34,145 @@ from app.models.enums import RolEnum
 # =========================================
 
 
-def require_admin(user: Usuario) -> Usuario:
+def require_admin(ctx: ContextoUniversidad) -> ContextoUniversidad:
     """
-    Validate that the user has ADMIN role.
+    Validate that the user has ADMIN role in the active university.
+
+    Fase 2 multi-tenant: el rol se lee del contexto de la universidad activa
+    (`get_universidad_activa`, Fase 1), no de `usuario.rol` global. Bypass
+    total para `es_superadmin`.
 
     Args:
-        user: Current authenticated user.
+        ctx: Contexto de la universidad activa (rol + es_superadmin).
 
     Returns:
-        Usuario: The same user object (for chaining).
+        ContextoUniversidad: The same context object (for chaining).
 
     Raises:
-        HTTPException 403: If user is not an admin.
+        HTTPException 403: If user is not an admin (and not superadmin).
 
     Usage:
-        from app.core.dependencies import get_current_user
+        from app.core.dependencies import get_universidad_activa
         from app.core.permissions import require_admin
 
         @router.post("/admin-only")
         async def admin_endpoint(
-            current_user: Usuario = Depends(get_current_user)
+            ctx: ContextoUniversidad = Depends(get_universidad_activa)
         ):
-            require_admin(current_user)
+            require_admin(ctx)
             # Only admins can reach here
             pass
     """
-    if user.rol != RolEnum.ADMIN:
+    if ctx.es_superadmin:
+        return ctx
+    if ctx.rol != RolEnum.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol de administrador",
         )
-    return user
+    return ctx
 
 
-def require_coordinador(user: Usuario) -> Usuario:
+def require_coordinador(ctx: ContextoUniversidad) -> ContextoUniversidad:
     """
-    Validate that the user has COORDINADOR role.
+    Validate that the user has COORDINADOR role in the active university.
+
+    Fase 2 multi-tenant: ver `require_admin`.
 
     Args:
-        user: Current authenticated user.
+        ctx: Contexto de la universidad activa (rol + es_superadmin).
 
     Returns:
-        Usuario: The same user object (for chaining).
+        ContextoUniversidad: The same context object (for chaining).
 
     Raises:
-        HTTPException 403: If user is not a coordinador.
+        HTTPException 403: If user is not a coordinador (and not superadmin).
 
     Usage:
         @router.post("/coordinador-only")
         async def coordinador_endpoint(
-            current_user: Usuario = Depends(get_current_user)
+            ctx: ContextoUniversidad = Depends(get_universidad_activa)
         ):
-            require_coordinador(current_user)
+            require_coordinador(ctx)
             # Only coordinadores can reach here
             pass
     """
-    if user.rol != RolEnum.COORDINADOR:
+    if ctx.es_superadmin:
+        return ctx
+    if ctx.rol != RolEnum.COORDINADOR:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol de coordinador",
         )
-    return user
+    return ctx
 
 
-def require_tutor(user: Usuario) -> Usuario:
+def require_tutor(ctx: ContextoUniversidad) -> ContextoUniversidad:
     """
-    Validate that the user has TUTOR role.
+    Validate that the user has TUTOR role in the active university.
+
+    Fase 2 multi-tenant: ver `require_admin`.
 
     Args:
-        user: Current authenticated user.
+        ctx: Contexto de la universidad activa (rol + es_superadmin).
 
     Returns:
-        Usuario: The same user object (for chaining).
+        ContextoUniversidad: The same context object (for chaining).
 
     Raises:
-        HTTPException 403: If user is not a tutor.
+        HTTPException 403: If user is not a tutor (and not superadmin).
 
     Usage:
         @router.post("/tutor-only")
         async def tutor_endpoint(
-            current_user: Usuario = Depends(get_current_user)
+            ctx: ContextoUniversidad = Depends(get_universidad_activa)
         ):
-            require_tutor(current_user)
+            require_tutor(ctx)
             # Only tutores can reach here
             pass
     """
-    if user.rol != RolEnum.TUTOR:
+    if ctx.es_superadmin:
+        return ctx
+    if ctx.rol != RolEnum.TUTOR:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol de tutor",
         )
-    return user
+    return ctx
 
 
-def require_gestor(user: Usuario) -> Usuario:
+def require_gestor(ctx: ContextoUniversidad) -> ContextoUniversidad:
     """
-    Validate that the user has GESTOR role.
+    Validate that the user has GESTOR role in the active university.
+
+    Fase 2 multi-tenant: ver `require_admin`.
 
     Args:
-        user: Current authenticated user.
+        ctx: Contexto de la universidad activa (rol + es_superadmin).
 
     Returns:
-        Usuario: The same user object (for chaining).
+        ContextoUniversidad: The same context object (for chaining).
 
     Raises:
-        HTTPException 403: If user is not a gestor.
+        HTTPException 403: If user is not a gestor (and not superadmin).
 
     Usage:
         @router.get("/gestion/cursos")
         async def list_cursos(
-            current_user: Usuario = Depends(get_current_user)
+            ctx: ContextoUniversidad = Depends(get_universidad_activa)
         ):
-            require_gestor(current_user)
+            require_gestor(ctx)
             # Only gestores can reach here
             pass
     """
-    if user.rol != RolEnum.GESTOR:
+    if ctx.es_superadmin:
+        return ctx
+    if ctx.rol != RolEnum.GESTOR:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol de gestor",
         )
-    return user
+    return ctx
 
 
 # =========================================
@@ -150,87 +180,98 @@ def require_gestor(user: Usuario) -> Usuario:
 # =========================================
 
 
-def require_coordinador_or_admin(user: Usuario) -> Usuario:
+def require_coordinador_or_admin(ctx: ContextoUniversidad) -> ContextoUniversidad:
     """
-    Validate that the user has COORDINADOR or ADMIN role.
+    Validate that the user has COORDINADOR or ADMIN role in the active university.
+
+    Fase 2 multi-tenant: ver `require_admin`.
 
     Args:
-        user: Current authenticated user.
+        ctx: Contexto de la universidad activa (rol + es_superadmin).
 
     Returns:
-        Usuario: The same user object (for chaining).
+        ContextoUniversidad: The same context object (for chaining).
 
     Raises:
-        HTTPException 403: If user is neither coordinador nor admin.
+        HTTPException 403: If user is neither coordinador nor admin (and not superadmin).
 
     Usage:
         @router.get("/materias")
         async def list_materias(
-            current_user: Usuario = Depends(get_current_user)
+            ctx: ContextoUniversidad = Depends(get_universidad_activa)
         ):
-            require_coordinador_or_admin(current_user)
+            require_coordinador_or_admin(ctx)
             # Coordinadores and admins can reach here
             pass
     """
-    if user.rol not in (RolEnum.ADMIN, RolEnum.COORDINADOR):
+    if ctx.es_superadmin:
+        return ctx
+    if ctx.rol not in (RolEnum.ADMIN, RolEnum.COORDINADOR):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol de coordinador o administrador",
         )
-    return user
+    return ctx
 
 
-def require_tutor_or_coordinador(user: Usuario) -> Usuario:
+def require_tutor_or_coordinador(ctx: ContextoUniversidad) -> ContextoUniversidad:
     """
-    Validate that the user has TUTOR or COORDINADOR role.
+    Validate that the user has TUTOR or COORDINADOR role in the active university.
+
+    Fase 2 multi-tenant: ver `require_admin`.
 
     Args:
-        user: Current authenticated user.
+        ctx: Contexto de la universidad activa (rol + es_superadmin).
 
     Returns:
-        Usuario: The same user object (for chaining).
+        ContextoUniversidad: The same context object (for chaining).
 
     Raises:
-        HTTPException 403: If user is neither tutor nor coordinador.
+        HTTPException 403: If user is neither tutor nor coordinador (and not superadmin).
 
     Usage:
         @router.get("/comisiones/{id}/entregas")
         async def list_entregas(
-            current_user: Usuario = Depends(get_current_user)
+            ctx: ContextoUniversidad = Depends(get_universidad_activa)
         ):
-            require_tutor_or_coordinador(current_user)
+            require_tutor_or_coordinador(ctx)
             # Tutores and coordinadores can reach here
             pass
     """
-    if user.rol not in (RolEnum.TUTOR, RolEnum.COORDINADOR):
+    if ctx.es_superadmin:
+        return ctx
+    if ctx.rol not in (RolEnum.TUTOR, RolEnum.COORDINADOR):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol de tutor o coordinador",
         )
-    return user
+    return ctx
 
 
-def require_gestor_or_admin(user: Usuario) -> Usuario:
+def require_gestor_or_admin(ctx: ContextoUniversidad) -> ContextoUniversidad:
     """
-    Validate that the user has GESTOR or ADMIN role.
+    Validate that the user has GESTOR or ADMIN role in the active university.
 
     Guard de la pantalla "Gestión": la usa el GESTOR, y el ADMIN puede entrar también.
+    Fase 2 multi-tenant: ver `require_admin`.
 
     Args:
-        user: Current authenticated user.
+        ctx: Contexto de la universidad activa (rol + es_superadmin).
 
     Returns:
-        Usuario: The same user object (for chaining).
+        ContextoUniversidad: The same context object (for chaining).
 
     Raises:
-        HTTPException 403: If user is neither gestor nor admin.
+        HTTPException 403: If user is neither gestor nor admin (and not superadmin).
     """
-    if user.rol not in (RolEnum.ADMIN, RolEnum.GESTOR):
+    if ctx.es_superadmin:
+        return ctx
+    if ctx.rol not in (RolEnum.ADMIN, RolEnum.GESTOR):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Se requiere rol de gestor o administrador",
         )
-    return user
+    return ctx
 
 
 def require_any_authenticated(user: Usuario) -> Usuario:
@@ -274,18 +315,18 @@ def require_any_authenticated(user: Usuario) -> Usuario:
 
 
 async def verificar_acceso_materia(
-    db: AsyncSession, usuario: Usuario, materia_id: int
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, materia_id: int
 ) -> None:
     """Valida acceso a una materia consultando la DB (guard REAL, no placeholder).
 
-    - ADMIN: acceso total.
+    - Acceso total (superadmin o ADMIN en la universidad activa): pasa sin consultar.
     - COORDINADOR: sólo si está asignado a la materia (CoordinadorMateria).
     - Cualquier otro rol: 403.
 
     Lanza HTTPException 403 si no tiene acceso. Reemplaza al placeholder
     `require_coordinador_of_materia` (que NO consultaba la DB).
     """
-    if usuario.rol == RolEnum.ADMIN:
+    if _acceso_total(ctx):
         return
 
     from app.models.materia import CoordinadorMateria
@@ -306,10 +347,10 @@ async def verificar_acceso_materia(
 
 
 async def verificar_acceso_unidad(
-    db: AsyncSession, usuario: Usuario, unidad_id: int
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, unidad_id: int
 ) -> None:
     """Resuelve la materia de una unidad y valida el acceso (ver verificar_acceso_materia)."""
-    if usuario.rol == RolEnum.ADMIN:
+    if _acceso_total(ctx):
         return
 
     from app.models.unidad import Unidad
@@ -322,14 +363,14 @@ async def verificar_acceso_unidad(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Unidad no encontrada"
         )
-    await verificar_acceso_materia(db, usuario, row[0])
+    await verificar_acceso_materia(db, usuario, ctx, row[0])
 
 
 async def verificar_acceso_examen(
-    db: AsyncSession, usuario: Usuario, examen_id: int
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, examen_id: int
 ) -> None:
     """Resuelve la materia de un examen y valida el acceso (ver verificar_acceso_materia)."""
-    if usuario.rol == RolEnum.ADMIN:
+    if _acceso_total(ctx):
         return
 
     from app.models.examen_materia import ExamenMateria
@@ -342,11 +383,11 @@ async def verificar_acceso_examen(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Examen no encontrado"
         )
-    await verificar_acceso_materia(db, usuario, row[0])
+    await verificar_acceso_materia(db, usuario, ctx, row[0])
 
 
 async def verificar_acceso_materia_de_comision(
-    db: AsyncSession, usuario: Usuario, comision_id: int
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, comision_id: int
 ) -> None:
     """Valida acceso a una comisión POR SU MATERIA (coordinador dueño de la materia).
 
@@ -354,11 +395,11 @@ async def verificar_acceso_materia_de_comision(
     tutores asignados), esto resuelve la materia de la comisión y valida contra
     CoordinadorMateria: el coordinador gestiona las comisiones de SUS materias.
 
-    - ADMIN: acceso total.
+    - Acceso total (superadmin o ADMIN en la universidad activa): pasa sin consultar.
     - COORDINADOR: sólo si está asignado a la materia de la comisión.
     - Resto: 403. Comisión inexistente: 404.
     """
-    if usuario.rol == RolEnum.ADMIN:
+    if _acceso_total(ctx):
         return
 
     from app.models.comision import Comision
@@ -371,14 +412,14 @@ async def verificar_acceso_materia_de_comision(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Comisión no encontrada"
         )
-    await verificar_acceso_materia(db, usuario, row[0])
+    await verificar_acceso_materia(db, usuario, ctx, row[0])
 
 
 async def verificar_acceso_rubrica(
-    db: AsyncSession, usuario: Usuario, rubrica_id: int
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, rubrica_id: int
 ) -> None:
     """Resuelve la materia de una rúbrica y valida el acceso (ver verificar_acceso_materia)."""
-    if usuario.rol == RolEnum.ADMIN:
+    if _acceso_total(ctx):
         return
 
     from app.models.rubrica import Rubrica
@@ -391,21 +432,21 @@ async def verificar_acceso_rubrica(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Rúbrica no encontrada"
         )
-    await verificar_acceso_materia(db, usuario, row[0])
+    await verificar_acceso_materia(db, usuario, ctx, row[0])
 
 
 async def verificar_acceso_comision(
-    db: AsyncSession, usuario: Usuario, comision_id: int
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, comision_id: int
 ) -> None:
     """Versión async REAL: valida acceso a una comisión consultando la DB.
 
-    - ADMIN: acceso total.
+    - Acceso total (superadmin o ADMIN en la universidad activa): pasa sin consultar.
     - Otros roles: sólo si están asignados a la comisión (ComisionTutor).
 
     Lanza HTTPException 403 si no tiene acceso. (Reemplaza el placeholder
     `require_tutor_of_comision` para los flujos de Moodle, donde sí consultamos DB.)
     """
-    if usuario.rol == RolEnum.ADMIN:
+    if _acceso_total(ctx):
         return
 
     from app.models.comision import ComisionTutor
@@ -437,9 +478,9 @@ async def verificar_acceso_comision(
 
 
 async def verificar_acceso_comision_o_materia(
-    db: AsyncSession, usuario: Usuario, comision_id: int
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, comision_id: int
 ) -> None:
-    """Acceso si: ADMIN | tutor asignado a la comision | coordinador de su materia.
+    """Acceso si: acceso total | tutor asignado a la comision | coordinador de su materia.
 
     Una sola query: el LEFT JOIN a las dos tablas puente permite distinguir
     404 (no hay fila de Comision) de 403 (hay comision pero ninguna pertenencia)
@@ -447,7 +488,7 @@ async def verificar_acceso_comision_o_materia(
 
     Lanza 404 si la comision no existe, 403 si no hay pertenencia.
     """
-    if usuario.rol == RolEnum.ADMIN:
+    if _acceso_total(ctx):
         return
 
     from app.models.comision import Comision, ComisionTutor
@@ -489,7 +530,7 @@ async def verificar_acceso_comision_o_materia(
 
 
 async def verificar_acceso_entrega(
-    db: AsyncSession, usuario: Usuario, entrega_id: int
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, entrega_id: int
 ) -> None:
     """Resuelve Entrega -> comision_id y delega en el guard combinado.
 
@@ -497,7 +538,7 @@ async def verificar_acceso_entrega(
     pdf_contenido_b64 son deferred=True (PERF-002/006) y un select(Entrega)
     arrastraria el codigo fuente del alumno en CADA verificacion de permisos.
     """
-    if usuario.rol == RolEnum.ADMIN:
+    if _acceso_total(ctx):
         return
 
     from app.models.entrega import Entrega
@@ -514,14 +555,14 @@ async def verificar_acceso_entrega(
             detail="Entrega no encontrada",
         )
 
-    await verificar_acceso_comision_o_materia(db, usuario, fila[1])
+    await verificar_acceso_comision_o_materia(db, usuario, ctx, fila[1])
 
 
 async def verificar_acceso_correccion(
-    db: AsyncSession, usuario: Usuario, correccion_id: int
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, correccion_id: int
 ) -> None:
     """Resuelve Correccion -> Entrega -> comision_id y delega en el guard combinado."""
-    if usuario.rol == RolEnum.ADMIN:
+    if _acceso_total(ctx):
         return
 
     from app.models.correccion import Correccion
@@ -540,11 +581,11 @@ async def verificar_acceso_correccion(
             detail="Corrección no encontrada",
         )
 
-    await verificar_acceso_comision_o_materia(db, usuario, fila[1])
+    await verificar_acceso_comision_o_materia(db, usuario, ctx, fila[1])
 
 
 async def filtrar_entregas_accesibles(
-    db: AsyncSession, usuario: Usuario, entrega_ids: list[int]
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, entrega_ids: list[int]
 ) -> tuple[set[int], set[int]]:
     """Particiona un lote de IDs en (permitidos, denegados) con UNA sola query.
 
@@ -556,7 +597,7 @@ async def filtrar_entregas_accesibles(
     solicitados = set(entrega_ids)
     if not solicitados:
         return set(), set()
-    if usuario.rol == RolEnum.ADMIN:
+    if _acceso_total(ctx):
         return solicitados, set()
 
     from app.models.comision import Comision, ComisionTutor
@@ -593,16 +634,125 @@ async def filtrar_entregas_accesibles(
     return permitidos, solicitados - permitidos
 
 
+# =========================================
+# Guard defensivo de sync Moodle cross-campus (OQ1, multi-tenant-moodle-services Fase 3)
+# =========================================
+#
+# NO es el aislamiento general de queries por universidad_id (eso es Fase 4).
+# Es una red de seguridad LOCAL en los entrypoints que mintean un token Moodle
+# de la universidad activa y lo usan contra un course_id/group_id de una
+# Materia/Comisión: si esa Materia perteneciera a OTRA universidad, el
+# course_id podría 404 en el campus activo o, peor, coincidir por casualidad
+# con un curso de otra materia. El guard corta ANTES de pegarle a Moodle.
+#
+# `materia.universidad_id` es nullable (Fase 0, backfill histórico): una
+# materia SIN universidad asignada NO se considera mismatch (no rompe el
+# estado mono-universidad actual ni bloquea datos aún no migrados).
+
+
+def verificar_materia_universidad_activa(materia, universidad_id_activa: int | None) -> None:
+    """Guard defensivo (OQ1): la materia debe pertenecer a la universidad activa.
+
+    Lanza HTTPException 409 si `materia.universidad_id` está seteado y
+    difiere de `universidad_id_activa`. No aplica si la materia no tiene
+    `universidad_id` (dato legado sin migrar) — ver nota arriba.
+
+    Args:
+        materia: instancia de `Materia` (o cualquier objeto con `.universidad_id`).
+        universidad_id_activa: `ctx.universidad_id` del request.
+    """
+    if materia is None:
+        return
+    materia_universidad_id = getattr(materia, "universidad_id", None)
+    if materia_universidad_id is None:
+        return
+    if materia_universidad_id != universidad_id_activa:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="La materia no pertenece a la universidad activa",
+        )
+
+
+def materia_pertenece_a_universidad_activa(materia, universidad_id_activa: int | None) -> bool:
+    """Versión booleana (sin excepción) para filtrar listas de materias/comisiones
+    en los entrypoints que iteran varias a la vez (p. ej. `moodle_service.get_pendientes`,
+    `moodle_import_service._resolver_pares`): descarta silenciosamente las que no
+    pertenecen a la universidad activa, en vez de abortar todo el lote."""
+    if materia is None:
+        return False
+    materia_universidad_id = getattr(materia, "universidad_id", None)
+    if materia_universidad_id is None:
+        return True
+    return materia_universidad_id == universidad_id_activa
+
+
+# =========================================
+# Check de pertenencia GENERAL por id, semántica 404 (Fase 4, D3)
+# =========================================
+#
+# Distinto del guard 409 de arriba (Fase 3, sync Moodle cross-campus): este es
+# el check que se monta en TODO acceso por id a un recurso de las 9 entidades
+# scopeadas (materia, comision, entrega, correccion, unidad, rubrica, examen,
+# cierre_cursada_run, avance_snapshot). Un 403 revelaría que el recurso EXISTE
+# en otra universidad; 404 lo vuelve indistinguible de un id inexistente
+# (mismo criterio que `filtrar_entregas_accesibles`, OQ1 del design).
+
+
+def verificar_pertenencia_universidad(
+    recurso,
+    universidad_id_activa: int | None,
+    *,
+    detail: str = "Recurso no encontrado",
+) -> None:
+    """Valida que `recurso` pertenezca a la universidad activa. 404 si no.
+
+    Firma calcada de `verificar_materia_universidad_activa` (Fase 3): recibe el
+    `int | None` ya resuelto (`ctx.universidad_id`), NO el `ContextoUniversidad`
+    completo — mantiene consistencia con el resto de las firmas de servicio
+    (D4: "un solo valor viaja"), y permite usarlo también desde flujos sin
+    request/JWT (p. ej. el cron) que ya resuelven su propio `universidad_id`.
+
+    - `universidad_id_activa is None` (superadmin SIN universidad activa elegida):
+      bypass total, no valida nada (ve cualquier recurso de cualquier universidad).
+    - `recurso is None` (no existe): 404.
+    - `recurso.universidad_id != universidad_id_activa`: 404 (NO 403 — no revela
+      que el recurso existe en otra universidad).
+    - Resto (recurso de la universidad activa, incluido un superadmin que SÍ
+      eligió universidad y por ende queda scopeado como cualquier miembro): pasa.
+
+    Args:
+        recurso: instancia de modelo (o cualquier objeto con `.universidad_id`).
+        universidad_id_activa: `ctx.universidad_id` de la universidad activa del
+            request (None = superadmin sin universidad elegida, bypass).
+        detail: mensaje del 404. Usar el MISMO texto que el "no encontrado" propio
+            de la entidad en el call site (p. ej. "Materia no encontrada"), para
+            que el caso cross-tenant sea indistinguible del caso "no existe".
+
+    Raises:
+        HTTPException 404: recurso inexistente o de otra universidad.
+    """
+    if universidad_id_activa is None:
+        return
+    if (
+        recurso is None
+        or getattr(recurso, "universidad_id", None) != universidad_id_activa
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=detail,
+        )
+
+
 async def comisiones_visibles_para(
-    db: AsyncSession, usuario: Usuario
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad
 ) -> list[int] | None:
-    """IDs de comisiones que el usuario puede ver. None = ADMIN, sin filtro.
+    """IDs de comisiones que el usuario puede ver. None = acceso total, sin filtro.
 
     Para el scoping de GET /entregas/: ahi un 403 no aplica, hay que FILTRAR.
     El filtro debe entrar antes del count, para que el total paginado no
     revele la cantidad global.
     """
-    if usuario.rol == RolEnum.ADMIN:
+    if _acceso_total(ctx):
         return None
 
     from app.models.comision import Comision, ComisionTutor

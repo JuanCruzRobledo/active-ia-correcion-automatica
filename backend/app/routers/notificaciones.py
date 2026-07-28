@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import require_admin
 from app.core.scheduler import reprogramar_notificaciones_desde_config
 from app.models import Usuario
@@ -91,8 +91,9 @@ def _materias_muestra_nexo() -> list[dict]:
 async def obtener_cron_config(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> NotifCronConfigResponse:
-    require_admin(current_user)
+    require_admin(ctx)
     return await NotificacionConfigService(db).obtener()
 
 
@@ -101,8 +102,9 @@ async def actualizar_cron_config(
     data: NotifCronConfigUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> NotifCronConfigResponse:
-    require_admin(current_user)
+    require_admin(ctx)
     result = await NotificacionConfigService(db).actualizar(data)
     await reprogramar_notificaciones_desde_config()
     return result
@@ -127,13 +129,14 @@ async def disparar_corrida(
     ),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CorridaResumenResponse:
     """Corre la cadena de notificaciones a mano (QA). Usa el usuario del cron-config
     (o el actual si no hay) para refrescar snapshots. Solo admin.
 
     En fase de prueba: `incluir_alumnos=false` + `comisiones=7:1&comisiones=7:2…`
     para mandar solo a los tutores de esas comisiones (y a los nexos)."""
-    require_admin(current_user)
+    require_admin(ctx)
     config = await NotificacionConfigService(db).get_config()
     usuario_id = config.usuario_id or current_user.id
 
@@ -170,9 +173,10 @@ async def enviar_prueba(
     data: EnviarPruebaRequest,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> EnvioEmailLogResponse:
     """Envía un email de muestra (tabla del alumno) a la casilla indicada. Solo admin."""
-    require_admin(current_user)
+    require_admin(ctx)
     log = EnvioEmailLog(
         tanda_id=f"prueba-{uuid.uuid4().hex[:8]}",
         tipo=TipoNotificacionEnum.ALUMNO,
@@ -202,8 +206,9 @@ async def historial(
     limit: int = Query(200, ge=1, le=1000),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[EnvioEmailLogResponse]:
-    require_admin(current_user)
+    require_admin(ctx)
     logs = await NotificacionRepository(db).listar(tanda_id=tanda_id, limit=limit)
     return [EnvioEmailLogResponse.model_validate(x) for x in logs]
 
@@ -215,9 +220,10 @@ async def historial(
 async def preview(
     tipo: str,
     current_user: Usuario = Depends(get_current_user),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ):
     """Devuelve una muestra del formato sin enviar nada: alumno=HTML, tutor/nexo=Excel."""
-    require_admin(current_user)
+    require_admin(ctx)
     _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     if tipo == "alumno":
         return HTMLResponse(construir_html_alumno("Alumno de prueba", _filas_muestra_alumno()))

@@ -46,6 +46,7 @@ class NotificacionConfigService:
         return NotifCronConfigResponse(
             usuario_id=config.usuario_id,
             usuario_nombre=nombre,
+            universidad_id=config.universidad_id,
             dia_semana=config.dia_semana,
             hora=config.hora,
             minuto=config.minuto,
@@ -65,19 +66,36 @@ class NotificacionConfigService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Para activar el cron hay que asignar un usuario de servicio",
                 )
+            # Fase 3 multi-tenant (OQ2): el cron corre sin request/ctx, así que
+            # la universidad activa se elige explícitamente acá (no hay JWT del
+            # que leerla) y se exige junto con el usuario de servicio.
+            if not data.universidad_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Para activar el cron hay que elegir la universidad activa",
+                )
             usuario = await self.usuario_repo.get_by_id(data.usuario_id)
             if usuario is None:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="El usuario indicado no existe",
                 )
-            if not usuario.moodle_username or not usuario.moodle_password_encrypted:
+            # Credenciales de la MEMBRESÍA (usuario, universidad) elegida — D1/D2,
+            # NUNCA usuario.moodle_* (campo global viejo).
+            creds = await self.usuario_repo.get_credenciales_moodle(
+                data.usuario_id, data.universidad_id
+            )
+            if creds is None or not creds.username or not creds.password_encrypted:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="El usuario elegido no tiene credenciales de Moodle configuradas",
+                    detail=(
+                        "El usuario elegido no tiene credenciales de Moodle configuradas "
+                        "para la universidad elegida"
+                    ),
                 )
 
         config.usuario_id = data.usuario_id
+        config.universidad_id = data.universidad_id
         config.dia_semana = data.dia_semana
         config.hora = data.hora
         config.minuto = data.minuto

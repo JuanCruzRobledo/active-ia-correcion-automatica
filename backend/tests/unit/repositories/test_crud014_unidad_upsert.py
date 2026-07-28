@@ -26,6 +26,9 @@ from app.models.rubrica import Rubrica
 from app.models.unidad import Unidad
 from app.repositories.unidad_repository import UnidadRepository
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 sqlite3.register_adapter(dict, json.dumps)
 sqlite3.register_adapter(list, json.dumps)
 
@@ -58,7 +61,7 @@ async def db_session():
 
 
 async def _materia(db):
-    m = Materia(nombre="M1", codigo="M1")
+    m = Materia(universidad_id=UNIV_ID, nombre="M1", codigo="M1")
     db.add(m)
     await db.flush()
     return m.id
@@ -69,11 +72,11 @@ async def test_upsert_preserva_el_id_de_las_que_siguen(db_session):
     mid = await _materia(db_session)
     repo = UnidadRepository(db_session)
     # estado inicial: sections 100 y 200
-    iniciales = await repo.sincronizar(mid, [(1, 100, "U1"), (2, 200, "U2")])
+    iniciales = await repo.sincronizar(mid, [(1, 100, "U1"), (2, 200, "U2")], universidad_id=UNIV_ID)
     id_100 = next(u.id for u in iniciales if u.moodle_section_id == 100)
 
     # re-sync: 100 sigue (renombrada), 200 se va, 300 es nueva
-    res = await repo.sincronizar(mid, [(1, 100, "U1 nueva"), (2, 300, "U3")])
+    res = await repo.sincronizar(mid, [(1, 100, "U1 nueva"), (2, 300, "U3")], universidad_id=UNIV_ID)
     por_section = {u.moodle_section_id: u for u in res}
 
     # la unidad de section 100 CONSERVA su id (no fue recreada)
@@ -88,10 +91,10 @@ async def test_upsert_renumerar_sin_violar_unique(db_session):
     """Intercambiar números (1<->2) no debe chocar con UNIQUE(materia_id, numero)."""
     mid = await _materia(db_session)
     repo = UnidadRepository(db_session)
-    await repo.sincronizar(mid, [(1, 100, "A"), (2, 200, "B")])
+    await repo.sincronizar(mid, [(1, 100, "A"), (2, 200, "B")], universidad_id=UNIV_ID)
 
     # swap: section 100 pasa a numero 2, section 200 a numero 1
-    res = await repo.sincronizar(mid, [(2, 100, "A"), (1, 200, "B")])
+    res = await repo.sincronizar(mid, [(2, 100, "A"), (1, 200, "B")], universidad_id=UNIV_ID)
     por_section = {u.moodle_section_id: u for u in res}
     assert por_section[100].numero == 2
     assert por_section[200].numero == 1
@@ -101,6 +104,6 @@ async def test_upsert_renumerar_sin_violar_unique(db_session):
 async def test_upsert_solo_crea_las_nuevas(db_session):
     mid = await _materia(db_session)
     repo = UnidadRepository(db_session)
-    await repo.sincronizar(mid, [(1, 100, "A")])
-    res = await repo.sincronizar(mid, [(1, 100, "A"), (2, 200, "B")])
+    await repo.sincronizar(mid, [(1, 100, "A")], universidad_id=UNIV_ID)
+    res = await repo.sincronizar(mid, [(1, 100, "A"), (2, 200, "B")], universidad_id=UNIV_ID)
     assert {u.moodle_section_id for u in res} == {100, 200}

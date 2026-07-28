@@ -107,9 +107,9 @@ class HistorialService:
         ]
 
         return HistorialResponse(
-            entrega_id=entrega_id,
+            entrega_actual_id=entrega_id,
             total_versiones=len(items),
-            versiones=items,
+            versiones_anteriores=items,
         )
 
     async def obtener_version_especifica(

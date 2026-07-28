@@ -21,10 +21,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.cierre_cursada import CierreCursadaAlumno, CierreCursadaRun
 from app.models.enums import EstadoCierreEnum, TipoActividadEnum
+from app.core.permissions import verificar_materia_universidad_activa
 from app.repositories.cierre_cursada_repository import CierreCursadaRepository
 from app.repositories.comision_repository import ComisionRepository
 from app.repositories.examen_repository import ExamenRepository
 from app.repositories.materia_repository import MateriaRepository
+from app.repositories.usuario_repository import UsuarioRepository
 from app.services.actividad_service import ActividadService
 from app.services.cierre_cursada_calculo import SinExamenesConfigurados, calcular_estado_cierre
 from app.services.examen_mapper import TIPOS_PRINCIPALES, calcular_resultados_examenes
@@ -33,6 +35,7 @@ from app.services.moodle_bulk_parser import (
     construir_indice_nombre_cmid,
     parsear_export_calificador_dual,
 )
+from app.services.moodle_credentials_resolver import resolver_credenciales_moodle
 from app.services.moodle_service import (
     MoodleAuthError,
     MoodleConnectionError,
@@ -52,18 +55,24 @@ class CierreCursadaService:
         self.comision_repo = ComisionRepository(db)
         self.examen_repo = ExamenRepository(db)
         self.cierre_repo = CierreCursadaRepository(db)
+        self.usuario_repo = UsuarioRepository(db)
         self.moodle = MoodleService(db)
 
-    async def token_de_usuario(self, usuario) -> tuple[str, str]:
-        """(token, host) de Moodle de un usuario. Lanza ValueError si sin credenciales."""
-        if not usuario.moodle_username or not usuario.moodle_password_encrypted:
-            raise ValueError("El usuario no tiene credenciales de Moodle configuradas")
-        host = usuario.moodle_host or ""
+    async def token_de_usuario(self, usuario, universidad_id: int | None) -> tuple[str, str]:
+        """(token, host) de Moodle de un usuario en la universidad activa.
+
+        Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa
+        (universidad_id), NUNCA de usuario.moodle_* (campo global viejo). Lanza
+        HTTPException 424/409 (ver `resolver_credenciales_moodle`) si faltan.
+        """
+        host, username, password_encrypted = await resolver_credenciales_moodle(
+            self.usuario_repo, usuario.id, universidad_id
+        )
         token = await self.moodle.get_token(
             user_id=usuario.id,
             moodle_host=host,
-            username=usuario.moodle_username,
-            password_encrypted=usuario.moodle_password_encrypted,
+            username=username,
+            password_encrypted=password_encrypted,
         )
         return token, host
 
@@ -120,6 +129,7 @@ class CierreCursadaService:
         materia_id: int,
         cuatrimestre_id: int,
         usuario,
+        universidad_id: int | None = None,
     ) -> CierreCursadaRun:
         """Genera y persiste una corrida de cierre dirigida por `ExamenMateria`.
 
@@ -130,8 +140,14 @@ class CierreCursadaService:
         alumno con `examen_mapper.calcular_resultados_examenes` y clasifica
         con la función PURA `calcular_estado_cierre` (que también calcula la
         Nota Final ponderada).
+
+        Fase 3 multi-tenant: `universidad_id` (la universidad activa del
+        request) se usa para (a) resolver host+credenciales Moodle (D1/D2) y
+        (b) el guard defensivo OQ1 (la materia debe pertenecer a esa
+        universidad antes de mintear un token contra su curso).
         """
         materia = await self._get_materia_configurada(materia_id)
+        verificar_materia_universidad_activa(materia, universidad_id)
         course_id = materia.moodle_course_id
 
         examenes_materia = await self.examen_repo.get_by_materia(materia_id)
@@ -158,13 +174,23 @@ class CierreCursadaService:
             for e in examenes_materia
         ]
 
-        token, host = await self.token_de_usuario(usuario)
+        # Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa,
+        # resueltos UNA vez y reusados para el token WS y el login de sesión web.
+        host, moodle_username, moodle_password_encrypted = await resolver_credenciales_moodle(
+            self.usuario_repo, usuario.id, universidad_id
+        )
+        token = await self.moodle.get_token(
+            user_id=usuario.id,
+            moodle_host=host,
+            username=moodle_username,
+            password_encrypted=moodle_password_encrypted,
+        )
         comisiones = await self.comision_repo.get_by_materia_con_tutores(materia_id)
 
         sesion = self.moodle.crear_cliente_sesion()
         try:
             await self.moodle.login_sesion(
-                sesion, host, usuario.moodle_username, usuario.moodle_password_encrypted
+                sesion, host, moodle_username, moodle_password_encrypted
             )
             enrolled = await self.moodle.get_enrolled_users_full(token, host, course_id, client=sesion)
             students = [u for u in enrolled if isinstance(u, dict) and self._es_student(u)]
@@ -295,7 +321,9 @@ class CierreCursadaService:
                 )
             )
 
+        # Fase 4 multi-tenant: universidad_id se PROPAGA desde la materia.
         run = CierreCursadaRun(
+            universidad_id=materia.universidad_id,
             materia_id=materia_id,
             cuatrimestre_id=cuatrimestre_id,
             examenes_snapshot=examenes_config,
@@ -330,8 +358,12 @@ class CierreCursadaService:
         )
         return creado
 
-    async def listar_historial(self, materia_id: int) -> list[CierreCursadaRun]:
-        return await self.cierre_repo.listar_runs(materia_id)
+    async def listar_historial(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> list[CierreCursadaRun]:
+        return await self.cierre_repo.listar_runs(
+            materia_id, universidad_id=universidad_id
+        )
 
     async def obtener_run(self, run_id: int) -> CierreCursadaRun | None:
         return await self.cierre_repo.get_run(run_id)

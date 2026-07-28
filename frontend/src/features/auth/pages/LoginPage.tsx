@@ -1,13 +1,32 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
+import { AxiosError } from 'axios';
 import { useLogin } from '../hooks/useLogin';
+import { useSeleccionarUniversidad } from '../hooks/useSeleccionarUniversidad';
+import { SeleccionUniversidadStep } from '../components/SeleccionUniversidadStep';
 import { Button } from '@/shared/components/ui/Button';
 import { Input } from '@/shared/components/ui/Input';
+import { getErrorMessage } from '@/shared/types';
+
+/** Extrae el mensaje real del backend de un error de mutación (AxiosError → detail). */
+function mensajeDeError(error: unknown): string | null {
+  if (!error) return null;
+  const data = error instanceof AxiosError ? error.response?.data : undefined;
+  return getErrorMessage(data ?? error);
+}
 
 export const LoginPage = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [tokenVencidoMsg, setTokenVencidoMsg] = useState<string | null>(null);
   const loginMutation = useLogin();
+  const seleccionMutation = useSeleccionarUniversidad();
+
+  // Rama de selección: el login devolvió `requiere_seleccion` en vez del token final.
+  const seleccion =
+    loginMutation.data && 'requiere_seleccion' in loginMutation.data
+      ? loginMutation.data
+      : null;
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -21,8 +40,51 @@ export const LoginPage = () => {
     // el cierre del teclado mientras corre el request de login.
     (document.activeElement as HTMLElement | null)?.blur();
 
+    setTokenVencidoMsg(null);
     loginMutation.mutate({ username, password });
   };
+
+  const handleVolver = () => {
+    loginMutation.reset();
+    seleccionMutation.reset();
+    setTokenVencidoMsg(null);
+  };
+
+  const handleElegirUniversidad = (universidadId: number) => {
+    if (!seleccion) return;
+    seleccionMutation.mutate(
+      { tokenTransicion: seleccion.token_transicion, universidadId },
+      {
+        onError: (error) => {
+          // Token de transición vencido: el backend responde 401. Volvemos al
+          // formulario con un mensaje que invita a reintentar (no queda al
+          // usuario varado en la pantalla de selección).
+          const status = error instanceof AxiosError ? error.response?.status : undefined;
+          if (status === 401) {
+            loginMutation.reset();
+            seleccionMutation.reset();
+            setTokenVencidoMsg('Tardaste demasiado en elegir. Volvé a intentar iniciar sesión.');
+          }
+        },
+      }
+    );
+  };
+
+  if (seleccion) {
+    return (
+      <SeleccionUniversidadStep
+        seleccion={seleccion}
+        isPending={seleccionMutation.isPending}
+        errorMessage={
+          seleccionMutation.isError
+            ? mensajeDeError(seleccionMutation.error) ?? 'Error al seleccionar la universidad.'
+            : null
+        }
+        onElegir={handleElegirUniversidad}
+        onVolver={handleVolver}
+      />
+    );
+  }
 
   return (
     <div className="min-h-dvh flex items-center justify-center bg-background pt-safe pb-safe pl-safe pr-safe px-4 py-8 overflow-y-auto scroll-momentum">
@@ -45,6 +107,12 @@ export const LoginPage = () => {
         {/* Form Card: edge-to-edge en mobile, card centrada en sm: */}
         <div className="bg-card rounded-none sm:rounded-lg shadow-sm border border-border p-6 sm:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {tokenVencidoMsg && (
+              <div className="rounded-lg border border-warning bg-warning/10 p-4 text-sm text-warning">
+                {tokenVencidoMsg}
+              </div>
+            )}
+
             <div className="space-y-4">
               {/* Username Input */}
               <Input
@@ -81,9 +149,8 @@ export const LoginPage = () => {
             {/* Error Message */}
             {loginMutation.isError && (
               <div className="rounded-lg border border-destructive bg-destructive/10 p-4 text-sm text-destructive">
-                {loginMutation.error instanceof Error
-                  ? loginMutation.error.message
-                  : 'Error al iniciar sesión. Verifica tus credenciales.'}
+                {mensajeDeError(loginMutation.error) ??
+                  'Error al iniciar sesión. Verifica tus credenciales.'}
               </div>
             )}
 

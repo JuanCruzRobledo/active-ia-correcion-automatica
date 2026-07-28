@@ -47,6 +47,11 @@ class CierreCursadaRun(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     materia_id: Mapped[int] = mapped_column(ForeignKey("materias.id"), nullable=False, index=True)
+    # Fase 0 multi-tenant: denormalizada, propagada desde materia.universidad_id en
+    # el backfill. NOT NULL desde migración R7 (Fase 0); Fase 4 alinea el type hint.
+    universidad_id: Mapped[int] = mapped_column(
+        ForeignKey("universidades.id"), nullable=False, index=True
+    )
     cuatrimestre_id: Mapped[int] = mapped_column(
         ForeignKey("cuatrimestres.id"), nullable=False, index=True
     )

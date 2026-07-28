@@ -5,6 +5,8 @@ Authentication schemas for Active-IA.
 Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 2
 """
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import RolEnum
@@ -54,12 +56,22 @@ class TokenResponse(BaseModel):
 
 
 class UserInfo(BaseModel):
-    """Basic user information returned after login."""
+    """Basic user information returned after login.
+
+    Fase 1 multi-tenant (multi-tenant-auth-jwt): `rol` deja de reflejar el rol
+    global `usuarios.rol` y pasa a reflejar el rol del usuario EN LA
+    UNIVERSIDAD ACTIVA (`usuario_universidad.rol`). Es `None` únicamente para
+    un superadmin que todavía no eligió universidad.
+    """
 
     id: int
     username: str
     nombre: str
-    rol: RolEnum
+    rol: RolEnum | None = Field(
+        default=None,
+        description="Rol del usuario en la universidad activa. None solo en "
+        "modo superadmin sin universidad elegida.",
+    )
     primer_login: bool = Field(
         ...,
         description="True si el usuario debe cambiar su contraseña",
@@ -68,6 +80,73 @@ class UserInfo(BaseModel):
         default=False,
         description="True si la API Key de Gemini es válida",
     )
+    universidad_activa_id: int | None = Field(
+        default=None,
+        description="Universidad en la que el usuario está operando. None "
+        "solo en modo superadmin sin universidad elegida.",
+    )
+    es_superadmin: bool = Field(
+        default=False,
+        description="True si el usuario es admin global (bypass multi-tenant).",
+    )
+
+
+class UniversidadDisponible(BaseModel):
+    """Una opción del selector de universidad (login en dos pasos)."""
+
+    id: int = Field(..., description="ID de la universidad")
+    nombre: str = Field(..., description="Nombre de la universidad")
+    rol: RolEnum = Field(
+        ...,
+        description="Rol del usuario en esa universidad (de su membresía activa)",
+    )
+
+
+class SeleccionarUniversidadRequest(BaseModel):
+    """Request body para POST /auth/select-universidad y /auth/switch-universidad.
+
+    Fase 5 multi-tenant (D6): `universidad_id` acepta `None` para el modo
+    global del superadmin ("Todas las universidades"). Sólo válido para
+    `POST /auth/switch-universidad` con un usuario `es_superadmin`; un
+    no-superadmin que lo intenta recibe 403 (no existe "modo global" fuera
+    del superadmin).
+    """
+
+    universidad_id: int | None = Field(
+        ...,
+        description="ID de la universidad a seleccionar/activar. `null` sólo "
+        "para el modo global del superadmin en switch-universidad.",
+    )
+
+
+class SeleccionUniversidadRequerida(BaseModel):
+    """Respuesta intermedia de login cuando el usuario tiene 2+ membresías activas.
+
+    NO incluye `access_token`: el cliente debe llamar a
+    POST /auth/select-universidad con la universidad elegida para obtener el
+    token final.
+    """
+
+    requiere_seleccion: Literal[True] = Field(
+        default=True,
+        description="Marca que la respuesta requiere un segundo paso de selección",
+    )
+    universidades: list[UniversidadDisponible] = Field(
+        ...,
+        description="Universidades donde el usuario tiene membresía activa",
+    )
+    token_transicion: str = Field(
+        ...,
+        description="Token corto (no es el access_token final) para identificar "
+        "al usuario en POST /auth/select-universidad",
+    )
+
+
+# Respuesta de POST /auth/login: o el token final (0/1 universidad, o
+# superadmin), o la respuesta intermedia que pide elegir universidad (2+
+# membresías activas). Discriminada en runtime por la presencia de
+# `requiere_seleccion` (D4: se resuelve la mecánica Pydantic en apply).
+LoginResponse = TokenResponse | SeleccionUniversidadRequerida
 
 
 class ChangePasswordRequest(BaseModel):

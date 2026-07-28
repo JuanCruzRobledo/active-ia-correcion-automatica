@@ -12,7 +12,7 @@ Ref: skills/correccion-ia/SKILL.md
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import (
     filtrar_entregas_accesibles,
     require_any_authenticated,
@@ -90,6 +90,7 @@ async def corregir_entrega(
     background_tasks: BackgroundTasks,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CorreccionAceptadaResponse:
     """
     Correct a single entrega using AI (async — IA-012).
@@ -109,7 +110,7 @@ async def corregir_entrega(
     """
     # SEC-001: el guard corre ANTES de resolver credenciales de IA. Sin acceso,
     # ni se toca la API key ni se gasta un token de LLM sobre una entrega ajena.
-    await verificar_acceso_entrega(db, current_user, entrega_id)
+    await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     key, provider = _resolver_credenciales_ia(current_user)
 
@@ -138,6 +139,7 @@ async def recorregir_entrega(
     background_tasks: BackgroundTasks,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CorreccionAceptadaResponse:
     """
     Re-correct an entrega (replaces existing correction) — async (IA-012).
@@ -156,7 +158,7 @@ async def recorregir_entrega(
     """
     # SEC-001 + CRUD-003: recorregir reemplaza la corrección existente.
     # El guard va primero: sin acceso, no se destruye una corrección ajena.
-    await verificar_acceso_entrega(db, current_user, entrega_id)
+    await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     key, provider = _resolver_credenciales_ia(current_user)
 
@@ -185,6 +187,7 @@ async def corregir_lote(
     background_tasks: BackgroundTasks,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CorregirLoteAceptadoResponse:
     """
     Enqueue AI correction for multiple entregas (async batch).
@@ -206,7 +209,7 @@ async def corregir_lote(
     # pasáramos IDs ajenos, corregiría (gastando LLM) entregas de otras comisiones
     # sin que nadie lo revise.
     permitidos, denegados = await filtrar_entregas_accesibles(
-        db, current_user, data.entrega_ids
+        db, current_user, ctx, data.entrega_ids
     )
     if not permitidos:
         raise HTTPException(
@@ -252,6 +255,7 @@ async def obtener_correccion(
     correccion_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CorreccionResponse:
     """
     Get a correction by ID.
@@ -264,10 +268,12 @@ async def obtener_correccion(
 
     **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
     """
-    await verificar_acceso_correccion(db, current_user, correccion_id)
+    await verificar_acceso_correccion(db, current_user, ctx, correccion_id)
 
     service = CorreccionService(db)
-    return await service.obtener_correccion(correccion_id)
+    return await service.obtener_correccion(
+        correccion_id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get(
@@ -278,6 +284,7 @@ async def obtener_correccion_por_entrega(
     entrega_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CorreccionResponse:
     """
     Get correction for a specific entrega.
@@ -292,10 +299,12 @@ async def obtener_correccion_por_entrega(
 
     **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
     """
-    await verificar_acceso_entrega(db, current_user, entrega_id)
+    await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     service = CorreccionService(db)
-    return await service.obtener_por_entrega(entrega_id)
+    return await service.obtener_por_entrega(
+        entrega_id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get(
@@ -306,6 +315,7 @@ async def obtener_historial_correcciones(
     entrega_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CorreccionHistorialResponse:
     """
     Historial de correcciones de una entrega: las versiones que fueron reemplazadas
@@ -316,7 +326,7 @@ async def obtener_historial_correcciones(
     """
     # verificar_acceso_entrega ve entregas soft-deleted (no filtra deleted_at), así
     # que el historial de una entrega borrada sigue siendo consultable.
-    await verificar_acceso_entrega(db, current_user, entrega_id)
+    await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
 
     service = CorreccionService(db)
     return await service.obtener_historial_correcciones(entrega_id)
@@ -331,6 +341,7 @@ async def editar_correccion(
     data: CorreccionUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CorreccionResponse:
     """
     Manually edit a correction.
@@ -356,7 +367,7 @@ async def editar_correccion(
     """
     # SEC-001: sin este guard, un tutor ajeno podía cambiar la NOTA de cualquier
     # corrección iterando IDs. Era la falla de integridad de calificaciones.
-    await verificar_acceso_correccion(db, current_user, correccion_id)
+    await verificar_acceso_correccion(db, current_user, ctx, correccion_id)
 
     service = CorreccionService(db)
     return await service.editar_correccion(
@@ -380,6 +391,7 @@ async def preview_correccion_moodle(
     request: Request,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> PreviewCorreccionMoodleResponse:
     """
     Calcula lo que se enviaría a Moodle (sin enviarlo): nota mapeada, comentario
@@ -393,6 +405,7 @@ async def preview_correccion_moodle(
     preview = await service.preview_correccion(
         correccion_id=correccion_id,
         usuario=current_user,
+        ctx=ctx,
         base_url=str(request.base_url),
     )
     return PreviewCorreccionMoodleResponse(**asdict(preview))
@@ -408,6 +421,7 @@ async def subir_correccion_moodle(
     request: Request,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> SubirCorreccionMoodleResponse:
     """
     Publica nota + feedback de la corrección en Moodle.
@@ -419,6 +433,7 @@ async def subir_correccion_moodle(
         correccion_id=correccion_id,
         comentario_final=data.comentario,
         usuario=current_user,
+        ctx=ctx,
         base_url=str(request.base_url),
         forzar=data.forzar,
     )
@@ -443,6 +458,7 @@ async def corregir_global(
     background_tasks: BackgroundTasks,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CorregirGlobalAceptadoResponse:
     """
     Corrige TODAS las entregas SUBIDA del tutor (cross-materia/comisión/rúbrica).
@@ -465,7 +481,9 @@ async def corregir_global(
         )
 
     entrega_repo = EntregaRepository(db)
-    ids = await entrega_repo.get_subidas_ids_by_tutor(current_user.id, limite=GLOBAL_BATCH_MAX)
+    ids = await entrega_repo.get_subidas_ids_by_tutor(
+        current_user.id, limite=GLOBAL_BATCH_MAX, universidad_id=ctx.universidad_id
+    )
     if not ids:
         return CorregirGlobalAceptadoResponse(
             mensaje="No hay entregas pendientes para corregir.", total_encoladas=0
@@ -491,18 +509,25 @@ async def corregir_global(
 async def progreso_global(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ProgresoGlobalResponse:
     """Conteo de estados de las entregas del tutor (para el feedback de progreso)."""
     require_any_authenticated(current_user)
 
     entrega_repo = EntregaRepository(db)
-    counts = await entrega_repo.contar_estados_by_tutor(current_user.id)
+    counts = await entrega_repo.contar_estados_by_tutor(
+        current_user.id, universidad_id=ctx.universidad_id
+    )
     subidas = counts.get("SUBIDA", 0)
     pendientes = counts.get("PENDIENTE", 0)
     corregidas = counts.get("CORREGIDA", 0)
     error = counts.get("ERROR", 0)
     errores_por_codigo = (
-        await entrega_repo.contar_errores_by_tutor(current_user.id) if error else {}
+        await entrega_repo.contar_errores_by_tutor(
+            current_user.id, universidad_id=ctx.universidad_id
+        )
+        if error
+        else {}
     )
     return ProgresoGlobalResponse(
         subidas=subidas,

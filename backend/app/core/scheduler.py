@@ -30,12 +30,13 @@ async def _run_snapshot_job() -> None:
 
     async with async_session_maker() as db:
         config = await SnapshotConfigService(db).get_config()
-        if not config.activo or not config.usuario_id:
-            logger.info("Cron snapshot: inactivo o sin usuario, se omite.")
+        if not config.activo or not config.usuario_id or not config.universidad_id:
+            logger.info("Cron snapshot: inactivo o sin usuario/universidad, se omite.")
             return
         try:
             await SnapshotService(db).generar_todas_para_usuario(
-                config.usuario_id, origen=OrigenSnapshotEnum.CRON
+                config.usuario_id, origen=OrigenSnapshotEnum.CRON,
+                universidad_id=config.universidad_id,
             )
         except Exception:  # noqa: BLE001
             logger.exception("Cron snapshot: falló la corrida completa")
@@ -84,10 +85,12 @@ async def _run_notificacion_job() -> None:
 
     async with async_session_maker() as db:
         config = await NotificacionConfigService(db).get_config()
-        if not config.activo or not config.usuario_id:
-            logger.info("Cron notificaciones: inactivo o sin usuario, se omite.")
+        if not config.activo or not config.usuario_id or not config.universidad_id:
+            logger.info("Cron notificaciones: inactivo o sin usuario/universidad, se omite.")
             return
         try:
+            # ejecutar_corrida_semanal relee universidad_id de su propia config
+            # (NotificacionConfigService, OQ2) — no hace falta pasarlo acá.
             await NotificacionService(db).ejecutar_corrida_semanal(config.usuario_id)
         except Exception:  # noqa: BLE001
             logger.exception("Cron notificaciones: falló la corrida completa")

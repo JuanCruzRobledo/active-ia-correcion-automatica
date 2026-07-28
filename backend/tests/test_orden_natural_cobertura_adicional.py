@@ -62,6 +62,9 @@ from app.repositories.comision_repository import ComisionRepository
 from app.services.excel_cierre_cursada import _agrupar_por_comision, generar_excel_cierre
 from app.utils.orden_natural import natural_key, orden_natural_sql
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 # SQLite no tiene JSONB nativo (mismo patrón que los otros archivos de esta suite).
 @compiles(JSONB, "sqlite")
@@ -123,14 +126,16 @@ async def db_session():
 
 
 async def _crear_materia(db_session, *, codigo: str = "P1", nombre: str = "Programación 1") -> Materia:
-    materia = Materia(nombre=nombre, codigo=codigo)
+    materia = Materia(universidad_id=UNIV_ID, nombre=nombre, codigo=codigo)
     db_session.add(materia)
     await db_session.flush()
     return materia
 
 
 async def _crear_usuario(db_session, *, username: str, rol: str = "ADMIN") -> Usuario:
-    usuario = Usuario(username=username, password_hash="x", nombre=username.capitalize(), rol=rol)
+    # `rol` ya no se persiste en `Usuario` (Fase 6 multi-tenant): parámetro
+    # conservado por compatibilidad de firma, no leído en este archivo.
+    usuario = Usuario(username=username, password_hash="x", nombre=username.capitalize())
     db_session.add(usuario)
     await db_session.flush()
     return usuario
@@ -273,7 +278,7 @@ async def test_integracion_superficie2_get_all_comi1_a_comi12_dos_anios_paginado
     **Validates: Requirements 2.1, 3.3, 3.7**"""
     materia = await _crear_materia(db_session)
     db_session.add_all([
-        Comision(materia_id=materia.id, nombre=f"COMI-{i}", anio=anio)
+        Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre=f"COMI-{i}", anio=anio)
         for anio in (2025, 2026)
         for i in range(1, 13)
     ])
@@ -309,7 +314,7 @@ async def test_integracion_superficie2_get_by_materia_con_tutores_y_tutor_orden_
     materia = await _crear_materia(db_session)
     tutor = await _crear_usuario(db_session, username="tutorX", rol="TUTOR")
     comisiones = [
-        Comision(materia_id=materia.id, nombre=nombre, anio=2026)
+        Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre=nombre, anio=2026)
         for nombre in ["COMI-10", "COMI-1", "COMI-2"]
     ]
     db_session.add_all(comisiones)
@@ -355,7 +360,7 @@ async def test_integracion_superficie3_get_alumnos_de_run_c1_01_a_c1_10_con_nulo
         _alumno_cierre(None, "Aaa", "Sin2"),
     ]
 
-    run = CierreCursadaRun(
+    run = CierreCursadaRun(universidad_id=UNIV_ID, 
         materia_id=materia.id, cuatrimestre_id=cuatrimestre.id,
         generado_por_id=usuario.id, total_alumnos=len(alumnos),
     )
@@ -391,7 +396,7 @@ async def test_integracion_superficie4_get_alumnos_por_estado_comi2_a_comi11_con
     ]
     alumnos.append(_alumno_avance(None, "Zzz", "SinX"))
 
-    snapshot = AvanceSnapshot(materia_id=materia.id, total_alumnos=len(alumnos))
+    snapshot = AvanceSnapshot(universidad_id=UNIV_ID, materia_id=materia.id, total_alumnos=len(alumnos))
     snapshot.alumnos = alumnos
     db_session.add(snapshot)
     await db_session.commit()
@@ -416,7 +421,7 @@ def test_integracion_superficie1_xlsx_bloques_orden_natural_multiples_sufijos():
     comisión asignada. Los títulos de bloque deben aparecer, en el archivo
     generado, en orden numérico natural, con "Sin comisión asignada" al final.
     **Validates: Requirements 2.2, 3.4**"""
-    run = CierreCursadaRun(
+    run = CierreCursadaRun(universidad_id=UNIV_ID, 
         id=1, materia_id=1, cuatrimestre_id=1, examenes_snapshot=[],
         generado_por_id=1, total_alumnos=5,
         total_promociona=5, total_regulariza=0, total_recursa=0,

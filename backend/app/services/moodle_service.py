@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 # Solo ASCII: los headers HTTP no admiten acentos (httpx los rechaza con UnicodeEncodeError).
 MOODLE_USER_AGENT = "Active-IA/1.0 (integracion academica TUD)"
 
+from app.core.permissions import materia_pertenece_a_universidad_activa
 from app.core.security import decrypt_api_key
 from app.repositories.comision_repository import ComisionRepository
 from app.repositories.materia_repository import MateriaRepository
@@ -40,6 +41,7 @@ from app.schemas.pendientes import (
     MateriasPendientesResponse,
     UnidadPendiente,
 )
+from app.services.moodle_credentials_resolver import resolver_credenciales_moodle
 
 
 class MoodleAuthError(Exception):
@@ -1264,24 +1266,23 @@ class MoodleService:
                 raise MoodleAuthError("Token Moodle inválido")
             raise MoodleConnectionError(f"Moodle rechazó la nota: {msg}")
 
-    async def get_pendientes(self, user_id: int) -> MateriasPendientesResponse:
+    async def get_pendientes(
+        self, user_id: int, universidad_id: int | None
+    ) -> MateriasPendientesResponse:
         # Comision/Rubrica se usan como type hints en fetch_with_semaphore (abajo).
         from app.models.comision import Comision
         from app.models.rubrica import Rubrica
 
-        usuario = await self.usuario_repo.get_by_id(user_id)
-        if not usuario or not usuario.moodle_username or not usuario.moodle_password_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_424_FAILED_DEPENDENCY,
-                detail="Configurá tus credenciales Moodle en tu perfil",
-            )
-
-        moodle_host = usuario.moodle_host or ""
+        # Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa
+        # (universidad_id), NUNCA de usuario.moodle_* (campo global viejo).
+        moodle_host, moodle_username, moodle_password_encrypted = (
+            await resolver_credenciales_moodle(self.usuario_repo, user_id, universidad_id)
+        )
         token = await self.get_token(
             user_id=user_id,
             moodle_host=moodle_host,
-            username=usuario.moodle_username,
-            password_encrypted=usuario.moodle_password_encrypted,
+            username=moodle_username,
+            password_encrypted=moodle_password_encrypted,
         )
 
         # Obtener comisiones del tutor con moodle_group_id configurado (ARCH-001: vía repo)
@@ -1323,7 +1324,12 @@ class MoodleService:
 
         # Obtener materias para resolver course_id (cmid → assign_id y group members) (ARCH-001: vía repo)
         materias = await self.materia_repo.get_by_ids(materia_ids)
-        materias_by_id = {m.id: m for m in materias}
+        # OQ1: guard defensivo — descarta (sin abortar el lote) las materias que NO
+        # pertenecen a la universidad activa, antes de mintear un token contra su curso.
+        materias_by_id = {
+            m.id: m for m in materias
+            if materia_pertenece_a_universidad_activa(m, universidad_id)
+        }
 
         # Pre-resolver cmid → assignment instance id por curso
         for materia in materias_by_id.values():

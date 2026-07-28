@@ -125,6 +125,7 @@ class EntregaRepository:
         search: str | None = None,
         page: int = 1,
         per_page: int = 20,
+        universidad_id: int | None = None,
     ) -> tuple[list[Entrega], int]:
         """
         Get all entregas with optional filters and pagination.
@@ -141,6 +142,8 @@ class EntregaRepository:
                 case-insensitive). None o cadena vacía/espacios = sin búsqueda.
             page: Page number (1-indexed).
             per_page: Items per page.
+            universidad_id: Fase 4 multi-tenant (D1). None = sin filtro (bypass
+                superadmin sin universidad activa).
 
         Returns:
             Tuple of (list of entregas, total count).
@@ -162,6 +165,11 @@ class EntregaRepository:
         # paginado no revela cuántas entregas hay en todo el sistema.
         if comisiones_visibles is not None:
             conditions.append(Entrega.comision_id.in_(comisiones_visibles))
+
+        # Fase 4 multi-tenant (D1): va a la MISMA lista `conditions` compartida
+        # datos+count. None = sin filtro (bypass superadmin sin universidad activa).
+        if universidad_id is not None:
+            conditions.append(Entrega.universidad_id == universidad_id)
 
         if rubrica_id is not None:
             conditions.append(Entrega.rubrica_id == rubrica_id)
@@ -227,6 +235,7 @@ class EntregaRepository:
         comisiones_visibles: list[int] | None = None,
         rubrica_id: int | None = None,
         batch_size: int = 500,
+        universidad_id: int | None = None,
     ) -> list[Entrega]:
         """PERF-009: devuelve TODAS las entregas que matchean el filtro, SIN el tope de
         ``per_page`` de ``get_all``.
@@ -256,6 +265,8 @@ class EntregaRepository:
                 # ajenas salteando el filtro del listado.
                 comisiones_visibles=comisiones_visibles,
                 rubrica_id=rubrica_id,
+                # Fase 4 multi-tenant: idem comisiones_visibles, se PROPAGA.
+                universidad_id=universidad_id,
                 page=page,
                 per_page=batch_size,
             )
@@ -273,6 +284,7 @@ class EntregaRepository:
         alumno_nombre: str,
         *,
         load_contenido: bool = False,
+        universidad_id: int | None = None,
     ) -> Entrega | None:
         """
         Get entrega by rubrica and alumno nombre.
@@ -282,6 +294,8 @@ class EntregaRepository:
             alumno_nombre: Nombre del alumno.
             load_contenido: CRUD-005: si True, undefiere contenido_consolidado y
                 pdf_contenido_b64 para poder snapshotearlos antes de sobrescribir.
+            universidad_id: Fase 4 multi-tenant, defensa en profundidad. None =
+                sin filtro.
 
         Returns:
             Entrega object if found, None otherwise.
@@ -292,7 +306,7 @@ class EntregaRepository:
                 undefer(Entrega.contenido_consolidado),
                 undefer(Entrega.pdf_contenido_b64),
             ])
-        result = await self.db.execute(
+        query = (
             select(Entrega)
             .options(*options)
             .where(
@@ -300,6 +314,9 @@ class EntregaRepository:
                 Entrega.alumno_nombre == alumno_nombre,
             )
         )
+        if universidad_id is not None:
+            query = query.where(Entrega.universidad_id == universidad_id)
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def exists_by_rubrica_alumno(
@@ -520,7 +537,12 @@ class EntregaRepository:
         return len(entregas)
 
     async def get_subidas_ids_by_tutor(
-        self, tutor_id: int, limite: int | None = None, incluir_errores: bool = True
+        self,
+        tutor_id: int,
+        limite: int | None = None,
+        incluir_errores: bool = True,
+        *,
+        universidad_id: int | None = None,
     ) -> list[int]:
         """IDs de entregas RECORREGIBLES de TODAS las comisiones del tutor (cross-rúbrica).
 
@@ -528,6 +550,8 @@ class EntregaRepository:
         quedaron en ERROR (item #7: una entrega que falló debe volver a corregirse en la
         masiva, no quedar atrapada). incluir_errores=False vuelve al comportamiento viejo
         (solo SUBIDA).
+
+        universidad_id: Fase 4 multi-tenant, defensa en profundidad (D2). None = sin filtro.
         """
         from app.models.comision import ComisionTutor
         from app.models.enums import EstadoEntregaEnum
@@ -547,12 +571,16 @@ class EntregaRepository:
             )
             .order_by(Entrega.id)
         )
+        if universidad_id is not None:
+            stmt = stmt.where(Entrega.universidad_id == universidad_id)
         if limite is not None:
             stmt = stmt.limit(limite)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
-    async def contar_errores_by_tutor(self, tutor_id: int) -> dict[str, int]:
+    async def contar_errores_by_tutor(
+        self, tutor_id: int, *, universidad_id: int | None = None
+    ) -> dict[str, int]:
         """Conteo de entregas en ERROR por error_code, para el resumen de la masiva (item #7)."""
         from app.models.comision import ComisionTutor
         from app.models.enums import EstadoEntregaEnum
@@ -566,12 +594,15 @@ class EntregaRepository:
                 Entrega.estado == EstadoEntregaEnum.ERROR,
                 Entrega.archivado == False,  # noqa: E712
             )
-            .group_by(Entrega.error_code)
         )
-        result = await self.db.execute(stmt)
+        if universidad_id is not None:
+            stmt = stmt.where(Entrega.universidad_id == universidad_id)
+        result = await self.db.execute(stmt.group_by(Entrega.error_code))
         return {(code or "DESCONOCIDO"): int(n) for code, n in result.all()}
 
-    async def contar_estados_by_tutor(self, tutor_id: int) -> dict[str, int]:
+    async def contar_estados_by_tutor(
+        self, tutor_id: int, *, universidad_id: int | None = None
+    ) -> dict[str, int]:
         """Conteo de entregas por estado para el tutor (para el progreso de 'Corregir todo')."""
         from app.models.comision import ComisionTutor
 
@@ -583,9 +614,10 @@ class EntregaRepository:
                 ComisionTutor.tutor_id == tutor_id,
                 Entrega.archivado == False,  # noqa: E712
             )
-            .group_by(Entrega.estado)
         )
-        result = await self.db.execute(stmt)
+        if universidad_id is not None:
+            stmt = stmt.where(Entrega.universidad_id == universidad_id)
+        result = await self.db.execute(stmt.group_by(Entrega.estado))
         counts: dict[str, int] = {}
         for estado, count in result.all():
             key = estado.value if hasattr(estado, "value") else str(estado)

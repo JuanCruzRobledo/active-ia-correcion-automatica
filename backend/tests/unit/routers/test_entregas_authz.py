@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+from app.core.dependencies import ContextoUniversidad
 from app.models.enums import RolEnum
 from app.routers.entregas import (
     archivar_entregas,
@@ -34,6 +35,21 @@ ADMIN = SimpleNamespace(id=1, rol=RolEnum.ADMIN)
 TUTOR = SimpleNamespace(id=5, rol=RolEnum.TUTOR)
 COORD = SimpleNamespace(id=7, rol=RolEnum.COORDINADOR)
 GESTOR = SimpleNamespace(id=9, rol=RolEnum.GESTOR)
+
+CTX_ADMIN = ContextoUniversidad(universidad_id=1, rol=RolEnum.ADMIN, es_superadmin=False)
+CTX_TUTOR = ContextoUniversidad(universidad_id=1, rol=RolEnum.TUTOR, es_superadmin=False)
+CTX_COORD = ContextoUniversidad(universidad_id=1, rol=RolEnum.COORDINADOR, es_superadmin=False)
+CTX_GESTOR = ContextoUniversidad(universidad_id=1, rol=RolEnum.GESTOR, es_superadmin=False)
+
+
+def _ctx_for(usuario):
+    """Resuelve el ctx equivalente al rol del usuario mono-universidad de prueba."""
+    return {
+        RolEnum.ADMIN: CTX_ADMIN,
+        RolEnum.TUTOR: CTX_TUTOR,
+        RolEnum.COORDINADOR: CTX_COORD,
+        RolEnum.GESTOR: CTX_GESTOR,
+    }[usuario.rol]
 
 # Filas del LEFT JOIN de pertenencia: (comision_id, comision_tutor_id, coord_materia_id)
 _ES_TUTOR = (10, 555, None)
@@ -64,7 +80,7 @@ async def test_obtener_entrega_tutor_propio_ok():
     db = _db(_ENTREGA_42, _ES_TUTOR)
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         MockSvc.return_value.obtener_entrega = AsyncMock(return_value="ENTREGA")
-        assert await obtener_entrega(42, current_user=TUTOR, db=db) == "ENTREGA"
+        assert await obtener_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR) == "ENTREGA"
 
 
 @pytest.mark.asyncio
@@ -72,7 +88,7 @@ async def test_obtener_entrega_tutor_ajeno_403_sin_llamar_al_service():
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         with pytest.raises(HTTPException) as exc:
-            await obtener_entrega(42, current_user=TUTOR, db=db)
+            await obtener_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockSvc.return_value.obtener_entrega.assert_not_called()
 
@@ -82,14 +98,14 @@ async def test_obtener_entrega_coordinador_de_la_materia_ok():
     db = _db(_ENTREGA_42, _ES_COORDINADOR)
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         MockSvc.return_value.obtener_entrega = AsyncMock(return_value="ENTREGA")
-        assert await obtener_entrega(42, current_user=COORD, db=db) == "ENTREGA"
+        assert await obtener_entrega(42, current_user=COORD, db=db, ctx=CTX_COORD) == "ENTREGA"
 
 
 @pytest.mark.asyncio
 async def test_obtener_entrega_gestor_403():
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
     with pytest.raises(HTTPException) as exc:
-        await obtener_entrega(42, current_user=GESTOR, db=db)
+        await obtener_entrega(42, current_user=GESTOR, db=db, ctx=CTX_GESTOR)
     assert exc.value.status_code == 403
 
 
@@ -98,7 +114,7 @@ async def test_obtener_entrega_admin_ok_sin_consultar_permisos():
     db = AsyncMock()
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         MockSvc.return_value.obtener_entrega = AsyncMock(return_value="ENTREGA")
-        assert await obtener_entrega(42, current_user=ADMIN, db=db) == "ENTREGA"
+        assert await obtener_entrega(42, current_user=ADMIN, db=db, ctx=CTX_ADMIN) == "ENTREGA"
     db.execute.assert_not_called()
 
 
@@ -106,7 +122,7 @@ async def test_obtener_entrega_admin_ok_sin_consultar_permisos():
 async def test_obtener_entrega_inexistente_404():
     db = _db(None)
     with pytest.raises(HTTPException) as exc:
-        await obtener_entrega(404404, current_user=TUTOR, db=db)
+        await obtener_entrega(404404, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 404
 
 
@@ -118,7 +134,7 @@ async def test_contenido_tutor_propio_ok():
     db = _db(_ENTREGA_42, _ES_TUTOR)
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         MockSvc.return_value.obtener_contenido = AsyncMock(return_value="CODIGO")
-        assert await obtener_contenido_entrega(42, current_user=TUTOR, db=db) == "CODIGO"
+        assert await obtener_contenido_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR) == "CODIGO"
 
 
 @pytest.mark.asyncio
@@ -127,7 +143,7 @@ async def test_contenido_ajeno_403_no_devuelve_el_codigo_del_alumno():
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         with pytest.raises(HTTPException) as exc:
-            await obtener_contenido_entrega(42, current_user=TUTOR, db=db)
+            await obtener_contenido_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockSvc.return_value.obtener_contenido.assert_not_called()
 
@@ -137,7 +153,7 @@ async def test_contenido_coordinador_de_la_materia_ok():
     db = _db(_ENTREGA_42, _ES_COORDINADOR)
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         MockSvc.return_value.obtener_contenido = AsyncMock(return_value="CODIGO")
-        assert await obtener_contenido_entrega(42, current_user=COORD, db=db) == "CODIGO"
+        assert await obtener_contenido_entrega(42, current_user=COORD, db=db, ctx=CTX_COORD) == "CODIGO"
 
 
 # ===================== DELETE /entregas/{id} =====================
@@ -148,8 +164,10 @@ async def test_eliminar_entrega_propia_ok():
     db = _db(_ENTREGA_42, _ES_TUTOR)
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         MockSvc.return_value.eliminar_entrega = AsyncMock(return_value=None)
-        await eliminar_entrega(42, current_user=TUTOR, db=db)
-        MockSvc.return_value.eliminar_entrega.assert_awaited_once_with(42, actor_id=5)
+        await eliminar_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
+        MockSvc.return_value.eliminar_entrega.assert_awaited_once_with(
+            42, actor_id=5, universidad_id=1
+        )
 
 
 @pytest.mark.asyncio
@@ -158,7 +176,7 @@ async def test_eliminar_entrega_ajena_403_sin_borrar_nada():
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         with pytest.raises(HTTPException) as exc:
-            await eliminar_entrega(42, current_user=TUTOR, db=db)
+            await eliminar_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockSvc.return_value.eliminar_entrega.assert_not_called()
 
@@ -168,7 +186,7 @@ async def test_eliminar_entrega_gestor_403():
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         with pytest.raises(HTTPException) as exc:
-            await eliminar_entrega(42, current_user=GESTOR, db=db)
+            await eliminar_entrega(42, current_user=GESTOR, db=db, ctx=CTX_GESTOR)
     assert exc.value.status_code == 403
     MockSvc.return_value.eliminar_entrega.assert_not_called()
 
@@ -188,6 +206,7 @@ async def _crear(current_user, db, comision_id=10):
         archivo=MagicMock(),
         current_user=current_user,
         db=db,
+        ctx=_ctx_for(current_user),
     )
 
 
@@ -239,6 +258,7 @@ async def _crear_masiva(current_user, db, comision_id=10):
         archivo_zip=MagicMock(),
         current_user=current_user,
         db=db,
+        ctx=_ctx_for(current_user),
     )
 
 
@@ -287,6 +307,7 @@ async def _listar(current_user, db, comision_id=None):
         per_page=20,
         current_user=current_user,
         db=db,
+        ctx=_ctx_for(current_user),
     )
 
 
@@ -369,7 +390,7 @@ async def test_archivar_lote_mixto_opera_solo_permitidos_e_informa_omitidos():
         AsyncMock(return_value=({1, 2}, {3, 4})),
     ):
         MockSvc.return_value.archivar_entregas = AsyncMock(return_value=_resp(2, [1, 2]))
-        res = await archivar_entregas(body, current_user=TUTOR, db=db)
+        res = await archivar_entregas(body, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
         # El service recibe SOLO los permitidos, ordenados.
         assert MockSvc.return_value.archivar_entregas.await_args.kwargs["ids"] == [1, 2]
     assert res.procesadas == 2
@@ -386,7 +407,7 @@ async def test_archivar_lote_todo_denegado_403_sin_tocar_el_service():
         AsyncMock(return_value=(set(), {3, 4})),
     ):
         with pytest.raises(HTTPException) as exc:
-            await archivar_entregas(body, current_user=TUTOR, db=db)
+            await archivar_entregas(body, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockSvc.return_value.archivar_entregas.assert_not_called()
 
@@ -400,7 +421,7 @@ async def test_archivar_lote_todo_propio_no_reporta_omitidos():
         AsyncMock(return_value=({1, 2}, set())),
     ):
         MockSvc.return_value.archivar_entregas = AsyncMock(return_value=_resp(2, [1, 2]))
-        res = await archivar_entregas(body, current_user=TUTOR, db=db)
+        res = await archivar_entregas(body, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert res.omitidas == 0
     assert res.ids_omitidos == []
 
@@ -420,7 +441,7 @@ async def test_borrado_masivo_mixto_borra_solo_permitidos_e_informa():
         MockSvc.return_value.eliminar_entregas_masivo = AsyncMock(
             return_value=_resp(2, [1, 2])
         )
-        res = await eliminar_entregas_masivo(body, current_user=TUTOR, db=db)
+        res = await eliminar_entregas_masivo(body, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
         assert MockSvc.return_value.eliminar_entregas_masivo.await_args.kwargs["ids"] == [1, 2]
     assert res.procesadas == 2
     assert res.omitidas == 1
@@ -436,7 +457,7 @@ async def test_borrado_masivo_todo_denegado_403_no_borra_nada():
         AsyncMock(return_value=(set(), {98, 99})),
     ):
         with pytest.raises(HTTPException) as exc:
-            await eliminar_entregas_masivo(body, current_user=TUTOR, db=db)
+            await eliminar_entregas_masivo(body, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockSvc.return_value.eliminar_entregas_masivo.assert_not_called()
 
@@ -452,7 +473,7 @@ async def test_borrado_masivo_admin_borra_todo():
         MockSvc.return_value.eliminar_entregas_masivo = AsyncMock(
             return_value=_resp(3, [1, 2, 3])
         )
-        res = await eliminar_entregas_masivo(body, current_user=ADMIN, db=db)
+        res = await eliminar_entregas_masivo(body, current_user=ADMIN, db=db, ctx=CTX_ADMIN)
     assert res.procesadas == 3
     assert res.omitidas == 0
 
@@ -473,8 +494,10 @@ async def test_restore_con_pertenencia_ok():
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         MockSvc.return_value.restaurar_entrega = AsyncMock(return_value=None)
         MockSvc.return_value.obtener_entrega = AsyncMock(return_value="DETALLE")
-        res = await restaurar_entrega(42, current_user=TUTOR, db=db)
-        MockSvc.return_value.restaurar_entrega.assert_awaited_once_with(42, actor_id=5)
+        res = await restaurar_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
+        MockSvc.return_value.restaurar_entrega.assert_awaited_once_with(
+            42, actor_id=5, universidad_id=1
+        )
     assert res == "DETALLE"
 
 
@@ -483,7 +506,7 @@ async def test_restore_sin_pertenencia_403_no_restaura():
     db = _db(_ENTREGA_42, _SIN_PERTENENCIA)
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         with pytest.raises(HTTPException) as exc:
-            await restaurar_entrega(42, current_user=TUTOR, db=db)
+            await restaurar_entrega(42, current_user=TUTOR, db=db, ctx=CTX_TUTOR)
     assert exc.value.status_code == 403
     MockSvc.return_value.restaurar_entrega.assert_not_called()
 
@@ -494,4 +517,4 @@ async def test_restore_coordinador_de_la_materia_ok():
     with patch("app.routers.entregas.EntregaService") as MockSvc:
         MockSvc.return_value.restaurar_entrega = AsyncMock(return_value=None)
         MockSvc.return_value.obtener_entrega = AsyncMock(return_value="DETALLE")
-        assert await restaurar_entrega(42, current_user=COORD, db=db) == "DETALLE"
+        assert await restaurar_entrega(42, current_user=COORD, db=db, ctx=CTX_COORD) == "DETALLE"

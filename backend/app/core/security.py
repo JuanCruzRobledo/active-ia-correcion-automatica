@@ -73,24 +73,41 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 def create_access_token(
     user_id: int,
     username: str,
-    rol: str,
+    *,
+    rol: str | None,
+    universidad_activa_id: int | None,
+    es_superadmin: bool,
     expires_delta: timedelta | None = None,
 ) -> str:
     """
-    Generate a JWT access token for a user.
+    Generate a JWT access token for a user (multi-tenant, Fase 1).
 
     Args:
         user_id: User's database ID.
         username: User's username.
-        rol: User's role (ADMIN, COORDINADOR, TUTOR).
+        rol: Rol del usuario EN LA UNIVERSIDAD ACTIVA (`RolEnum.value`), NO el
+            rol global `usuarios.rol`. `None` únicamente en modo superadmin
+            sin universidad elegida.
+        universidad_activa_id: ID de la universidad en la que el usuario está
+            operando. `None` únicamente en modo superadmin sin universidad
+            elegida.
+        es_superadmin: Flag de admin global (`usuarios.es_superadmin`).
         expires_delta: Optional custom expiration time.
                       Defaults to ACCESS_TOKEN_EXPIRE_DAYS from settings.
 
     Returns:
         Encoded JWT token string.
 
+    Note:
+        `rol`, `universidad_activa_id` y `es_superadmin` son keyword-only a
+        propósito: cualquier caller que todavía los pase posicionalmente
+        (estilo pre-multi-tenant) falla con TypeError en vez de compilar
+        silenciosamente con el argumento equivocado.
+
     Example:
-        >>> token = create_access_token(1, "admin", "ADMIN")
+        >>> token = create_access_token(
+        ...     1, "admin", rol="ADMIN", universidad_activa_id=1, es_superadmin=False
+        ... )
         >>> print(token)
         eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
     """
@@ -103,6 +120,8 @@ def create_access_token(
         "user_id": user_id,
         "username": username,
         "rol": rol,
+        "universidad_activa_id": universidad_activa_id,
+        "es_superadmin": es_superadmin,
         "exp": expire,
         "iat": datetime.utcnow(),
     }
@@ -124,13 +143,22 @@ def decode_token(token: str) -> dict[str, Any]:
         token: JWT token string.
 
     Returns:
-        Decoded payload dictionary containing user_id, username, rol, exp, iat.
+        Decoded payload dictionary. Contiene siempre `user_id`, `username`,
+        `exp`, `iat`. Desde Fase 1 multi-tenant (multi-tenant-auth-jwt)
+        también contiene `universidad_activa_id` (int | None), `rol`
+        (string del `RolEnum` de la membresía activa, no `usuarios.rol`;
+        None solo en modo superadmin sin universidad) y `es_superadmin`
+        (bool) — pero un token emitido ANTES de este change puede no traer
+        esos 3 claims (KeyError si se accede con `payload["..."]`; usar
+        `payload.get("...")` para leerlos de forma retrocompatible).
 
     Raises:
         JWTError: If token is invalid or expired.
 
     Example:
-        >>> token = create_access_token(1, "admin", "ADMIN")
+        >>> token = create_access_token(
+        ...     1, "admin", rol="ADMIN", universidad_activa_id=1, es_superadmin=False
+        ... )
         >>> payload = decode_token(token)
         >>> print(payload["user_id"])
         1
@@ -144,6 +172,41 @@ def decode_token(token: str) -> dict[str, Any]:
         return payload
     except JWTError as e:
         raise JWTError(f"Invalid or expired token: {str(e)}")
+
+
+TRANSITIONAL_TOKEN_EXPIRE_MINUTES = 5
+
+
+def create_transitional_token(user_id: int, username: str) -> str:
+    """
+    Generate a short-lived transitional JWT for the login-in-two-steps flow.
+
+    Fase 1 multi-tenant (multi-tenant-auth-jwt): emitido por
+    `POST /auth/login` cuando el usuario tiene 2+ membresías activas
+    (`requiere_seleccion=true`), para identificar al usuario en
+    `POST /auth/select-universidad` **sin** emitir todavía un token de
+    acceso completo. Se distingue de `create_access_token` por el claim
+    `scope="seleccion"` y por NO llevar `universidad_activa_id`/`rol`/
+    `es_superadmin` — no sirve como token de acceso.
+
+    Args:
+        user_id: User's database ID.
+        username: User's username.
+
+    Returns:
+        Encoded JWT token string, válido por `TRANSITIONAL_TOKEN_EXPIRE_MINUTES`.
+    """
+    expire = datetime.utcnow() + timedelta(minutes=TRANSITIONAL_TOKEN_EXPIRE_MINUTES)
+
+    payload: dict[str, Any] = {
+        "user_id": user_id,
+        "username": username,
+        "scope": "seleccion",
+        "exp": expire,
+        "iat": datetime.utcnow(),
+    }
+
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
 # =========================================

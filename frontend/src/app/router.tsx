@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AppLayout } from '@/shared/components/layout/AppLayout';
 import { ProtectedRoute } from '@/shared/components/layout/ProtectedRoute';
 import { PublicRoute } from '@/shared/components/layout/PublicRoute';
+import { SuperadminRoute } from '@/shared/components/layout/SuperadminRoute';
 // Auth: eager. Son la puerta de entrada (fuera del AppLayout) y no conviene
 // meter un round-trip de Suspense en el camino crítico del login.
 import { LoginPage, ChangePasswordPage } from '@/features/auth/pages';
@@ -67,6 +68,9 @@ const DashboardGestorPage = lazy(() =>
     default: m.DashboardGestorPage,
   }))
 );
+const UniversidadesPage = lazy(() =>
+  import('@/features/universidades/pages').then((m) => ({ default: m.UniversidadesPage }))
+);
 
 export const router = createBrowserRouter([
   {
@@ -105,6 +109,15 @@ export const router = createBrowserRouter([
       {
         path: 'usuarios',
         element: <UsuariosPage />,
+      },
+      // Fase 5 multi-tenant: ABM de universidades, sólo superadmin.
+      {
+        path: 'universidades',
+        element: (
+          <SuperadminRoute>
+            <UniversidadesPage />
+          </SuperadminRoute>
+        ),
       },
       {
         path: 'materias',

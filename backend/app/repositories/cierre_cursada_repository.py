@@ -37,13 +37,14 @@ class CierreCursadaRepository:
         )
         return result.scalar_one_or_none()
 
-    async def listar_runs(self, materia_id: int) -> list[CierreCursadaRun]:
+    async def listar_runs(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> list[CierreCursadaRun]:
         """Corridas pasadas de una materia, más reciente primero."""
-        result = await self.db.execute(
-            select(CierreCursadaRun)
-            .where(CierreCursadaRun.materia_id == materia_id)
-            .order_by(CierreCursadaRun.created_at.desc())
-        )
+        query = select(CierreCursadaRun).where(CierreCursadaRun.materia_id == materia_id)
+        if universidad_id is not None:
+            query = query.where(CierreCursadaRun.universidad_id == universidad_id)
+        result = await self.db.execute(query.order_by(CierreCursadaRun.created_at.desc()))
         return list(result.scalars().all())
 
     async def get_alumnos_de_run(self, run_id: int) -> list[CierreCursadaAlumno]:

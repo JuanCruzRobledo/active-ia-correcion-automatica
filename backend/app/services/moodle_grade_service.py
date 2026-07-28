@@ -22,13 +22,15 @@ from dataclasses import dataclass
 
 from app.core.comentario_templates import CIERRE_DEVOLUCION_HTML
 from app.core.moodle_config import MOODLE_SCALE_MAP, UMBRAL_APROBACION_TP
-from app.core.permissions import verificar_acceso_comision
+from app.core.permissions import verificar_acceso_comision, verificar_materia_universidad_activa
 from app.models.enums import MoodleSyncEstado
 from app.models.moodle_sync import MoodleSync
 from app.repositories.correccion_repository import CorreccionRepository
 from app.repositories.moodle_sync_repository import MoodleSyncRepository
+from app.repositories.usuario_repository import UsuarioRepository
 from app.services.comentario_template_service import ComentarioTemplateService
 from app.services.devolucion_link_service import DevolucionLinkService
+from app.services.moodle_credentials_resolver import resolver_credenciales_moodle
 from app.services.moodle_service import (
     AssignmentGradeConfig,
     MoodleAuthError,
@@ -61,6 +63,7 @@ class MoodleGradeService:
         self.db = db
         self.correccion_repo = CorreccionRepository(db)
         self.moodle_sync_repo = MoodleSyncRepository(db)
+        self.usuario_repo = UsuarioRepository(db)
         self.moodle = MoodleService(db)
 
     async def subir_correccion(
@@ -69,6 +72,7 @@ class MoodleGradeService:
         correccion_id: int,
         comentario_final: str,
         usuario,
+        ctx,
         base_url: str,
         forzar: bool = False,
         verificar_moodle: bool = True,
@@ -91,8 +95,11 @@ class MoodleGradeService:
         comision = entrega.comision
         materia = comision.materia
 
-        # Permisos: sólo tutor de la comisión (o admin).
-        await verificar_acceso_comision(self.db, usuario, comision.id)
+        # Permisos: sólo tutor de la comisión (o acceso total: admin/superadmin).
+        await verificar_acceso_comision(self.db, usuario, ctx, comision.id)
+        # OQ1: guard defensivo — la materia debe pertenecer a la universidad activa
+        # antes de mintear un token Moodle contra su curso.
+        verificar_materia_universidad_activa(materia, ctx.universidad_id)
 
         # moodle_user_id: se puebla al importar desde Moodle. Sin él no se puede publicar.
         if not entrega.moodle_user_id:
@@ -104,11 +111,11 @@ class MoodleGradeService:
                 ),
             )
 
-        if not usuario.moodle_username or not usuario.moodle_password_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_424_FAILED_DEPENDENCY,
-                detail="Configurá tus credenciales Moodle en tu perfil",
-            )
+        # Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa
+        # (ctx.universidad_id), NUNCA de usuario.moodle_* (campo global viejo).
+        moodle_host, moodle_username, moodle_password_encrypted = (
+            await resolver_credenciales_moodle(self.usuario_repo, usuario.id, ctx.universidad_id)
+        )
 
         if not rubrica.moodle_assign_id or not materia.moodle_course_id:
             raise HTTPException(
@@ -125,13 +132,12 @@ class MoodleGradeService:
                     detail="Esta corrección ya fue enviada a Moodle. Usá 'forzar' para reenviarla.",
                 )
 
-        moodle_host = usuario.moodle_host or ""
         try:
             token = await self.moodle.get_token(
                 user_id=usuario.id,
                 moodle_host=moodle_host,
-                username=usuario.moodle_username,
-                password_encrypted=usuario.moodle_password_encrypted,
+                username=moodle_username,
+                password_encrypted=moodle_password_encrypted,
             )
             grade_config = await self.moodle.get_assignment_grade_config(
                 token, moodle_host, materia.moodle_course_id, rubrica.moodle_assign_id
@@ -220,6 +226,7 @@ class MoodleGradeService:
         *,
         correccion_id: int,
         usuario,
+        ctx,
         base_url: str,
     ) -> PreviewCorreccion:
         """Calcula lo que se enviaría a Moodle SIN enviarlo (para el modal)."""
@@ -232,26 +239,24 @@ class MoodleGradeService:
         comision = entrega.comision
         materia = comision.materia
 
-        await verificar_acceso_comision(self.db, usuario, comision.id)
+        await verificar_acceso_comision(self.db, usuario, ctx, comision.id)
 
-        if not usuario.moodle_username or not usuario.moodle_password_encrypted:
-            raise HTTPException(
-                status_code=status.HTTP_424_FAILED_DEPENDENCY,
-                detail="Configurá tus credenciales Moodle en tu perfil",
-            )
+        # Fase 3 multi-tenant (D1/D2): host+credenciales de la universidad activa.
+        moodle_host, moodle_username, moodle_password_encrypted = (
+            await resolver_credenciales_moodle(self.usuario_repo, usuario.id, ctx.universidad_id)
+        )
         if not rubrica.moodle_assign_id or not materia.moodle_course_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="La rúbrica o la materia no tienen configurados los IDs de Moodle",
             )
 
-        moodle_host = usuario.moodle_host or ""
         try:
             token = await self.moodle.get_token(
                 user_id=usuario.id,
                 moodle_host=moodle_host,
-                username=usuario.moodle_username,
-                password_encrypted=usuario.moodle_password_encrypted,
+                username=moodle_username,
+                password_encrypted=moodle_password_encrypted,
             )
             grade_config = await self.moodle.get_assignment_grade_config(
                 token, moodle_host, materia.moodle_course_id, rubrica.moodle_assign_id

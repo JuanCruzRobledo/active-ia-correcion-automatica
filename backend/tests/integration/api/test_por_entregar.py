@@ -9,11 +9,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 from app.main import app
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import (
+    ContextoUniversidad,
+    get_current_user,
+    get_db,
+    get_universidad_activa,
+)
+from app.models.enums import RolEnum
 from app.services.por_entregar_service import (
     CorreccionPorEntregaItem,
     PorEntregarResultado,
 )
+
+
+def _ctx_tutor():
+    return ContextoUniversidad(universidad_id=1, rol=RolEnum.TUTOR, es_superadmin=False)
 
 
 @pytest.fixture
@@ -22,6 +32,7 @@ def auth():
         id=1, moodle_username="tutor", moodle_password_encrypted="enc"
     )
     app.dependency_overrides[get_db] = lambda: AsyncMock()
+    app.dependency_overrides[get_universidad_activa] = _ctx_tutor
     yield
     app.dependency_overrides.clear()
 
@@ -57,7 +68,7 @@ async def test_listar_devuelve_items_y_contadores(auth):
 
 @pytest.mark.asyncio
 async def test_entregar_stream_emite_eventos(auth):
-    async def _fake_stream(usuario, base_url):
+    async def _fake_stream(usuario, base_url, ctx=None):
         yield {"tipo": "inicio", "total": 1}
         yield {"tipo": "progreso", "procesadas": 1, "total": 1}
         yield {"tipo": "resumen", "enviadas": 1, "ya_enviadas": 0,
@@ -76,15 +87,21 @@ async def test_entregar_stream_emite_eventos(auth):
 
 
 @pytest.mark.asyncio
-async def test_entregar_stream_sin_credenciales_es_424():
-    app.dependency_overrides[get_current_user] = lambda: MagicMock(
-        id=1, moodle_username=None, moodle_password_encrypted=None
-    )
-    app.dependency_overrides[get_db] = lambda: AsyncMock()
-    try:
+async def test_entregar_stream_sin_credenciales_emite_evento_error(auth):
+    """Fase 3 multi-tenant: las credenciales se resuelven DENTRO del stream (D1/D2,
+    universidad activa vía ctx) — sin membresía/credenciales, el resolver dispara
+    un 424 que el service traduce en un evento SSE 'error' (el status HTTP ya es
+    200 porque el streaming arrancó; no hay pre-check síncrono en el router)."""
+
+    async def _fake_stream(usuario, base_url, ctx=None):
+        yield {"tipo": "error", "detail": "Configurá tus credenciales Moodle en tu perfil"}
+
+    with patch("app.routers.por_entregar.PorEntregarService") as cls:
+        cls.return_value.entregar_masivo_stream = _fake_stream
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
             resp = await client.post("/api/v1/por-entregar/entregar/stream")
-    finally:
-        app.dependency_overrides.clear()
+            texto = resp.text
 
-    assert resp.status_code == 424
+    assert resp.status_code == 200
+    assert '"tipo": "error"' in texto
+    assert "credenciales" in texto.lower()

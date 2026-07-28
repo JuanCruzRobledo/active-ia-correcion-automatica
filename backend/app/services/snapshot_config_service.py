@@ -45,6 +45,7 @@ class SnapshotConfigService:
         return CronConfigResponse(
             usuario_id=config.usuario_id,
             usuario_nombre=nombre,
+            universidad_id=config.universidad_id,
             hora=config.hora,
             minuto=config.minuto,
             activo=config.activo,
@@ -57,12 +58,20 @@ class SnapshotConfigService:
     async def actualizar(self, data: CronConfigUpdate) -> CronConfigResponse:
         config = await self._get_or_create()
 
-        # Si se activa el cron, exigir un usuario con credenciales Moodle.
+        # Si se activa el cron, exigir un usuario CON MEMBRESÍA (con credenciales
+        # Moodle) en la universidad activa elegida (Fase 3 multi-tenant, OQ2).
         if data.activo:
             if not data.usuario_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Para activar el cron hay que asignar un usuario",
+                )
+            # El cron corre sin request/ctx: la universidad activa se elige
+            # explícitamente acá (no hay JWT del que leerla).
+            if not data.universidad_id:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Para activar el cron hay que elegir la universidad activa",
                 )
             usuario = await self.usuario_repo.get_by_id(data.usuario_id)
             if usuario is None:
@@ -70,13 +79,22 @@ class SnapshotConfigService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="El usuario indicado no existe",
                 )
-            if not usuario.moodle_username or not usuario.moodle_password_encrypted:
+            # Credenciales de la MEMBRESÍA (usuario, universidad) elegida — D1/D2,
+            # NUNCA usuario.moodle_* (campo global viejo).
+            creds = await self.usuario_repo.get_credenciales_moodle(
+                data.usuario_id, data.universidad_id
+            )
+            if creds is None or not creds.username or not creds.password_encrypted:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="El usuario elegido no tiene credenciales de Moodle configuradas",
+                    detail=(
+                        "El usuario elegido no tiene credenciales de Moodle configuradas "
+                        "para la universidad elegida"
+                    ),
                 )
 
         config.usuario_id = data.usuario_id
+        config.universidad_id = data.universidad_id
         config.hora = data.hora
         config.minuto = data.minuto
         config.activo = data.activo

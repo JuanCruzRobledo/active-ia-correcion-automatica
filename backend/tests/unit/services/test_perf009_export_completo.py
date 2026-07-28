@@ -47,6 +47,9 @@ from app.repositories.entrega_repository import EntregaRepository
 from app.services.excel_service import ExcelService
 from app.services.pdf_service import PDFService
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 # SQLite no soporta JSONB/ARRAY nativos; se compilan a JSON sólo en el dialecto de tests.
 @compiles(JSONB, "sqlite")
@@ -80,13 +83,13 @@ async def _seed(db, *, n: int, corregidas: int | None = None) -> dict:
     if corregidas is None:
         corregidas = n
 
-    materia = Materia(nombre="Programación 1", codigo="P1")
+    materia = Materia(universidad_id=UNIV_ID, nombre="Programación 1", codigo="P1")
     db.add(materia)
     await db.flush()
-    comi = Comision(materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
+    comi = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1-1", anio=2026, activa=True)
     db.add(comi)
     await db.flush()
-    rubrica = Rubrica(
+    rubrica = Rubrica(universidad_id=UNIV_ID, 
         materia_id=materia.id,
         titulo="Trabajo Práctico 1",
         descripcion="Rúbrica de prueba",
@@ -105,7 +108,7 @@ async def _seed(db, *, n: int, corregidas: int | None = None) -> dict:
             EstadoEntregaEnum.CORREGIDA if i < corregidas else EstadoEntregaEnum.SUBIDA
         )
         entregas.append(
-            Entrega(
+            Entrega(universidad_id=UNIV_ID, 
                 comision_id=comi.id,
                 rubrica_id=rubrica.id,
                 alumno_nombre=f"Alumno {i:03d}",
@@ -120,7 +123,7 @@ async def _seed(db, *, n: int, corregidas: int | None = None) -> dict:
 
     for i in range(corregidas):
         db.add(
-            Correccion(
+            Correccion(universidad_id=UNIV_ID, 
                 entrega_id=entregas[i].id,
                 nota=Decimal("90"),
                 criterios_json={

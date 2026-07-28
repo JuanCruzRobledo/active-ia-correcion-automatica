@@ -92,7 +92,15 @@ class UsuarioResponse(BaseModel):
     id: int
     username: str
     nombre: str
-    rol: RolEnum
+    rol: RolEnum | None = Field(
+        default=None,
+        description=(
+            "Rol de la membresía activa relevante (Fase 6 multi-tenant, D5) — "
+            "ya no un rol global. `None` sólo en el caso extremo (no debería "
+            "ocurrir: la migración exige que todo usuario tenga membresía) de "
+            "no poder resolver ninguna membresía."
+        ),
+    )
     email: str | None = None
     primer_login: bool = Field(
         description="True si el usuario debe cambiar su contraseña",
@@ -123,7 +131,10 @@ class UsuarioListItem(BaseModel):
     id: int
     username: str
     nombre: str
-    rol: RolEnum
+    rol: RolEnum | None = Field(
+        default=None,
+        description="Rol de la membresía activa relevante (Fase 6 multi-tenant, D5).",
+    )
     activo: bool
     created_at: datetime
     last_login: datetime | None = None
@@ -172,15 +183,14 @@ class ResetPasswordResponse(BaseModel):
 
 
 class MoodleCredentialsUpdate(BaseModel):
-    """Schema for updating Moodle credentials."""
+    """Schema for updating Moodle credentials.
 
-    moodle_host: str = Field(
-        ...,
-        min_length=1,
-        max_length=255,
-        description="URL base del host Moodle (ej: https://moodle.ejemplo.com)",
-        examples=["https://tup.sied.utn.edu.ar"],
-    )
+    Fase 3 multi-tenant (D4): `moodle_host` ya NO se acepta acá — el campus es
+    propiedad de la `Universidad`, read-only desde el perfil (se muestra en
+    `PerfilResponse.moodle_host`, tomado de la universidad activa). Las
+    credenciales se escriben en la membresía `(usuario, universidad activa)`.
+    """
+
     moodle_username: str = Field(
         ...,
         min_length=1,

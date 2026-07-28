@@ -96,8 +96,10 @@ class NotificacionService:
             })
         return out
 
-    async def _cargar_tutores(self, mapa_materia: dict[int, str]) -> list[dict]:
-        tutores = await self.usuario_repo.get_tutores()
+    async def _cargar_tutores(
+        self, mapa_materia: dict[int, str], universidad_id: int | None = None
+    ) -> list[dict]:
+        tutores = await self.usuario_repo.get_tutores(universidad_id=universidad_id)
         out: list[dict] = []
         for t in tutores:
             comisiones = await self.comision_repo.get_by_tutor(t.id)
@@ -231,17 +233,28 @@ class NotificacionService:
           tutores (None = todas las comisiones).
 
         Devuelve {tanda_id, alumnos, tutores, nexos} con la cantidad enviada por tipo.
+
+        Fase 3 multi-tenant (OQ2): el cron corre sin request/ctx, así que
+        `universidad_id` sale de la config del cron (`NotificacionCronConfig.
+        universidad_id`) — la misma fila que ya guarda el `usuario_id` de
+        servicio, así ambos quedan atados al mismo par (usuario, universidad).
         """
         tanda_id = tanda_id or uuid.uuid4().hex
-        if refrescar:
-            await self.snapshot_service.generar_todas_para_usuario(usuario_id)
-
         config = await self.config_service.get_config()
         remitente = config.remitente or None
 
+        if refrescar:
+            await self.snapshot_service.generar_todas_para_usuario(
+                usuario_id, universidad_id=config.universidad_id
+            )
+
         avances = await self._cargar_avances_por_materia()
         mapa_materia = {a["materia_id"]: a["materia"] for a in avances}
-        tutores = await self._cargar_tutores(mapa_materia) if incluir_tutores else []
+        tutores = (
+            await self._cargar_tutores(mapa_materia, config.universidad_id)
+            if incluir_tutores
+            else []
+        )
         nexos = (
             [
                 {"email": n.email, "nombre": n.nombre, "regional": n.regional}

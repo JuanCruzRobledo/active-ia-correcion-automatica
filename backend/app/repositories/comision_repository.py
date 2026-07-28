@@ -96,6 +96,7 @@ class ComisionRepository:
         include_inactive: bool = False,
         page: int = 1,
         per_page: int = 20,
+        universidad_id: int | None = None,
     ) -> tuple[list[Comision], int]:
         """
         Get all comisiones with optional filters and pagination.
@@ -108,6 +109,8 @@ class ComisionRepository:
             include_inactive: Include soft-deleted comisiones.
             page: Page number (1-indexed).
             per_page: Items per page.
+            universidad_id: Fase 4 multi-tenant (D1). None = sin filtro (bypass
+                superadmin sin universidad activa).
 
         Returns:
             Tuple of (list of comisiones, total count).
@@ -134,6 +137,9 @@ class ComisionRepository:
         if anio is not None:
             query = query.where(Comision.anio == anio)
 
+        if universidad_id is not None:
+            query = query.where(Comision.universidad_id == universidad_id)
+
         # Count total
         count_query = select(func.count()).select_from(query.subquery())
         total_result = await self.db.execute(count_query)
@@ -150,7 +156,7 @@ class ComisionRepository:
         return comisiones, total
 
     async def contar_tutores_entregas(
-        self, comision_ids: list[int]
+        self, comision_ids: list[int], *, universidad_id: int | None = None
     ) -> dict[int, tuple[int, int]]:
         """(num_tutores, num_entregas) por comisión en UNA sola query agregada.
 
@@ -172,7 +178,7 @@ class ComisionRepository:
         if not comision_ids:
             return {}
 
-        result = await self.db.execute(
+        query = (
             select(
                 Comision.id,
                 func.count(func.distinct(ComisionTutor.id)),
@@ -182,12 +188,14 @@ class ComisionRepository:
             .outerjoin(ComisionTutor, ComisionTutor.comision_id == Comision.id)
             .outerjoin(Entrega, Entrega.comision_id == Comision.id)
             .where(Comision.id.in_(comision_ids))
-            .group_by(Comision.id)
         )
+        if universidad_id is not None:
+            query = query.where(Comision.universidad_id == universidad_id)
+        result = await self.db.execute(query.group_by(Comision.id))
         return {cid: (int(nt), int(ne)) for cid, nt, ne in result.all()}
 
     async def contar_comisiones_activas_por_materia(
-        self, materia_ids: list[int]
+        self, materia_ids: list[int], *, universidad_id: int | None = None
     ) -> dict[int, int]:
         """CRUD-016: Nº de comisiones ACTIVAS por materia en UNA query agregada.
 
@@ -197,70 +205,84 @@ class ComisionRepository:
         """
         if not materia_ids:
             return {}
-        result = await self.db.execute(
-            select(Comision.materia_id, func.count(Comision.id))
-            .where(
-                Comision.materia_id.in_(materia_ids),
-                Comision.activa == True,  # noqa: E712
-            )
-            .group_by(Comision.materia_id)
+        query = select(Comision.materia_id, func.count(Comision.id)).where(
+            Comision.materia_id.in_(materia_ids),
+            Comision.activa == True,  # noqa: E712
         )
+        if universidad_id is not None:
+            query = query.where(Comision.universidad_id == universidad_id)
+        result = await self.db.execute(query.group_by(Comision.materia_id))
         return {mid: int(n) for mid, n in result.all()}
 
-    async def get_by_materia(self, materia_id: int) -> list[Comision]:
+    async def get_by_materia(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> list[Comision]:
         """
         Get all active comisiones for a materia.
 
         Args:
             materia_id: ID of the materia.
+            universidad_id: Fase 4 multi-tenant, defensa en profundidad (D2).
 
         Returns:
             List of active comisiones for the materia.
         """
+        query = select(Comision).where(
+            Comision.materia_id == materia_id,
+            Comision.activa == True,  # noqa: E712
+        )
+        if universidad_id is not None:
+            query = query.where(Comision.universidad_id == universidad_id)
         result = await self.db.execute(
-            select(Comision)
-            .where(
-                Comision.materia_id == materia_id,
-                Comision.activa == True,  # noqa: E712
-            )
-            .order_by(Comision.anio.desc(), *orden_natural_sql(Comision.nombre))
+            query.order_by(Comision.anio.desc(), *orden_natural_sql(Comision.nombre))
         )
         return list(result.scalars().all())
 
-    async def get_by_materia_con_tutores(self, materia_id: int) -> list[Comision]:
+    async def get_by_materia_con_tutores(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> list[Comision]:
         """Comisiones activas de una materia con sus tutores (y el usuario) eager-loaded.
 
         Una sola query: evita N+1 al mapear comisión → tutor (pantalla Gestión).
         """
-        result = await self.db.execute(
+        query = (
             select(Comision)
             .where(
                 Comision.materia_id == materia_id,
                 Comision.activa == True,  # noqa: E712
             )
             .options(selectinload(Comision.tutores).selectinload(ComisionTutor.tutor))
-            .order_by(*orden_natural_sql(Comision.nombre))
         )
+        if universidad_id is not None:
+            query = query.where(Comision.universidad_id == universidad_id)
+        result = await self.db.execute(query.order_by(*orden_natural_sql(Comision.nombre)))
         return list(result.scalars().all())
 
-    async def get_by_tutor(self, tutor_id: int) -> list[Comision]:
+    async def get_by_tutor(
+        self, tutor_id: int, *, universidad_id: int | None = None
+    ) -> list[Comision]:
         """
         Get all active comisiones assigned to a tutor.
 
         Args:
             tutor_id: ID of the tutor user.
+            universidad_id: Fase 4 multi-tenant. None = sin filtro.
 
         Returns:
             List of active comisiones for the tutor.
         """
-        result = await self.db.execute(
+        query = (
             select(Comision)
             .join(ComisionTutor)
             .where(
                 ComisionTutor.tutor_id == tutor_id,
                 Comision.activa == True,  # noqa: E712
             )
-            .order_by(Comision.anio.desc(), *orden_natural_sql(Comision.nombre))
+        )
+        if universidad_id is not None:
+            query = query.where(Comision.universidad_id == universidad_id)
+        result = await self.db.execute(
+            query.order_by(Comision.anio.desc(), *orden_natural_sql(Comision.nombre))
         )
         return list(result.scalars().all())
 
@@ -270,6 +292,7 @@ class ComisionRepository:
         *,
         comision_id: int | None = None,
         materia_id: int | None = None,
+        universidad_id: int | None = None,
     ) -> list[Comision]:
         """Comisiones ACTIVAS del tutor con moodle_group_id configurado (con la
         materia eager-loaded), para los flujos de Moodle (pendientes / import).
@@ -291,6 +314,8 @@ class ComisionRepository:
             stmt = stmt.where(Comision.id == comision_id)
         if materia_id is not None:
             stmt = stmt.where(Comision.materia_id == materia_id)
+        if universidad_id is not None:
+            stmt = stmt.where(Comision.universidad_id == universidad_id)
         result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
@@ -375,19 +400,22 @@ class ComisionRepository:
         materia_id: int,
         nombre: str,
         anio: int,
+        *,
+        universidad_id: int | None = None,
     ) -> Comision | None:
         """
         CRUD-011: devuelve la comisión que ocupa la clave única (materia+nombre+anio),
         SIN filtrar por `activa`, para poder distinguir un conflicto contra un
         registro eliminado y ofrecer restaurarlo.
         """
-        result = await self.db.execute(
-            select(Comision).where(
-                Comision.materia_id == materia_id,
-                Comision.nombre == nombre,
-                Comision.anio == anio,
-            )
+        query = select(Comision).where(
+            Comision.materia_id == materia_id,
+            Comision.nombre == nombre,
+            Comision.anio == anio,
         )
+        if universidad_id is not None:
+            query = query.where(Comision.universidad_id == universidad_id)
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def create(self, comision: Comision) -> Comision:

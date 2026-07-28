@@ -30,7 +30,7 @@ async def test_materia_conflicto_con_eliminada_menciona_borrado_y_id():
     borrada = SimpleNamespace(id=7, activa=False)
     svc = _materia_svc(borrada)
     with pytest.raises(HTTPException) as exc:
-        await svc.crear_materia(SimpleNamespace(codigo="prog1", coordinador_ids=None))
+        await svc.crear_materia(SimpleNamespace(codigo="prog1", coordinador_ids=None), universidad_id=1)
     assert exc.value.status_code == 409
     assert "eliminada" in exc.value.detail.lower()
     assert "7" in exc.value.detail
@@ -41,7 +41,7 @@ async def test_materia_conflicto_con_activa_mensaje_normal():
     activa = SimpleNamespace(id=3, activa=True)
     svc = _materia_svc(activa)
     with pytest.raises(HTTPException) as exc:
-        await svc.crear_materia(SimpleNamespace(codigo="prog1", coordinador_ids=None))
+        await svc.crear_materia(SimpleNamespace(codigo="prog1", coordinador_ids=None), universidad_id=1)
     assert exc.value.status_code == 409
     assert "eliminada" not in exc.value.detail.lower()
 
@@ -54,7 +54,7 @@ async def test_materia_sin_conflicto_no_lanza_409():
     # Sin conflicto, avanza mas alla del chequeo (y explota en create, que no mockeamos
     # del todo): lo que importa es que NO fue un 409 de conflicto.
     with pytest.raises(Exception) as exc:
-        await svc.crear_materia(SimpleNamespace(codigo="nueva", coordinador_ids=None))
+        await svc.crear_materia(SimpleNamespace(codigo="nueva", coordinador_ids=None), universidad_id=1)
     assert not (isinstance(exc.value, HTTPException) and exc.value.status_code == 409)
 
 
@@ -65,7 +65,7 @@ async def test_materia_sin_conflicto_no_lanza_409():
 async def test_comision_conflicto_con_eliminada_menciona_borrado():
     borrada = SimpleNamespace(id=12, activa=False)
     svc = ComisionService.__new__(ComisionService)
-    svc.materia_repo = SimpleNamespace(get_active_by_id=AsyncMock(return_value=object()))
+    svc.materia_repo = SimpleNamespace(get_active_by_id=AsyncMock(return_value=SimpleNamespace(id=1, universidad_id=1)))
     svc.comision_repo = SimpleNamespace(
         get_by_materia_nombre_anio=AsyncMock(return_value=borrada)
     )
@@ -81,7 +81,7 @@ async def test_comision_conflicto_con_eliminada_menciona_borrado():
 async def test_comision_conflicto_con_activa_mensaje_normal():
     activa = SimpleNamespace(id=4, activa=True)
     svc = ComisionService.__new__(ComisionService)
-    svc.materia_repo = SimpleNamespace(get_active_by_id=AsyncMock(return_value=object()))
+    svc.materia_repo = SimpleNamespace(get_active_by_id=AsyncMock(return_value=SimpleNamespace(id=1, universidad_id=1)))
     svc.comision_repo = SimpleNamespace(
         get_by_materia_nombre_anio=AsyncMock(return_value=activa)
     )
@@ -100,7 +100,7 @@ async def test_rubrica_conflicto_con_eliminada_menciona_borrado():
     borrada = SimpleNamespace(id=20, activa=False)
     svc = RubricaService.__new__(RubricaService)
     svc._validar_acceso_materia = AsyncMock()
-    svc.materia_repo = SimpleNamespace(get_active_by_id=AsyncMock(return_value=object()))
+    svc.materia_repo = SimpleNamespace(get_active_by_id=AsyncMock(return_value=SimpleNamespace(id=1, universidad_id=1)))
     svc.rubrica_repo = SimpleNamespace(
         get_by_materia_tipo_numero=AsyncMock(return_value=borrada)
     )
@@ -119,7 +119,7 @@ async def test_rubrica_conflicto_con_activa_mensaje_normal():
     activa = SimpleNamespace(id=5, activa=True)
     svc = RubricaService.__new__(RubricaService)
     svc._validar_acceso_materia = AsyncMock()
-    svc.materia_repo = SimpleNamespace(get_active_by_id=AsyncMock(return_value=object()))
+    svc.materia_repo = SimpleNamespace(get_active_by_id=AsyncMock(return_value=SimpleNamespace(id=1, universidad_id=1)))
     svc.rubrica_repo = SimpleNamespace(
         get_by_materia_tipo_numero=AsyncMock(return_value=activa)
     )

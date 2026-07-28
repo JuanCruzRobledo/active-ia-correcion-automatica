@@ -6,7 +6,7 @@ Router del ABM de Tutores Nexo (solo ADMIN). Ref: PLAN_NOTIFICACIONES_EMAIL.md Â
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import require_admin
 from app.models import Usuario
 from app.schemas.tutor_nexo import (
@@ -23,9 +23,10 @@ router = APIRouter(prefix="/tutores-nexo", tags=["tutores-nexo"])
 async def listar_tutores_nexo(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[TutorNexoResponse]:
     """Lista los tutores nexo. Solo admin."""
-    require_admin(current_user)
+    require_admin(ctx)
     return await TutorNexoService(db).listar()
 
 
@@ -34,9 +35,10 @@ async def crear_tutor_nexo(
     data: TutorNexoCreate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> TutorNexoResponse:
     """Crea un tutor nexo. Solo admin."""
-    require_admin(current_user)
+    require_admin(ctx)
     return await TutorNexoService(db).crear(data, usuario_id=current_user.id)
 
 
@@ -45,9 +47,10 @@ async def obtener_tutor_nexo(
     tutor_nexo_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> TutorNexoResponse:
     """Obtiene un tutor nexo por ID. Solo admin."""
-    require_admin(current_user)
+    require_admin(ctx)
     return await TutorNexoService(db).obtener(tutor_nexo_id)
 
 
@@ -57,9 +60,10 @@ async def actualizar_tutor_nexo(
     data: TutorNexoUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> TutorNexoResponse:
     """Actualiza un tutor nexo. Solo admin."""
-    require_admin(current_user)
+    require_admin(ctx)
     return await TutorNexoService(db).actualizar(tutor_nexo_id, data)
 
 
@@ -68,7 +72,8 @@ async def eliminar_tutor_nexo(
     tutor_nexo_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> None:
     """Elimina (soft) un tutor nexo. Solo admin."""
-    require_admin(current_user)
+    require_admin(ctx)
     await TutorNexoService(db).eliminar(tutor_nexo_id)

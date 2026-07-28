@@ -12,6 +12,7 @@ import asyncio
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import verificar_pertenencia_universidad
 from app.models.avance import AvanceSnapshot
 from app.models.enums import EstadoAvanceEnum
 from app.repositories.avance_repository import AvanceRepository
@@ -44,12 +45,18 @@ class DashboardLecturaService:
         self.materia_repo = MateriaRepository(db)
         self.avance_repo = AvanceRepository(db)
 
-    async def materias_configuradas(self) -> list[MateriaConfiguradaItem]:
+    async def materias_configuradas(
+        self, *, universidad_id: int | None = None
+    ) -> list[MateriaConfiguradaItem]:
         """Materias listas para snapshot, con la fecha/total de su último snapshot."""
-        materias = await self.materia_repo.get_configuradas_dashboard()
+        materias = await self.materia_repo.get_configuradas_dashboard(
+            universidad_id=universidad_id
+        )
         # PERF-011: el último snapshot de TODAS las materias en UNA query (antes:
         # get_ultimo_snapshot por materia en loop).
-        snapshots = await self.avance_repo.get_ultimos_snapshots([m.id for m in materias])
+        snapshots = await self.avance_repo.get_ultimos_snapshots(
+            [m.id for m in materias], universidad_id=universidad_id
+        )
         snap_por_materia = {s.materia_id: s for s in snapshots}
         items: list[MateriaConfiguradaItem] = []
         for m in materias:
@@ -65,14 +72,18 @@ class DashboardLecturaService:
             )
         return items
 
-    async def obtener_arbol(self) -> list[CohorteArbol]:
+    async def obtener_arbol(
+        self, *, universidad_id: int | None = None
+    ) -> list[CohorteArbol]:
         """Árbol cohorte → cuatrimestre → materias para los selectores encadenados."""
         cohortes = await self.cohorte_repo.get_all(include_inactive=False)
         # PERF-011: las materias de TODOS los cuatrimestres del árbol en UNA query
         # (antes: get_by_cuatrimestre por cuatrimestre en loop anidado), reagrupadas
         # por cuatrimestre_id preservando el orden por nombre.
         cuatri_ids = [cuatri.id for cohorte in cohortes for cuatri in cohorte.cuatrimestres]
-        materias_todas = await self.materia_repo.get_by_cuatrimestres(cuatri_ids)
+        materias_todas = await self.materia_repo.get_by_cuatrimestres(
+            cuatri_ids, universidad_id=universidad_id
+        )
         materias_por_cuatri: dict[int, list] = {}
         for m in materias_todas:
             materias_por_cuatri.setdefault(m.cuatrimestre_id, []).append(m)
@@ -100,21 +111,32 @@ class DashboardLecturaService:
             )
         return arbol
 
-    async def _resolver_materias(self, cuatrimestre_id: int, materia_id: int | None):
+    async def _resolver_materias(
+        self, cuatrimestre_id: int, materia_id: int | None, *, universidad_id: int | None = None
+    ):
         if materia_id is not None:
             materia = await self.materia_repo.get_by_id(materia_id)
             if materia is None:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND, detail="Materia no encontrada"
                 )
+            verificar_pertenencia_universidad(
+                materia, universidad_id, detail="Materia no encontrada"
+            )
             return [materia]
-        return await self.materia_repo.get_by_cuatrimestre(cuatrimestre_id)
+        return await self.materia_repo.get_by_cuatrimestre(
+            cuatrimestre_id, universidad_id=universidad_id
+        )
 
-    async def _ultimos_snapshots(self, materias) -> list[AvanceSnapshot]:
+    async def _ultimos_snapshots(
+        self, materias, *, universidad_id: int | None = None
+    ) -> list[AvanceSnapshot]:
         # PERF-011: último snapshot de cada materia en UNA query (antes:
         # get_ultimo_snapshot por materia en loop). Las materias sin snapshot no
         # vienen en la lista, igual que el `if snap is not None` del loop viejo.
-        return await self.avance_repo.get_ultimos_snapshots([m.id for m in materias])
+        return await self.avance_repo.get_ultimos_snapshots(
+            [m.id for m in materias], universidad_id=universidad_id
+        )
 
     async def _get_cuatrimestre_or_404(self, cuatrimestre_id: int):
         cuatrimestre = await self.cuatrimestre_repo.get_by_id(cuatrimestre_id)
@@ -125,14 +147,22 @@ class DashboardLecturaService:
         return cuatrimestre
 
     async def avance(
-        self, cuatrimestre_id: int, materia_id: int | None = None
+        self,
+        cuatrimestre_id: int,
+        materia_id: int | None = None,
+        *,
+        universidad_id: int | None = None,
     ) -> AvanceResponse:
         cuatrimestre = await self._get_cuatrimestre_or_404(cuatrimestre_id)
         cohorte = await self.cohorte_repo.get_by_id(cuatrimestre.cohorte_id)
-        materias = await self._resolver_materias(cuatrimestre_id, materia_id)
-        snapshots = await self._ultimos_snapshots(materias)
+        materias = await self._resolver_materias(
+            cuatrimestre_id, materia_id, universidad_id=universidad_id
+        )
+        snapshots = await self._ultimos_snapshots(materias, universidad_id=universidad_id)
 
-        conteos_raw = await self.avance_repo.contar_por_estado([s.id for s in snapshots])
+        conteos_raw = await self.avance_repo.contar_por_estado(
+            [s.id for s in snapshots], universidad_id=universidad_id
+        )
         conteos = ConteoEstados(
             al_dia=conteos_raw.get(EstadoAvanceEnum.AL_DIA, 0),
             riesgo_medio=conteos_raw.get(EstadoAvanceEnum.RIESGO_MEDIO, 0),
@@ -158,16 +188,24 @@ class DashboardLecturaService:
         return f"Cohorte {codigo} · Cuatrimestre {cuatrimestre.numero}"
 
     async def avance_excel(
-        self, cuatrimestre_id: int, materia_id: int | None = None
+        self,
+        cuatrimestre_id: int,
+        materia_id: int | None = None,
+        *,
+        universidad_id: int | None = None,
     ) -> tuple[bytes, str]:
         """Genera el .xlsx de avance (Resumen + 4 hojas de desglose)."""
         cuatrimestre = await self._get_cuatrimestre_or_404(cuatrimestre_id)
         cohorte = await self.cohorte_repo.get_by_id(cuatrimestre.cohorte_id)
-        materias = await self._resolver_materias(cuatrimestre_id, materia_id)
-        snapshots = await self._ultimos_snapshots(materias)
+        materias = await self._resolver_materias(
+            cuatrimestre_id, materia_id, universidad_id=universidad_id
+        )
+        snapshots = await self._ultimos_snapshots(materias, universidad_id=universidad_id)
         snapshot_ids = [s.id for s in snapshots]
 
-        conteos = await self.avance_repo.contar_por_estado(snapshot_ids)
+        conteos = await self.avance_repo.contar_por_estado(
+            snapshot_ids, universidad_id=universidad_id
+        )
         alumnos_por_estado = {
             estado: await self.avance_repo.get_alumnos_por_estado(snapshot_ids, estado)
             for estado in EstadoAvanceEnum
@@ -212,11 +250,18 @@ class DashboardLecturaService:
         return contenido, filename
 
     async def detalle(
-        self, cuatrimestre_id: int, estado: EstadoAvanceEnum, materia_id: int | None = None
+        self,
+        cuatrimestre_id: int,
+        estado: EstadoAvanceEnum,
+        materia_id: int | None = None,
+        *,
+        universidad_id: int | None = None,
     ) -> list[AlumnoDetalle]:
         await self._get_cuatrimestre_or_404(cuatrimestre_id)
-        materias = await self._resolver_materias(cuatrimestre_id, materia_id)
-        snapshots = await self._ultimos_snapshots(materias)
+        materias = await self._resolver_materias(
+            cuatrimestre_id, materia_id, universidad_id=universidad_id
+        )
+        snapshots = await self._ultimos_snapshots(materias, universidad_id=universidad_id)
         alumnos = await self.avance_repo.get_alumnos_por_estado(
             [s.id for s in snapshots], estado
         )

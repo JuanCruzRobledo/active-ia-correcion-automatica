@@ -10,7 +10,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 3
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import require_admin
 from app.models import Usuario
 from app.models.enums import RolEnum
@@ -38,6 +38,7 @@ async def listar_usuarios(
     per_page: int = Query(20, ge=1, le=1000, description="Items por página"),
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> UsuarioList:
     """
     Lista usuarios con filtros y paginación.
@@ -45,17 +46,18 @@ async def listar_usuarios(
     Admin ve todos los usuarios. Coordinador solo puede consultar tutores
     (necesario para asignar tutores a comisiones).
     """
-    if current_user.rol == RolEnum.COORDINADOR:
+    if ctx.rol == RolEnum.COORDINADOR:
         if rol != RolEnum.TUTOR:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Coordinadores solo pueden consultar usuarios con rol Tutor",
             )
     else:
-        require_admin(current_user)
+        require_admin(ctx)
 
     service = UsuarioService(db)
     return await service.listar_usuarios(
+        universidad_id=ctx.universidad_id,
         activo=activo,
         rol=rol,
         search=search,
@@ -73,6 +75,7 @@ async def crear_usuario(
     data: UsuarioCreate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> UsuarioCreateResponse:
     """
     Crea un nuevo usuario con contraseña temporal.
@@ -80,10 +83,12 @@ async def crear_usuario(
     Solo administradores pueden crear usuarios.
     La contraseña temporal debe ser comunicada al usuario.
     """
-    require_admin(current_user)
+    require_admin(ctx)
 
     service = UsuarioService(db)
-    return await service.crear_usuario(data, current_user_id=current_user.id)
+    return await service.crear_usuario(
+        data, current_user_id=current_user.id, universidad_id=ctx.universidad_id
+    )
 
 
 @router.get("/{user_id}", response_model=UsuarioResponse)
@@ -91,16 +96,17 @@ async def obtener_usuario(
     user_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> UsuarioResponse:
     """
     Obtiene un usuario por su ID.
 
     Solo administradores pueden acceder a este endpoint.
     """
-    require_admin(current_user)
+    require_admin(ctx)
 
     service = UsuarioService(db)
-    return await service.obtener_usuario(user_id)
+    return await service.obtener_usuario(user_id, universidad_id=ctx.universidad_id)
 
 
 @router.put("/{user_id}", response_model=UsuarioResponse)
@@ -109,6 +115,7 @@ async def actualizar_usuario(
     data: UsuarioUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> UsuarioResponse:
     """
     Actualiza un usuario existente.
@@ -116,10 +123,10 @@ async def actualizar_usuario(
     Solo administradores pueden actualizar usuarios.
     Solo se actualizan los campos proporcionados.
     """
-    require_admin(current_user)
+    require_admin(ctx)
 
     service = UsuarioService(db)
-    return await service.actualizar_usuario(user_id, data)
+    return await service.actualizar_usuario(user_id, data, universidad_id=ctx.universidad_id)
 
 
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -127,6 +134,7 @@ async def eliminar_usuario(
     user_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> None:
     """
     Elimina un usuario (soft delete).
@@ -134,7 +142,7 @@ async def eliminar_usuario(
     Solo administradores pueden eliminar usuarios.
     El usuario no puede eliminarse a sí mismo.
     """
-    require_admin(current_user)
+    require_admin(ctx)
 
     # Prevent self-deletion
     if current_user.id == user_id:
@@ -152,16 +160,17 @@ async def restaurar_usuario(
     user_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> UsuarioResponse:
     """
     Restaura un usuario eliminado.
 
     Solo administradores pueden restaurar usuarios.
     """
-    require_admin(current_user)
+    require_admin(ctx)
 
     service = UsuarioService(db)
-    return await service.restaurar_usuario(user_id)
+    return await service.restaurar_usuario(user_id, universidad_id=ctx.universidad_id)
 
 
 @router.post("/{user_id}/reset-password", response_model=ResetPasswordResponse)
@@ -169,6 +178,7 @@ async def resetear_password(
     user_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> ResetPasswordResponse:
     """
     Resetea la contraseña de un usuario a una temporal.
@@ -177,7 +187,7 @@ async def resetear_password(
     La nueva contraseña temporal debe ser comunicada al usuario.
     El usuario deberá cambiarla en su próximo login.
     """
-    require_admin(current_user)
+    require_admin(ctx)
 
     service = UsuarioService(db)
     return await service.resetear_password(user_id)
@@ -188,7 +198,13 @@ async def update_moodle_credentials(
     data: MoodleCredentialsUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> MoodleCredentialsResponse:
-    """Actualiza las credenciales Moodle del usuario autenticado."""
+    """Actualiza las credenciales Moodle del usuario autenticado.
+
+    Fase 3 multi-tenant (D4): se escriben en la membresía `(usuario,
+    universidad activa)` — el host de Moodle YA NO se acepta acá (es
+    propiedad de la Universidad, read-only).
+    """
     service = UsuarioService(db)
-    return await service.update_moodle_credentials(current_user.id, data)
+    return await service.update_moodle_credentials(current_user.id, ctx.universidad_id, data)

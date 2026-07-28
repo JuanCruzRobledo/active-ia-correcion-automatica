@@ -10,6 +10,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 4
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import verificar_pertenencia_universidad
 from app.models.enums import RolEnum, TipoActividadEnum
 from app.models.materia import Materia
 from app.repositories.comision_repository import ComisionRepository
@@ -51,7 +52,11 @@ class MateriaService:
         self.usuario_repo = UsuarioRepository(db)
 
     async def crear_materia(
-        self, data: MateriaCreate, current_user_id: int | None = None
+        self,
+        data: MateriaCreate,
+        current_user_id: int | None = None,
+        *,
+        universidad_id: int | None = None,
     ) -> MateriaDetailResponse:
         """
         Create a new materia.
@@ -59,21 +64,35 @@ class MateriaService:
         Args:
             data: Materia creation data (codigo, nombre, descripcion, coordinador_ids).
             current_user_id: ID of the user creating this materia (for audit log).
+            universidad_id: Fase 4 multi-tenant — `ctx.universidad_id` de quien crea.
+                Materia es la RAÍZ del árbol (no tiene padre del que heredarlo), así
+                que debe venir explícito. Un superadmin SIN universidad activa no
+                puede crear materias "flotantes" — 400 si es None.
 
         Returns:
             MateriaDetailResponse with materia data and coordinators.
 
         Raises:
             HTTPException 409: Codigo already exists.
-            HTTPException 400: Invalid coordinator.
+            HTTPException 400: Invalid coordinator, o falta universidad activa.
         """
+        if universidad_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Se requiere una universidad activa para crear una materia "
+                    "(seleccioná una universidad)"
+                ),
+            )
         # Normalize codigo to uppercase
         codigo_upper = data.codigo.upper()
 
         # Check if codigo already exists. CRUD-011: si el conflicto es contra una
         # materia ELIMINADA (soft delete), decirlo y ofrecer restaurar — si no, el
         # 409 confunde porque la materia borrada no aparece en el listado.
-        conflicto = await self.materia_repo.get_by_codigo(codigo_upper)
+        conflicto = await self.materia_repo.get_by_codigo(
+            codigo_upper, universidad_id=universidad_id
+        )
         if conflicto is not None:
             if not conflicto.activa:
                 raise HTTPException(
@@ -106,7 +125,13 @@ class MateriaService:
                         detail=f"Usuario {usuario.username} está deshabilitado",
                     )
 
-                if usuario.rol != RolEnum.COORDINADOR:
+                # Fase 6 multi-tenant (D3, hallazgo tarea 3.5): el rol de
+                # COORDINADOR se valida en la membresía de ESTA universidad,
+                # no un rol global.
+                rol_en_universidad = await self.usuario_repo.get_rol_en_universidad(
+                    usuario.id, universidad_id
+                )
+                if rol_en_universidad != RolEnum.COORDINADOR:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Usuario {usuario.username} no tiene rol de coordinador",
@@ -116,6 +141,7 @@ class MateriaService:
 
         # Create materia
         materia = Materia(
+            universidad_id=universidad_id,
             codigo=codigo_upper,
             nombre=data.nombre,
             descripcion=data.descripcion,
@@ -153,6 +179,7 @@ class MateriaService:
         page: int = 1,
         per_page: int = 20,
         coordinador_id: int | None = None,
+        universidad_id: int | None = None,
     ) -> MateriaList:
         """
         List materias with optional filters and pagination.
@@ -164,6 +191,8 @@ class MateriaService:
             page: Page number (1-indexed).
             per_page: Items per page.
             coordinador_id: If set, filter to materias assigned to this coordinator.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`; None = sin
+                filtro (bypass superadmin sin universidad activa).
 
         Returns:
             MateriaList with paginated results.
@@ -175,6 +204,7 @@ class MateriaService:
             page=page,
             per_page=per_page,
             coordinador_id=coordinador_id,
+            universidad_id=universidad_id,
         )
 
         materia_ids = [materia.id for materia in materias]
@@ -212,18 +242,22 @@ class MateriaService:
             per_page=per_page,
         )
 
-    async def obtener_materia(self, materia_id: int) -> MateriaDetailResponse:
+    async def obtener_materia(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> MateriaDetailResponse:
         """
         Get a materia by ID with coordinators info.
 
         Args:
             materia_id: Materia's database ID.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`; si la
+                materia pertenece a otra universidad, 404 (D3).
 
         Returns:
             MateriaDetailResponse with materia data and coordinators.
 
         Raises:
-            HTTPException 404: Materia not found.
+            HTTPException 404: Materia not found (o de otra universidad).
         """
         materia = await self.materia_repo.get_by_id_with_coordinadores(materia_id)
 
@@ -232,6 +266,11 @@ class MateriaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Materia no encontrada",
             )
+        # Fase 4 multi-tenant (D3): mismo mensaje que el "no encontrada" de arriba,
+        # para que el caso cross-tenant sea indistinguible de "no existe".
+        verificar_pertenencia_universidad(
+            materia, universidad_id, detail="Materia no encontrada"
+        )
 
         # Build coordinadores info
         coordinadores_info = []
@@ -263,6 +302,8 @@ class MateriaService:
         self,
         materia_id: int,
         data: MateriaUpdate,
+        *,
+        universidad_id: int | None = None,
     ) -> MateriaDetailResponse:
         """
         Update a materia's information.
@@ -270,12 +311,13 @@ class MateriaService:
         Args:
             materia_id: Materia's database ID.
             data: Update data (nombre, descripcion, coordinador_ids).
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             MateriaDetailResponse with updated materia data and coordinators.
 
         Raises:
-            HTTPException 404: Materia not found.
+            HTTPException 404: Materia not found (o de otra universidad).
             HTTPException 400: Invalid coordinator.
         """
         materia = await self.materia_repo.get_by_id(materia_id)
@@ -285,6 +327,9 @@ class MateriaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Materia no encontrada",
             )
+        verificar_pertenencia_universidad(
+            materia, universidad_id, detail="Materia no encontrada"
+        )
 
         # Update only provided fields. CRUD-010: los nullable usan model_fields_set
         # para distinguir "ausente" (preservar) de "null explícito" (limpiar).
@@ -316,7 +361,13 @@ class MateriaService:
                         detail=f"Usuario {usuario.username} está deshabilitado",
                     )
 
-                if usuario.rol != RolEnum.COORDINADOR:
+                # Fase 6 multi-tenant (D3, hallazgo tarea 3.5): la universidad
+                # de LA MATERIA, no `universidad_id` del request (puede ser
+                # `None` en modo superadmin global).
+                rol_en_universidad = await self.usuario_repo.get_rol_en_universidad(
+                    usuario.id, materia.universidad_id
+                )
+                if rol_en_universidad != RolEnum.COORDINADOR:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Usuario {usuario.username} no tiene rol de coordinador",
@@ -337,7 +388,9 @@ class MateriaService:
         # Return detailed response with coordinators
         return await self.obtener_materia(materia_id)
 
-    async def eliminar_materia(self, materia_id: int) -> None:
+    async def eliminar_materia(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> None:
         """
         Delete a materia — soft or hard depending on ALLOW_HARD_DELETE setting.
 
@@ -352,9 +405,10 @@ class MateriaService:
 
         Args:
             materia_id: Materia's database ID.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Raises:
-            HTTPException 404: Materia not found.
+            HTTPException 404: Materia not found (o de otra universidad).
             HTTPException 400: (soft delete only) Materia already deleted.
         """
         materia = await self.materia_repo.get_by_id(materia_id)
@@ -364,6 +418,9 @@ class MateriaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Materia no encontrada",
             )
+        verificar_pertenencia_universidad(
+            materia, universidad_id, detail="Materia no encontrada"
+        )
 
         # CRUD-002: soft delete SIEMPRE (se eliminó el flag ALLOW_HARD_DELETE, que
         # sobrecargaba el mismo verbo DELETE con dos semánticas según config).
@@ -378,18 +435,21 @@ class MateriaService:
         await self.comision_repo.desactivar_por_materia(materia_id)
         await self.rubrica_repo.desactivar_por_materia(materia_id)
 
-    async def restaurar_materia(self, materia_id: int) -> MateriaResponse:
+    async def restaurar_materia(
+        self, materia_id: int, *, universidad_id: int | None = None
+    ) -> MateriaResponse:
         """
         Restore a soft-deleted materia.
 
         Args:
             materia_id: Materia's database ID.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             MateriaResponse with restored materia data.
 
         Raises:
-            HTTPException 404: Materia not found.
+            HTTPException 404: Materia not found (o de otra universidad).
             HTTPException 400: Materia is not deleted.
         """
         materia = await self.materia_repo.get_by_id(materia_id)
@@ -399,6 +459,9 @@ class MateriaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Materia no encontrada",
             )
+        verificar_pertenencia_universidad(
+            materia, universidad_id, detail="Materia no encontrada"
+        )
 
         if materia.activa:
             raise HTTPException(
@@ -417,6 +480,8 @@ class MateriaService:
         self,
         materia_id: int,
         data: CoordinadoresAssign,
+        *,
+        universidad_id: int | None = None,
     ) -> CoordinadoresResponse:
         """
         Assign coordinators to a materia.
@@ -426,12 +491,13 @@ class MateriaService:
         Args:
             materia_id: Materia's database ID.
             data: List of coordinator IDs to assign.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             CoordinadoresResponse with assigned coordinators.
 
         Raises:
-            HTTPException 404: Materia not found.
+            HTTPException 404: Materia not found (o de otra universidad).
             HTTPException 400: Invalid coordinator (not found or wrong role).
         """
         # Verify materia exists
@@ -442,6 +508,9 @@ class MateriaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Materia no encontrada",
             )
+        verificar_pertenencia_universidad(
+            materia, universidad_id, detail="Materia no encontrada"
+        )
 
         # Validate all coordinators
         valid_coordinadores = []
@@ -460,7 +529,12 @@ class MateriaService:
                     detail=f"Usuario {usuario.username} está deshabilitado",
                 )
 
-            if usuario.rol != RolEnum.COORDINADOR:
+            # Fase 6 multi-tenant (D3, hallazgo tarea 3.5): rol de COORDINADOR
+            # en la universidad de ESTA materia, no un rol global.
+            rol_en_universidad = await self.usuario_repo.get_rol_en_universidad(
+                usuario.id, materia.universidad_id
+            )
+            if rol_en_universidad != RolEnum.COORDINADOR:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Usuario {usuario.username} no tiene rol de coordinador",
@@ -478,13 +552,13 @@ class MateriaService:
                 materia_id=materia_id,
             )
 
-        # Build response
+        # Build response (rol mostrado = ya validado como COORDINADOR arriba).
         coordinadores_list = [
             UsuarioListItem(
                 id=u.id,
                 username=u.username,
                 nombre=u.nombre,
-                rol=u.rol,
+                rol=RolEnum.COORDINADOR,
                 activo=u.activo,
                 created_at=u.created_at,
                 last_login=u.last_login,
@@ -501,16 +575,21 @@ class MateriaService:
     async def obtener_materias_coordinador(
         self,
         coordinador_id: int,
+        *,
+        universidad_id: int | None = None,
     ) -> list[MateriaResponse]:
         """
         Get all materias assigned to a coordinator.
 
         Args:
             coordinador_id: Coordinator's user ID.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             List of MateriaResponse for the coordinator.
         """
-        materias = await self.materia_repo.get_by_coordinador(coordinador_id)
+        materias = await self.materia_repo.get_by_coordinador(
+            coordinador_id, universidad_id=universidad_id
+        )
 
         return [MateriaResponse.model_validate(m) for m in materias]

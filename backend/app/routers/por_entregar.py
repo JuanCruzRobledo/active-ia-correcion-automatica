@@ -10,11 +10,11 @@ La subida individual reusa los endpoints existentes de /correcciones (preview + 
 import json
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.models import Usuario
 from app.schemas.por_entregar import PorEntregarResponse
 from app.services.por_entregar_service import PorEntregarService
@@ -30,6 +30,7 @@ def _sse(event: dict) -> str:
 async def listar_por_entregar(
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> PorEntregarResponse:
     """Lista las correcciones del tutor pendientes de subir a Moodle (todo local).
 
@@ -37,7 +38,7 @@ async def listar_por_entregar(
     vinculadas a Moodle no se listan, pero se informan en `no_vinculadas`.
     """
     service = PorEntregarService(db)
-    resultado = await service.listar(current_user)
+    resultado = await service.listar(current_user, ctx.universidad_id, rol=ctx.rol)
     return PorEntregarResponse(**asdict(resultado))
 
 
@@ -46,6 +47,7 @@ async def entregar_todo_stream(
     request: Request,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ):
     """Sube en bloque (SSE) las correcciones de comentario automático (TP).
 
@@ -55,20 +57,15 @@ async def entregar_todo_stream(
     - {"tipo":"resumen", enviadas, ya_enviadas, omitidas_requieren_comentario, errores[]}
     - {"tipo":"error","detail":"..."}
 
-    Las credenciales Moodle se validan ANTES de iniciar el stream (424 si faltan).
+    Las credenciales Moodle (de la universidad activa, Fase 3 multi-tenant) se
+    resuelven dentro del stream: si faltan, se emite un evento de error SSE.
     """
-    if not current_user.moodle_username or not current_user.moodle_password_encrypted:
-        raise HTTPException(
-            status_code=status.HTTP_424_FAILED_DEPENDENCY,
-            detail="Configurá tus credenciales Moodle en tu perfil",
-        )
-
     service = PorEntregarService(db)
     base_url = str(request.base_url)
 
     async def event_gen():
         try:
-            async for ev in service.entregar_masivo_stream(current_user, base_url):
+            async for ev in service.entregar_masivo_stream(current_user, base_url, ctx=ctx):
                 yield _sse(ev)
         except Exception:  # noqa: BLE001
             yield _sse({"tipo": "error", "detail": "Error inesperado durante la entrega masiva"})

@@ -16,6 +16,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.models.enums import EstadoAvanceEnum, OrigenSnapshotEnum
+from app.repositories.usuario_repository import CredencialesMoodle
 from app.services.snapshot_service import SnapshotService
 
 
@@ -77,6 +78,11 @@ def _make_service() -> SnapshotService:
     service = SnapshotService(db=MagicMock())
     service.materia_repo = AsyncMock()
     service.avance_repo = AsyncMock()
+    service.usuario_repo = AsyncMock()
+    # Fase 3 multi-tenant: la fuente de credenciales es el resolver (repo).
+    service.usuario_repo.get_credenciales_moodle = AsyncMock(
+        return_value=CredencialesMoodle("h", "u", "enc")
+    )
     service.moodle = AsyncMock()
     # crear_cliente_sesion es SINCRÓNICO y devuelve un cliente (con aclose async).
     service.moodle.crear_cliente_sesion = MagicMock(return_value=AsyncMock())
@@ -85,9 +91,7 @@ def _make_service() -> SnapshotService:
 
 
 def _usuario():
-    return MagicMock(
-        id=1, moodle_username="u", moodle_password_encrypted="enc", moodle_host="h"
-    )
+    return MagicMock(id=1)
 
 
 def _comp(tipo, cmid, fuente, *, modo="ESCALA", nota_minima=None):
@@ -115,6 +119,7 @@ def _examen(id, tipo, cmid, *, modo="ESCALA", nota_minima=None, recupera=None, o
 def _materia_configurada(examenes=None):
     return MagicMock(
         id=7,
+        universidad_id=None,
         moodle_course_id=38,
         unidad_actual=2,
         moodle_section_fin_id=None,
@@ -157,11 +162,11 @@ async def test_generar_materia_inexistente_lanza_404():
 async def test_generar_materia_sin_configurar_lanza_400():
     service = _make_service()
     service.materia_repo.get_by_id.return_value = MagicMock(
-        id=7, moodle_course_id=38, unidad_actual=None, unidades=[]
+        id=7, universidad_id=None, moodle_course_id=38, unidad_actual=None, unidades=[]
     )
 
     with pytest.raises(HTTPException) as exc:
-        await service.generar(7, usuario=_usuario())
+        await service.generar(7, usuario=_usuario(), universidad_id=1)
 
     assert exc.value.status_code == 400
 
@@ -172,7 +177,7 @@ async def test_generar_arma_snapshot_con_estados_y_comision():
     service.materia_repo.get_by_id.return_value = _materia_configurada()
     _mock_descargas(service)
 
-    snapshot = await service.generar(7, usuario=_usuario(), origen=OrigenSnapshotEnum.MANUAL)
+    snapshot = await service.generar(7, usuario=_usuario(), origen=OrigenSnapshotEnum.MANUAL, universidad_id=1)
 
     # Solo los 2 students (el profesor se ignora)
     assert snapshot.total_alumnos == 2
@@ -210,7 +215,7 @@ async def test_generar_calcula_resultados_examenes():
     )
     _mock_descargas(service)
 
-    snapshot = await service.generar(7, usuario=_usuario())
+    snapshot = await service.generar(7, usuario=_usuario(), universidad_id=1)
     por_uid = {a.moodle_user_id: a for a in snapshot.alumnos}
 
     ana = por_uid[1].resultados_examenes["examenes"]
@@ -229,7 +234,7 @@ async def test_generar_sin_examenes_deja_resultados_none():
     service.materia_repo.get_by_id.return_value = _materia_configurada()
     _mock_descargas(service)
 
-    snapshot = await service.generar(7, usuario=_usuario())
+    snapshot = await service.generar(7, usuario=_usuario(), universidad_id=1)
     assert all(a.resultados_examenes is None for a in snapshot.alumnos)
 
 
@@ -239,7 +244,7 @@ async def test_generar_persiste_via_repo():
     service.materia_repo.get_by_id.return_value = _materia_configurada()
     _mock_descargas(service)
 
-    await service.generar(7, usuario=_usuario())
+    await service.generar(7, usuario=_usuario(), universidad_id=1)
 
     service.avance_repo.crear.assert_awaited_once()
 
@@ -252,7 +257,7 @@ async def test_generar_reusa_sesion_si_se_pasa():
     _mock_descargas(service)
     sesion = AsyncMock()
 
-    await service.generar(7, usuario=_usuario(), sesion=sesion)
+    await service.generar(7, usuario=_usuario(), sesion=sesion, universidad_id=1)
 
     service.moodle.login_sesion.assert_not_awaited()  # no re-login
     sesion.aclose.assert_not_awaited()  # no la cierra generar()
@@ -261,7 +266,6 @@ async def test_generar_reusa_sesion_si_se_pasa():
 @pytest.mark.asyncio
 async def test_generar_todas_continua_ante_fallo_de_una_materia():
     service = _make_service()
-    service.usuario_repo = AsyncMock()
     service.usuario_repo.get_by_id.return_value = _usuario()
     service.materia_repo.get_configuradas_dashboard.return_value = [
         MagicMock(id=10),
@@ -270,7 +274,9 @@ async def test_generar_todas_continua_ante_fallo_de_una_materia():
     # La primera materia genera OK, la segunda revienta → no debe frenar al resto.
     service.generar = AsyncMock(side_effect=[MagicMock(), RuntimeError("boom")])
 
-    result = await service.generar_todas_para_usuario(1, origen=OrigenSnapshotEnum.CRON)
+    result = await service.generar_todas_para_usuario(
+        1, origen=OrigenSnapshotEnum.CRON, universidad_id=1
+    )
 
     assert len(result) == 1  # solo la exitosa
     assert service.generar.await_count == 2
@@ -278,12 +284,70 @@ async def test_generar_todas_continua_ante_fallo_de_una_materia():
 
 
 @pytest.mark.asyncio
-async def test_generar_todas_usuario_sin_credenciales_lanza_valueerror():
+async def test_generar_todas_usuario_inexistente_lanza_valueerror():
     service = _make_service()
-    service.usuario_repo = AsyncMock()
-    service.usuario_repo.get_by_id.return_value = MagicMock(
-        id=1, moodle_username=None, moodle_password_encrypted=None
-    )
+    service.usuario_repo.get_by_id.return_value = None
 
     with pytest.raises(ValueError):
         await service.generar_todas_para_usuario(1)
+
+
+@pytest.mark.asyncio
+async def test_generar_todas_usuario_sin_credenciales_es_424():
+    """Fase 3 multi-tenant: sin membresía/credenciales en la universidad activa
+    -> el resolver dispara 424 (D1/D2), ya NO un ValueError."""
+    from fastapi import HTTPException
+
+    service = _make_service()
+    service.usuario_repo.get_by_id.return_value = _usuario()
+    service.usuario_repo.get_credenciales_moodle = AsyncMock(return_value=None)
+
+    with pytest.raises(HTTPException) as exc:
+        await service.generar_todas_para_usuario(1, universidad_id=1)
+    assert exc.value.status_code == 424
+
+
+@pytest.mark.asyncio
+async def test_generar_materia_de_otra_universidad_es_409():
+    """OQ1: guard defensivo — la materia debe pertenecer a la universidad activa."""
+    service = _make_service()
+    materia = _materia_configurada()
+    materia.universidad_id = 2
+    service.materia_repo.get_by_id.return_value = materia
+
+    with pytest.raises(HTTPException) as exc:
+        await service.generar(7, usuario=_usuario(), universidad_id=1)
+
+    assert exc.value.status_code == 409
+    service.moodle.get_token.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_generar_distingue_credenciales_por_universidad():
+    service = _make_service()
+    service.materia_repo.get_by_id.return_value = _materia_configurada()
+    _mock_descargas(service)
+    creds_por_uni = {
+        1: CredencialesMoodle("https://a.edu", "user_a", "pass_a"),
+        2: CredencialesMoodle("https://b.edu", "user_b", "pass_b"),
+    }
+    service.usuario_repo.get_credenciales_moodle = AsyncMock(
+        side_effect=lambda uid, univ_id: creds_por_uni[univ_id]
+    )
+
+    await service.generar(7, usuario=_usuario(), universidad_id=1)
+    assert service.moodle.get_token.call_args.kwargs["moodle_host"] == "https://a.edu"
+
+    await service.generar(7, usuario=_usuario(), universidad_id=2)
+    assert service.moodle.get_token.call_args.kwargs["moodle_host"] == "https://b.edu"
+
+
+@pytest.mark.asyncio
+async def test_generar_todas_resuelve_credenciales_de_la_universidad_activa():
+    service = _make_service()
+    service.usuario_repo.get_by_id.return_value = _usuario()
+    service.materia_repo.get_configuradas_dashboard.return_value = []
+
+    await service.generar_todas_para_usuario(1, universidad_id=42)
+
+    service.usuario_repo.get_credenciales_moodle.assert_awaited_once_with(1, 42)

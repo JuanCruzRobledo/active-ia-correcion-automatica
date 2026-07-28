@@ -11,7 +11,7 @@ Ref: PLAN_DASHBOARD_GESTORES.md §8 (T3)
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.permissions import (
     require_coordinador_or_admin,
     verificar_acceso_materia,
@@ -44,15 +44,16 @@ async def sugerir_secciones_moodle(
     materia_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> MoodleSeccionesSugeridas:
     """Trae las secciones del curso de Moodle con las cabeceras de unidad auto-detectadas.
 
     Alimenta el ABM de unidades (auto-detección + confirmación). Solo admin.
     """
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_materia(db, current_user, materia_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = UnidadService(db)
-    return await service.sugerir_secciones_moodle(materia_id, current_user)
+    return await service.sugerir_secciones_moodle(materia_id, current_user, ctx.universidad_id)
 
 
 # ===================== Unidades (sub-recurso de materia) =====================
@@ -63,12 +64,13 @@ async def listar_unidades(
     materia_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[UnidadResponse]:
     """Lista las unidades de una materia (ordenadas por número). Solo admin."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_materia(db, current_user, materia_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = UnidadService(db)
-    return await service.listar_unidades(materia_id)
+    return await service.listar_unidades(materia_id, universidad_id=ctx.universidad_id)
 
 
 @router.post(
@@ -81,12 +83,13 @@ async def crear_unidad(
     data: UnidadCreate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> UnidadResponse:
     """Crea una unidad (numero y moodle_section_id únicos en la materia). Solo admin."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_materia(db, current_user, materia_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = UnidadService(db)
-    return await service.crear_unidad(materia_id, data)
+    return await service.crear_unidad(materia_id, data, universidad_id=ctx.universidad_id)
 
 
 @router.put("/unidades/{unidad_id}", response_model=UnidadResponse)
@@ -95,12 +98,15 @@ async def actualizar_unidad(
     data: UnidadUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> UnidadResponse:
     """Actualiza una unidad. Solo admin."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_unidad(db, current_user, unidad_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_unidad(db, current_user, ctx, unidad_id)
     service = UnidadService(db)
-    return await service.actualizar_unidad(unidad_id, data)
+    return await service.actualizar_unidad(
+        unidad_id, data, universidad_id=ctx.universidad_id
+    )
 
 
 @router.put("/materias/{materia_id}/unidades/sync", response_model=list[UnidadResponse])
@@ -109,10 +115,11 @@ async def sincronizar_unidades(
     data: UnidadesSyncRequest,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[UnidadResponse]:
     """Reemplaza las unidades de la materia por las secciones tildadas (numeradas por orden). Solo admin."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_materia(db, current_user, materia_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = UnidadService(db)
     return await service.sincronizar_unidades(materia_id, data)
 
@@ -122,12 +129,13 @@ async def eliminar_unidad(
     unidad_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> None:
     """Elimina una unidad (desvincula sus rúbricas). Solo admin."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_unidad(db, current_user, unidad_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_unidad(db, current_user, ctx, unidad_id)
     service = UnidadService(db)
-    await service.eliminar_unidad(unidad_id)
+    await service.eliminar_unidad(unidad_id, universidad_id=ctx.universidad_id)
 
 
 # ===================== Componentes de la unidad (dinámicos) =====================
@@ -138,12 +146,13 @@ async def listar_actividades_unidad(
     unidad_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> list[MoodleActividadItem]:
     """Actividades de Moodle de la unidad (trackeables + evaluables), para elegir componentes. Solo admin."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_unidad(db, current_user, unidad_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_unidad(db, current_user, ctx, unidad_id)
     service = UnidadService(db)
-    return await service.listar_actividades_unidad(unidad_id, current_user)
+    return await service.listar_actividades_unidad(unidad_id, current_user, ctx.universidad_id)
 
 
 @router.put("/unidades/{unidad_id}/componentes", response_model=UnidadResponse)
@@ -152,12 +161,15 @@ async def set_componentes_unidad(
     data: UnidadComponentesUpdate,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> UnidadResponse:
     """Reemplaza el set de componentes evaluables (tipo + cmid + fuente) de la unidad. Solo admin."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_unidad(db, current_user, unidad_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_unidad(db, current_user, ctx, unidad_id)
     service = UnidadService(db)
-    return await service.set_componentes_unidad(unidad_id, data)
+    return await service.set_componentes_unidad(
+        unidad_id, data, universidad_id=ctx.universidad_id
+    )
 
 
 # ===================== Config dashboard de la Materia =====================
@@ -171,10 +183,11 @@ async def get_dashboard_config(
     materia_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> MateriaDashboardConfigResponse:
     """Config actual de dashboard de la materia (cuatrimestre, unidad_actual, tope). Solo admin."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_materia(db, current_user, materia_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = UnidadService(db)
     return await service.get_config_materia(materia_id)
 
@@ -188,10 +201,11 @@ async def set_dashboard_config(
     data: MateriaDashboardConfig,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> MateriaDashboardConfigResponse:
     """Setea cuatrimestre, unidad_actual y tope de la materia para el dashboard. Solo admin."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_materia(db, current_user, materia_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = UnidadService(db)
     return await service.set_config_materia(materia_id, data)
 
@@ -205,9 +219,10 @@ async def vincular_rubrica_unidad(
     data: RubricaUnidadAssign,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> None:
     """Vincula (o desvincula con null) la unidad de una rúbrica. Solo admin."""
-    require_coordinador_or_admin(current_user)
-    await verificar_acceso_rubrica(db, current_user, rubrica_id)
+    require_coordinador_or_admin(ctx)
+    await verificar_acceso_rubrica(db, current_user, ctx, rubrica_id)
     service = UnidadService(db)
     await service.vincular_rubrica_unidad(rubrica_id, data.unidad_id)

@@ -9,7 +9,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 from app.main import app
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import (
+    ContextoUniversidad,
+    get_current_user,
+    get_db,
+    get_universidad_activa,
+)
 from app.models.enums import RolEnum
 from app.services.gestion_service import (
     AlumnoGestion,
@@ -26,6 +31,9 @@ def _override(rol=RolEnum.GESTOR):
         id=1, rol=rol, moodle_username="u", moodle_password_encrypted="enc", moodle_host="https://m",
     )
     app.dependency_overrides[get_db] = lambda: AsyncMock()
+    app.dependency_overrides[get_universidad_activa] = lambda: ContextoUniversidad(
+        universidad_id=1, rol=rol, es_superadmin=False
+    )
 
 
 @pytest.fixture

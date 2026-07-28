@@ -19,6 +19,11 @@ class CronConfigUpdate(BaseModel):
     usuario_id: int | None = Field(
         None, description="Usuario cuyas credenciales Moodle usa el cron (null = sin asignar)"
     )
+    # Fase 3 multi-tenant (OQ2): universidad activa del cron (sin JWT/ctx). Se
+    # exige junto con usuario_id al activar (SnapshotConfigService.actualizar).
+    universidad_id: int | None = Field(
+        None, description="Universidad activa para el cron (null = sin asignar)"
+    )
     hora: int = Field(..., ge=0, le=23, description="Hora (0-23, zona horaria Argentina)")
     minuto: int = Field(0, ge=0, le=59)
     activo: bool = Field(..., description="Si el cron está habilitado")
@@ -31,6 +36,7 @@ class CronConfigResponse(BaseModel):
 
     usuario_id: int | None = None
     usuario_nombre: str | None = None
+    universidad_id: int | None = None
     hora: int
     minuto: int
     activo: bool

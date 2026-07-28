@@ -27,6 +27,9 @@ from app.models.rubrica import Rubrica
 from app.models.usuario import Usuario
 from app.repositories.entrega_repository import EntregaRepository
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 
 @compiles(JSONB, "sqlite")
 def _jsonb_como_json(element, compiler, **kw):  # noqa: D401
@@ -60,7 +63,7 @@ _contador_alumno = 0
 async def _mk_entrega(db, comi_id=1, *, archivado=False, deleted=False) -> Entrega:
     global _contador_alumno
     _contador_alumno += 1
-    e = Entrega(
+    e = Entrega(universidad_id=UNIV_ID, 
         comision_id=comi_id,
         rubrica_id=1,
         # nombre unico: hay un unique (rubrica_id, alumno_nombre) en la tabla.
@@ -77,10 +80,10 @@ async def _mk_entrega(db, comi_id=1, *, archivado=False, deleted=False) -> Entre
 
 
 async def _seed_comision(db) -> int:
-    materia = Materia(nombre="Prog 1", codigo="P1")
+    materia = Materia(universidad_id=UNIV_ID, nombre="Prog 1", codigo="P1")
     db.add(materia)
     await db.flush()
-    comi = Comision(materia_id=materia.id, nombre="C1", anio=2026, activa=True)
+    comi = Comision(universidad_id=UNIV_ID, materia_id=materia.id, nombre="C1", anio=2026, activa=True)
     db.add(comi)
     await db.flush()
     return comi.id

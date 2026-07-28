@@ -15,6 +15,7 @@ import {
   Mail,
   BellRing,
   FileSpreadsheet,
+  Building2,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -32,6 +33,9 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { to: '/dashboard', icon: Home, label: 'Dashboard', primary: true },
+  // roles: [] (no `undefined`) = sólo superadmin (D3/puedeVer): ningún rol de
+  // membresía satisface un array vacío, y el bypass de superadmin sigue aplicando.
+  { to: '/universidades', icon: Building2, label: 'Universidades', roles: [] },
   { to: '/usuarios', icon: Users, label: 'Usuarios', roles: ['ADMIN'] },
   { to: '/materias', icon: BookOpen, label: 'Materias', roles: ['ADMIN', 'COORDINADOR'], primary: true },
   { to: '/cohortes', icon: GraduationCap, label: 'Cohortes', roles: ['ADMIN'] },
@@ -65,9 +69,26 @@ export const navItems: NavItem[] = [
   { to: '/gestion', icon: BarChart3, label: 'Gestión', roles: ['GESTOR', 'ADMIN'], primary: true },
 ];
 
-/** Filtra los items del menú según el rol del usuario (fuente para el Sidebar desktop). */
-export const navItemsForRole = (rol: string): NavItem[] =>
-  navItems.filter((item) => !item.roles || item.roles.includes(rol));
+/** Rol + flag de superadmin de la universidad activa (D3: fuente para el gating). */
+export interface RolContext {
+  rol: string | null;
+  esSuperadmin: boolean;
+}
+
+/**
+ * Regla única de visibilidad de un item de menú (D3).
+ *
+ * Un superadmin ve TODO, incluso con `rol = null` (todavía no eligió
+ * universidad / modo global). El resto sigue la regla de siempre: sin
+ * `roles` declarados es visible para cualquiera; con `roles`, sólo si el rol
+ * de la universidad activa está en la lista.
+ */
+export const puedeVer = (item: NavItem, ctx: RolContext): boolean =>
+  ctx.esSuperadmin || !item.roles || (ctx.rol != null && item.roles.includes(ctx.rol));
+
+/** Filtra los items del menú según el rol/superadmin (fuente para el Sidebar desktop). */
+export const navItemsForRole = (ctx: RolContext): NavItem[] =>
+  navItems.filter((item) => puedeVer(item, ctx));
 
 /** Cantidad máxima de items primarios en la bottom bar antes del slot "Más". */
 export const MAX_PRIMARY_NAV = 4;
@@ -82,8 +103,8 @@ export const MAX_PRIMARY_NAV = 4;
  *   TUTOR             → Dashboard · Comisiones · Entregas · Pendientes
  *   GESTOR            → Dashboard · Avance · Gestión
  */
-export const primaryNavForRole = (rol: string): NavItem[] => {
-  const visibles = navItemsForRole(rol);
+export const primaryNavForRole = (ctx: RolContext): NavItem[] => {
+  const visibles = navItemsForRole(ctx);
   const primarios = visibles.filter((item) => item.primary);
   // Completar con no-primarios si por algún rol quedan menos de 4 slots útiles.
   const base = primarios.length >= MAX_PRIMARY_NAV
@@ -96,7 +117,7 @@ export const primaryNavForRole = (rol: string): NavItem[] => {
  * Items de overflow para el bottom-sheet "Más": todos los items visibles para el
  * rol que NO entraron en la bottom bar (ver {@link primaryNavForRole}).
  */
-export const overflowNavForRole = (rol: string): NavItem[] => {
-  const primarios = new Set(primaryNavForRole(rol).map((item) => item.to));
-  return navItemsForRole(rol).filter((item) => !primarios.has(item.to));
+export const overflowNavForRole = (ctx: RolContext): NavItem[] => {
+  const primarios = new Set(primaryNavForRole(ctx).map((item) => item.to));
+  return navItemsForRole(ctx).filter((item) => !primarios.has(item.to));
 };

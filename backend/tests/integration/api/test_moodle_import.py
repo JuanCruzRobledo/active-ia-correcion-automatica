@@ -9,7 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient, ASGITransport
 
 from app.main import app
-from app.core.dependencies import get_current_user, get_db
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
+from app.models.enums import RolEnum
 from app.services.moodle_import_service import ResumenImportacion
 
 
@@ -17,6 +18,9 @@ from app.services.moodle_import_service import ResumenImportacion
 def override_deps():
     app.dependency_overrides[get_current_user] = lambda: MagicMock(id=1)
     app.dependency_overrides[get_db] = lambda: AsyncMock()
+    app.dependency_overrides[get_universidad_activa] = lambda: ContextoUniversidad(
+        universidad_id=1, rol=RolEnum.TUTOR, es_superadmin=False
+    )
     yield
     app.dependency_overrides.clear()
 

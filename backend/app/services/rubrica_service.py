@@ -10,6 +10,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 6
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.permissions import verificar_pertenencia_universidad
 from app.models.enums import RolEnum, TipoActividadEnum
 from app.models.rubrica import Rubrica
 from app.models.usuario import Usuario
@@ -43,24 +44,34 @@ class RubricaService:
         self.materia_repo = MateriaRepository(db)
         self.coordinador_materia_repo = CoordinadorMateriaRepository(db)
 
-    async def _validar_acceso_materia(self, user: Usuario, materia_id: int) -> None:
+    async def _validar_acceso_materia(
+        self, user: Usuario, materia_id: int, *, rol: RolEnum | None = None
+    ) -> None:
         """
         Valida que un coordinador tenga acceso a una materia.
         Los admins siempre tienen acceso.
 
+        Fase 6 multi-tenant (D3, tarea 3.4): el rol que decide el acceso es
+        el de la MEMBRESÍA en la universidad activa (`ctx.rol`), no un rol
+        global — `usuarios.rol` se eliminó en la tarea 5.1 de esta fase, así
+        que `rol` ya no es opcional en la práctica (todo caller real pasa
+        `ctx.rol`); se mantiene `None` como default sólo para que "sin rol"
+        caiga limpiamente en el 403 de abajo, no en un `AttributeError`.
+
         Args:
-            user: Usuario actual.
+            user: Usuario actual (se usa `.id` para el chequeo de asignación).
             materia_id: ID de la materia a validar.
+            rol: Rol de la membresía en la universidad activa (`ctx.rol`).
 
         Raises:
             HTTPException 403: Si el coordinador no está asignado a la materia.
         """
         # Admins tienen acceso a todo
-        if user.rol == RolEnum.ADMIN:
+        if rol == RolEnum.ADMIN:
             return
 
         # Coordinadores solo a sus materias asignadas
-        if user.rol == RolEnum.COORDINADOR:
+        if rol == RolEnum.COORDINADOR:
             tiene_acceso = await self.coordinador_materia_repo.exists(
                 coordinador_id=user.id,
                 materia_id=materia_id,
@@ -136,7 +147,13 @@ class RubricaService:
                     )
 
     async def crear_rubrica(
-        self, data: RubricaCreate, current_user: Usuario, current_user_id: int | None = None
+        self,
+        data: RubricaCreate,
+        current_user: Usuario,
+        current_user_id: int | None = None,
+        *,
+        universidad_id: int | None = None,
+        rol: RolEnum | None = None,
     ) -> RubricaResponse:
         """
         Create a new rubrica V2.
@@ -145,18 +162,20 @@ class RubricaService:
             data: Rubrica creation data.
             current_user: Current user (for permission validation).
             current_user_id: ID of the user creating this rubrica (for audit log).
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id` — valida que
+                la materia pertenezca a la universidad activa (404 si es de otra).
 
         Returns:
             RubricaResponse with rubrica data.
 
         Raises:
             HTTPException 403: User doesn't have access to this materia.
-            HTTPException 404: Materia not found.
+            HTTPException 404: Materia not found (o de otra universidad).
             HTTPException 409: Rubrica with same materia+tipo+numero+anio exists.
             HTTPException 400: Invalid estructura V2.
         """
         # Validate user has access to materia
-        await self._validar_acceso_materia(current_user, data.materia_id)
+        await self._validar_acceso_materia(current_user, data.materia_id, rol=rol)
 
         # Validate materia exists
         materia = await self.materia_repo.get_active_by_id(data.materia_id)
@@ -165,6 +184,9 @@ class RubricaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Materia no encontrada o inactiva",
             )
+        verificar_pertenencia_universidad(
+            materia, universidad_id, detail="Materia no encontrada o inactiva"
+        )
 
         # Check if rubrica already exists
         # CRUD-011: si el conflicto es con una rúbrica ELIMINADA, decirlo y ofrecer
@@ -174,6 +196,7 @@ class RubricaService:
             tipo=data.tipo.value,
             numero=data.numero,
             anio=data.anio,
+            universidad_id=materia.universidad_id,
         )
         if conflicto is not None:
             if not conflicto.activa:
@@ -196,7 +219,9 @@ class RubricaService:
         self._validar_criterios_v2(data.criterios_json)
 
         # Create rubrica V2
+        # Fase 4 multi-tenant: universidad_id se PROPAGA desde la materia.
         rubrica = Rubrica(
+            universidad_id=materia.universidad_id,
             materia_id=data.materia_id,
             tipo=data.tipo,
             numero=data.numero,
@@ -240,6 +265,7 @@ class RubricaService:
         include_inactive: bool = False,
         page: int = 1,
         per_page: int = 20,
+        universidad_id: int | None = None,
     ) -> RubricaList:
         """
         List rubricas with optional filters and pagination.
@@ -252,6 +278,7 @@ class RubricaService:
             include_inactive: Include soft-deleted rubricas.
             page: Page number (1-indexed).
             per_page: Items per page.
+            universidad_id: Fase 4 multi-tenant (D1). None = sin filtro.
 
         Returns:
             RubricaList with paginated results.
@@ -264,6 +291,7 @@ class RubricaService:
             include_inactive=include_inactive,
             page=page,
             per_page=per_page,
+            universidad_id=universidad_id,
         )
 
         # Build list items with counts
@@ -308,20 +336,28 @@ class RubricaService:
             per_page=per_page,
         )
 
-    async def obtener_rubrica(self, rubrica_id: int, current_user: Usuario | None = None) -> RubricaDetailResponse:
+    async def obtener_rubrica(
+        self,
+        rubrica_id: int,
+        current_user: Usuario | None = None,
+        *,
+        universidad_id: int | None = None,
+        rol: RolEnum | None = None,
+    ) -> RubricaDetailResponse:
         """
         Get a rubrica by ID with materia info.
 
         Args:
             rubrica_id: Rubrica's database ID.
             current_user: Current user (for permission validation, optional).
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             RubricaDetailResponse with full rubrica data.
 
         Raises:
             HTTPException 403: User doesn't have access to this materia.
-            HTTPException 404: Rubrica not found.
+            HTTPException 404: Rubrica not found (o de otra universidad).
         """
         rubrica = await self.rubrica_repo.get_by_id_with_relations(rubrica_id)
 
@@ -330,10 +366,13 @@ class RubricaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Rúbrica no encontrada",
             )
+        verificar_pertenencia_universidad(
+            rubrica, universidad_id, detail="Rúbrica no encontrada"
+        )
 
         # Validate user has access to materia (if user is provided)
         if current_user:
-            await self._validar_acceso_materia(current_user, rubrica.materia_id)
+            await self._validar_acceso_materia(current_user, rubrica.materia_id, rol=rol)
 
         # Build materia info
         materia_info = MateriaInfo(
@@ -376,6 +415,9 @@ class RubricaService:
         rubrica_id: int,
         data: RubricaUpdate,
         current_user: Usuario,
+        *,
+        universidad_id: int | None = None,
+        rol: RolEnum | None = None,
     ) -> RubricaResponse:
         """
         Update an existing rubrica V2.
@@ -384,13 +426,14 @@ class RubricaService:
             rubrica_id: Rubrica's database ID.
             data: Rubrica update data.
             current_user: Current user (for permission validation).
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             RubricaResponse with updated rubrica data.
 
         Raises:
             HTTPException 403: User doesn't have access to this materia.
-            HTTPException 404: Rubrica not found.
+            HTTPException 404: Rubrica not found (o de otra universidad).
             HTTPException 400: Invalid estructura V2.
         """
         rubrica = await self.rubrica_repo.get_by_id(rubrica_id)
@@ -400,9 +443,12 @@ class RubricaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Rúbrica no encontrada",
             )
+        verificar_pertenencia_universidad(
+            rubrica, universidad_id, detail="Rúbrica no encontrada"
+        )
 
         # Validate user has access to materia
-        await self._validar_acceso_materia(current_user, rubrica.materia_id)
+        await self._validar_acceso_materia(current_user, rubrica.materia_id, rol=rol)
 
         # Update fields
         if data.titulo is not None:
@@ -443,7 +489,14 @@ class RubricaService:
 
         return RubricaResponse.model_validate(updated_rubrica)
 
-    async def eliminar_rubrica(self, rubrica_id: int, current_user: Usuario) -> None:
+    async def eliminar_rubrica(
+        self,
+        rubrica_id: int,
+        current_user: Usuario,
+        *,
+        universidad_id: int | None = None,
+        rol: RolEnum | None = None,
+    ) -> None:
         """
         Delete a rubrica — soft or hard depending on ALLOW_HARD_DELETE setting.
 
@@ -471,17 +524,28 @@ class RubricaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Rúbrica no encontrada o ya eliminada",
             )
+        verificar_pertenencia_universidad(
+            rubrica, universidad_id, detail="Rúbrica no encontrada o ya eliminada"
+        )
         # Validar acceso a la materia
-        await self._validar_acceso_materia(current_user, rubrica.materia_id)
+        await self._validar_acceso_materia(current_user, rubrica.materia_id, rol=rol)
         await self.rubrica_repo.soft_delete(rubrica)
 
-    async def restaurar_rubrica(self, rubrica_id: int, current_user: Usuario) -> RubricaResponse:
+    async def restaurar_rubrica(
+        self,
+        rubrica_id: int,
+        current_user: Usuario,
+        *,
+        universidad_id: int | None = None,
+        rol: RolEnum | None = None,
+    ) -> RubricaResponse:
         """
         Restore a soft-deleted rubrica.
 
         Args:
             rubrica_id: Rubrica's database ID.
             current_user: Current user (for permission validation).
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             RubricaResponse with restored rubrica data.
@@ -498,9 +562,12 @@ class RubricaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Rúbrica no encontrada",
             )
+        verificar_pertenencia_universidad(
+            rubrica, universidad_id, detail="Rúbrica no encontrada"
+        )
 
         # Validate user has access to materia
-        await self._validar_acceso_materia(current_user, rubrica.materia_id)
+        await self._validar_acceso_materia(current_user, rubrica.materia_id, rol=rol)
 
         if rubrica.activa:
             raise HTTPException(
@@ -517,6 +584,9 @@ class RubricaService:
         rubrica_id: int,
         data: RubricaDuplicar,
         current_user: Usuario,
+        *,
+        universidad_id: int | None = None,
+        rol: RolEnum | None = None,
     ) -> RubricaResponse:
         """
         Duplicate a rubrica to a new year.
@@ -525,13 +595,14 @@ class RubricaService:
             rubrica_id: Rubrica's database ID to duplicate.
             data: RubricaDuplicar with new year and optional new name.
             current_user: Current user (for permission validation).
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             RubricaResponse with new rubrica data.
 
         Raises:
             HTTPException 403: User doesn't have access to this materia.
-            HTTPException 404: Rubrica not found.
+            HTTPException 404: Rubrica not found (o de otra universidad).
             HTTPException 409: Rubrica with same materia+tipo+numero+new_year exists.
         """
         # Get original rubrica
@@ -542,9 +613,12 @@ class RubricaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Rúbrica original no encontrada",
             )
+        verificar_pertenencia_universidad(
+            rubrica_original, universidad_id, detail="Rúbrica original no encontrada"
+        )
 
         # Validate user has access to materia
-        await self._validar_acceso_materia(current_user, rubrica_original.materia_id)
+        await self._validar_acceso_materia(current_user, rubrica_original.materia_id, rol=rol)
 
         # Check if rubrica with new year already exists
         if await self.rubrica_repo.exists(
@@ -561,7 +635,10 @@ class RubricaService:
         # Create new rubrica V2 (duplicate)
         nuevo_titulo = data.nuevo_titulo if data.nuevo_titulo else rubrica_original.titulo
 
+        # Fase 4 multi-tenant: universidad_id se PROPAGA desde la rúbrica original
+        # (misma materia).
         rubrica_nueva = Rubrica(
+            universidad_id=rubrica_original.universidad_id,
             materia_id=rubrica_original.materia_id,
             tipo=rubrica_original.tipo,
             numero=rubrica_original.numero,

@@ -12,6 +12,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.models.unidad import Unidad
+from app.repositories.usuario_repository import CredencialesMoodle
 from app.schemas.unidad import (
     MateriaDashboardConfig,
     RubricaUnidadAssign,
@@ -26,17 +27,25 @@ def _make_service() -> UnidadService:
     service.materia_repo = AsyncMock()
     service.cuatrimestre_repo = AsyncMock()
     service.rubrica_repo = AsyncMock()
+    service.usuario_repo = AsyncMock()
+    # Fase 3 multi-tenant: la fuente de credenciales es el resolver (repo).
+    service.usuario_repo.get_credenciales_moodle = AsyncMock(
+        return_value=CredencialesMoodle("http://moodle", "u", "enc")
+    )
     service.moodle = AsyncMock()
     return service
 
 
 def _usuario_con_moodle():
-    return MagicMock(
-        id=1,
-        moodle_username="u",
-        moodle_password_encrypted="enc",
-        moodle_host="http://moodle",
-    )
+    return MagicMock(id=1)
+
+
+def _materia_mock(**attrs):
+    """Materia MagicMock con `universidad_id=None` por defecto (evita disparar el
+    guard OQ1 en tests que no lo ejercitan explícitamente)."""
+    base = {"universidad_id": None}
+    base.update(attrs)
+    return MagicMock(**base)
 
 
 def _unidad(id_: int = 1, materia_id: int = 1, numero: int = 1, section: int = 100) -> Unidad:
@@ -204,10 +213,10 @@ async def test_desvincular_rubrica_unidad_con_null():
 @pytest.mark.asyncio
 async def test_sugerir_secciones_materia_sin_moodle_lanza_404():
     service = _make_service()
-    service.materia_repo.get_by_id.return_value = MagicMock(id=1, moodle_course_id=None)
+    service.materia_repo.get_by_id.return_value = _materia_mock(id=1, moodle_course_id=None)
 
     with pytest.raises(HTTPException) as exc:
-        await service.sugerir_secciones_moodle(1, _usuario_con_moodle())
+        await service.sugerir_secciones_moodle(1, _usuario_con_moodle(), universidad_id=1)
 
     assert exc.value.status_code == 404
 
@@ -215,21 +224,34 @@ async def test_sugerir_secciones_materia_sin_moodle_lanza_404():
 @pytest.mark.asyncio
 async def test_sugerir_secciones_sin_credenciales_lanza_424():
     service = _make_service()
-    service.materia_repo.get_by_id.return_value = MagicMock(id=1, moodle_course_id=38)
-    usuario = MagicMock(
-        id=1, moodle_username=None, moodle_password_encrypted=None, moodle_host=None
-    )
+    service.materia_repo.get_by_id.return_value = _materia_mock(id=1, moodle_course_id=38)
+    service.usuario_repo.get_credenciales_moodle = AsyncMock(return_value=None)
 
     with pytest.raises(HTTPException) as exc:
-        await service.sugerir_secciones_moodle(1, usuario)
+        await service.sugerir_secciones_moodle(1, _usuario_con_moodle(), universidad_id=1)
 
     assert exc.value.status_code == 424
 
 
 @pytest.mark.asyncio
+async def test_sugerir_secciones_materia_de_otra_universidad_lanza_409():
+    """OQ1: guard defensivo — la materia debe pertenecer a la universidad activa."""
+    service = _make_service()
+    service.materia_repo.get_by_id.return_value = _materia_mock(
+        id=1, moodle_course_id=38, universidad_id=2
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await service.sugerir_secciones_moodle(1, _usuario_con_moodle(), universidad_id=1)
+
+    assert exc.value.status_code == 409
+    service.moodle.get_token.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_sugerir_secciones_detecta_cabeceras_y_marca_items():
     service = _make_service()
-    service.materia_repo.get_by_id.return_value = MagicMock(id=1, moodle_course_id=38)
+    service.materia_repo.get_by_id.return_value = _materia_mock(id=1, moodle_course_id=38)
     service.moodle.get_token.return_value = "tok"
     service.moodle.get_course_contents.return_value = [
         {"id": 2597, "section": 0, "name": "General", "modules": []},
@@ -237,7 +259,7 @@ async def test_sugerir_secciones_detecta_cabeceras_y_marca_items():
         {"id": 2610, "section": 7, "name": "2- Condicionales", "modules": []},
     ]
 
-    result = await service.sugerir_secciones_moodle(1, _usuario_con_moodle())
+    result = await service.sugerir_secciones_moodle(1, _usuario_con_moodle(), universidad_id=1)
 
     assert [c.numero for c in result.cabeceras_sugeridas] == [1, 2]
     assert len(result.secciones) == 3
@@ -245,3 +267,4 @@ async def test_sugerir_secciones_detecta_cabeceras_y_marca_items():
     assert cabecera.es_cabecera_sugerida and cabecera.numero_sugerido == 1
     general = next(s for s in result.secciones if s.moodle_section_id == 2597)
     assert general.es_cabecera_sugerida is False
+    service.usuario_repo.get_credenciales_moodle.assert_awaited_once_with(1, 1)

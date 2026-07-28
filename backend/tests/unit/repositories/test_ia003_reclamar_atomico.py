@@ -27,6 +27,9 @@ from app.models.materia import Materia
 from app.models.rubrica import Rubrica
 from app.repositories.entrega_repository import EntregaRepository
 
+UNIV_ID = 1  # multi-tenant-scoping-queries: universidad_id ahora NOT NULL
+
+
 sqlite3.register_adapter(dict, json.dumps)
 sqlite3.register_adapter(list, json.dumps)
 
@@ -57,13 +60,13 @@ async def db_session():
 
 
 async def _entrega(db, estado=EstadoEntregaEnum.SUBIDA):
-    m = Materia(nombre="M", codigo="M")
+    m = Materia(universidad_id=UNIV_ID, nombre="M", codigo="M")
     db.add(m)
     await db.flush()
-    c = Comision(materia_id=m.id, nombre="C", anio=2026, activa=True)
+    c = Comision(universidad_id=UNIV_ID, materia_id=m.id, nombre="C", anio=2026, activa=True)
     db.add(c)
     await db.flush()
-    e = Entrega(comision_id=c.id, rubrica_id=1, alumno_nombre="A",
+    e = Entrega(universidad_id=UNIV_ID, comision_id=c.id, rubrica_id=1, alumno_nombre="A",
                 archivo_nombre="a.py", archivo_tipo="individual", estado=estado)
     db.add(e)
     await db.commit()

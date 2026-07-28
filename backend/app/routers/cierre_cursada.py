@@ -15,8 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.dependencies import get_current_user, get_db
-from app.core.permissions import verificar_acceso_materia
+from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
+from app.core.permissions import verificar_acceso_materia, verificar_pertenencia_universidad
 from app.models import Usuario
 from app.repositories.materia_repository import MateriaRepository
 from app.schemas.cierre_cursada import (
@@ -29,13 +29,6 @@ from app.services.excel_cierre_cursada import generar_excel_cierre
 from app.services.moodle_service import MoodleAuthError, MoodleConnectionError
 
 router = APIRouter(prefix="/cierre-cursada", tags=["cierre-cursada"])
-
-_SIN_CREDENCIALES = "Configurá tus credenciales de Moodle en tu perfil"
-
-
-def _requerir_credenciales_moodle(usuario: Usuario) -> None:
-    if not usuario.moodle_username or not usuario.moodle_password_encrypted:
-        raise HTTPException(status.HTTP_424_FAILED_DEPENDENCY, detail=_SIN_CREDENCIALES)
 
 
 def _ascii_filename(filename: str) -> str:
@@ -50,12 +43,14 @@ async def generar_cierre(
     payload: GenerarCierreRequest,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CierreRunResponse:
-    await verificar_acceso_materia(db, current_user, materia_id)
-    _requerir_credenciales_moodle(current_user)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = CierreCursadaService(db)
     try:
-        run = await service.generar(materia_id, payload.cuatrimestre_id, current_user)
+        run = await service.generar(
+            materia_id, payload.cuatrimestre_id, current_user, ctx.universidad_id
+        )
     except MoodleAuthError as e:
         raise HTTPException(status.HTTP_424_FAILED_DEPENDENCY, detail=str(e))
     except MoodleConnectionError as e:
@@ -68,12 +63,16 @@ async def descargar_excel(
     run_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> StreamingResponse:
     service = CierreCursadaService(db)
     run = await service.obtener_run(run_id)
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Corrida no encontrada")
-    await verificar_acceso_materia(db, current_user, run.materia_id)
+    verificar_pertenencia_universidad(
+        run, ctx.universidad_id, detail="Corrida no encontrada"
+    )
+    await verificar_acceso_materia(db, current_user, ctx, run.materia_id)
 
     materia = await MateriaRepository(db).get_by_id(run.materia_id)
     # PERF-004: render openpyxl (CPU-bound) en un thread para no bloquear el event loop.
@@ -94,8 +93,9 @@ async def historial(
     materia_id: int,
     current_user: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
 ) -> CierreHistorialResponse:
-    await verificar_acceso_materia(db, current_user, materia_id)
+    await verificar_acceso_materia(db, current_user, ctx, materia_id)
     service = CierreCursadaService(db)
-    runs = await service.listar_historial(materia_id)
+    runs = await service.listar_historial(materia_id, universidad_id=ctx.universidad_id)
     return CierreHistorialResponse(runs=[CierreRunResponse.model_validate(r) for r in runs])

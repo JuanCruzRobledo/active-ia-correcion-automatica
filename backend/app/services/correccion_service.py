@@ -35,6 +35,7 @@ from app.core.error_catalog import (
     ERROR_SIN_CREDITOS,
     mensaje_error,
 )
+from app.core.permissions import verificar_pertenencia_universidad
 from app.core.exceptions import (
     APIKeyInvalidError,
     InsufficientCreditsError,
@@ -639,7 +640,10 @@ class CorreccionService:
         # (puede diferir del elegido si hubo failover).
         metricas = _metricas_ia(result)
         metricas["ia_proveedor"] = provider_efectivo
-        correccion = Correccion(**data_dict, **metricas)
+        # Fase 4 multi-tenant: universidad_id se PROPAGA desde la entrega corregida.
+        correccion = Correccion(
+            **data_dict, **metricas, universidad_id=entrega.universidad_id
+        )
         created_correccion = await self.correccion_repo.create(correccion)
 
         # Update entrega state to CORREGIDA y limpiar cualquier error previo (item #1).
@@ -773,18 +777,21 @@ class CorreccionService:
         updated_correccion = await self.correccion_repo.update(correccion)
         return await self._build_correccion_response(updated_correccion)
 
-    async def obtener_correccion(self, correccion_id: int) -> CorreccionResponse:
+    async def obtener_correccion(
+        self, correccion_id: int, *, universidad_id: int | None = None
+    ) -> CorreccionResponse:
         """
         Get a correction by ID.
 
         Args:
             correccion_id: Correction's database ID.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             CorreccionResponse with correction data.
 
         Raises:
-            HTTPException 404: Correction not found.
+            HTTPException 404: Correction not found (o de otra universidad).
         """
         correccion = await self.correccion_repo.get_by_id_with_relations(
             correccion_id
@@ -794,21 +801,27 @@ class CorreccionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Corrección no encontrada",
             )
+        verificar_pertenencia_universidad(
+            correccion, universidad_id, detail="Corrección no encontrada"
+        )
 
         return await self._build_correccion_response(correccion)
 
-    async def obtener_por_entrega(self, entrega_id: int) -> CorreccionResponse:
+    async def obtener_por_entrega(
+        self, entrega_id: int, *, universidad_id: int | None = None
+    ) -> CorreccionResponse:
         """
         Get correction for a specific entrega.
 
         Args:
             entrega_id: Entrega's database ID.
+            universidad_id: Fase 4 multi-tenant. `ctx.universidad_id`.
 
         Returns:
             CorreccionResponse with correction data.
 
         Raises:
-            HTTPException 404: Correction not found.
+            HTTPException 404: Correction not found (o de otra universidad).
         """
         correccion = await self.correccion_repo.get_by_entrega_id_with_relations(
             entrega_id
@@ -818,6 +831,9 @@ class CorreccionService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No hay corrección para esta entrega",
             )
+        verificar_pertenencia_universidad(
+            correccion, universidad_id, detail="No hay corrección para esta entrega"
+        )
 
         return await self._build_correccion_response(correccion)
 
