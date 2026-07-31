@@ -22,6 +22,11 @@ import {
 } from '../utils/rubricaPortableJson';
 
 /**
+ * Máximo de items por página que acepta `GET /rubricas` (backend: `per_page` le=100).
+ */
+const MAX_PER_PAGE = 100;
+
+/**
  * Rubricas service with all API operations
  */
 export const rubricasService = {
@@ -44,6 +49,47 @@ export const rubricasService = {
       `/rubricas?${params.toString()}`
     );
     return response.data;
+  },
+
+  /**
+   * Get EVERY rubrica matching the filters, recorriendo todas las páginas.
+   *
+   * `getAll` respeta la paginación del backend (`per_page` default 20, máx 100),
+   * lo cual está bien para una tabla paginada pero rompe los selectores: una
+   * materia con 33 rúbricas mostraba solo las 20 de la primera página. Acá
+   * pedimos de a `MAX_PER_PAGE` y seguimos hasta juntar `total`.
+   *
+   * El orden del backend es estable (anio desc, tipo asc, numero asc), así que
+   * concatenar páginas no duplica ni saltea items.
+   */
+  getAllPages: async (
+    filters?: Omit<RubricasFilters, 'page' | 'per_page'>
+  ): Promise<RubricaList> => {
+    const primera = await rubricasService.getAll({
+      ...filters,
+      page: 1,
+      per_page: MAX_PER_PAGE,
+    });
+
+    const items = [...primera.items];
+    const totalPaginas = Math.ceil(primera.total / MAX_PER_PAGE);
+
+    for (let page = 2; page <= totalPaginas; page++) {
+      const siguiente = await rubricasService.getAll({
+        ...filters,
+        page,
+        per_page: MAX_PER_PAGE,
+      });
+      if (siguiente.items.length === 0) break; // defensa ante total desactualizado
+      items.push(...siguiente.items);
+    }
+
+    return {
+      items,
+      total: primera.total,
+      page: 1,
+      per_page: items.length,
+    };
   },
 
   /**

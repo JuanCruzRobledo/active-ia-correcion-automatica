@@ -22,6 +22,9 @@ const rubricasKeys = {
   all: ['rubricas'] as const,
   lists: () => [...rubricasKeys.all, 'list'] as const,
   list: (filters?: RubricasFilters) => [...rubricasKeys.lists(), filters] as const,
+  // Deriva de `lists()` para que las invalidaciones existentes también la alcancen.
+  fullList: (filters?: RubricasFilters) =>
+    [...rubricasKeys.lists(), 'full', filters] as const,
   details: () => [...rubricasKeys.all, 'detail'] as const,
   detail: (id: number) => [...rubricasKeys.details(), id] as const,
 };
@@ -34,6 +37,25 @@ export const useRubricas = (filters?: RubricasFilters) => {
     queryKey: rubricasKeys.list(filters),
     queryFn: () => rubricasService.getAll(filters),
     staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+};
+
+/**
+ * Hook to fetch ALL rubricas matching the filters (sin paginar).
+ *
+ * Para selectores/combos donde mostrar solo la primera página es un bug:
+ * una materia con 33 rúbricas listaba 20 y las restantes eran inseleccionables.
+ * Recorre todas las páginas del backend antes de resolver.
+ */
+export const useAllRubricas = (
+  filters?: Omit<RubricasFilters, 'page' | 'per_page'>,
+  options?: { enabled?: boolean }
+) => {
+  return useQuery({
+    queryKey: rubricasKeys.fullList(filters),
+    queryFn: () => rubricasService.getAllPages(filters),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    enabled: options?.enabled ?? true,
   });
 };
 
