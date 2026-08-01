@@ -15,7 +15,7 @@ import toast from 'react-hot-toast';
 import { useEntregas, useDeleteEntrega, useCorregirEntregaMasiva, useCorregirEntrega, useArchivarEntregas, useDeleteEntregasMasivo } from '../hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { useComisiones } from '@/features/comisiones/hooks';
-import { useRubricas } from '@/features/rubricas/hooks';
+import { useAllRubricas } from '@/features/rubricas/hooks';
 import { useCorreccionByEntrega, useRecorregirEntrega } from '@/features/correcciones/hooks/useCorrecciones';
 import {
   descargarPDFCorreccion,
@@ -159,10 +159,15 @@ export const EntregasPage = () => {
   // per_page=100 para traer todas sin paginación (backend máx: 100)
   const { data: comisionesData, isLoading: isLoadingComisiones, isError: errorComisiones } = useComisiones({ per_page: 100 });
 
-  // Fetch rubricas for selected comision's materia
+  // Fetch rubricas for selected comision's materia.
+  // useAllRubricas (no useRubricas) porque el selector debe listar TODAS: con la
+  // lista paginada, una materia con 33 rúbricas solo ofrecía las 20 de la página 1.
   const selectedComision = comisionesData?.items.find(c => c.id === selectedComisionId);
-  const { data: rubricasData, isLoading: isLoadingRubricas, isError: errorRubricas } = useRubricas(
-    selectedComision?.materia_id ? { materia_id: selectedComision.materia_id } : undefined
+  const { data: rubricasData, isLoading: isLoadingRubricas, isError: errorRubricas } = useAllRubricas(
+    selectedComision?.materia_id ? { materia_id: selectedComision.materia_id } : undefined,
+    // Sin materia el selector está deshabilitado: no traemos las rúbricas de toda
+    // la universidad (ahora sin paginar) para nada.
+    { enabled: !!selectedComision?.materia_id }
   );
   const selectedRubrica = rubricasData?.items?.find((r) => r.id === selectedRubricaId);
 

@@ -1,5 +1,6 @@
 export {
   useRubricas,
+  useAllRubricas,
   useRubrica,
   useCreateRubrica,
   useUpdateRubrica,
