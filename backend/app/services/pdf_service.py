@@ -27,7 +27,9 @@ from reportlab.platypus import (
     TableStyle,
     PageBreak,
     KeepInFrame,
+    KeepTogether,
 )
+from reportlab.pdfgen.canvas import Canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -139,6 +141,59 @@ class PDFService:
             ),
         )
 
+    def _canvas_con_pie(self, editado_manualmente: bool) -> type[Canvas]:
+        """Canvas que estampa el pie en el margen inferior de TODAS las páginas.
+
+        El pie dejó de ser un flowable al final del story: como parte del flujo,
+        cualquier devolución cuyo contenido terminara cerca del corte de página se
+        lo llevaba solo a una hoja en blanco. Dibujarlo en el margen lo saca del
+        problema de raíz, y de paso permite numerar.
+
+        El total de páginas no se conoce hasta terminar de paginar, así que el
+        dibujo se difiere: se guarda el estado de cada página y se estampan todas
+        al cerrar el documento.
+        """
+        firma = "Documento generado por ACTIVE-IA"
+        if editado_manualmente:
+            firma += " • Corrección editada manualmente por el tutor"
+
+        class _CanvasConPie(Canvas):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                super().__init__(*args, **kwargs)
+                self._estados: list[dict[str, Any]] = []
+
+            def showPage(self) -> None:
+                self._estados.append(dict(self.__dict__))
+                self._startPage()
+
+            def save(self) -> None:
+                total = len(self._estados)
+                for estado in self._estados:
+                    self.__dict__.update(estado)
+                    self._dibujar_pie(total)
+                    super().showPage()
+                super().save()
+
+            def _dibujar_pie(self, total: int) -> None:
+                ancho = self._pagesize[0]
+                izquierda = 0.75 * inch
+                derecha = ancho - 0.75 * inch
+                y_linea = 0.6 * inch
+
+                self.setStrokeColor(colors.HexColor("#cbd5e1"))
+                self.setLineWidth(1)
+                self.line(izquierda, y_linea, derecha, y_linea)
+
+                self.setFont("Helvetica", 8)
+                self.setFillColor(colors.HexColor("#94a3b8"))
+                self.drawCentredString(ancho / 2.0, y_linea - 12, firma)
+                self.drawRightString(
+                    derecha, y_linea - 12,
+                    f"Página {self.getPageNumber()} de {total}",
+                )
+
+        return _CanvasConPie
+
     def _render_pdf_bytes(self, correccion: Any) -> bytes:
         """PERF-003: parte pura-CPU del render de una devolución (armado del documento
         reportlab + ``doc.build`` a bytes).
@@ -158,7 +213,12 @@ class PDFService:
         )
 
         story = self._build_pdf_content(correccion)
-        doc.build(story)
+        doc.build(
+            story,
+            canvasmaker=self._canvas_con_pie(
+                bool(getattr(correccion, "editado_manualmente", False))
+            ),
+        )
 
         pdf_bytes = pdf_buffer.getvalue()
         pdf_buffer.close()
@@ -556,7 +616,13 @@ class PDFService:
         criterios = correccion.criterios_json.get("criterios", [])
         for i, criterio in enumerate(criterios):
             criterio_element = self._format_criterio(criterio, i + 1)
-            story.append(criterio_element)
+            # El PDF se le entrega al alumno: un recuadro cortado contra el borde
+            # inferior, con la continuación colgando sin encabezado en la página
+            # siguiente, queda mal. KeepTogether empuja el criterio entero a la
+            # hoja siguiente en vez de partirlo. Si el criterio es más alto que una
+            # página no hay nada que hacer y se parte igual — para ese caso la
+            # tabla repite su encabezado (repeatRows, en _format_criterio).
+            story.append(KeepTogether([criterio_element]))
             story.append(Spacer(1, 0.12 * inch))
 
         # ==================== FORTALEZAS ====================
@@ -604,34 +670,10 @@ class PDFService:
             )
             story.append(comment_table)
 
-        # ==================== FOOTER ====================
-
-        story.append(Spacer(1, 0.4 * inch))
-
-        # Bottom line
-        footer_line = Table([[""]], colWidths=[6.5 * inch])
-        footer_line.setStyle(
-            TableStyle([
-                ("LINEABOVE", (0, 0), (-1, 0), 1, colors.HexColor("#cbd5e1")),
-                ("TOPPADDING", (0, 0), (-1, -1), 8),
-            ])
-        )
-        story.append(footer_line)
-
-        # Footer text
-        footer_style = ParagraphStyle(
-            "Footer",
-            parent=styles["Normal"],
-            fontSize=8,
-            textColor=colors.HexColor("#94a3b8"),
-            alignment=1,
-        )
-
-        footer_text = "Documento generado por ACTIVE-IA"
-        if correccion.editado_manualmente:
-            footer_text += " • Corrección editada manualmente por el tutor"
-
-        story.append(Paragraph(footer_text, footer_style))
+        # El pie NO va en el story: se estampa en el margen inferior de cada página
+        # (ver _canvas_con_pie). Como flowable al final del flujo, cualquier
+        # devolución cuyo contenido terminara cerca del corte se lo llevaba solo a
+        # una hoja en blanco.
 
         return story
 
@@ -722,6 +764,11 @@ class PDFService:
                 data.append([Paragraph(self._texto_subcriterio(sub), sub_style), ""])
 
         table = Table(data, colWidths=[5.2 * inch, 1.3 * inch])
+        # Red de contención para el criterio que NO entra en una página entera:
+        # KeepTogether ahí no puede hacer nada y la tabla se parte igual, así que
+        # la continuación repite la fila del encabezado (nombre + puntaje) en vez
+        # de arrancar con una fila suelta que no dice de qué criterio es.
+        table.repeatRows = 1
         table.setStyle(
             TableStyle([
                 # Header row (criterion name and score)
