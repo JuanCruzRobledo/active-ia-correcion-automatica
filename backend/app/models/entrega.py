@@ -123,12 +123,19 @@ class Entrega(Base, TimestampMixin, SoftDeleteMixin):
     error_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     __table_args__ = (
-        # Índice único: solo permite una entrega por alumno y rúbrica
+        # Índice único: solo permite una entrega VIVA por alumno y rúbrica.
+        # CRUD-011: el predicado es lo que separa "ya entregó" de "entregó y se le
+        # borró". Sin él la fila borrada sigue ocupando el par y el alumno no puede
+        # volver a entregar nunca — sin manera de ver qué lo bloquea, porque el
+        # listado sí filtra las borradas. Nació parcial (migración 001, sobre la
+        # vieja columna `activo`), se volvió total en la 002 cuando el borrado pasó
+        # a ser físico, y CRUD-001 reintrodujo el borrado lógico sin devolverlo.
         Index(
             "uq_entrega_rubrica_alumno",
             "rubrica_id",
             "alumno_nombre",
             unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
         ),
         # PERF-016: el listado de entregas ordena por created_at DESC
         # (entrega_repository.py:152); sin índice es un seq scan + sort.

@@ -433,6 +433,8 @@ class EntregaService:
         estado: str | None = None,
         include_archivadas: bool = False,
         solo_archivadas: bool = False,
+        incluir_eliminadas: bool = False,
+        solo_eliminadas: bool = False,
         fecha_desde: date | None = None,
         fecha_hasta: date | None = None,
         search: str | None = None,
@@ -449,6 +451,8 @@ class EntregaService:
             estado: Filter by estado.
             include_archivadas: If True, include archived entregas.
             solo_archivadas: If True, show only archived entregas.
+            incluir_eliminadas: CRUD-011. If True, suma las borradas al resultado.
+            solo_eliminadas: CRUD-011. If True, SOLO las borradas (papelera).
             fecha_desde: Filter from this date (inclusive).
             fecha_hasta: Filter to this date (inclusive).
             search: PERF-013: filter by alumno_nombre (partial, case-insensitive).
@@ -466,6 +470,8 @@ class EntregaService:
             estado=estado,
             include_archivadas=include_archivadas,
             solo_archivadas=solo_archivadas,
+            incluir_eliminadas=incluir_eliminadas,
+            solo_eliminadas=solo_eliminadas,
             fecha_desde=fecha_desde,
             fecha_hasta=fecha_hasta,
             search=search,
@@ -497,6 +503,7 @@ class EntregaService:
                     error_mensaje=entrega.error_mensaje,
                     subido_por_nombre=entrega.subido_por.nombre,
                     created_at=entrega.created_at,
+                    deleted_at=entrega.deleted_at,
                 )
             )
 

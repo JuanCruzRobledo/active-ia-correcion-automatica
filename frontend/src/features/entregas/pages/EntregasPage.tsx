@@ -12,7 +12,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { useEntregas, useDeleteEntrega, useCorregirEntregaMasiva, useCorregirEntrega, useArchivarEntregas, useDeleteEntregasMasivo } from '../hooks';
+import { useEntregas, useDeleteEntrega, useRestoreEntrega, useCorregirEntregaMasiva, useCorregirEntrega, useArchivarEntregas, useDeleteEntregasMasivo } from '../hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { useComisiones } from '@/features/comisiones/hooks';
 import { useAllRubricas } from '@/features/rubricas/hooks';
@@ -62,7 +62,9 @@ import {
 } from 'lucide-react';
 import type { EstadoEntrega, EntregaListItem } from '../types';
 
-type EstadoFiltro = EstadoEntrega | 'TODOS' | 'ARCHIVADAS';
+// CRUD-011: 'ELIMINADAS' es la papelera — entregas dadas de baja, que el listado
+// normal oculta. Sin esta vista no hay forma de encontrarlas para restaurarlas.
+type EstadoFiltro = EstadoEntrega | 'TODOS' | 'ARCHIVADAS' | 'ELIMINADAS';
 
 const ESTADO_OPTIONS: { value: EstadoFiltro; label: string }[] = [
   { value: 'TODOS', label: 'Todos los estados' },
@@ -176,8 +178,14 @@ export const EntregasPage = () => {
       ? {
         comision_id: selectedComisionId,
         rubrica_id: selectedRubricaId,
-        estado: estadoFilter !== 'TODOS' && estadoFilter !== 'ARCHIVADAS' ? estadoFilter : undefined,
+        estado:
+          estadoFilter !== 'TODOS' &&
+            estadoFilter !== 'ARCHIVADAS' &&
+            estadoFilter !== 'ELIMINADAS'
+            ? estadoFilter
+            : undefined,
         solo_archivadas: estadoFilter === 'ARCHIVADAS',
+        solo_eliminadas: estadoFilter === 'ELIMINADAS',
         fecha_desde: fechaDesde || undefined,
         fecha_hasta: fechaHasta || undefined,
         search: searchTerm || undefined,
@@ -190,6 +198,7 @@ export const EntregasPage = () => {
 
   // Mutations
   const deleteMutation = useDeleteEntrega();
+  const restoreMutation = useRestoreEntrega();
   const corregirMutation = useCorregirEntrega();
   const corregirMasivaMutation = useCorregirEntregaMasiva();
   const recorregirMutation = useRecorregirEntrega();
@@ -842,25 +851,37 @@ export const EntregasPage = () => {
               },
             ]
             : []),
-          // Archive / Unarchive is always available
-          {
-            label: entrega.archivado ? 'Desarchivar' : 'Archivar',
-            icon: entrega.archivado
-              ? <ArchiveRestore className="w-4 h-4" />
-              : <Archive className="w-4 h-4" />,
-            onClick: () => archivarMutation.mutate({
-              ids: [entrega.id],
-              archivado: !entrega.archivado,
-            }),
-            disabled: archivarMutation.isPending,
-          },
-          // Delete is always available
-          {
-            label: 'Eliminar',
-            icon: <Trash2 className="w-4 h-4" />,
-            onClick: () => handleDelete(entrega.id),
-            variant: 'danger',
-          },
+          // CRUD-011: en la papelera la única acción con sentido es restaurar.
+          // Archivar no aplica sobre una entrega dada de baja, y eliminar de nuevo
+          // devuelve 400 "ya está eliminada".
+          ...(entrega.deleted_at
+            ? [
+              {
+                label: 'Restaurar',
+                icon: <ArchiveRestore className="w-4 h-4" />,
+                onClick: () => restoreMutation.mutate(entrega.id),
+                disabled: restoreMutation.isPending,
+              },
+            ]
+            : [
+              {
+                label: entrega.archivado ? 'Desarchivar' : 'Archivar',
+                icon: entrega.archivado
+                  ? <ArchiveRestore className="w-4 h-4" />
+                  : <Archive className="w-4 h-4" />,
+                onClick: () => archivarMutation.mutate({
+                  ids: [entrega.id],
+                  archivado: !entrega.archivado,
+                }),
+                disabled: archivarMutation.isPending,
+              },
+              {
+                label: 'Eliminar',
+                icon: <Trash2 className="w-4 h-4" />,
+                onClick: () => handleDelete(entrega.id),
+                variant: 'danger' as const,
+              },
+            ]),
         ]}
       />
     );
@@ -1098,6 +1119,7 @@ export const EntregasPage = () => {
               >
                 <optgroup label="──────────">
                   <option value="ARCHIVADAS">Archivadas</option>
+                  <option value="ELIMINADAS">Eliminadas (papelera)</option>
                 </optgroup>
               </Select>
             </div>

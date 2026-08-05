@@ -6,6 +6,7 @@ export {
   useCreateEntrega,
   useCreateEntregaMasiva,
   useDeleteEntrega,
+  useRestoreEntrega,
   entregasKeys,
   useCorregirEntrega,
   useCorregirEntregaMasiva,

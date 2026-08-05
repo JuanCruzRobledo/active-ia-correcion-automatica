@@ -49,6 +49,8 @@ async def listar_entregas(
     estado: EstadoEntregaEnum | None = Query(None, description="Filtrar por estado"),
     include_archivadas: bool = Query(False, description="Incluir entregas archivadas"),
     solo_archivadas: bool = Query(False, description="Mostrar solo entregas archivadas"),
+    incluir_eliminadas: bool = Query(False, description="Incluir también las entregas eliminadas"),
+    solo_eliminadas: bool = Query(False, description="Mostrar solo las eliminadas (papelera)"),
     fecha_desde: date | None = Query(None, description="Filtrar desde esta fecha (YYYY-MM-DD, inclusive)"),
     fecha_hasta: date | None = Query(None, description="Filtrar hasta esta fecha (YYYY-MM-DD, inclusive)"),
     search: str | None = Query(None, description="Buscar por nombre del alumno (parcial, case-insensitive)"),
@@ -67,6 +69,10 @@ async def listar_entregas(
     - `estado`: Filter by estado (SUBIDA, PENDIENTE, CORREGIDA, ERROR)
     - `include_archivadas`: If true, include archived entregas (default: false)
     - `solo_archivadas`: If true, show only archived entregas
+    - `incluir_eliminadas`: CRUD-011. Suma las entregas eliminadas al resultado
+    - `solo_eliminadas`: CRUD-011. Solo las eliminadas (papelera). Manda sobre
+      `incluir_eliminadas`. El scoping por comisión y universidad se aplica igual:
+      la papelera no muestra nada que el usuario no pudiera ver vivo.
     - `fecha_desde`: Show entregas from this date (YYYY-MM-DD)
     - `fecha_hasta`: Show entregas up to this date (YYYY-MM-DD)
 
@@ -93,6 +99,8 @@ async def listar_entregas(
         estado=estado.value if estado else None,
         include_archivadas=include_archivadas,
         solo_archivadas=solo_archivadas,
+        incluir_eliminadas=incluir_eliminadas,
+        solo_eliminadas=solo_eliminadas,
         fecha_desde=fecha_desde,
         fecha_hasta=fecha_hasta,
         search=search,

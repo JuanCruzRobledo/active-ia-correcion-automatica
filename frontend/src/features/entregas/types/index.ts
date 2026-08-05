@@ -165,6 +165,9 @@ export interface EntregaListItem {
   error_code?: string | null;
   error_mensaje?: string | null;
   created_at: string;
+  // CRUD-011: null = vigente. Es lo único que distingue una entrega de la papelera
+  // cuando se listan vivas y borradas juntas.
+  deleted_at?: string | null;
 }
 
 export interface EntregaList {
@@ -234,6 +237,9 @@ export interface EntregasFilters {
   estado?: EstadoEntrega;
   search?: string; // Buscar por nombre de alumno
   solo_archivadas?: boolean;
+  // CRUD-011: papelera. `solo_eliminadas` manda sobre `incluir_eliminadas`.
+  incluir_eliminadas?: boolean;
+  solo_eliminadas?: boolean;
   fecha_desde?: string; // YYYY-MM-DD
   fecha_hasta?: string; // YYYY-MM-DD
   page?: number;

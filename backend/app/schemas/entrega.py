@@ -171,6 +171,12 @@ class EntregaListItem(BaseModel):
     error_mensaje: str | None = None
     subido_por_nombre: str
     created_at: datetime
+    # CRUD-011: sin esto la papelera es ciega — el listado mezcla vivas y borradas
+    # sin manera de distinguirlas. None = la entrega está vigente.
+    deleted_at: datetime | None = Field(
+        default=None,
+        description="Fecha de eliminación lógica. None si la entrega está vigente.",
+    )
 
     model_config = {"from_attributes": True}
 
