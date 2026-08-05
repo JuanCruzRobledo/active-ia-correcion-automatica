@@ -441,6 +441,71 @@ class TestEntregaService:
         result = await service.listar_entregas(comision_id=comision.id)
         assert result.total == 0
 
+    async def test_listar_entregas_papelera_muestra_las_eliminadas(
+        self,
+        db_session: AsyncSession,
+        comision: Comision,
+        rubrica: Rubrica,
+        subidor: Usuario,
+    ):
+        """
+        CRUD-011: sin esto una entrega borrada es inalcanzable — no se puede
+        listar, así que nadie conoce su id y el endpoint de restore queda muerto.
+        """
+        service = EntregaService(db_session)
+        data = EntregaCreate(
+            comision_id=comision.id,
+            rubrica_id=rubrica.id,
+            alumno_nombre="Test Student",
+        )
+        entrega = await service.crear_entrega_individual(
+            data=data,
+            archivo=_upload(crear_zip_simple(), "test.zip"),
+            subido_por_id=subidor.id,
+        )
+        await service.eliminar_entrega(entrega.id, actor_id=subidor.id)
+
+        papelera = await service.listar_entregas(
+            comision_id=comision.id, solo_eliminadas=True
+        )
+        assert papelera.total == 1
+        assert papelera.items[0].id == entrega.id
+        # el listado tiene que decir CUÁL está borrada, si no la papelera es ciega
+        assert papelera.items[0].deleted_at is not None
+
+    async def test_listar_entregas_incluir_eliminadas_trae_vivas_y_borradas(
+        self,
+        db_session: AsyncSession,
+        comision: Comision,
+        rubrica: Rubrica,
+        subidor: Usuario,
+    ):
+        """Triangulación: incluir != solo."""
+        service = EntregaService(db_session)
+        creadas = []
+        for nombre in ("Alumno Vivo", "Alumno Borrado"):
+            data = EntregaCreate(
+                comision_id=comision.id,
+                rubrica_id=rubrica.id,
+                alumno_nombre=nombre,
+            )
+            creadas.append(
+                await service.crear_entrega_individual(
+                    data=data,
+                    archivo=_upload(crear_zip_simple(), f"{nombre}.zip"),
+                    subido_por_id=subidor.id,
+                )
+            )
+        await service.eliminar_entrega(creadas[1].id, actor_id=subidor.id)
+
+        todas = await service.listar_entregas(
+            comision_id=comision.id, incluir_eliminadas=True
+        )
+        assert todas.total == 2
+        por_id = {i.id: i for i in todas.items}
+        assert por_id[creadas[0].id].deleted_at is None
+        assert por_id[creadas[1].id].deleted_at is not None
+
     async def test_obtener_entrega_con_correccion(
         self,
         db_session: AsyncSession,

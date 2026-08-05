@@ -120,6 +120,8 @@ class EntregaRepository:
         estado: str | None = None,
         include_archivadas: bool = False,
         solo_archivadas: bool = False,
+        incluir_eliminadas: bool = False,
+        solo_eliminadas: bool = False,
         fecha_desde: date | None = None,
         fecha_hasta: date | None = None,
         search: str | None = None,
@@ -136,6 +138,11 @@ class EntregaRepository:
             estado: Filter by estado.
             include_archivadas: If False (default), exclude archived entregas.
             solo_archivadas: If True, show only archived entregas (overrides include_archivadas).
+            incluir_eliminadas: CRUD-011. If True, las borradas también entran en el
+                resultado. Default False: la papelera es opt-in y el listado normal no
+                cambia.
+            solo_eliminadas: CRUD-011. If True, SOLO las borradas (la papelera). Manda
+                sobre incluir_eliminadas, igual que solo_archivadas sobre include_archivadas.
             fecha_desde: Filter by created_at >= this date (inclusive).
             fecha_hasta: Filter by created_at <= this date (inclusive, end of day).
             search: PERF-013: filtro por nombre del alumno (ILIKE parcial,
@@ -154,7 +161,13 @@ class EntregaRepository:
 
         # CRUD-001: excluir las borradas (soft delete). Va a la lista `conditions`
         # compartida datos+count, así el total paginado tampoco las cuenta.
-        conditions.append(Entrega.deleted_at.is_(None))
+        # CRUD-011: salvo que se pidan explícitamente (papelera). El scoping por
+        # comisión y por universidad se aplica igual en los tres casos — ver la
+        # entrada de `conditions` más abajo: la papelera NO es un bypass.
+        if solo_eliminadas:
+            conditions.append(Entrega.deleted_at.is_not(None))
+        elif not incluir_eliminadas:
+            conditions.append(Entrega.deleted_at.is_(None))
 
         if comision_id is not None:
             conditions.append(Entrega.comision_id == comision_id)
@@ -312,6 +325,10 @@ class EntregaRepository:
             .where(
                 Entrega.rubrica_id == rubrica_id,
                 Entrega.alumno_nombre == alumno_nombre,
+                # CRUD-011: una entrega borrada no cuenta como duplicado. Sin este
+                # filtro el alta devuelve 409 contra una fila que el listado no
+                # muestra, y el alumno queda sin poder volver a entregar.
+                Entrega.deleted_at.is_(None),
             )
         )
         if universidad_id is not None:
@@ -340,6 +357,8 @@ class EntregaRepository:
             .where(
                 Entrega.rubrica_id == rubrica_id,
                 Entrega.alumno_nombre == alumno_nombre,
+                # CRUD-011: idem get_by_rubrica_alumno — las borradas no ocupan lugar.
+                Entrega.deleted_at.is_(None),
             )
         )
         count = result.scalar() or 0

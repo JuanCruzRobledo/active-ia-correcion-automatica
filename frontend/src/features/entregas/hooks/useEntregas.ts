@@ -232,6 +232,34 @@ export const useDeleteEntrega = () => {
 };
 
 /**
+ * CRUD-011: restaura una entrega eliminada.
+ *
+ * El endpoint `POST /entregas/{id}/restore` existe desde CRUD-001, pero sin este
+ * hook no había forma de invocarlo desde el panel: una entrega borrada quedaba
+ * fuera del listado y bloqueando el par (rúbrica, alumno), así que el tutor no
+ * podía ni verla ni recuperarla.
+ */
+export const useRestoreEntrega = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<Entrega, Error, number>({
+    mutationFn: entregasService.restore,
+    onSuccess: (_, restoredId) => {
+      // La entrega vuelve a estar viva: cambia tanto el listado normal como la
+      // papelera, y las dos cuelgan de lists().
+      queryClient.invalidateQueries({ queryKey: entregasKeys.lists() });
+      queryClient.invalidateQueries({
+        queryKey: entregasKeys.detail(restoredId),
+      });
+    },
+    onError: (error) => {
+      const msg = getErrorMessage(error, 'Error al restaurar la entrega.');
+      toast.error(msg, { duration: 5000 });
+    },
+  });
+};
+
+/**
  * Hook to trigger AI correction for an entrega.
  *
  * Invalidates entregas lists and updates detail cache on success.

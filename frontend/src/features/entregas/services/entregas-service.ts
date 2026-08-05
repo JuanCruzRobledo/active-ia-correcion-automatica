@@ -46,6 +46,15 @@ export const entregasService = {
       params.append('solo_archivadas', 'true');
     }
 
+    // CRUD-011: la papelera es opt-in — sin estos flags el listado no cambia.
+    if (filters.incluir_eliminadas) {
+      params.append('incluir_eliminadas', 'true');
+    }
+
+    if (filters.solo_eliminadas) {
+      params.append('solo_eliminadas', 'true');
+    }
+
     if (filters.fecha_desde) {
       params.append('fecha_desde', filters.fecha_desde);
     }
@@ -154,6 +163,17 @@ export const entregasService = {
    */
   delete: async (id: number): Promise<void> => {
     await apiClient.delete(`/entregas/${id}`);
+  },
+
+  /**
+   * CRUD-011: restaura una entrega eliminada.
+   *
+   * El endpoint existía en el backend desde CRUD-001 pero no había forma de
+   * llegar a él desde el panel, así que una entrega borrada era definitiva.
+   */
+  restore: async (id: number): Promise<Entrega> => {
+    const { data } = await apiClient.post<Entrega>(`/entregas/${id}/restore`);
+    return data;
   },
 
   /**

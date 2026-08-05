@@ -267,3 +267,158 @@ async def test_export_no_incluye_borradas(db_session):
     todas = await repo.get_all_for_export()
     assert len(todas) == 1
     assert all(not e.is_deleted for e in todas)
+
+
+# ============ lookup por (rubrica, alumno): el que bloqueaba al alumno ============
+#
+# Estas dos queries son las que deciden si el alta de una entrega tira 409. Si no
+# excluyen las borradas, una entrega eliminada deja al alumno sin poder volver a
+# entregar: el 409 la ve, pero el listado no, así que no hay forma de encontrarla
+# ni de restaurarla. Es el hueco que el docstring de arriba prometía cubrir.
+
+
+@pytest.mark.asyncio
+async def test_get_by_rubrica_alumno_ignora_las_borradas(db_session):
+    comi = await _seed_comision(db_session)
+    e = await _mk_entrega(db_session, comi, deleted=True)
+    await db_session.commit()
+    repo = EntregaRepository(db_session)
+
+    assert await repo.get_by_rubrica_alumno(e.rubrica_id, e.alumno_nombre) is None
+
+
+@pytest.mark.asyncio
+async def test_get_by_rubrica_alumno_si_devuelve_la_viva(db_session):
+    """Triangulación: el filtro no debe tapar las entregas vigentes."""
+    comi = await _seed_comision(db_session)
+    e = await _mk_entrega(db_session, comi)
+    await db_session.commit()
+    repo = EntregaRepository(db_session)
+
+    hallada = await repo.get_by_rubrica_alumno(e.rubrica_id, e.alumno_nombre)
+    assert hallada is not None
+    assert hallada.id == e.id
+
+
+@pytest.mark.asyncio
+async def test_get_by_rubrica_alumno_ignora_borradas_con_load_contenido(db_session):
+    """La rama de sobrescritura (load_contenido=True) usa la misma query."""
+    comi = await _seed_comision(db_session)
+    e = await _mk_entrega(db_session, comi, deleted=True)
+    await db_session.commit()
+    repo = EntregaRepository(db_session)
+
+    hallada = await repo.get_by_rubrica_alumno(
+        e.rubrica_id, e.alumno_nombre, load_contenido=True
+    )
+    assert hallada is None
+
+
+@pytest.mark.asyncio
+async def test_get_by_rubrica_alumno_ignora_borradas_con_universidad(db_session):
+    """El filtro de borradas convive con el scoping multi-tenant."""
+    comi = await _seed_comision(db_session)
+    e = await _mk_entrega(db_session, comi, deleted=True)
+    await db_session.commit()
+    repo = EntregaRepository(db_session)
+
+    hallada = await repo.get_by_rubrica_alumno(
+        e.rubrica_id, e.alumno_nombre, universidad_id=UNIV_ID
+    )
+    assert hallada is None
+
+
+@pytest.mark.asyncio
+async def test_exists_by_rubrica_alumno_ignora_las_borradas(db_session):
+    comi = await _seed_comision(db_session)
+    e = await _mk_entrega(db_session, comi, deleted=True)
+    await db_session.commit()
+    repo = EntregaRepository(db_session)
+
+    assert await repo.exists_by_rubrica_alumno(e.rubrica_id, e.alumno_nombre) is False
+
+
+@pytest.mark.asyncio
+async def test_exists_by_rubrica_alumno_si_ve_la_viva(db_session):
+    """Triangulación."""
+    comi = await _seed_comision(db_session)
+    e = await _mk_entrega(db_session, comi)
+    await db_session.commit()
+    repo = EntregaRepository(db_session)
+
+    assert await repo.exists_by_rubrica_alumno(e.rubrica_id, e.alumno_nombre) is True
+
+
+# ===================== papelera: ver las eliminadas a pedido =====================
+#
+# El filtro de borradas es incondicional, así que una entrega eliminada es
+# invisible por API y nadie puede saber su id para restaurarla. Estos flags son
+# la puerta de salida, con la misma forma que el par include/solo_archivadas.
+
+
+@pytest.mark.asyncio
+async def test_get_all_incluir_eliminadas_trae_vivas_y_borradas(db_session):
+    comi = await _seed_comision(db_session)
+    await _mk_entrega(db_session, comi)
+    await _mk_entrega(db_session, comi, deleted=True)
+    await db_session.commit()
+    repo = EntregaRepository(db_session)
+
+    entregas, total = await repo.get_all(incluir_eliminadas=True)
+    assert total == 2
+    assert len(entregas) == 2
+    assert {e.is_deleted for e in entregas} == {True, False}
+
+
+@pytest.mark.asyncio
+async def test_get_all_solo_eliminadas_trae_unicamente_las_borradas(db_session):
+    comi = await _seed_comision(db_session)
+    await _mk_entrega(db_session, comi)
+    borrada = await _mk_entrega(db_session, comi, deleted=True)
+    await db_session.commit()
+    repo = EntregaRepository(db_session)
+
+    entregas, total = await repo.get_all(solo_eliminadas=True)
+    assert total == 1
+    assert [e.id for e in entregas] == [borrada.id]
+
+
+@pytest.mark.asyncio
+async def test_get_all_solo_eliminadas_manda_sobre_incluir(db_session):
+    """Mismo precedente que solo_archivadas sobre include_archivadas."""
+    comi = await _seed_comision(db_session)
+    await _mk_entrega(db_session, comi)
+    borrada = await _mk_entrega(db_session, comi, deleted=True)
+    await db_session.commit()
+    repo = EntregaRepository(db_session)
+
+    entregas, total = await repo.get_all(incluir_eliminadas=True, solo_eliminadas=True)
+    assert total == 1
+    assert [e.id for e in entregas] == [borrada.id]
+
+
+@pytest.mark.asyncio
+async def test_get_all_por_defecto_sigue_ocultando_las_borradas(db_session):
+    """Triangulación: el default no cambia. La papelera es opt-in."""
+    comi = await _seed_comision(db_session)
+    viva = await _mk_entrega(db_session, comi)
+    await _mk_entrega(db_session, comi, deleted=True)
+    await db_session.commit()
+    repo = EntregaRepository(db_session)
+
+    entregas, total = await repo.get_all()
+    assert total == 1
+    assert [e.id for e in entregas] == [viva.id]
+
+
+@pytest.mark.asyncio
+async def test_papelera_respeta_el_scoping_por_comision(db_session):
+    """La papelera no puede ser una puerta trasera al scoping (lección SEC-002)."""
+    comi = await _seed_comision(db_session)
+    await _mk_entrega(db_session, comi, deleted=True)
+    await db_session.commit()
+    repo = EntregaRepository(db_session)
+
+    entregas, total = await repo.get_all(solo_eliminadas=True, comisiones_visibles=[])
+    assert total == 0
+    assert entregas == []
