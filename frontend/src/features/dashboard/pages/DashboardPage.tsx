@@ -47,8 +47,16 @@ export function DashboardPage() {
     return <Navigate to="/avance" replace />;
   }
 
-  // Show API Key warning if not configured
-  const showApiKeyWarning = profile && !profile.gemini_api_key_valid;
+  // Show API Key warning if not configured. UI-013: evalúa la key del
+  // proveedor ACTIVO (Gemini u OpenRouter), no siempre la de Gemini. Misma
+  // lógica que EntregasPage/PerfilPage.
+  const activeProvider = profile?.correction_provider ?? 'gemini';
+  const isOpenRouter = activeProvider === 'openrouter';
+  const keyValid = isOpenRouter
+    ? profile?.openrouter_api_key_valid
+    : profile?.gemini_api_key_valid;
+  const providerLabel = isOpenRouter ? 'OpenRouter' : 'Google Gemini';
+  const showApiKeyWarning = profile && !keyValid;
 
   // Render different dashboard based on role
   const renderDashboard = () => {
@@ -74,7 +82,7 @@ export function DashboardPage() {
       {showApiKeyWarning && (
         <Alert variant="warning" title="⚠️ Configuración requerida">
           <p className="mb-3">
-            Para utilizar las funciones de corrección automática, necesitas configurar tu API Key de Google Gemini.
+            Para utilizar las funciones de corrección automática, necesitas configurar tu API Key de {providerLabel}.
           </p>
           <Button
             variant="primary"

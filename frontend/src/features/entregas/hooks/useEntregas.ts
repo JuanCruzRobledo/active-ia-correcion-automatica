@@ -68,25 +68,29 @@ function isGeminiRateLimitError(error: unknown): boolean {
 }
 
 /**
- * Handle Gemini API Key invalid error: update localStorage and show toast.
+ * Handle API Key invalid error (Gemini u OpenRouter, según el proveedor activo):
+ * actualiza localStorage y muestra el mensaje del backend, que ya nombra al
+ * proveedor correcto (ver error_catalog.py — no hardcodear "Gemini" acá).
  */
-function handleGeminiApiKeyError(queryClient: ReturnType<typeof useQueryClient>): void {
+function handleGeminiApiKeyError(
+  queryClient: ReturnType<typeof useQueryClient>,
+  error: unknown
+): void {
   invalidateStoredApiKey();
   queryClient.invalidateQueries({ queryKey: ['me'] });
   toast.error(
-    '❌ Tu API Key de Gemini expiró o es inválida. Por favor generá una nueva en Google AI Studio con otra cuenta de Google y actualizala en tu perfil.',
+    `❌ ${getErrorMessage(error, 'Tu API Key expiró o es inválida. Generá una nueva y actualizala en tu perfil.')}`,
     { duration: 10000 }
   );
 }
 
 /**
- * Handle Gemini rate-limit error: show clear toast.
+ * Handle rate-limit error (Gemini u OpenRouter): muestra el mensaje del
+ * backend, que ya nombra al proveedor correcto.
  */
-function handleGeminiRateLimitError(): void {
+function handleGeminiRateLimitError(error: unknown): void {
   toast.error(
-    '⏳ Se alcanzó el límite de uso de la API de Gemini. ' +
-    'Las correcciones en lote fueron detenidas. ' +
-    'Esperá unos minutos antes de volver a intentar.',
+    `⏳ ${getErrorMessage(error, 'Se alcanzó el límite de uso de la API. Las correcciones en lote fueron detenidas. Esperá unos minutos antes de volver a intentar.')}`,
     { duration: 10000 }
   );
 }
@@ -294,11 +298,11 @@ export const useCorregirEntrega = () => {
     },
     onError: (error) => {
       if (isGeminiApiKeyError(error)) {
-        handleGeminiApiKeyError(queryClient);
+        handleGeminiApiKeyError(queryClient, error);
         return;
       }
       if (isGeminiRateLimitError(error)) {
-        handleGeminiRateLimitError();
+        handleGeminiRateLimitError(error);
         return;
       }
       const msg = getErrorMessage(error, 'Error al corregir la entrega. Intenta nuevamente.');
@@ -326,11 +330,11 @@ export const useCorregirEntregaMasiva = () => {
     },
     onError: (error) => {
       if (isGeminiApiKeyError(error)) {
-        handleGeminiApiKeyError(queryClient);
+        handleGeminiApiKeyError(queryClient, error);
         return;
       }
       if (isGeminiRateLimitError(error)) {
-        handleGeminiRateLimitError();
+        handleGeminiRateLimitError(error);
         return;
       }
       const msg = getErrorMessage(error, 'Error al corregir las entregas. Intenta nuevamente.');
