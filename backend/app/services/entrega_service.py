@@ -375,6 +375,103 @@ class EntregaService:
         created_entrega = await self.entrega_repo.create(entrega)
         return ResultadoImportEntrega(status="creada", entrega_id=created_entrega.id)
 
+    async def reconsolidar_entrega(
+        self,
+        *,
+        entrega_id: int,
+        archivo: UploadFile,
+        actor_id: int,
+    ) -> EntregaResponse:
+        """Reprocesa el contenido de una entrega con el modo actual de su rúbrica.
+
+        La consolidación ocurre al SUBIR, no al corregir: `corregir` arma el
+        payload para la IA con `entrega.contenido_consolidado` ya guardado. Por
+        eso, cuando una entrega se consolidó con el modo equivocado, re-correr
+        la corrección devuelve exactamente la misma nota — el contenido que ve
+        el modelo no cambió.
+
+        Hasta ahora el único camino era sobrescribir la entrega, y eso exige
+        borrar antes su corrección (ver `crear_entrega_individual`): destructivo
+        sobre notas ya comunicadas. Este método reprocesa el archivo y deja la
+        corrección intacta, para que después se recorrija con
+        `POST /correcciones/entregas/{id}/recorregir`, que ya reemplaza la
+        corrección previa de forma controlada.
+
+        El archivo se recibe en el request porque el ZIP original no se
+        persiste: la entrega sólo guarda el texto ya consolidado.
+
+        Raises:
+            HTTPException 404: Entrega o rúbrica no encontrada.
+            HTTPException 400: Tipo de archivo inválido o ZIP sin contenido útil.
+            HTTPException 413: El archivo excede MAX_UPLOAD_SIZE.
+        """
+        validar_tamano_upload(getattr(archivo, "size", None))
+
+        # load_contenido=True + relaciones: `guardar_version_anterior` lee
+        # `entrega.correccion` y `contenido_consolidado` (columna deferida por
+        # PERF-002). Con un get pelado, ambos accesos son un lazy load que en
+        # contexto async revienta con MissingGreenlet.
+        entrega = await self.entrega_repo.get_by_id_with_relations(
+            entrega_id, load_contenido=True
+        )
+        if not entrega:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Entrega no encontrada",
+            )
+
+        rubrica = await self.rubrica_repo.get_active_by_id(entrega.rubrica_id)
+        if not rubrica:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Rúbrica no encontrada o inactiva",
+            )
+
+        archivo_tipo = self._get_file_type(archivo.filename)
+        if archivo_tipo in ("binary", "unknown"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tipo de archivo no soportado para reconsolidar",
+            )
+
+        contenido_bytes = await archivo.read()
+        validar_tamano_upload(len(contenido_bytes))
+
+        modo, extensiones = self._resolver_modo(rubrica, None, None)
+        (
+            archivo_tipo,
+            contenido_consolidado,
+            contenido_preview,
+            archivos_incluidos,
+            pdf_contenido_b64,
+        ) = await self._procesar_contenido(
+            contenido_bytes, archivo_tipo, modo, archivo.filename, extensiones,
+        )
+
+        # Se versiona el contenido viejo antes de pisarlo, igual que al
+        # sobrescribir: si la reconsolidación empeora las cosas, hay a dónde
+        # volver.
+        await self.historial_service.guardar_version_anterior(entrega, actor_id)
+
+        entrega.archivo_nombre = archivo.filename
+        entrega.archivo_tamanio = len(contenido_bytes)
+        entrega.archivo_tipo = archivo_tipo
+        entrega.contenido_preview = contenido_preview
+        entrega.contenido_consolidado = contenido_consolidado
+        entrega.archivos_incluidos = archivos_incluidos
+        entrega.pdf_contenido_b64 = pdf_contenido_b64
+        entrega.hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
+        # El estado NO se toca y la corrección NO se borra: la entrega sigue
+        # CORREGIDA con su nota vieja hasta que se recorrija explícitamente.
+        _limpiar_entrega_error(entrega)
+
+        actualizada = await self.entrega_repo.update(entrega)
+        logger.info(
+            "Entrega %s reconsolidada en modo '%s' por el usuario %s: %s archivos",
+            entrega_id, modo, actor_id, len(archivos_incluidos),
+        )
+        return EntregaResponse.model_validate(actualizada)
+
     @staticmethod
     def _resolver_modo(
         rubrica: Any,

@@ -26,6 +26,7 @@ Es el único lugar de la suite que ejercita `crear_entrega_individual` y
 import io
 import json
 import zipfile
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -702,3 +703,125 @@ class TestEntregaService:
         assert any(a.endswith("build.gradle") for a in incluidos), (
             f"build.gradle no llegó al corrector. Incluidos: {incluidos}"
         )
+
+    # ------------------------------------------------------------------
+    # reconsolidar_entrega: reprocesa el contenido de una entrega existente
+    # con el modo actual de la rúbrica, SIN destruir su corrección.
+    #
+    # La consolidación ocurre al subir, no al corregir: `corregir` arma el
+    # payload con `entrega.contenido_consolidado` ya guardado. Cuando una
+    # entrega se consolidó con el modo equivocado (BUG-CONSOLIDACION), el
+    # único camino era borrar la corrección para poder sobrescribir —
+    # destructivo, y sobre notas ya comunicadas a los alumnos.
+    # ------------------------------------------------------------------
+
+    async def test_reconsolidar_reprocesa_con_el_modo_actual_de_la_rubrica(
+        self,
+        db_session: AsyncSession,
+        comision: Comision,
+        rubrica: Rubrica,
+        subidor: Usuario,
+    ):
+        """Una entrega consolidada con el modo viejo se reprocesa con el nuevo."""
+        rubrica.modo_consolidacion = "solo_codigo"
+        await db_session.commit()
+
+        service = EntregaService(db_session)
+        data = EntregaCreate(
+            comision_id=comision.id,
+            rubrica_id=rubrica.id,
+            alumno_nombre="Herrera, Jazmin",
+        )
+        entrega = await service.crear_entrega_individual(
+            data=data,
+            archivo=_upload(crear_zip_proyecto_spring(), "gestion-pedidos.zip"),
+            subido_por_id=subidor.id,
+        )
+
+        # Se consolidó mal: el build.gradle nunca llegó al corrector.
+        incluidos = await _archivos_incluidos(service, rubrica.id, "Herrera, Jazmin")
+        assert not any(a.endswith("build.gradle") for a in incluidos)
+
+        # La rúbrica se corrige y la entrega se reprocesa con el mismo ZIP.
+        rubrica.modo_consolidacion = "proyecto_completo"
+        await db_session.commit()
+
+        resultado = await service.reconsolidar_entrega(
+            entrega_id=entrega.id,
+            archivo=_upload(crear_zip_proyecto_spring(), "gestion-pedidos.zip"),
+            actor_id=subidor.id,
+        )
+
+        incluidos = await _archivos_incluidos(service, rubrica.id, "Herrera, Jazmin")
+        assert any(a.endswith("build.gradle") for a in incluidos), (
+            f"build.gradle sigue sin llegar. Incluidos: {incluidos}"
+        )
+        assert any(a.endswith("application.properties") for a in incluidos)
+        assert "Proyecto completo" in (resultado.contenido_preview or "")
+
+    async def test_reconsolidar_conserva_la_correccion_existente(
+        self,
+        db_session: AsyncSession,
+        comision: Comision,
+        rubrica: Rubrica,
+        subidor: Usuario,
+    ):
+        """No se pierde la corrección: es lo que separa esto de sobrescribir."""
+        from app.models.correccion import Correccion
+
+        rubrica.modo_consolidacion = "solo_codigo"
+        await db_session.commit()
+
+        service = EntregaService(db_session)
+        entrega = await service.crear_entrega_individual(
+            data=EntregaCreate(
+                comision_id=comision.id,
+                rubrica_id=rubrica.id,
+                alumno_nombre="Con, Correccion",
+            ),
+            archivo=_upload(crear_zip_proyecto_spring(), "tp.zip"),
+            subido_por_id=subidor.id,
+        )
+
+        correccion = Correccion(
+            universidad_id=UNIV_ID,
+            entrega_id=entrega.id,
+            nota=Decimal("52"),
+            criterios_json={"criterios": []},
+            fortalezas=[],
+            recomendaciones=[],
+            corregido_por_id=subidor.id,
+        )
+        db_session.add(correccion)
+        await db_session.commit()
+
+        rubrica.modo_consolidacion = "proyecto_completo"
+        await db_session.commit()
+
+        await service.reconsolidar_entrega(
+            entrega_id=entrega.id,
+            archivo=_upload(crear_zip_proyecto_spring(), "tp.zip"),
+            actor_id=subidor.id,
+        )
+
+        detalle = await service.obtener_entrega(entrega.id)
+        assert detalle.tiene_correccion is True, (
+            "reconsolidar borró la corrección — es justo lo que debe evitar"
+        )
+
+    async def test_reconsolidar_entrega_inexistente_da_404(
+        self,
+        db_session: AsyncSession,
+        subidor: Usuario,
+    ):
+        """Una entrega que no existe no se reprocesa en silencio."""
+        service = EntregaService(db_session)
+
+        with pytest.raises(HTTPException) as exc:
+            await service.reconsolidar_entrega(
+                entrega_id=999999,
+                archivo=_upload(crear_zip_simple(), "tp.zip"),
+                actor_id=subidor.id,
+            )
+
+        assert exc.value.status_code == 404
