@@ -689,6 +689,38 @@ class PDFService:
             [feedback_para, ""],  # Feedback
         ]
 
+        # Desglose por subcriterio. La corrección lo persiste en
+        # `subcriterios_evaluados` (la IA lo produce y el frontend ya lo muestra),
+        # pero el PDF se había quedado en el nivel criterio: el alumno veía la nota
+        # sin saber de dónde salía.
+        #
+        # `or []` y no `.get(..., [])`: correccion_service siempre setea la clave y
+        # la deja en None cuando la rúbrica es v1 (sin subcriterios).
+        subcriterios = criterio.get("subcriterios_evaluados") or []
+        filas_sub = len(subcriterios)
+
+        if subcriterios:
+            sub_label_style = ParagraphStyle(
+                "SubcriterioLabelStyle",
+                parent=styles["Normal"],
+                fontSize=7.5,
+                textColor=colors.HexColor("#64748b"),
+                leading=10,
+            )
+            sub_style = ParagraphStyle(
+                "SubcriterioStyle",
+                parent=styles["Normal"],
+                fontSize=8,
+                textColor=colors.HexColor("#475569"),
+                leading=11,
+                leftIndent=12,
+            )
+            data.append([
+                Paragraph("DESGLOSE POR SUBCRITERIO", sub_label_style), "",
+            ])
+            for sub in subcriterios:
+                data.append([Paragraph(self._texto_subcriterio(sub), sub_style), ""])
+
         table = Table(data, colWidths=[5.2 * inch, 1.3 * inch])
         table.setStyle(
             TableStyle([
@@ -731,7 +763,60 @@ class PDFService:
             ])
         )
 
+        if filas_sub:
+            # Una fila por subcriterio (no un párrafo único): así la tabla puede
+            # cortarse entre páginas por fila, que es como reportlab pagina bien.
+            label_row = 3
+            estilos_sub: list[tuple] = [
+                ("SPAN", (0, label_row), (-1, label_row)),
+                ("BACKGROUND", (0, label_row), (-1, -1), colors.HexColor("#f8fafc")),
+                ("LINEABOVE", (0, label_row), (-1, label_row), 1, colors.HexColor("#e2e8f0")),
+                ("TOPPADDING", (0, label_row), (-1, label_row), 8),
+                ("BOTTOMPADDING", (0, label_row), (-1, label_row), 2),
+                ("LEFTPADDING", (0, label_row), (-1, -1), 12),
+                ("RIGHTPADDING", (0, label_row), (-1, -1), 12),
+            ]
+            for i in range(filas_sub):
+                fila = label_row + 1 + i
+                estilos_sub.extend([
+                    ("SPAN", (0, fila), (-1, fila)),
+                    ("TOPPADDING", (0, fila), (-1, fila), 3),
+                    ("BOTTOMPADDING", (0, fila), (-1, fila), 5 if i == filas_sub - 1 else 3),
+                ])
+            table.setStyle(TableStyle(estilos_sub))
+
         return table
+
+    @staticmethod
+    def _fmt_puntaje(valor: Any) -> str:
+        """Puntaje como entero cuando es redondo, si no con un decimal.
+
+        Los puntajes viajan como Decimal desde Pydantic, pero en el JSONB quedan
+        como str ("3.0"), así que `int(valor)` directo revienta con ValueError.
+        """
+        try:
+            n = float(valor)
+        except (TypeError, ValueError):
+            return str(valor)
+        return str(int(n)) if n == int(n) else f"{n:.1f}"
+
+    def _texto_subcriterio(self, sub: dict[str, Any]) -> str:
+        """Una línea por subcriterio: identificador, puntaje, estado y devolución.
+
+        Mismo contenido que muestra el modal de corrección en el frontend. No se
+        trae la descripción desde la rúbrica a propósito: el subcriterio evaluado
+        solo guarda su `id`, y el feedback ya explica qué se miró.
+        """
+        sid = self._escape_xml(str(sub.get("id", "")))
+        obtenido = self._fmt_puntaje(sub.get("puntaje_obtenido", 0))
+        maximo = self._fmt_puntaje(sub.get("puntaje_maximo", 0))
+        estado = self._escape_xml(str(sub.get("estado", "") or ""))
+        feedback = self._escape_xml(str(sub.get("feedback", "") or ""))
+
+        cabeza = f"<b>{sid}</b> &nbsp;{obtenido}/{maximo}"
+        if estado:
+            cabeza += f" &nbsp;·&nbsp; {estado}"
+        return f"{cabeza}<br/>{feedback}" if feedback else cabeza
 
     def _get_estado_color(self, estado: str) -> colors.Color:
         """Get color for estado (without icons)."""
