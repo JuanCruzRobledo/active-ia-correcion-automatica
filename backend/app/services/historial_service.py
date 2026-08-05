@@ -96,8 +96,16 @@ class HistorialService:
         items = [
             HistorialItem(
                 id=h.id,
+                # `alumno_nombre` y `contenido_preview` son obligatorios en el
+                # schema y faltaban acá: cualquier entrega con al menos una
+                # versión previa hacía explotar el detalle con un 500. No se
+                # notaba porque con historial vacío el list comprehension no
+                # corre, y el único caller que generaba historial —sobrescribir—
+                # está bloqueado cuando la entrega ya tiene corrección.
+                alumno_nombre=h.alumno_nombre,
                 archivo_nombre=h.archivo_nombre,
                 archivo_tamanio=h.archivo_tamanio,
+                contenido_preview=h.contenido_preview,
                 hash_sha256=h.hash_sha256,
                 nota_anterior=h.nota_anterior,
                 sobrescrito_en=h.sobrescrito_en,

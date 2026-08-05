@@ -403,6 +403,47 @@ async def eliminar_entrega(
     )
 
 
+@router.post("/{entrega_id}/reconsolidar", response_model=EntregaResponse)
+async def reconsolidar_entrega(
+    entrega_id: int,
+    archivo: UploadFile = File(..., description="El archivo original de la entrega (ZIP o TXT)"),
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
+) -> EntregaResponse:
+    """
+    Reprocesa el contenido de una entrega con el modo de consolidación actual
+    de su rúbrica, **sin borrar su corrección**.
+
+    **Para qué sirve:** la consolidación ocurre al subir, no al corregir. Si una
+    entrega se consolidó con el modo equivocado, re-correr la corrección
+    devuelve la misma nota, porque el contenido que ve el modelo no cambió.
+    Sobrescribir la entrega arreglaría el contenido, pero exige borrar antes su
+    corrección — destructivo sobre notas ya comunicadas.
+
+    **Flujo típico de rectificación:**
+    1. `POST /entregas/{id}/reconsolidar` con el archivo original
+    2. `POST /correcciones/entregas/{id}/recorregir` (reemplaza la corrección)
+
+    **Comportamiento:**
+    - La versión anterior del contenido se guarda en el historial
+    - El estado y la corrección quedan intactos hasta que se recorrija
+    - El archivo se manda en el request porque el ZIP original no se persiste
+
+    **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su materia.
+    """
+    # Mismo guard que el resto de las acciones sobre una entrega: sin acceso, no
+    # se reprocesa el contenido de una entrega ajena.
+    await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
+
+    service = EntregaService(db)
+    return await service.reconsolidar_entrega(
+        entrega_id=entrega_id,
+        archivo=archivo,
+        actor_id=current_user.id,
+    )
+
+
 @router.post("/{entrega_id}/restore", response_model=EntregaDetailResponse)
 async def restaurar_entrega(
     entrega_id: int,
