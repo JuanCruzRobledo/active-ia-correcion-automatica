@@ -14,7 +14,7 @@ import json
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import BinaryIO, Literal
+from typing import Any, BinaryIO, Literal
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
