@@ -920,11 +920,17 @@ class PDFService:
         filled_width = bar_width * (percentage / 100)
         empty_width = bar_width - filled_width
 
-        # Create progress bar cells
-        if percentage > 0:
+        # Create progress bar cells.
+        # Tiene que haber UN ancho declarado por celda: si sobran celdas reportlab
+        # les inventa un ancho y la tabla se agranda sola. Con el criterio en 100%
+        # `empty_width` es 0, y armar dos celdas con un solo ancho hacía que la
+        # barra midiera el doble (648pt en una hoja de 612) y se escapara del
+        # recuadro hasta el borde de la página.
+        if percentage > 0 and empty_width > 0:
             progress_data = [["", ""]]
-            col_widths = [filled_width, empty_width] if empty_width > 0 else [filled_width]
+            col_widths = [filled_width, empty_width]
         else:
+            # 100% (sin parte vacía) o 0%: una sola celda del ancho completo.
             progress_data = [[""]]
             col_widths = [bar_width]
 
