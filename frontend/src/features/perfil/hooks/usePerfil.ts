@@ -89,6 +89,29 @@ export const useUpdateApiKey = () => {
 };
 
 /**
+ * Hook para eliminar la API Key de un proveedor sin reemplazarla por otra.
+ * Invalida el perfil: la key vuelve a mostrarse como "No configurada".
+ */
+export const useDeleteApiKey = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    { message: string; provider: CorrectionProvider },
+    Error,
+    CorrectionProvider
+  >({
+    mutationFn: (provider) => perfilService.deleteApiKey(provider),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: perfilKeys.all });
+      toast.success('API Key eliminada');
+    },
+    onError: (error) => {
+      toast.error(error.message || 'No se pudo eliminar la API Key');
+    },
+  });
+};
+
+/**
  * Hook para cambiar el modo de corrección activo (slider del perfil).
  * Invalida el perfil para reflejar el modo y la key correspondiente.
  */

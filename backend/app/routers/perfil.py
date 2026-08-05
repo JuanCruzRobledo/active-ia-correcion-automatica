@@ -21,6 +21,7 @@ from app.models import Usuario
 from app.models.enums import RolEnum
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.perfil import (
+    DeleteApiKeyResponse,
     PerfilResponse,
     UpdateApiKeyRequest,
     UpdateApiKeyResponse,
@@ -206,6 +207,46 @@ async def update_api_key(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error al guardar la API Key. Intentá nuevamente.",
         )
+
+
+@router.delete("/api-key/{provider}", response_model=DeleteApiKeyResponse)
+async def delete_api_key(
+    provider: str,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DeleteApiKeyResponse:
+    """
+    Elimina la API Key guardada del proveedor indicado (sin reemplazarla por otra).
+
+    Deja al usuario en el mismo estado que si nunca la hubiese configurado: la
+    corrección con ese proveedor vuelve a pedir "Configurá tu API Key" (ver
+    `_resolver_credenciales_ia` en el router de correcciones). No toca la key
+    del otro proveedor ni el `correction_provider` activo.
+
+    **Permissions**: All authenticated users
+    """
+    if provider.strip().lower() not in ia_provider.PROVIDERS_VALIDOS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Proveedor inválido: {provider}",
+        )
+    provider = ia_provider.normalizar_provider(provider)
+
+    user_repo = UsuarioRepository(db)
+    if provider == ia_provider.PROVIDER_OPENROUTER:
+        current_user.openrouter_api_key_encrypted = None
+        current_user.openrouter_api_key_valid = False
+    else:
+        current_user.gemini_api_key_encrypted = None
+        current_user.gemini_api_key_valid = False
+        current_user.gemini_api_key_paga = False
+
+    await user_repo.update(current_user)
+
+    return DeleteApiKeyResponse(
+        message="API Key eliminada",
+        provider=provider,
+    )
 
 
 @router.patch("/correction-provider", response_model=UpdateCorrectionProviderResponse)

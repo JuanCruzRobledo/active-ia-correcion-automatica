@@ -45,6 +45,20 @@ export async function updateApiKey(
 /**
  * Cambia el modo de corrección activo (slider del perfil). No toca las keys.
  */
+/**
+ * Elimina la API Key guardada del proveedor indicado (sin reemplazarla). Deja
+ * al usuario en el mismo estado que si nunca la hubiese configurado.
+ */
+export async function deleteApiKey(
+  provider: CorrectionProvider
+): Promise<{ message: string; provider: CorrectionProvider }> {
+  const { data } = await apiClient.delete<{
+    message: string;
+    provider: CorrectionProvider;
+  }>(`/perfil/api-key/${provider}`);
+  return data;
+}
+
 export async function updateCorrectionProvider(
   provider: CorrectionProvider
 ): Promise<{ message: string; correction_provider: CorrectionProvider }> {

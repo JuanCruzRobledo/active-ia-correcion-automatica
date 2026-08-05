@@ -51,6 +51,10 @@ _MENSAJES_POR_PROVEEDOR: dict[str, str] = {
         "Tu API Key de {label} no es válida o expiró. "
         "Generá una nueva y actualizala en tu perfil."
     ),
+    ERROR_SIN_CREDITOS: (
+        "Tu cuenta de {label} no tiene créditos suficientes. "
+        "Cargá créditos y volvé a intentar."
+    ),
 }
 
 # Mensajes neutros (no dependen del proveedor).
@@ -58,10 +62,6 @@ _MENSAJES_NEUTROS: dict[str, str] = {
     ERROR_INTERRUMPIDA: (
         "La corrección se interrumpió (el servidor se reinició mientras corría). "
         "Volvé a corregir esta entrega."
-    ),
-    ERROR_SIN_CREDITOS: (
-        "Tu cuenta de OpenRouter no tiene créditos suficientes. "
-        "Cargá créditos y volvé a intentar."
     ),
     ERROR_N8N_TIMEOUT: (
         "El servicio de IA tardó demasiado en responder. Reintentá la corrección."

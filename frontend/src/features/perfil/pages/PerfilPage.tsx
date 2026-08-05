@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { Eye, EyeOff, Info, Shield, User as UserIcon, Globe, Mail, Sparkles } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { useProfile, useUpdateApiKey, useChangePassword, useUpdateKeyPaga, useUpdateEmail, useUpdateCorrectionProvider } from '../hooks/usePerfil';
+import { useProfile, useUpdateApiKey, useDeleteApiKey, useChangePassword, useUpdateKeyPaga, useUpdateEmail, useUpdateCorrectionProvider } from '../hooks/usePerfil';
 import type { CorrectionProvider } from '../types';
 import { updateMoodleCredentials } from '../services/perfil-service';
 import { Button } from '../../../shared/components/ui/Button';
@@ -47,6 +47,7 @@ const PROVIDER_META: Record<
 export const PerfilPage = () => {
   const { data: profile, isLoading } = useProfile();
   const updateApiKeyMutation = useUpdateApiKey();
+  const deleteApiKeyMutation = useDeleteApiKey();
   const updateCorrectionProviderMutation = useUpdateCorrectionProvider();
   const updateKeyPagaMutation = useUpdateKeyPaga();
   const updateEmailMutation = useUpdateEmail();
@@ -103,6 +104,7 @@ export const PerfilPage = () => {
   const [apiKey, setApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeyError, setApiKeyError] = useState('');
+  const [showDeleteApiKeyModal, setShowDeleteApiKeyModal] = useState(false);
 
   // Password modal state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -158,6 +160,12 @@ export const PerfilPage = () => {
         },
       }
     );
+  };
+
+  const handleDeleteApiKeyConfirm = () => {
+    deleteApiKeyMutation.mutate(activeProvider, {
+      onSuccess: () => setShowDeleteApiKeyModal(false),
+    });
   };
 
   const handlePasswordSubmit = () => {
@@ -431,13 +439,24 @@ export const PerfilPage = () => {
               </div>
             </div>
 
-            <Button
-              variant={keyValid ? 'secondary' : 'primary'}
-              onClick={() => setShowApiKeyModal(true)}
-              className="w-full sm:w-auto"
-            >
-              {keyValid ? 'Cambiar' : 'Configurar'}
-            </Button>
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Button
+                variant={keyValid ? 'secondary' : 'primary'}
+                onClick={() => setShowApiKeyModal(true)}
+                className="w-full sm:w-auto"
+              >
+                {keyValid ? 'Cambiar' : 'Configurar'}
+              </Button>
+              {keyValid && (
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowDeleteApiKeyModal(true)}
+                  className="w-full sm:w-auto text-destructive hover:text-destructive"
+                >
+                  Eliminar
+                </Button>
+              )}
+            </div>
           </div>
 
           {/* Toggle: API key paga (solo Gemini Studio — su free tier limita RPM) */}
@@ -674,6 +693,39 @@ export const PerfilPage = () => {
               className="w-full sm:w-auto"
             >
               {updateApiKeyMutation.isPending ? 'Validando...' : 'Guardar'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal de confirmación: eliminar API Key */}
+      <Modal
+        isOpen={showDeleteApiKeyModal}
+        onClose={() => setShowDeleteApiKeyModal(false)}
+        title={`Eliminar API Key de ${providerMeta.nombre}`}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Vas a eliminar tu API Key de {providerMeta.nombre}. No vas a poder corregir
+            con este proveedor hasta que configures una nueva.
+          </p>
+
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="ghost"
+              onClick={() => setShowDeleteApiKeyModal(false)}
+              disabled={deleteApiKeyMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteApiKeyConfirm}
+              isLoading={deleteApiKeyMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              {deleteApiKeyMutation.isPending ? 'Eliminando...' : 'Eliminar'}
             </Button>
           </div>
         </div>

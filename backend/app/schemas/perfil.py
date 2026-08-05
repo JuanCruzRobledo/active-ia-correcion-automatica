@@ -110,6 +110,13 @@ class UpdateApiKeyResponse(BaseModel):
     valid: bool
 
 
+class DeleteApiKeyResponse(BaseModel):
+    """Response tras eliminar la API Key de un proveedor."""
+
+    message: str
+    provider: str
+
+
 class UpdateCorrectionProviderRequest(BaseModel):
     """Request para cambiar el modo de corrección activo (slider del perfil)."""
 

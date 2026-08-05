@@ -41,6 +41,11 @@ class TestSinCreditos:
         msg = mensaje_error(ERROR_SIN_CREDITOS, "openrouter")
         assert "crédito" in msg.lower()
 
+    def test_sin_creditos_gemini_menciona_gemini(self):
+        msg = mensaje_error(ERROR_SIN_CREDITOS, "gemini")
+        assert "Gemini" in msg
+        assert "OpenRouter" not in msg
+
 
 class TestMensajesNeutros:
     def test_timeout_no_menciona_proveedor(self):
