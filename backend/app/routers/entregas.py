@@ -108,7 +108,7 @@ async def crear_entrega(
     rubrica_id: int = Form(..., description="ID de la rúbrica"),
     alumno_nombre: str = Form(..., description="Nombre del alumno"),
     sobrescribir: bool = Form(False, description="Sobrescribir entrega existente"),
-    modo_consolidacion: str = Form("solo_codigo", description="Modo de procesamiento"),
+    modo_consolidacion: str | None = Form(None, description="Modo de procesamiento. Si se omite, se usa el de la rúbrica"),
     extensiones_personalizadas: str | None = Form(None, description="JSON array de extensiones para modo personalizado"),
     moodle_url: str | None = Form(None, description="URL de la entrega en Moodle (para habilitar 'Subir a Moodle')"),
     archivo: UploadFile = File(..., description="Archivo ZIP o TXT"),
@@ -165,7 +165,7 @@ async def crear_entrega(
         archivo=archivo,
         subido_por_id=current_user.id,
         sobrescribir=sobrescribir,
-        modo_consolidacion=modo_consolidacion.lower(),
+        modo_consolidacion=modo_consolidacion.lower() if modo_consolidacion else None,
         extensiones_personalizadas=ext_list,
         moodle_user_id=moodle_user_id,
     )
@@ -176,7 +176,7 @@ async def crear_entregas_masivas(
     comision_id: int = Form(..., description="ID de la comisión"),
     rubrica_id: int = Form(..., description="ID de la rúbrica"),
     sobrescribir: bool = Form(False, description="Sobrescribir entregas existentes"),
-    modo_consolidacion: str = Form("solo_codigo", description="Modo de procesamiento"),
+    modo_consolidacion: str | None = Form(None, description="Modo de procesamiento. Si se omite, se usa el de la rúbrica"),
     extensiones_personalizadas: str | None = Form(None, description="JSON array de extensiones para modo personalizado"),
     archivo_zip: UploadFile = File(..., description="ZIP con carpetas de alumnos"),
     current_user: Usuario = Depends(get_current_user),
@@ -239,7 +239,7 @@ async def crear_entregas_masivas(
         archivo_zip=archivo_zip,
         subido_por_id=current_user.id,
         sobrescribir=sobrescribir,
-        modo_consolidacion=modo_consolidacion.lower(),
+        modo_consolidacion=modo_consolidacion.lower() if modo_consolidacion else None,
         extensiones_personalizadas=ext_list_masiva,
     )
 

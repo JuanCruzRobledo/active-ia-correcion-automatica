@@ -24,6 +24,7 @@ Es el único lugar de la suite que ejercita `crear_entrega_individual` y
 """
 
 import io
+import json
 import zipfile
 from typing import Any
 
@@ -51,6 +52,38 @@ def crear_zip_simple(contenido: str = "print('hello')") -> bytes:
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("main.py", contenido)
     return buffer.getvalue()
+
+
+def crear_zip_proyecto_spring() -> bytes:
+    """ZIP con la forma real de una entrega Spring Boot.
+
+    Mezcla a propósito archivos de los tres modos: `.java` (solo_codigo),
+    `.css` (web_completo) y `.gradle`/`.properties` (proyecto_completo), para
+    que el modo aplicado se lea en qué archivos entraron.
+    """
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("gestion-pedidos/build.gradle", "dependencies { implementation 'org.projectlombok:lombok' }")
+        zf.writestr("gestion-pedidos/src/main/resources/application.properties", "server.port=8080")
+        zf.writestr("gestion-pedidos/src/main/java/App.java", "class App {}")
+        zf.writestr("gestion-pedidos/src/main/resources/static/estilos.css", "body { margin: 0; }")
+    return buffer.getvalue()
+
+
+async def _archivos_incluidos(
+    service: EntregaService, rubrica_id: int, alumno_nombre: str
+) -> list[str]:
+    """Archivos que efectivamente quedaron consolidados para el corrector."""
+    entrega = await service.entrega_repo.get_by_rubrica_alumno(
+        rubrica_id=rubrica_id,
+        alumno_nombre=alumno_nombre,
+    )
+    assert entrega is not None, f"No se encontró la entrega de {alumno_nombre}"
+    incluidos = entrega.archivos_incluidos or []
+    # En SQLite la columna JSON puede volver como str; en Postgres ya es lista.
+    if isinstance(incluidos, str):
+        incluidos = json.loads(incluidos)
+    return list(incluidos)
 
 
 def _upload(contenido: bytes, filename: str) -> UploadFile:
@@ -471,3 +504,136 @@ class TestEntregaService:
         # versiones. Construirlo con los nombres de campo equivocados hacía
         # explotar el endpoint entero con 500.
         assert detail.num_versiones_anteriores == 0
+
+    # ------------------------------------------------------------------
+    # Regresión BUG-CONSOLIDACION: el modo lo manda el cliente, no la rúbrica.
+    #
+    # `crear_entrega_individual` / `crear_entrega_masiva` recibían
+    # `modo_consolidacion` con default "solo_codigo" y NUNCA consultaban la
+    # rúbrica ya cargada. Cualquier cliente que no mandara el campo (la skill
+    # de Moodle, un script, curl) consolidaba en "solo_codigo" aunque la
+    # rúbrica pidiera "proyecto_completo": los .gradle/.properties/.xml no
+    # llegaban al corrector y el modelo informaba "no se entregó el archivo
+    # de build". Confirmado en producción sobre la rúbrica 188 (PROG4A26):
+    # 3 entregas consolidadas en "Solo código" con la rúbrica en
+    # "proyecto_completo" -> C2 2/10, y una alumna desaprobada.
+    # ------------------------------------------------------------------
+
+    async def test_entrega_individual_usa_el_modo_de_la_rubrica(
+        self,
+        db_session: AsyncSession,
+        comision: Comision,
+        rubrica: Rubrica,
+        subidor: Usuario,
+    ):
+        """Sin modo explícito, se consolida con el modo que declara la rúbrica."""
+        rubrica.modo_consolidacion = "proyecto_completo"
+        await db_session.commit()
+
+        service = EntregaService(db_session)
+        data = EntregaCreate(
+            comision_id=comision.id,
+            rubrica_id=rubrica.id,
+            alumno_nombre="Herrera, Jazmin",
+        )
+
+        entrega = await service.crear_entrega_individual(
+            data=data,
+            archivo=_upload(crear_zip_proyecto_spring(), "gestion-pedidos.zip"),
+            subido_por_id=subidor.id,
+        )
+
+        incluidos = await _archivos_incluidos(service, rubrica.id, "Herrera, Jazmin")
+        assert any(a.endswith("build.gradle") for a in incluidos), (
+            f"build.gradle no llegó al corrector. Incluidos: {incluidos}"
+        )
+        assert any(a.endswith("application.properties") for a in incluidos), (
+            f"application.properties no llegó al corrector. Incluidos: {incluidos}"
+        )
+        assert "Proyecto completo" in (entrega.contenido_preview or "")
+
+    async def test_entrega_individual_modo_explicito_gana_sobre_la_rubrica(
+        self,
+        db_session: AsyncSession,
+        comision: Comision,
+        rubrica: Rubrica,
+        subidor: Usuario,
+    ):
+        """Un modo explícito del caller sigue teniendo precedencia (override)."""
+        rubrica.modo_consolidacion = "proyecto_completo"
+        await db_session.commit()
+
+        service = EntregaService(db_session)
+        data = EntregaCreate(
+            comision_id=comision.id,
+            rubrica_id=rubrica.id,
+            alumno_nombre="Override, Test",
+        )
+
+        await service.crear_entrega_individual(
+            data=data,
+            archivo=_upload(crear_zip_proyecto_spring(), "tp.zip"),
+            subido_por_id=subidor.id,
+            modo_consolidacion="solo_codigo",
+        )
+
+        incluidos = await _archivos_incluidos(service, rubrica.id, "Override, Test")
+        assert not any(a.endswith("build.gradle") for a in incluidos)
+        assert any(a.endswith(".java") for a in incluidos)
+
+    async def test_entrega_individual_web_completo_de_la_rubrica(
+        self,
+        db_session: AsyncSession,
+        comision: Comision,
+        rubrica: Rubrica,
+        subidor: Usuario,
+    ):
+        """Triangulación: `web_completo` trae el .css pero no el .gradle."""
+        rubrica.modo_consolidacion = "web_completo"
+        await db_session.commit()
+
+        service = EntregaService(db_session)
+        data = EntregaCreate(
+            comision_id=comision.id,
+            rubrica_id=rubrica.id,
+            alumno_nombre="Web, Alumno",
+        )
+
+        await service.crear_entrega_individual(
+            data=data,
+            archivo=_upload(crear_zip_proyecto_spring(), "tp.zip"),
+            subido_por_id=subidor.id,
+        )
+
+        incluidos = await _archivos_incluidos(service, rubrica.id, "Web, Alumno")
+        assert any(a.endswith("estilos.css") for a in incluidos)
+        assert not any(a.endswith("build.gradle") for a in incluidos)
+
+    async def test_entrega_masiva_usa_el_modo_de_la_rubrica(
+        self,
+        db_session: AsyncSession,
+        comision: Comision,
+        rubrica: Rubrica,
+        subidor: Usuario,
+    ):
+        """La carga masiva también toma el modo de la rúbrica."""
+        rubrica.modo_consolidacion = "proyecto_completo"
+        await db_session.commit()
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("Galarza Manuel_925405_assignsubmission_file/build.gradle", "dependencies { }")
+            zf.writestr("Galarza Manuel_925405_assignsubmission_file/App.java", "class App {}")
+
+        service = EntregaService(db_session)
+        await service.crear_entrega_masiva(
+            comision_id=comision.id,
+            rubrica_id=rubrica.id,
+            archivo_zip=_upload(buffer.getvalue(), "entregas.zip"),
+            subido_por_id=subidor.id,
+        )
+
+        incluidos = await _archivos_incluidos(service, rubrica.id, "Galarza Manuel")
+        assert any(a.endswith("build.gradle") for a in incluidos), (
+            f"build.gradle no llegó al corrector. Incluidos: {incluidos}"
+        )
