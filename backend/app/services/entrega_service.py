@@ -91,7 +91,7 @@ class EntregaService:
         archivo: UploadFile,
         subido_por_id: int,
         sobrescribir: bool = False,
-        modo_consolidacion: str = "solo_codigo",
+        modo_consolidacion: str | None = None,
         extensiones_personalizadas: list[str] | None = None,
         moodle_user_id: int | None = None,
     ) -> EntregaResponse:
@@ -132,6 +132,11 @@ class EntregaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Rúbrica no encontrada o inactiva",
             )
+
+        # BUG-CONSOLIDACION: sin modo explícito manda la rúbrica, no el default.
+        modo_consolidacion, extensiones_personalizadas = self._resolver_modo(
+            rubrica, modo_consolidacion, extensiones_personalizadas
+        )
 
         # Validate file type
         archivo_tipo = self._get_file_type(archivo.filename)
@@ -278,7 +283,7 @@ class EntregaService:
         contenido_bytes: bytes,
         subido_por_id: int,
         moodle_user_id: int | None = None,
-        modo_consolidacion: str = "solo_codigo",
+        modo_consolidacion: str | None = None,
         extensiones_personalizadas: list[str] | None = None,
     ) -> ResultadoImportEntrega:
         """Crea una entrega a partir de bytes (descarga de Moodle), de forma idempotente.
@@ -300,6 +305,14 @@ class EntregaService:
             return ResultadoImportEntrega(
                 status="error",
                 detalle=f"Tipo de archivo no soportado: {archivo_nombre}",
+            )
+
+        # BUG-CONSOLIDACION: los callers actuales ya pasan el modo de la rúbrica,
+        # pero si alguno lo omite se lee de la rúbrica en vez de caer al default.
+        if modo_consolidacion is None:
+            rubrica = await self.rubrica_repo.get_active_by_id(rubrica_id)
+            modo_consolidacion, extensiones_personalizadas = self._resolver_modo(
+                rubrica, None, extensiones_personalizadas
             )
 
         # Idempotencia: no re-importar ni pisar entregas existentes
@@ -361,6 +374,34 @@ class EntregaService:
         )
         created_entrega = await self.entrega_repo.create(entrega)
         return ResultadoImportEntrega(status="creada", entrega_id=created_entrega.id)
+
+    @staticmethod
+    def _resolver_modo(
+        rubrica: Any,
+        modo_consolidacion: str | None,
+        extensiones_personalizadas: list[str] | None,
+    ) -> tuple[str, list[str] | None]:
+        """Decide con qué modo se consolida una entrega.
+
+        BUG-CONSOLIDACION: los endpoints de subida recibían `modo_consolidacion`
+        del formulario con default `"solo_codigo"` y nunca miraban la rúbrica.
+        Un cliente que no mandara el campo (la skill de Moodle, un script, curl)
+        consolidaba en `solo_codigo` aunque la rúbrica pidiera
+        `proyecto_completo`, y los `.gradle`/`.properties`/`.xml` no llegaban al
+        corrector: el modelo informaba "no se entregó el archivo de build" sobre
+        archivos que el alumno SÍ había entregado.
+
+        Precedencia: modo explícito del caller > modo de la rúbrica >
+        `"solo_codigo"`. Se conserva el override explícito porque hay rúbricas
+        que se corrigen a propósito con un modo distinto al declarado.
+        """
+        if modo_consolidacion:
+            return modo_consolidacion, extensiones_personalizadas
+
+        modo_rubrica = getattr(rubrica, "modo_consolidacion", None) or "solo_codigo"
+        # Las extensiones solo aplican al modo que las trajo: heredar las del
+        # caller sobre el modo de la rúbrica mezclaría dos configuraciones.
+        return modo_rubrica, getattr(rubrica, "extensiones_personalizadas", None)
 
     def _resultado_pdf(
         self, contenido_bytes: bytes, archivo_nombre: str
@@ -802,7 +843,7 @@ class EntregaService:
         archivo_zip: UploadFile,
         subido_por_id: int,
         sobrescribir: bool = False,
-        modo_consolidacion: str = "solo_codigo",
+        modo_consolidacion: str | None = None,
         extensiones_personalizadas: list[str] | None = None,
     ) -> CargaMasivaResponse:
         """
@@ -852,6 +893,11 @@ class EntregaService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Rúbrica no encontrada o inactiva",
             )
+
+        # BUG-CONSOLIDACION: sin modo explícito manda la rúbrica, no el default.
+        modo_consolidacion, extensiones_personalizadas = self._resolver_modo(
+            rubrica, modo_consolidacion, extensiones_personalizadas
+        )
 
         # Validate file type
         if not archivo_zip.filename or not archivo_zip.filename.lower().endswith(".zip"):
