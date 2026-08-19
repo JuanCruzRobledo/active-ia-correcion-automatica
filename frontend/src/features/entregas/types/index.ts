@@ -130,16 +130,27 @@ export interface Entrega {
   estado: EstadoEntrega;
   archivado: boolean;
   hash_sha256: string | null;
-  subido_por_id: number;
+  // fix-detalle-entrega-500: nullable en el backend. Las entregas que crea la
+  // importación desde Moodle no las subió ninguna persona.
+  subido_por_id: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface UsuarioInfo {
+  id: number;
+  nombre: string;
+  email: string | null;
 }
 
 export interface EntregaDetail extends Entrega {
   comision: ComisionInfo;
   rubrica: RubricaInfo;
   correccion: CorreccionInfo | null;
-  subido_por_nombre: string;
+  // fix-detalle-entrega-500: NULL cuando la entrega no la subió una persona
+  // (importación automática desde Moodle). Reemplaza a `subido_por_nombre`, que
+  // declaraba un campo plano que el backend nunca devolvió.
+  subido_por: UsuarioInfo | null;
 }
 
 export interface EntregaAccionMasivaResponse {

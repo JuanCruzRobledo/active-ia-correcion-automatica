@@ -113,7 +113,11 @@ class EntregaResponse(BaseModel):
     estado: EstadoEntregaEnum
     archivado: bool
     hash_sha256: str | None
-    subido_por_id: int
+    # `Entrega.subido_por_id` es nullable=True en el modelo: las entregas que crea
+    # la importación desde Moodle no las subió ninguna persona. Declararlo `int`
+    # hacía fallar la validación (500) para toda entrega importada — que es por
+    # donde entra la mayoría de las entregas del sistema.
+    subido_por_id: int | None = None
     # Detalle del último error de corrección (item #1). NULL si nunca falló o tras éxito.
     error_code: str | None = None
     error_mensaje: str | None = None
@@ -133,8 +137,12 @@ class EntregaDetailResponse(EntregaResponse):
     rubrica: RubricaInfo = Field(
         description="Información de la rúbrica",
     )
-    subido_por: UsuarioInfo = Field(
-        description="Usuario que subió la entrega",
+    subido_por: UsuarioInfo | None = Field(
+        default=None,
+        description=(
+            "Usuario que subió la entrega. NULL cuando la entrega no la subió una "
+            "persona (importación automática desde Moodle)."
+        ),
     )
     tiene_correccion: bool = Field(
         default=False,

@@ -713,11 +713,18 @@ class EntregaService:
                 "tipo": entrega.rubrica.tipo.value,
                 "numero": entrega.rubrica.numero,
             },
-            subido_por={
-                "id": entrega.subido_por.id,
-                "nombre": entrega.subido_por.nombre,
-                "email": entrega.subido_por.email,
-            },
+            # `subido_por_id` es nullable: las entregas importadas desde Moodle no
+            # las subió una persona. Acceder a la relación sin comprobarla levantaba
+            # AttributeError y salía como 500 para toda entrega importada.
+            subido_por=(
+                {
+                    "id": entrega.subido_por.id,
+                    "nombre": entrega.subido_por.nombre,
+                    "email": entrega.subido_por.email,
+                }
+                if entrega.subido_por is not None
+                else None
+            ),
             tiene_correccion=entrega.correccion is not None,
             num_versiones_anteriores=num_versiones,
         )
