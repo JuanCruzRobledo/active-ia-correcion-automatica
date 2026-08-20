@@ -32,7 +32,10 @@ def _correccion(nota=85, tipo="TP", moodle_user_id=101, materia_universidad_id=N
 def _usuario():
     return MagicMock(
         id=7, moodle_username="tutor", moodle_password_encrypted="enc",
-        moodle_host="https://m",
+        # Host REAL de TUPaD y no un placeholder: desde que las escalas se
+        # resuelven por campus, un host inventado no tiene escala mapeada y el
+        # envío aborta antes de llegar a lo que estos tests ejercitan.
+        moodle_host="https://tup.sied.utn.edu.ar",
     )
 
 
@@ -50,7 +53,7 @@ def service():
         # Fase 3 multi-tenant: la fuente de credenciales es el resolver (repo),
         # no usuario.moodle_* — mockeamos el repo, no el objeto usuario.
         svc.usuario_repo.get_credenciales_moodle = AsyncMock(
-            return_value=CredencialesMoodle("https://m", "tutor", "enc")
+            return_value=CredencialesMoodle("https://tup.sied.utn.edu.ar", "tutor", "enc")
         )
         svc.moodle_sync_repo.get_ultimo_enviado = AsyncMock(return_value=None)  # no enviado aún
         svc.moodle_sync_repo.contar_por_correccion = AsyncMock(return_value=0)
@@ -219,7 +222,7 @@ async def test_subir_usa_credenciales_de_la_universidad_activa(service):
 
     service.usuario_repo.get_credenciales_moodle.assert_awaited_once_with(7, 99)
     kwargs = service.moodle.get_token.call_args.kwargs
-    assert kwargs["moodle_host"] == "https://m"
+    assert kwargs["moodle_host"] == "https://tup.sied.utn.edu.ar"
     assert kwargs["username"] == "tutor"
     assert kwargs["password_encrypted"] == "enc"
 

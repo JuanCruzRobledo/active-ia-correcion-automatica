@@ -5,7 +5,8 @@ MoodleGradeService — publica nota + feedback de una corrección en Moodle.
 Núcleo de la Funcionalidad 2. La lógica de mapeo de nota (lo más sensible) está
 aislada en `_mapear_nota` para testearla a fondo:
   - TP → escala cualitativa: nota >= 60 → índice 'Aprobado', < 60 → 'Desaprobado'.
-    ⚠️ scale_id=5 está INVERTIDO (1=Aprobado, 2=Desaprobado) — ver MOODLE_SCALE_MAP.
+    ⚠️ El orden de los índices NO es intuitivo y el `scale_id` NO es global:
+       depende del campus (`Universidad.moodle_host`). Ver MOODLE_SCALE_MAP.
   - No-TP → numérica: nota escalada al máximo REAL del assignment (no se asume 100).
 
 La orquestación (cargar corrección, token, idempotencia con moodle_sync, save_grade)
@@ -21,7 +22,7 @@ import html
 from dataclasses import dataclass
 
 from app.core.comentario_templates import CIERRE_DEVOLUCION_HTML
-from app.core.moodle_config import MOODLE_SCALE_MAP, UMBRAL_APROBACION_TP
+from app.core.moodle_config import UMBRAL_APROBACION_TP, escala_de
 from app.core.permissions import verificar_acceso_comision, verificar_materia_universidad_activa
 from app.models.enums import MoodleSyncEstado
 from app.models.moodle_sync import MoodleSync
@@ -170,11 +171,14 @@ class MoodleGradeService:
 
         # Mapeo de nota (escala invertida / escalado numérico). GradeMapError → 422.
         try:
-            grade = self._mapear_nota(rubrica.tipo.value, float(correccion.nota), grade_config)
+            grade = self._mapear_nota(
+                rubrica.tipo.value, float(correccion.nota), grade_config,
+                moodle_host=moodle_host,
+            )
         except GradeMapError as e:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
 
-        nota_texto = self._nota_texto(grade, grade_config)
+        nota_texto = self._nota_texto(grade, grade_config, moodle_host=moodle_host)
         intento = await self.moodle_sync_repo.contar_por_correccion(correccion_id) + 1
 
         # El comentario del tutor + cierre con el link "devolución" como hipervínculo (HTML).
@@ -273,7 +277,10 @@ class MoodleGradeService:
             )
 
         try:
-            grade = self._mapear_nota(rubrica.tipo.value, float(correccion.nota), grade_config)
+            grade = self._mapear_nota(
+                rubrica.tipo.value, float(correccion.nota), grade_config,
+                moodle_host=moodle_host,
+            )
         except GradeMapError as e:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e)) from e
 
@@ -289,7 +296,7 @@ class MoodleGradeService:
         )
 
         return PreviewCorreccion(
-            nota_a_enviar=self._nota_texto(grade, grade_config),
+            nota_a_enviar=self._nota_texto(grade, grade_config, moodle_host=moodle_host),
             nota_activeia=float(correccion.nota),
             comentario_sugerido=render.comentario,
             requiere_comentario_tutor=render.requiere_comentario_tutor,
@@ -324,10 +331,17 @@ class MoodleGradeService:
         return cierre
 
     @staticmethod
-    def _nota_texto(grade: float, grade_config: AssignmentGradeConfig) -> str:
-        """Representación legible de la nota enviada (para auditoría)."""
+    def _nota_texto(
+        grade: float, grade_config: AssignmentGradeConfig, *, moodle_host: str
+    ) -> str:
+        """Representación legible de la nota enviada (para auditoría).
+
+        `moodle_host` es obligatorio: los textos de una escala son los de SU
+        campus, y leerlos del campus equivocado escribiría en la auditoría una
+        nota que nunca se mandó.
+        """
         if grade_config.tipo == "escala":
-            scale = MOODLE_SCALE_MAP.get(grade_config.scale_id) or {}
+            scale = escala_de(moodle_host, grade_config.scale_id) or {}
             items = scale.get("items") or []
             idx = int(grade) - 1
             if 0 <= idx < len(items):
@@ -340,11 +354,19 @@ class MoodleGradeService:
         tipo_rubrica: str,
         nota: float,
         grade_config: AssignmentGradeConfig,
+        *,
+        moodle_host: str,
     ) -> float:
         """Traduce la nota 0-100 de Active-IA a la nota que espera Moodle.
 
         Lanza GradeMapError si el tipo de escala real no coincide con lo esperado
-        para el tipo de rúbrica, o si la escala cualitativa no está mapeada.
+        para el tipo de rúbrica, o si la escala cualitativa no está mapeada EN ESE
+        CAMPUS.
+
+        `moodle_host` es obligatorio y NO tiene default a propósito: los
+        `scale_id` son por instancia de Moodle, y resolver contra el mapa de otro
+        campus es exactamente el bug que este parámetro cierra. Un default haría
+        que un call site olvidadizo volviera a calificar invertido en silencio.
         """
         if tipo_rubrica == "TP":
             if grade_config.tipo != "escala":
@@ -352,11 +374,15 @@ class MoodleGradeService:
                     "La rúbrica es TP pero el assignment en Moodle no usa escala cualitativa "
                     f"(tipo real: {grade_config.tipo}). No se envía para no calificar mal."
                 )
-            scale = MOODLE_SCALE_MAP.get(grade_config.scale_id)
+            scale = escala_de(moodle_host, grade_config.scale_id)
             if not scale:
+                from app.core.moodle_config import normalizar_host
+
                 raise GradeMapError(
                     f"La escala de Moodle (scale_id={grade_config.scale_id}) no está mapeada "
-                    "en Active-IA. Configurala en MOODLE_SCALE_MAP antes de enviar."
+                    f"para el campus '{normalizar_host(moodle_host) or moodle_host}'. "
+                    "Cargala en MOODLE_SCALE_MAP con los índices REALES de ese campus "
+                    "(Moodle → Calificaciones → Escalas) antes de enviar."
                 )
             indice = scale["aprobado"] if nota >= UMBRAL_APROBACION_TP else scale["desaprobado"]
             return float(indice)
