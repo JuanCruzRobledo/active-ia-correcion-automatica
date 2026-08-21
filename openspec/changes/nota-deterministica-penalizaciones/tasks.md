@@ -2,8 +2,8 @@
 
 ## 1. Diagnóstico de impacto (antes de tocar nada)
 
-- [ ] 1.1 Escribir `backend/scripts/diagnostico_nota_deterministica.py` (solo lectura): recorre correcciones existentes, recalcula la nota con la fórmula nueva y reporta id, alumno, rúbrica, nota actual, nota nueva, diferencia.
-- [ ] 1.2 Listar las rúbricas de producción que tienen `penalizaciones_json` no vacío, con su `descuento_porcentaje`, para revisar si alguna fue escrita asumiendo "% del criterio" y no "% del total" (ver D1).
+- [x] 1.1 Escribir `backend/scripts/diagnostico_nota_deterministica.py` (solo lectura): recorre correcciones existentes, recalcula la nota con la fórmula nueva y reporta id, alumno, rúbrica, nota actual, nota nueva, diferencia.
+- [x] 1.2 Listar las rúbricas de producción que tienen `penalizaciones_json` no vacío, con su `descuento_porcentaje`, para revisar si alguna fue escrita asumiendo "% del criterio" y no "% del total" (ver D1).
 - [ ] 1.3 Correr el script contra un dump de producción y armar el resumen de impacto (cuántas correcciones cambian, cuánto baja la nota en promedio y en el peor caso).
 - [ ] 🛑 CHECKPOINT: presentar el resumen de impacto y la lista de rúbricas al coordinador. **No avanzar sin OK explícito.** Cerrar acá las dos Open Questions del design (base de descuentos y piso en 0).
 
