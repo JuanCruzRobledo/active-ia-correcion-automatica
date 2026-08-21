@@ -65,6 +65,10 @@ class TipoActividadEnum(str, Enum):
     COHORTE_CREADA = "COHORTE_CREADA"
     TUTOR_NEXO_CREADO = "TUTOR_NEXO_CREADO"
     EXAMEN_CREADO = "EXAMEN_CREADO"
+    # Integración con clientes externos (change api-escritura-trabajos-practicos).
+    # En un upsert idempotente la auditoría es la ÚNICA forma de reconstruir qué
+    # publicación dejó al TP como está: el estado final no lo dice.
+    TRABAJO_PRACTICO_PUBLICADO = "TRABAJO_PRACTICO_PUBLICADO"
     SNAPSHOT_GENERADO = "SNAPSHOT_GENERADO"
     NOTIFICACIONES_ENVIADAS = "NOTIFICACIONES_ENVIADAS"
     CIERRE_CURSADA_GENERADO = "CIERRE_CURSADA_GENERADO"

@@ -96,6 +96,34 @@ class MateriaRepository:
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
+    async def get_by_external_ref(
+        self, external_ref: str | None, *, universidad_id: int | None = None
+    ) -> Materia | None:
+        """
+        Get materia by external reference (change trabajos-practicos-y-external-ref).
+
+        Identificador provisto por el sistema cliente, único por universidad. Es
+        la vía de cruce para los consumidores que no vienen de Moodle y por lo
+        tanto no tienen `cmid`.
+
+        Args:
+            external_ref: Identificador externo. Cadena opaca; no se interpreta.
+            universidad_id: Scoping multi-tenant. None = sin filtro (superadmin).
+
+        Returns:
+            Materia si existe, None si no — incluido el caso de `external_ref`
+            nulo o vacío: la mayoría de las materias (las de Moodle) no tienen
+            ninguno, y un `IS NULL` las haría colisionar a todas.
+        """
+        if not external_ref:
+            return None
+
+        query = select(Materia).where(Materia.external_ref == external_ref)
+        if universidad_id is not None:
+            query = query.where(Materia.universidad_id == universidad_id)
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
     async def get_all(
         self,
         *,

@@ -41,6 +41,8 @@ from app.models.unidad import Unidad
 from app.models.componente_unidad import ComponenteUnidad
 from app.models.examen_materia import ExamenMateria
 from app.models.comision import Comision, ComisionTutor
+from app.models.trabajo_practico import TrabajoPractico
+from app.models.ejercicio import Ejercicio
 from app.models.rubrica import Rubrica
 from app.models.entrega import Entrega, EntregaHistorial
 from app.models.correccion import Correccion, CorreccionHistorial
@@ -90,6 +92,8 @@ __all__ = [
     "CoordinadorMateria",
     "Comision",
     "ComisionTutor",
+    "TrabajoPractico",
+    "Ejercicio",
     "Rubrica",
     "Entrega",
     "EntregaHistorial",

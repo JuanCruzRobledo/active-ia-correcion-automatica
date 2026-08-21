@@ -435,6 +435,74 @@ async def verificar_acceso_rubrica(
     await verificar_acceso_materia(db, usuario, ctx, row[0])
 
 
+async def verificar_acceso_trabajo_practico(
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, trabajo_practico_id: int
+) -> None:
+    """Resuelve la materia de un TP y valida el acceso (ver verificar_acceso_materia).
+
+    Change: `trabajos-practicos-y-external-ref`. Mismo patrón que
+    `verificar_acceso_rubrica`.
+
+    Los TPs dados de baja se tratan como inexistentes: un recurso que ya no
+    figura en ningún listado tampoco debe ser accesible por id.
+    """
+    if _acceso_total(ctx):
+        return
+
+    from app.models.trabajo_practico import TrabajoPractico
+
+    # Scopeado por universidad A PROPOSITO: sin esto, un TP de otra universidad
+    # daria 403 ("no tenes acceso a la materia") y uno inexistente 404, y esa
+    # diferencia le confirma al que prueba ids que el recurso existe del otro
+    # lado. Filtrando aca, ambos casos dan el mismo 404.
+    result = await db.execute(
+        select(TrabajoPractico.materia_id)
+        .where(
+            TrabajoPractico.id == trabajo_practico_id,
+            TrabajoPractico.deleted_at.is_(None),
+            TrabajoPractico.universidad_id == ctx.universidad_id,
+        )
+        .limit(1)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Trabajo práctico no encontrado"
+        )
+    await verificar_acceso_materia(db, usuario, ctx, row[0])
+
+
+async def verificar_acceso_ejercicio(
+    db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, ejercicio_id: int
+) -> None:
+    """Resuelve la materia de un ejercicio y valida el acceso.
+
+    Change: `trabajos-practicos-y-external-ref`. Usa el `materia_id`
+    denormalizado del ejercicio, sin joinear contra su TP.
+    """
+    if _acceso_total(ctx):
+        return
+
+    from app.models.ejercicio import Ejercicio
+
+    # Scopeado por universidad, por el mismo motivo que en el TP.
+    result = await db.execute(
+        select(Ejercicio.materia_id)
+        .where(
+            Ejercicio.id == ejercicio_id,
+            Ejercicio.deleted_at.is_(None),
+            Ejercicio.universidad_id == ctx.universidad_id,
+        )
+        .limit(1)
+    )
+    row = result.first()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Ejercicio no encontrado"
+        )
+    await verificar_acceso_materia(db, usuario, ctx, row[0])
+
+
 async def verificar_acceso_comision(
     db: AsyncSession, usuario: Usuario, ctx: ContextoUniversidad, comision_id: int
 ) -> None:

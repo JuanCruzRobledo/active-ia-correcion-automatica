@@ -8,13 +8,14 @@ Ref: docs/specs/06-MODELO-DATOS.md seccion 3.2, 3.3
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.cohorte import Cuatrimestre
+    from app.models.trabajo_practico import TrabajoPractico
     from app.models.comision import Comision
     from app.models.examen_materia import ExamenMateria
     from app.models.rubrica import Rubrica
@@ -51,6 +52,10 @@ class Materia(Base, TimestampMixin):
     descripcion: Mapped[str | None] = mapped_column(Text, nullable=True)
     activa: Mapped[bool] = mapped_column(default=True, index=True)
     moodle_course_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Identificador externo del sistema cliente (change trabajos-practicos-y-external-ref).
+    # OPCIONAL: las materias del flujo de Moodle no tienen ninguno. Cadena opaca:
+    # se guarda y se compara, nunca se interpreta.
+    external_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # ===== Dashboard de Gestores (PLAN_DASHBOARD_GESTORES.md) =====
     cuatrimestre_id: Mapped[int | None] = mapped_column(
@@ -109,6 +114,17 @@ class Materia(Base, TimestampMixin):
             "codigo",
             name="uq_materias_universidad_id_codigo",
         ),
+        # El identificador externo es único DENTRO de su universidad. Parcial
+        # sobre no nulos: la enorme mayoría de las materias (las de Moodle) no
+        # tienen ninguno, y varios NULL no deben colisionar entre sí.
+        Index(
+            "uq_materia_universidad_external_ref",
+            "universidad_id",
+            "external_ref",
+            unique=True,
+            postgresql_where=text("external_ref IS NOT NULL"),
+            sqlite_where=text("external_ref IS NOT NULL"),
+        ),
     )
 
     # Relationships
@@ -139,6 +155,15 @@ class Materia(Base, TimestampMixin):
         "Comision",
         back_populates="materia",
         lazy="selectin",
+    )
+    # SIN `lazy="selectin"`, a diferencia de sus hermanas de acá arriba. Con
+    # selectin, CADA carga de una materia en toda la app dispara un SELECT extra
+    # contra `trabajos_practicos` — una tabla que hoy no lee ningún camino del
+    # flujo de Moodle, que es la enorme mayoría del tráfico. Los repositorios que
+    # sí la necesiten piden `selectinload(Materia.trabajos_practicos)` explícito.
+    trabajos_practicos: Mapped[list["TrabajoPractico"]] = relationship(
+        "TrabajoPractico",
+        back_populates="materia",
     )
     rubricas: Mapped[list["Rubrica"]] = relationship(
         "Rubrica",

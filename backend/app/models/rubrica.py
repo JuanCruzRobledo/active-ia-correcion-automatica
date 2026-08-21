@@ -8,7 +8,7 @@ Ref: docs/specs/Rubrica.md (V2 schema)
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ARRAY, Enum as SQLEnum, ForeignKey, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import ARRAY, Enum as SQLEnum, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,7 @@ from app.models.base import Base, TimestampMixin
 from app.models.enums import FuenteRubricaEnum, TipoRubricaEnum
 
 if TYPE_CHECKING:
+    from app.models.ejercicio import Ejercicio
     from app.models.entrega import Entrega
     from app.models.materia import Materia
     from app.models.unidad import Unidad
@@ -152,13 +153,45 @@ class Rubrica(Base, TimestampMixin):
         comment="Versión del schema de criterios_json (1 = sin peso por subcriterio, 2 = con peso por subcriterio)",
     )
 
+    # Ejercicio del que esta rúbrica es dueña (change trabajos-practicos-y-external-ref).
+    # NULL para las rúbricas del flujo de Moodle, que son la mayoría y siguen
+    # comportándose exactamente igual. Único: fuerza el 1:1 con el ejercicio.
+    #
+    # La FK vive de ESTE lado y no en `ejercicios` a propósito: es lo que permite
+    # que la condición del índice parcial de abajo se evalúe sobre esta misma
+    # tabla, sin joins.
+    ejercicio_id: Mapped[int | None] = mapped_column(
+        ForeignKey("ejercicios.id"),
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+
     __table_args__ = (
-        UniqueConstraint(
+        # Antes era un UniqueConstraint total. Con cuatro ejercicios de un mismo
+        # TP, sus cuatro rúbricas comparten (materia_id, tipo, numero, anio) y el
+        # constraint rechazaba de la segunda en adelante — hacía imposible el
+        # nivel de ejercicio.
+        #
+        # Como índice PARCIAL sobre `ejercicio_id IS NULL`, las rúbricas de Moodle
+        # conservan EXACTAMENTE la unicidad que tenían (cero cambio de
+        # comportamiento para el flujo existente) y las de ejercicio quedan
+        # exentas: su unicidad la garantiza el `external_ref` del ejercicio.
+        #
+        # Mismo patrón que `uq_entrega_rubrica_alumno` (entrega.py).
+        Index(
+            "uq_rubrica_materia_tipo_numero_anio",
             "materia_id",
             "tipo",
             "numero",
             "anio",
-            name="uq_rubrica_materia_tipo_numero_anio",
+            unique=True,
+            postgresql_where=text("ejercicio_id IS NULL"),
+            # SQLite también soporta índices parciales, y la suite corre sobre
+            # SQLite. Sin esto el índice se crea TOTAL en los tests y el caso que
+            # justifica todo el change (cuatro ejercicios, cuatro rúbricas) no se
+            # puede verificar — quedaría confiando en el metadata del modelo.
+            sqlite_where=text("ejercicio_id IS NULL"),
         ),
     )
 
@@ -175,6 +208,10 @@ class Rubrica(Base, TimestampMixin):
     unidad: Mapped["Unidad | None"] = relationship(
         "Unidad",
         back_populates="rubricas",
+    )
+    ejercicio: Mapped["Ejercicio | None"] = relationship(
+        "Ejercicio",
+        back_populates="rubrica",
     )
 
     def __repr__(self) -> str:

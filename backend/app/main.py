@@ -291,6 +291,10 @@ def register_routers(app: FastAPI) -> None:
 
     app.include_router(universidades_router, prefix="/api/v1")
 
+    from app.routers.trabajos_practicos import router as trabajos_practicos_router
+
+    app.include_router(trabajos_practicos_router, prefix="/api/v1")
+
 
 # Crear instancia de la aplicacion
 app = create_application()
