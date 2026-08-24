@@ -56,6 +56,31 @@ class Materia(Base, TimestampMixin):
     # OPCIONAL: las materias del flujo de Moodle no tienen ninguno. Cadena opaca:
     # se guarda y se compara, nunca se interpreta.
     external_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Comisión donde se depositan las entregas que llegan por la integración
+    # externa (change correccion-por-ejercicio-con-tests).
+    #
+    # `entregas.comision_id` es NOT NULL y los clientes externos no tienen
+    # comisiones. Un admin configura ESTA una sola vez por materia al dar de alta
+    # la integración, y todas las correcciones por ejercicio caen ahí salvo que el
+    # cliente mande su propia referencia de cohorte.
+    #
+    # Se eligió esto antes que volver nullable `entregas.comision_id`: esa tabla es
+    # caliente, tiene índices, scoping multi-tenant y consultas en medio proyecto
+    # que asumen la comisión. Esa nullabilidad se paga para siempre; esta FK de
+    # configuración se paga una vez.
+    #
+    # `use_alter=True`: esta FK cierra un CICLO con `comisiones.materia_id`.
+    # Sin eso, SQLAlchemy no puede ordenar las tablas para CREATE/DROP y avisa con
+    # un SAWarning en cada corrida de la suite. Marcar el ciclo como conocido lo
+    # resuelve; la migración real ya lo hace bien porque usa ALTER.
+    comision_integracion_id: Mapped[int | None] = mapped_column(
+        ForeignKey(
+            "comisiones.id",
+            name="fk_materias_comision_integracion_id_comisiones",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
 
     # ===== Dashboard de Gestores (PLAN_DASHBOARD_GESTORES.md) =====
     cuatrimestre_id: Mapped[int | None] = mapped_column(
@@ -151,10 +176,14 @@ class Materia(Base, TimestampMixin):
         back_populates="materia",
         lazy="selectin",
     )
+    # `foreign_keys` explicito por la segunda FK (`comision_integracion_id`):
+    # esta relacion es la de "las comisiones DE esta materia", no la de "la
+    # comision de integracion".
     comisiones: Mapped[list["Comision"]] = relationship(
         "Comision",
         back_populates="materia",
         lazy="selectin",
+        foreign_keys="Comision.materia_id",
     )
     # SIN `lazy="selectin"`, a diferencia de sus hermanas de acá arriba. Con
     # selectin, CADA carga de una materia en toda la app dispara un SELECT extra

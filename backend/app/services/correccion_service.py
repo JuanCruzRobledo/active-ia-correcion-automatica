@@ -70,6 +70,7 @@ from app.schemas.correccion import (
     GeminiResponse,
 )
 from app.services.actividad_service import ActividadService
+from app.services.correccion_ejecucion import forzar_criterios_de_ejecucion
 from app.services.correccion_evidencia import evaluar_evidencias
 
 
@@ -411,6 +412,7 @@ class CorreccionService:
         api_key_encrypted: str,
         corregido_por_id: int,
         provider: str = "gemini",
+        resultado_tests: Any | None = None,
     ) -> CorreccionResponse:
         """
         Correct a single entrega using AI.
@@ -494,7 +496,9 @@ class CorreccionService:
         if entrega.archivo_tipo == "pdf":
             payload = self._build_pdf_correction_payload(entrega, rubrica, api_key)
         else:
-            payload = self._build_correction_payload(entrega, rubrica, api_key)
+            payload = self._build_correction_payload(
+                entrega, rubrica, api_key, resultado_tests=resultado_tests
+            )
 
         # IA-003: reclamo ATÓMICO en vez de un set no atómico. Evita que un doble
         # click / retry / lote con la misma entrega dispare DOS llamadas al LLM: el
@@ -719,6 +723,19 @@ class CorreccionService:
             criterios_evaluados, entrega=entrega, rubrica=rubrica
         )
 
+        # correccion-por-ejercicio-con-tests: si el cliente informó que el código
+        # NO COMPILA, los criterios que la rúbrica marcó como dependientes de
+        # ejecución se cierran en 0 acá, determinísticamente. Es la garantía que
+        # pidió AI-Native, y no puede vivir en el prompt: de este motor ya está
+        # medido que no honra reglas declaradas en su propia rúbrica.
+        #
+        # También va ANTES del cálculo de la nota, para que el 0 sea el que suma.
+        criterios_evaluados, criterios_sin_ejecucion = forzar_criterios_de_ejecucion(
+            criterios_evaluados,
+            resultado_tests=resultado_tests,
+            criterios_rubrica=getattr(rubrica, "criterios_json", None),
+        )
+
         # IA-001: la nota final la calcula el BACKEND determinísticamente
         # (min(suma, techo) con el techo de la RÚBRICA), no se confía en la
         # aritmética del modelo ni en gemini_response.nota. El modelo solo identifica
@@ -751,6 +768,23 @@ class CorreccionService:
         data_dict['criterios_json'] = {
             "criterios": criterios_for_json  # Store as JSON structure with float values
         }
+
+        # correccion-por-ejercicio-con-tests (5.7): la corrida con la que se
+        # produjo esta corrección queda GUARDADA junto a ella. Sin esto, dentro de
+        # tres meses una nota rara no se puede auditar: no habría forma de saber
+        # si el motor tenía los tests a la vista ni qué decían.
+        #
+        # Va como clave hermana de `criterios` dentro del JSONB que ya existe —
+        # sin migración. Los consumidores que leen `criterios_json["criterios"]`
+        # no se enteran del campo nuevo.
+        if resultado_tests is not None:
+            data_dict['criterios_json']["resultado_tests"] = (
+                resultado_tests.model_dump()
+                if hasattr(resultado_tests, "model_dump")
+                else resultado_tests
+            )
+        if criterios_sin_ejecucion:
+            data_dict['criterios_json']["criterios_sin_ejecucion"] = criterios_sin_ejecucion
 
         # IA-014: persistir el consumo (tokens/modelo/proveedor) en columnas propias.
         # IA-002: ia_proveedor = el proveedor que REALMENTE generó la corrección
@@ -989,6 +1023,7 @@ class CorreccionService:
         entrega: Any,
         rubrica: Any,
         api_key: str,
+        resultado_tests: Any | None = None,
     ) -> dict[str, Any]:
         """
         Build payload for N8N text correction webhook (/webhook/corregir).
@@ -1012,6 +1047,14 @@ class CorreccionService:
 
         return {
             "codigo": codigo,
+            # correccion-por-ejercicio-con-tests: la corrida entra al prompt como
+            # HECHO ESTABLECIDO. `model_dump()` porque el builder del prompt lee
+            # dicts, no schemas.
+            "resultado_tests": (
+                resultado_tests.model_dump()
+                if resultado_tests is not None and hasattr(resultado_tests, "model_dump")
+                else resultado_tests
+            ),
             "entrega": _build_entrega_info(
                 entrega,
                 codigo_truncado=fue_truncado,

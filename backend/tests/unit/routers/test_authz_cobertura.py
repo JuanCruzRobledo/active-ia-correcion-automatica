@@ -36,6 +36,16 @@ _ALLOWLIST = {
     # Validan pertenencia dentro de MoodleGradeService (patron B), no en el router.
     "preview_correccion_moodle",
     "subir_correccion_moodle",
+    # Patron B tambien: CorreccionEjercicioService.corregir() llama a
+    # `verificar_acceso_materia` apenas resuelve el ejercicio por su referencia
+    # externa, ANTES de crear la entrega y ANTES de gastar un token de LLM.
+    #
+    # El guard NO puede ir en el router porque el recurso se identifica por una
+    # referencia externa opaca, no por un id: para saber a que materia pertenece
+    # hay que resolver el ejercicio primero. Ponerlo en el router obligaria a
+    # resolverlo dos veces, y esa duplicacion es justo donde despues se
+    # desincronizan las dos resoluciones.
+    "corregir_ejercicio",
 }
 
 

@@ -53,6 +53,38 @@ class ComisionRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_external_ref(
+        self, external_ref: str | None, *, materia_id: int
+    ) -> Comision | None:
+        """
+        Get comision by external reference (change correccion-por-ejercicio-con-tests).
+
+        Identificador provisto por el sistema cliente, único por materia. Permite
+        que un consumidor externo modele sus cohortes en vez de caer siempre en la
+        comisión de integración de la materia.
+
+        Args:
+            external_ref: Identificador externo. Cadena opaca; no se interpreta.
+            materia_id: Acota la búsqueda a la materia del ejercicio — sin esto,
+                una referencia repetida en otra materia resolvería a la comisión
+                equivocada.
+
+        Returns:
+            Comision si existe, None si no — incluido el caso de `external_ref`
+            nulo o vacío: la mayoría de las comisiones no tienen ninguno, y un
+            `IS NULL` las haría colisionar a todas.
+        """
+        if not external_ref:
+            return None
+
+        result = await self.db.execute(
+            select(Comision).where(
+                Comision.external_ref == external_ref,
+                Comision.materia_id == materia_id,
+            )
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_id_with_relations(self, comision_id: int) -> Comision | None:
         """
         Get comision by ID with materia and tutores loaded.

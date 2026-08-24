@@ -174,6 +174,14 @@ class CorreccionResponse(BaseModel):
     corregido_por_id: int = Field(..., description="ID of user who corrected/edited")
     created_at: datetime = Field(..., serialization_alias="fecha_correccion", description="Correction date")
     updated_at: datetime = Field(..., description="Last modification date")
+    criterios_sin_ejecucion: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Ids de los criterios cerrados en 0 porque el codigo no compila "
+            "(change correccion-por-ejercicio-con-tests). Vacio en toda "
+            "correccion que no venga con resultado de tests."
+        ),
+    )
 
     @classmethod
     def model_validate(cls, obj, **kwargs):
@@ -186,6 +194,13 @@ class CorreccionResponse(BaseModel):
                 criterios_list = [CriterioEvaluado(**c) for c in criterios_json['criterios']]
             else:
                 criterios_list = []
+            # Clave hermana de `criterios`, escrita por el flujo de correccion
+            # cuando el codigo no compilaba. Ausente en todo lo anterior.
+            sin_ejecucion = (
+                criterios_json.get('criterios_sin_ejecucion') or []
+                if isinstance(criterios_json, dict)
+                else []
+            )
 
             # Create dict with all attributes
             data = {
@@ -203,6 +218,7 @@ class CorreccionResponse(BaseModel):
                 'corregido_por_id': obj.corregido_por_id,
                 'created_at': obj.created_at,
                 'updated_at': obj.updated_at,
+                'criterios_sin_ejecucion': sin_ejecucion,
             }
             return super().model_validate(data, **kwargs)
 
@@ -375,3 +391,123 @@ class CorreccionHistorialResponse(BaseModel):
     entrega_id: int
     total_versiones: int
     versiones: list[CorreccionHistorialItem]
+
+
+# ============================================================================
+# Corrección por ejercicio (change correccion-por-ejercicio-con-tests)
+#
+# Contrato acordado con AI-Native. Su cliente YA está escrito contra esto y corre
+# contra un mock hasta que el endpoint exista: todo lo que agreguemos de nuestro
+# lado tiene que ser OPCIONAL o les rompemos lo que ya construyeron.
+# ============================================================================
+
+
+class CasoTestResultado(BaseModel):
+    """Resultado de un caso de prueba ya EJECUTADO por el cliente.
+
+    Active-IA no ejecuta nada: recibe el veredicto de un sandbox real (Docker sin
+    privilegios, sin red, 10s de límite) y lo usa como hecho establecido.
+    """
+
+    id: str = Field(..., min_length=1, max_length=50)
+    paso: bool
+    entrada: Optional[str] = None
+    esperado: Optional[str] = None
+    obtenido: Optional[str] = Field(
+        default=None,
+        description=(
+            "Lo que realmente salió. Es lo que le permite al motor explicar el "
+            "fallo en vez de solo constatarlo."
+        ),
+    )
+
+
+class ResultadoTests(BaseModel):
+    """Resultado de la corrida del código del alumno en el sandbox del cliente."""
+
+    compila: bool = Field(
+        ...,
+        description=(
+            "Campo PROPIO, no derivado de `pasados == 0`. No compilar (un punto y "
+            "coma) y compilar fallando todo (el programa corre y hace otra cosa) "
+            "son situaciones distintas y merecen devoluciones distintas."
+        ),
+    )
+    error_compilacion: Optional[str] = Field(
+        default=None,
+        description="Mensaje del compilador, para poder citarlo en la devolución.",
+    )
+    total: int = Field(..., ge=0)
+    pasados: int = Field(..., ge=0)
+    casos: list[CasoTestResultado] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _validar_conteos(self) -> "ResultadoTests":
+        if self.pasados > self.total:
+            raise ValueError(
+                f"pasados ({self.pasados}) no puede superar el total ({self.total})"
+            )
+        return self
+
+
+class CorreccionEjercicioRequest(BaseModel):
+    """Cuerpo del pedido de corrección de un ejercicio."""
+
+    alumno_ref: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description=(
+            "Pseudónimo del alumno. Se almacena tal cual: Active-IA NO intenta "
+            "resolverlo a una persona ni cruzarlo con ningún padrón."
+        ),
+    )
+    codigo: str = Field(..., min_length=1)
+    resultado_tests: Optional[ResultadoTests] = Field(
+        default=None,
+        description=(
+            "Opcional: un cliente que no ejecute código puede corregir igual, "
+            "heredando los modos de fallo del motor."
+        ),
+    )
+    comision_external_ref: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "OPCIONAL y agregado por Active-IA, no pedido por el cliente: "
+            "`entregas.comision_id` es NOT NULL y el cliente no tiene comisiones. "
+            "Si no viene, se usa la comisión de integración de la materia."
+        ),
+    )
+
+    @field_validator("codigo", "alumno_ref")
+    @classmethod
+    def _no_solo_espacios(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("no puede estar vacío")
+        return v
+
+
+class CorreccionEjercicioResponse(BaseModel):
+    """Corrección de UN ejercicio.
+
+    NO expone ninguna nota agregada del trabajo práctico: el cliente dijo
+    explícitamente que el promedio ponderado lo calcula él y se lo muestra
+    desglosado al docente.
+    """
+
+    correccion_id: int
+    entrega_id: int
+    ejercicio_external_ref: str
+    rubrica_id: int
+    alumno_ref: str
+    nota: Decimal
+    criterios: list[CriterioEvaluado] = Field(default_factory=list)
+    fortalezas: list[str] = Field(default_factory=list)
+    recomendaciones: list[str] = Field(default_factory=list)
+    comentario_general: Optional[str] = None
+    # Criterios forzados a 0 por no compilar, para que el cliente pueda
+    # mostrárselos distinto al docente.
+    criterios_sin_ejecucion: list[str] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}

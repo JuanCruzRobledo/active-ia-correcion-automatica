@@ -8,7 +8,7 @@ Ref: docs/specs/06-MODELO-DATOS.md seccion 3.4, 3.5
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -47,6 +47,11 @@ class Comision(Base, TimestampMixin):
     activa: Mapped[bool] = mapped_column(default=True, index=True)
     moodle_group_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     moodle_group_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # Identificador externo del sistema cliente (change correccion-por-ejercicio-con-tests).
+    # OPCIONAL: las comisiones del flujo de Moodle no tienen ninguno. Permite que un
+    # cliente externo modele sus cohortes si quiere; si no, se usa la comisión de
+    # integración configurada en la materia.
+    external_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     __table_args__ = (
         UniqueConstraint(
@@ -55,12 +60,26 @@ class Comision(Base, TimestampMixin):
             "anio",
             name="uq_comision_materia_nombre_anio",
         ),
+        # Parcial sobre no nulos: la enorme mayoría de las comisiones (las de
+        # Moodle) no tienen identificador externo, y varios NULL no deben colisionar.
+        Index(
+            "uq_comision_materia_external_ref",
+            "materia_id",
+            "external_ref",
+            unique=True,
+            postgresql_where=text("external_ref IS NOT NULL"),
+            sqlite_where=text("external_ref IS NOT NULL"),
+        ),
     )
 
     # Relationships
+    # `foreign_keys` explicito: desde que `Materia` gano
+    # `comision_integracion_id`, hay DOS FKs entre materias y comisiones y
+    # SQLAlchemy no puede inferir cual usa este join.
     materia: Mapped["Materia"] = relationship(
         "Materia",
         back_populates="comisiones",
+        foreign_keys="Comision.materia_id",
     )
     tutores: Mapped[list["ComisionTutor"]] = relationship(
         "ComisionTutor",

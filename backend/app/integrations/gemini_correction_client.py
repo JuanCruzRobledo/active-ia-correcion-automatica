@@ -183,6 +183,113 @@ def _build_inventario_texto(entrega_info: dict | None) -> str:
     return texto
 
 
+def _build_resultado_tests_texto(
+    resultado: dict | None, max_caracteres: int = 4000
+) -> str:
+    """Sección de RESULTADO DE EJECUCIÓN — la corrida como hecho, no como opinión.
+
+    El cliente ejecuta el código en un sandbox real y sabe con certeza qué pasa y
+    qué no. Active-IA lee el código con un LLM, y de ahí salen sus tres modos de
+    fallo documentados: vio las piezas y no el vínculo, leyó una búsqueda que era
+    un literal.
+
+    **Un test ejecutado no se deja engañar por ninguna de esas cosas.** Por eso el
+    resultado entra como HECHO ESTABLECIDO: si los tests pasan, el código
+    funciona, y el motor no tiene que deducirlo. Se le redirige la atención a lo
+    que un test NO puede medir, que es justo lo que la rúbrica evalúa.
+
+    El acotamiento prioriza los casos FALLADOS: si hay que recortar, lo que
+    explica la nota es lo que falló, no lo que anduvo.
+    """
+    if not resultado:
+        return ""
+
+    compila = resultado.get("compila", True)
+    total = resultado.get("total", 0)
+    pasados = resultado.get("pasados", 0)
+
+    texto = "\n## RESULTADO DE EJECUCIÓN (HECHO ESTABLECIDO)\n"
+    texto += (
+        "Este resultado viene de ejecutar el código del alumno en un sandbox real. "
+        "Es un HECHO ESTABLECIDO, no una sugerencia ni una hipótesis. "
+        "NO vuelvas a deducir si el programa funciona: ya está respondido.\n\n"
+    )
+
+    if not compila:
+        texto += "**EL CÓDIGO NO COMPILA.**\n"
+        error = resultado.get("error_compilacion")
+        if error:
+            texto += f"Error del compilador: {error}\n"
+        texto += (
+            "\nNO cierres como cumplidos los criterios que requieren que el "
+            "programa se ejecute: ninguna corrida los respalda. Pero SÍ evaluá "
+            "todo lo que se puede juzgar leyendo el código — el diseño, la "
+            "estructura, si la excepción es verificada, si el encapsulamiento es "
+            "real. Eso sigue siendo útil y es justo lo que un compilador no da.\n"
+        )
+        return texto
+
+    texto += f"El código compila. Casos superados: {pasados} de {total}.\n"
+    if total and pasados == 0:
+        texto += (
+            "El programa CORRE pero no produce lo que se pidió en ningún caso. "
+            "Acá hay un problema de lógica, no de sintaxis.\n"
+        )
+
+    cierre = (
+        "\nConcentrate en lo que un test NO puede medir y que es lo que la rúbrica "
+        "evalúa: si la excepción es verificada o de runtime, si usó la interfaz o "
+        "enumeró los tipos concretos, si el encapsulamiento es real.\n"
+    )
+
+    casos = list(resultado.get("casos") or [])
+    if not casos:
+        return texto + cierre
+
+    # Fallados primero: si hay que recortar, lo que explica la nota es lo que
+    # falló, no lo que anduvo.
+    casos.sort(key=lambda c: bool(c.get("paso")))
+    encabezado_detalle = "\nDetalle por caso:\n"
+
+    # `max_caracteres` acota la SECCIÓN ENTERA, no solo la lista: el que la llama
+    # quiere saber cuánto le cuesta esto en el prompt, y un presupuesto que deja
+    # afuera el texto fijo no responde esa pregunta. Se reserva lo que ocupan las
+    # partes que no dependen de la cantidad de casos.
+    nota_recorte_maxima = (
+        "\n(El detalle se recortó: 9999 caso(s) no se incluyeron por límite de "
+        "tamaño. Los casos fallados van primero.)\n"
+    )
+    reservado = len(texto) + len(encabezado_detalle) + len(cierre) + len(nota_recorte_maxima)
+    presupuesto_casos = max(0, max_caracteres - reservado)
+
+    cuerpo = ""
+    recortados = 0
+    for indice, caso in enumerate(casos):
+        veredicto = "PASÓ" if caso.get("paso") else "FALLÓ"
+        linea = f"- [{caso.get('id', '?')}] {veredicto}"
+        if not caso.get("paso"):
+            esperado = (caso.get("esperado") or "")[:200]
+            obtenido = (caso.get("obtenido") or "")[:200]
+            if esperado or obtenido:
+                linea += f" — esperado: {esperado!r} / obtenido: {obtenido!r}"
+        linea += "\n"
+        # El PRIMER caso entra siempre, aunque el presupuesto sea ridículo. Con
+        # los fallados ordenados adelante, ése es el que explica la nota: una
+        # sección de resultado sin un solo caso pierde justo lo que la hace útil.
+        if indice > 0 and len(cuerpo) + len(linea) > presupuesto_casos:
+            recortados += 1
+            continue
+        cuerpo += linea
+
+    texto += encabezado_detalle + cuerpo
+    if recortados:
+        texto += (
+            f"\n(El detalle se recortó: {recortados} caso(s) no se incluyeron "
+            "por límite de tamaño. Los casos fallados van primero.)\n"
+        )
+    return texto + cierre
+
+
 def _build_reglas_de_juicio_texto() -> str:
     """Reglas de juicio contra los dos falsos positivos medidos del motor.
 
@@ -620,6 +727,8 @@ class GeminiCorrectionClient:
         criterios_texto = _build_criterios_texto(rubrica.get("criterios") or [], schema_version)
         metadata_texto = _build_metadata_texto(rubrica.get("metadata") or {})
         inventario_texto = _build_inventario_texto(payload.get("entrega"))
+        # Solo el camino de codigo: una entrega en PDF no tiene tests ejecutados.
+        resultado_tests_texto = _build_resultado_tests_texto(payload.get("resultado_tests"))
         penalizaciones_texto = _build_penalizaciones_texto(rubrica.get("penalizaciones") or [])
         condiciones_texto = _build_condiciones_texto(rubrica.get("condiciones_desaprobacion") or [])
 
@@ -644,7 +753,7 @@ class GeminiCorrectionClient:
             f'Criterios. Cada criterio incluye su descripción, sus instrucciones de puntuación'
             f' (cuando existen) y, debajo de cada subcriterio, las EVIDENCIAS verificables que'
             f' debés chequear una por una en el código:\n\n'
-            f'{inventario_texto}{criterios_texto}{penalizaciones_texto}{condiciones_texto}'
+            f'{inventario_texto}{resultado_tests_texto}{criterios_texto}{penalizaciones_texto}{condiciones_texto}'
             f'{_build_reglas_de_juicio_texto()}'
             f'{_build_evidencia_texto()}\n\n'
             f'## CÓDIGO DEL ALUMNO\n\n'

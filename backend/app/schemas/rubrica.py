@@ -124,6 +124,18 @@ class Criterio(BaseModel):
         min_length=1,
         description="Lista de subcriterios con evidencias",
     )
+    depende_de_ejecucion: bool = Field(
+        default=False,
+        description=(
+            "Si el cumplimiento de este criterio requiere que el programa CORRA "
+            "(change correccion-por-ejercicio-con-tests). Cuando el cliente informa "
+            "que el código no compila, los criterios marcados se cierran en 0 de "
+            "forma determinística en el backend: ninguna corrida los respalda. "
+            "Es un dato que solo la rúbrica tiene — el backend no puede adivinar si "
+            "'usó la interfaz' depende de la ejecución (no) o si 'produce la salida "
+            "esperada' sí. Default False: ninguna rúbrica existente cambia."
+        ),
+    )
 
     @model_validator(mode="after")
     def validar_subcriterio_ids_unicos(self) -> "Criterio":

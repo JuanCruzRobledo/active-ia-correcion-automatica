@@ -26,9 +26,12 @@ from app.schemas.moodle_grade import (
     SubirCorreccionMoodleRequest,
     SubirCorreccionMoodleResponse,
 )
+from app.services.correccion_ejercicio_service import CorreccionEjercicioService
 from app.services.moodle_grade_service import MoodleGradeService
 from app.schemas.correccion import (
     CorreccionAceptadaResponse,
+    CorreccionEjercicioRequest,
+    CorreccionEjercicioResponse,
     CorreccionHistorialResponse,
     CorreccionResponse,
     CorreccionUpdate,
@@ -537,3 +540,58 @@ async def progreso_global(
         total=subidas + pendientes + corregidas + error,
         errores_por_codigo=errores_por_codigo,
     )
+
+
+@router.post(
+    "/ejercicios/{ejercicio_ref}/corregir",
+    response_model=CorreccionEjercicioResponse,
+)
+async def corregir_ejercicio(
+    ejercicio_ref: str,
+    datos: CorreccionEjercicioRequest,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
+) -> CorreccionEjercicioResponse:
+    """
+    Corrige UN ejercicio para UN alumno (change correccion-por-ejercicio-con-tests).
+
+    Es la mitad que faltaba de la integración con AI-Native: hasta acá el cliente
+    podía publicar un TP con sus ejercicios y sus rúbricas, pero no pedir que se
+    corrija nada.
+
+    **SINCRÓNICO, a diferencia de `/entregas/{id}/corregir`.** Ese devuelve 202 y
+    el frontend poletea; acá el cliente espera la nota en la respuesta y su timeout
+    es de 90s (lo documentaron en su §7.1). Un ejercicio solo es bastante más
+    chico que un TP entero, así que entra cómodo. Si algún día no entrara, la
+    salida es un 202 + un endpoint de consulta, no alargar el timeout.
+
+    **Corregir de a un ejercicio no es una comodidad de API**: con los cuatro
+    ejercicios de un TP en un solo archivo consolidado, una pieza del ejercicio 3
+    puede contar como cumplimiento de un criterio del 1 — el modo de fallo
+    "distingue presencia, no vínculo", ya medido. De a uno, eso desaparece por
+    construcción.
+
+    **Errores:**
+    - 404: la referencia de ejercicio no existe, está dada de baja, o es de otra
+      universidad (los tres dan lo mismo: no se revela cuál).
+    - 403: sin acceso a la materia del ejercicio.
+    - 409: no se pudo resolver la comisión, o el ejercicio no tiene rúbrica.
+    - 400: el usuario no tiene API key del proveedor activo.
+    """
+    # SEC-001: el guard de acceso corre dentro del service, ANTES de tocar la
+    # credencial de IA — pero la key se resuelve acá para fallar rápido con 400
+    # si no está configurada, sin haber creado ninguna entrega.
+    key, provider = _resolver_credenciales_ia(current_user)
+
+    service = CorreccionEjercicioService(db)
+    respuesta = await service.corregir(
+        ejercicio_ref=ejercicio_ref,
+        datos=datos,
+        usuario=current_user,
+        ctx=ctx,
+        api_key_encrypted=key,
+        provider=provider,
+    )
+    await db.commit()
+    return respuesta
