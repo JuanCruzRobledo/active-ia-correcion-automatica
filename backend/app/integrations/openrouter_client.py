@@ -121,6 +121,9 @@ async def corregir(payload: dict) -> dict[str, Any]:
         _SCHEMA_CORRECCION_CODIGO_V2,
         _build_condiciones_texto,
         _build_criterios_texto,
+        _build_evidencia_texto,
+        _build_inventario_texto,
+        _build_reglas_de_juicio_texto,
         _build_metadata_texto,
         _build_penalizaciones_texto,
     )
@@ -133,6 +136,7 @@ async def corregir(payload: dict) -> dict[str, Any]:
 
     criterios_texto = _build_criterios_texto(rubrica.get("criterios") or [], schema_version)
     metadata_texto = _build_metadata_texto(rubrica.get("metadata") or {})
+    inventario_texto = _build_inventario_texto(payload.get("entrega"))
     penalizaciones_texto = _build_penalizaciones_texto(rubrica.get("penalizaciones") or [])
     condiciones_texto = _build_condiciones_texto(rubrica.get("condiciones_desaprobacion") or [])
     puntaje_max = rubrica.get("puntaje_maximo", 100)
@@ -154,7 +158,9 @@ async def corregir(payload: dict) -> dict[str, Any]:
         f'{metadata_texto}\n'
         f'Criterios. Cada criterio incluye su descripción, sus instrucciones de puntuación'
         f' (cuando existen) y las EVIDENCIAS verificables que debés chequear una por una:\n\n'
-        f'{criterios_texto}{penalizaciones_texto}{condiciones_texto}\n\n'
+        f'{inventario_texto}{criterios_texto}{penalizaciones_texto}{condiciones_texto}'
+        f'{_build_reglas_de_juicio_texto()}'
+        f'{_build_evidencia_texto()}\n\n'
         f'## CÓDIGO DEL ALUMNO\n\n'
         f'```\n{codigo}\n```\n\n'
         f'## REGLAS DE SEGURIDAD\n\n'

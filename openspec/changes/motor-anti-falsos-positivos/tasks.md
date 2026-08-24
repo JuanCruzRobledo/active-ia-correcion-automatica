@@ -2,44 +2,44 @@
 
 ## 1. Backend — Inventario de archivos al prompt (bug 1)
 
-- [ ] 1.1 (RED) Test: `_build_correction_payload` incluye el bloque de entrega con `archivos_incluidos`, `archivo_nombre` y `archivo_tipo`.
-- [ ] 1.2 (RED) Test: entrega con `archivos_incluidos` nulo o vacío → el inventario cae al nombre del archivo original.
-- [ ] 1.3 Agregar el bloque `entrega` a `_build_correction_payload` (`app/services/correccion_service.py:888-912`) y a `_build_pdf_correction_payload` (L936-960).
-- [ ] 1.4 (RED) Test: el payload informa `codigo_truncado`, `caracteres_originales` y `caracteres_enviados` cuando `_truncar_codigo` recorta, y `codigo_truncado: false` cuando no.
-- [ ] 1.5 Hacer que `_truncar_codigo` (L130-139) devuelva también el estado del truncado, sin cambiar el marcador textual que ya inyecta.
-- [ ] 1.6 Nueva sección de inventario en el prompt (`app/integrations/gemini_correction_client.py`), previa al código, con la regla dura de no descontar por archivos listados y la advertencia de truncado.
-- [ ] 1.7 (TRIANGULATE) Test: criterio sobre un archivo NO listado sigue pudiendo señalarse como ausente (la regla no anula la detección de faltantes reales).
-- [ ] 1.8 Verificar que el camino PDF y el proveedor OpenRouter heredan la sección.
+- [x] 1.1 (RED) Test: `_build_correction_payload` incluye el bloque de entrega con `archivos_incluidos`, `archivo_nombre` y `archivo_tipo`.
+- [x] 1.2 (RED) Test: entrega con `archivos_incluidos` nulo o vacío → el inventario cae al nombre del archivo original.
+- [x] 1.3 Agregar el bloque `entrega` a `_build_correction_payload` (`app/services/correccion_service.py:888-912`) y a `_build_pdf_correction_payload` (L936-960).
+- [x] 1.4 (RED) Test: el payload informa `codigo_truncado`, `caracteres_originales` y `caracteres_enviados` cuando `_truncar_codigo` recorta, y `codigo_truncado: false` cuando no.
+- [x] 1.5 Hacer que `_truncar_codigo` (L130-139) devuelva también el estado del truncado, sin cambiar el marcador textual que ya inyecta.
+- [x] 1.6 Nueva sección de inventario en el prompt (`app/integrations/gemini_correction_client.py`), previa al código, con la regla dura de no descontar por archivos listados y la advertencia de truncado.
+- [x] 1.7 (TRIANGULATE) Test: criterio sobre un archivo NO listado sigue pudiendo señalarse como ausente (la regla no anula la detección de faltantes reales).
+- [x] 1.8 Verificar que el camino PDF y el proveedor OpenRouter heredan la sección.
 - [ ] CHECKPOINT: reproducir el caso del 2026-08-04 (materia 22, rúbrica 188) y confirmar que ya no descuenta por archivos presentes.
 
 ## 2. Backend — Evidencia por criterio en el contrato de la IA
 
-- [ ] 2.1 (RED) Test: `CriterioGeminiSchema` y `CriterioEvaluado` parsean con y sin `evidencia`.
-- [ ] 2.2 Agregar `evidencia: str | None` a `CriterioGeminiSchema`, `CriterioEvaluado`, `SubcriterioEvaluado` y `CorreccionResponse` en `app/schemas/correccion.py`.
-- [ ] 2.3 Agregar `evidencia` a los cuatro `responseSchema` de `gemini_correction_client.py` (código v1/v2, PDF v1/v2) y al `response_format` de OpenRouter.
-- [ ] 2.4 Instrucción en el prompt: citar de una a tres líneas literales del código entregado por criterio (y por subcriterio en v2).
-- [ ] 2.5 (TRIANGULATE) Test: respuesta sin `evidencia` (correcciones viejas o modelo que omite) parsea y persiste sin error.
-- [ ] 2.6 Persistir `evidencia` dentro de cada criterio en `criterios_json`, sin migración.
-- [ ] CHECKPOINT: el contrato acepta evidencia y tolera su ausencia; ningún camino existente se rompe.
+- [x] 2.1 (RED) Test: `CriterioGeminiSchema` y `CriterioEvaluado` parsean con y sin `evidencia`.
+- [x] 2.2 Agregar `evidencia: str | None` a `CriterioGeminiSchema`, `CriterioEvaluado`, `SubcriterioEvaluado` y `CorreccionResponse` en `app/schemas/correccion.py`.
+- [x] 2.3 Agregar `evidencia` a los cuatro `responseSchema` de `gemini_correction_client.py` (código v1/v2, PDF v1/v2) y al `response_format` de OpenRouter.
+- [x] 2.4 Instrucción en el prompt: citar de una a tres líneas literales del código entregado por criterio (y por subcriterio en v2).
+- [x] 2.5 (TRIANGULATE) Test: respuesta sin `evidencia` (correcciones viejas o modelo que omite) parsea y persiste sin error.
+- [x] 2.6 Persistir `evidencia` dentro de cada criterio en `criterios_json`, sin migración.
+- [x] CHECKPOINT: el contrato acepta evidencia y tolera su ausencia; ningún camino existente se rompe.
 
 ## 3. Backend — Verificación de la evidencia
 
-- [ ] 3.1 (RED) Test del normalizador: cita idéntica salvo espaciado → encontrada; cita con distinta capitalización → no encontrada; cita inexistente → no encontrada.
-- [ ] 3.2 Implementar `_verificar_evidencia(cita, codigo_consolidado) -> bool` con colapso de espacios/tabs y saltos de línea ignorados, sensible al case.
-- [ ] 3.3 (RED) Test de degradación: criterio de peso 20 con puntaje 20 y cita inexistente → `WARNING`, puntaje 10, feedback anotado, log WARNING.
-- [ ] 3.4 (RED) Test: criterio de peso 20 con puntaje 6 y cita inexistente → puntaje se mantiene en 6, solo se marca `WARNING`.
-- [ ] 3.5 Implementar la degradación en `correccion_service.py`, aplicada **después** del recomputo por subcriterios del change `nota-deterministica-penalizaciones` si ese change ya está aplicado.
-- [ ] 3.6 (TRIANGULATE) Tests de las tres exenciones: criterio en 0 no se degrada; corrección de PDF no verifica; código truncado loguea sin degradar.
-- [ ] 3.7 Instrumentar la tasa de citas no verificadas en el log, para poder revisar el umbral del 50% con datos (ver Open Question del design).
+- [x] 3.1 (RED) Test del normalizador: cita idéntica salvo espaciado → encontrada; cita con distinta capitalización → no encontrada; cita inexistente → no encontrada.
+- [x] 3.2 Implementar `_verificar_evidencia(cita, codigo_consolidado) -> bool` con colapso de espacios/tabs y saltos de línea ignorados, sensible al case.
+- [x] 3.3 (RED) Test de degradación: criterio de peso 20 con puntaje 20 y cita inexistente → `WARNING`, puntaje 10, feedback anotado, log WARNING.
+- [x] 3.4 (RED) Test: criterio de peso 20 con puntaje 6 y cita inexistente → puntaje se mantiene en 6, solo se marca `WARNING`.
+- [x] 3.5 Implementar la degradación en `correccion_service.py`, aplicada **después** del recomputo por subcriterios del change `nota-deterministica-penalizaciones` si ese change ya está aplicado.
+- [x] 3.6 (TRIANGULATE) Tests de las tres exenciones: criterio en 0 no se degrada; corrección de PDF no verifica; código truncado loguea sin degradar.
+- [x] 3.7 Instrumentar la tasa de citas no verificadas en el log, para poder revisar el umbral del 50% con datos (ver Open Question del design).
 - [ ] CHECKPOINT: la verificación degrada sin desaprobar a nadie por un falso negativo. Revisar la tasa observada antes de seguir.
 
 ## 4. Backend — Reglas de vínculo y hardcodeo en el prompt (bugs 4 y 5)
 
-- [ ] 4.1 (RED) Test de caracterización del prompt actual, para tener el antes.
-- [ ] 4.2 Agregar el bloque de presencia-vs-vínculo con el ejemplo negativo de categorías/productos sin asociar.
-- [ ] 4.3 Agregar el bloque de hardcodeo con el ejemplo negativo de la búsqueda resuelta con un literal.
-- [ ] 4.4 Verificar que ambos bloques llegan al camino PDF y a OpenRouter.
-- [ ] 4.5 Medir el delta de `tokens_entrada` contra una corrección de referencia (columnas de IA-014) y dejarlo anotado.
+- [x] 4.1 (RED) Test de caracterización del prompt actual, para tener el antes.
+- [x] 4.2 Agregar el bloque de presencia-vs-vínculo con el ejemplo negativo de categorías/productos sin asociar.
+- [x] 4.3 Agregar el bloque de hardcodeo con el ejemplo negativo de la búsqueda resuelta con un literal.
+- [x] 4.4 Verificar que ambos bloques llegan al camino PDF y a OpenRouter.
+- [x] 4.5 Medir el delta de `tokens_entrada`. **Medido el 2026-08-20**: reglas de juicio 1091 chars + evidencia 682 chars = **1773 caracteres (~443 tokens) por corrección**. El bloque de reglas tiene además un test de presupuesto (`MAX_CARACTERES_REGLAS = 2200`) para que el crecimiento futuro sea una decisión consciente y no un goteo.
 - [ ] CHECKPOINT: correr los dos casos control documentados (100/100 sin vínculo, y `if puntajes[i] == 990`) y reportar el resultado honestamente — este change los reduce, no los elimina.
 
 ## 5. Backend — Restricciones de cátedra en la rúbrica (bug 6)

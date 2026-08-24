@@ -66,9 +66,11 @@ from app.schemas.correccion import (
     CorreccionUpdate,
     CorregirLoteRequest,
     CorregirLoteResponse,
+    CriterioEvaluado,
     GeminiResponse,
 )
 from app.services.actividad_service import ActividadService
+from app.services.correccion_evidencia import evaluar_evidencias
 
 
 def _problemas_respuesta_vs_rubrica(criterios_resp, rubrica) -> list[str]:
@@ -129,16 +131,67 @@ def _metricas_ia(result) -> dict:
     }
 
 
-def _truncar_codigo(codigo, limite: int):
+def _truncar_codigo(codigo, limite: int) -> tuple[str | None, bool, int]:
     """IA-015: capa el código consolidado a `limite` caracteres antes de mandarlo al
-    LLM, con un marcador de corte. None y códigos por debajo del límite pasan igual."""
-    if codigo is None or len(codigo) <= limite:
-        return codigo
+    LLM, con un marcador de corte. None y códigos por debajo del límite pasan igual.
+
+    Devuelve `(codigo, fue_truncado, caracteres_originales)`.
+
+    El estado se devuelve APARTE del texto (change motor-anti-falsos-positivos).
+    El marcador de corte va dentro del propio blob, mezclado con el código del
+    alumno, y el motor no tiene forma confiable de distinguir "esto falta porque
+    el alumno no lo entregó" de "esto falta porque lo cortamos nosotros". Con el
+    flag en un campo propio, el prompt puede advertirlo explícitamente.
+    """
+    if codigo is None:
+        return None, False, 0
+    originales = len(codigo)
+    if originales <= limite:
+        return codigo, False, originales
     marcador = (
         f"\n\n... [código truncado: superó el límite de {limite} caracteres; "
         "se corrige solo la primera parte] ..."
     )
-    return codigo[:limite] + marcador
+    return codigo[:limite] + marcador, True, originales
+
+
+def _build_entrega_info(
+    entrega,
+    *,
+    codigo_truncado: bool = False,
+    caracteres_originales: int = 0,
+    caracteres_enviados: int = 0,
+) -> dict[str, Any]:
+    """Inventario de lo que el alumno entregó, como HECHO y no como inferencia.
+
+    Bug 1 del pedido de AI-Native: `Entrega.archivos_incluidos` existía en la base,
+    se poblaba en la consolidación y **nunca llegaba al prompt**. El motor recibía
+    un blob concatenado y tenía que adivinar qué archivos había, así que descontaba
+    por archivos presentes — el 2026-08-04 dejó a una alumna desaprobada por eso.
+
+    El fallback al nombre del archivo cubre la entrega de archivo único, donde no
+    hubo consolidación: el inventario nunca puede quedar vacío, porque un inventario
+    vacío se lee como "no entregó nada", que es justamente el error a evitar.
+    """
+    incluidos = list(getattr(entrega, "archivos_incluidos", None) or [])
+    archivo_nombre = getattr(entrega, "archivo_nombre", None)
+    if not incluidos and archivo_nombre:
+        incluidos = [archivo_nombre]
+
+    # Si no hay con qué armar el inventario, se manda VACÍO y la sección del
+    # prompt no se renderiza. Degradar a "sin inventario" es correcto; degradar a
+    # un inventario con basura adentro (un `None` en la lista) sería peor que no
+    # tenerlo: el motor lo leería como un archivo llamado "None".
+    info: dict[str, Any] = {
+        "archivos_incluidos": incluidos,
+        "archivo_nombre": archivo_nombre,
+        "archivo_tipo": getattr(entrega, "archivo_tipo", None),
+        "codigo_truncado": codigo_truncado,
+    }
+    if codigo_truncado:
+        info["caracteres_originales"] = caracteres_originales
+        info["caracteres_enviados"] = caracteres_enviados
+    return info
 
 
 def _techo_de_condicion(rubrica, cd_id) -> int | None:
@@ -265,13 +318,77 @@ def _subcriterios_para_json(subcriterios) -> list[dict] | None:
                 "puntaje_maximo": float(sub_dict["puntaje_maximo"]),
                 "estado": sub_dict["estado"],
                 "feedback": sub_dict["feedback"],
+                "evidencia": sub_dict.get("evidencia"),
             }
         )
     return resultado
 
 
+def _criterio_a_dict(criterio) -> dict[str, Any]:
+    """Serializa un criterio evaluado para `criterios_json` (JSONB).
+
+    Convierte los Decimal de puntaje a float y baja el desglose por subcriterio.
+    `evidencia` (change motor-anti-falsos-positivos) viaja sola en el
+    `model_dump()` del schema; se conserva tal cual, incluido `None`, para que un
+    consumidor pueda distinguir "no citó" de "el campo no existía".
+
+    Extraído del cuerpo de `crear_correccion` para poder testear la
+    serialización sin montar una corrección entera.
+    """
+    # Acepta dict (como llega desde `model_dump()` en el flujo real) y también el
+    # schema Pydantic, para que el helper sea usable desde cualquier lado sin que
+    # el llamador tenga que saber en qué forma viene.
+    if isinstance(criterio, dict):
+        criterio_dict = dict(criterio)
+    elif hasattr(criterio, "model_dump"):
+        criterio_dict = criterio.model_dump()
+    else:
+        criterio_dict = dict(criterio)
+
+    criterio_dict["puntaje_obtenido"] = float(criterio_dict["puntaje_obtenido"])
+    criterio_dict["puntaje_maximo"] = float(criterio_dict["puntaje_maximo"])
+    criterio_dict["subcriterios_evaluados"] = _subcriterios_para_json(
+        criterio_dict.get("subcriterios_evaluados")
+    )
+    return criterio_dict
+
+
 class CorreccionService:
     """Service for AI-powered correction operations."""
+
+    @staticmethod
+    def _verificar_evidencias(criterios_evaluados, *, entrega, rubrica):
+        """Verifica las citas de evidencia y degrada las que no se comprueben.
+
+        Change `motor-anti-falsos-positivos`, bloque 3.
+
+        La verificación se APAGA (se registra pero no degrada) en los dos casos
+        donde no es concluyente y bajar el puntaje sería injusto:
+
+        - **PDF**: no hay código consolidado contra el cual comparar. La evidencia
+          se pide igual porque le sirve al tutor, pero no se puede verificar.
+        - **Código truncado**: la cita puede estar en la parte que no le llegó al
+          modelo, y el recorte lo hicimos nosotros (IA-015).
+        """
+        codigo = entrega.contenido_consolidado or entrega.contenido_preview
+        es_pdf = bool(getattr(entrega, "pdf_contenido_b64", None)) or not codigo
+        _, fue_truncado, _ = _truncar_codigo(
+            codigo, settings.MAX_CODIGO_CORRECCION_CHARS
+        )
+
+        pesos = {
+            c.get("id"): Decimal(str(c.get("peso")))
+            for c in (getattr(rubrica, "criterios_json", None) or [])
+            if c.get("id") and c.get("peso") is not None
+        }
+
+        resultado = evaluar_evidencias(
+            [c.model_dump() for c in criterios_evaluados],
+            codigo=codigo,
+            pesos_por_criterio=pesos,
+            degradar=not (es_pdf or fue_truncado),
+        )
+        return [CriterioEvaluado(**c) for c in resultado.criterios]
 
     def __init__(self, db: AsyncSession):
         """
@@ -589,9 +706,18 @@ class CorreccionService:
                 estado=c.estado,
                 feedback=c.feedback,
                 subcriterios_evaluados=_subcriterios_evaluados_de(c),
+                evidencia=c.evidencia,
             )
             for i, c in enumerate(gemini_response.criterios)
         ]
+
+        # motor-anti-falsos-positivos: verificar que la cita de cada criterio
+        # exista en el código entregado, y degradar el que no la respalde. Va
+        # ANTES del cálculo de la nota: el puntaje degradado tiene que ser el que
+        # entra en la suma, no un ajuste cosmético posterior.
+        criterios_evaluados = self._verificar_evidencias(
+            criterios_evaluados, entrega=entrega, rubrica=rubrica
+        )
 
         # IA-001: la nota final la calcula el BACKEND determinísticamente
         # (min(suma, techo) con el techo de la RÚBRICA), no se confía en la
@@ -620,16 +746,7 @@ class CorreccionService:
         data_dict = correccion_data.model_dump()
         criterios_list = data_dict.pop('criterios')  # Remove 'criterios'
 
-        # Convert Decimal to float for JSON serialization
-        criterios_for_json = []
-        for c in criterios_list:
-            criterio_dict = dict(c) if isinstance(c, dict) else c
-            criterio_dict['puntaje_obtenido'] = float(criterio_dict['puntaje_obtenido'])
-            criterio_dict['puntaje_maximo'] = float(criterio_dict['puntaje_maximo'])
-            criterio_dict['subcriterios_evaluados'] = _subcriterios_para_json(
-                criterio_dict.get('subcriterios_evaluados')
-            )
-            criterios_for_json.append(criterio_dict)
+        criterios_for_json = [_criterio_a_dict(c) for c in criterios_list]
 
         data_dict['criterios_json'] = {
             "criterios": criterios_for_json  # Store as JSON structure with float values
@@ -889,10 +1006,18 @@ class CorreccionService:
         # Use contenido_consolidado if available, fallback to preview for old entregas
         codigo = entrega.contenido_consolidado or entrega.contenido_preview
         # IA-015: capar el tamaño del código antes de mandarlo al LLM.
-        codigo = _truncar_codigo(codigo, settings.MAX_CODIGO_CORRECCION_CHARS)
+        codigo, fue_truncado, chars_originales = _truncar_codigo(
+            codigo, settings.MAX_CODIGO_CORRECCION_CHARS
+        )
 
         return {
             "codigo": codigo,
+            "entrega": _build_entrega_info(
+                entrega,
+                codigo_truncado=fue_truncado,
+                caracteres_originales=chars_originales,
+                caracteres_enviados=len(codigo or ""),
+            ),
             "rubrica": {
                 "titulo": rubrica.titulo,
                 "descripcion": rubrica.descripcion or "",
@@ -934,6 +1059,7 @@ class CorreccionService:
         """
         return {
             "pdf_base64": entrega.pdf_contenido_b64,
+            "entrega": _build_entrega_info(entrega),
             "rubrica": {
                 "titulo": rubrica.titulo,
                 "descripcion": rubrica.descripcion or "",

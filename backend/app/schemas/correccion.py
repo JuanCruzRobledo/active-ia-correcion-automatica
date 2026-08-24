@@ -47,6 +47,13 @@ class SubcriterioEvaluado(BaseModel):
     puntaje_maximo: Decimal = Field(..., ge=1, description="Maximum points for subcriterion")
     estado: Literal["OK", "WARNING", "ERROR"] = Field(..., description="Subcriterion status")
     feedback: str = Field(..., min_length=1, description="Specific feedback for this subcriterion")
+    evidencia: Optional[str] = Field(
+        default=None,
+        description=(
+            "Cita textual del codigo que respalda el puntaje (change "
+            "motor-anti-falsos-positivos). Ausente en correcciones previas."
+        ),
+    )
 
 
 class SubcriterioGeminiSchema(BaseModel):
@@ -61,6 +68,14 @@ class SubcriterioGeminiSchema(BaseModel):
     puntaje_maximo: RoundedInt = Field(ge=1)
     estado: Literal["OK", "WARNING", "ERROR"]
     feedback: str = Field(min_length=1)
+    evidencia: Optional[str] = Field(
+        default=None,
+        description=(
+            "Cita textual del codigo del alumno que respalda el puntaje. Opcional: "
+            "un criterio cerrado en 0 no tiene que citar nada, y las correcciones "
+            "viejas no la traen."
+        ),
+    )
 
 
 class CriterioEvaluado(BaseModel):
@@ -77,6 +92,13 @@ class CriterioEvaluado(BaseModel):
         description=(
             "Desglose de puntaje por subcriterio (solo rubricas schema_version=2). "
             "Ausente en correcciones viejas o de rubricas v1 — no rompe el parseo."
+        ),
+    )
+    evidencia: Optional[str] = Field(
+        default=None,
+        description=(
+            "Cita textual del código del alumno que respalda el puntaje (change "
+            "motor-anti-falsos-positivos). Ausente en correcciones previas."
         ),
     )
 
@@ -100,6 +122,14 @@ class CriterioGeminiSchema(BaseModel):
         description=(
             "Desglose de puntaje por subcriterio devuelto por la IA (solo "
             "rubricas schema_version=2). Ausente en v1 o si el modelo lo omite."
+        ),
+    )
+    evidencia: Optional[str] = Field(
+        default=None,
+        description=(
+            "Cita textual del codigo del alumno que respalda el puntaje. Opcional: "
+            "un criterio cerrado en 0 no tiene que citar nada, y las correcciones "
+            "viejas no la traen."
         ),
     )
 
