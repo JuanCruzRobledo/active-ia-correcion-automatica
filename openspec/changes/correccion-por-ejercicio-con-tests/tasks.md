@@ -18,7 +18,12 @@
 - [x] 2.2 Definir `ResultadoTests` (`compila`, `error_compilacion`, `total`, `pasados`, `casos[]`) y `CorreccionEjercicioRequest` en `app/schemas/correccion.py`.
 - [x] 2.3 (RED) Test: `compila` es un campo propio y no se deriva de `pasados == 0`; ambos casos de la tabla del pedido parsean distinto.
 - [x] 2.4 Definir la respuesta con nota y desglose por criterio del ejercicio, **sin** nota agregada del TP.
+- [x] 2.5 **(2026-08-27) Corregir el nivel de CASO contra su código, no contra su documento.** Leído `correccion_pre_ejecucion.py::_mapear` en el repo del cliente: emite `{id, nombre, paso, salida_obtenida, es_publico}`. `CasoTestResultado` esperaba `{id, paso, entrada, esperado, obtenido}`, así que Pydantic descartaba `salida_obtenida` **en silencio** y el motor corregía sin ver la salida real del alumno — justo el dato por el que existe la sección del §3.4. Schema y `_build_resultado_tests_texto` alineados; test de extremo a extremo que parte del payload real y verifica que la salida sobrevive schema → prompt.
+- [x] 2.6 **Verificado que NO hay un segundo desajuste.** El nivel superior (`compila`/`error_compilacion`/`total`/`pasados`/`casos`) coincide: su `correccion_ejecutor.py::_resultado_tests_para_activeia` remapea `passed → pasados` y descarta `failed` antes del POST.
+- [x] 2.7 **Usar `es_publico`.** Un caso oculto aporta su veredicto al prompt pero su nombre y su salida se filtran **en el código**, no con una instrucción al motor: pedirle que no mencione algo que le mostramos es confiar en que obedezca, y de este motor está medido que no siempre lo hace (bug 2). Se suma un aviso contra el otro riesgo — que invente el contenido que no ve — y entra en el presupuesto de caracteres.
 - [x] CHECKPOINT: el contrato coincide exactamente con el que el cliente ya implementó, más los dos campos opcionales.
+
+> **Pendiente propuesto (no hecho):** la respuesta no trae `salida_esperada`, y con razón — la definición del caso se la dimos nosotros en el TP. Pero eso significa que hoy el prompt muestra qué salió y no contra qué se comparaba. Se puede correlacionar por `id` contra `Ejercicio.casos_de_prueba`, que ya está persistido. Cambia el presupuesto de tokens medido en 7.5, así que va como paso propio y no colado acá.
 
 ## 3. Backend — `depende_de_ejecucion` en la rúbrica
 

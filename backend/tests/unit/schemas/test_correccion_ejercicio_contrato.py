@@ -34,12 +34,22 @@ from app.schemas.correccion import (
 
 
 def _caso(**over):
+    """Un caso TAL COMO LO MANDA EL CLIENTE.
+
+    Verificado el 2026-08-27 leyendo su código, no su documento: en
+    `correccion_pre_ejecucion.py::_mapear` arma exactamente estas cinco claves.
+
+    No manda `entrada` ni `esperado`, y tiene razón: el sandbox corre un caso
+    cuya definición se la dimos nosotros en el TP. Devolverla sería que nos
+    repita lo que ya sabemos. Lo único que el sandbox agrega, y que nadie más
+    puede saber, es qué salió.
+    """
     base = {
         "id": "t1",
+        "nombre": "Inscribe a un alumno con cupo disponible",
         "paso": True,
-        "entrada": "EVT-1\nJornadas\n2\n",
-        "esperado": "Inscripto: Ana\n",
-        "obtenido": "Inscripto: Ana\n",
+        "salida_obtenida": "Inscripto: Ana\n",
+        "es_publico": True,
     }
     base.update(over)
     return base
@@ -153,19 +163,50 @@ class TestCasoDePrueba:
         c = CasoTestResultado(**_caso(paso=True))
         assert c.paso is True
 
-    def test_caso_fallado_conserva_lo_obtenido(self):
-        """Lo que salió es lo que le permite al motor explicar el fallo."""
-        c = CasoTestResultado(
-            **_caso(paso=False, esperado="Inscripto: Ana", obtenido="Cupo lleno")
-        )
-        assert c.esperado == "Inscripto: Ana"
-        assert c.obtenido == "Cupo lleno"
+    def test_caso_fallado_conserva_la_salida_obtenida(self):
+        """Lo que salió es lo que le permite al motor explicar el fallo.
 
-    def test_los_campos_de_texto_son_opcionales(self):
+        Es el campo por el que existe todo este bloque: sin él, el motor
+        constata que falló y no puede decir por qué.
+        """
+        c = CasoTestResultado(**_caso(paso=False, salida_obtenida="Cupo lleno"))
+        assert c.salida_obtenida == "Cupo lleno"
+
+    def test_el_nombre_del_caso_viaja(self):
+        """Un id opaco no le dice nada al alumno; el nombre sí."""
+        c = CasoTestResultado(**_caso(nombre="Rechaza inscripción sin cupo"))
+        assert c.nombre == "Rechaza inscripción sin cupo"
+
+    def test_solo_id_y_paso_son_obligatorios(self):
         c = CasoTestResultado(id="t9", paso=False)
-        assert c.entrada is None
-        assert c.esperado is None
-        assert c.obtenido is None
+        assert c.nombre is None
+        assert c.salida_obtenida is None
+
+    def test_un_caso_es_publico_salvo_que_digan_lo_contrario(self):
+        """El default seguro es el que NO crea un caso oculto por omisión.
+
+        Si un cliente omite la clave, tratarlo como oculto silenciaría un caso
+        que sí se podía citar. Al revés — tratar un oculto como público — el
+        default nunca se aplica, porque el que tiene casos ocultos los marca.
+        """
+        c = CasoTestResultado(id="t9", paso=False)
+        assert c.es_publico is True
+
+    def test_un_caso_oculto_se_marca_como_tal(self):
+        c = CasoTestResultado(**_caso(es_publico=False))
+        assert c.es_publico is False
+
+    def test_los_campos_que_el_cliente_no_manda_ya_no_existen(self):
+        """`entrada` y `esperado` NO son parte del contrato de resultado.
+
+        Estaban acá por un supuesto nuestro que su código desmintió. Un campo
+        opcional que nadie llena es peor que ninguno: el próximo que lo lea va
+        a creer que hay un dato ahí.
+        """
+        campos = set(CasoTestResultado.model_fields)
+        assert "entrada" not in campos
+        assert "esperado" not in campos
+        assert "obtenido" not in campos
 
 
 class TestRespuesta:

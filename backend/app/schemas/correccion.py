@@ -407,17 +407,40 @@ class CasoTestResultado(BaseModel):
 
     Active-IA no ejecuta nada: recibe el veredicto de un sandbox real (Docker sin
     privilegios, sin red, 10s de límite) y lo usa como hecho establecido.
+
+    Los nombres son los que el cliente ya emite, verificados el 2026-08-27 contra
+    su código (`correccion_pre_ejecucion.py::_mapear`) y no contra su documento.
+    La versión anterior de este schema esperaba `entrada`/`esperado`/`obtenido`,
+    tres campos que nadie manda: Pydantic los descartaba en silencio y el motor
+    corregía sin ver la salida real del alumno, que es el único dato por el que
+    esta sección del prompt existe.
     """
 
     id: str = Field(..., min_length=1, max_length=50)
+    nombre: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description=(
+            "Nombre legible del caso. Un id opaco no le explica nada al alumno; "
+            "'Rechaza inscripción sin cupo' sí."
+        ),
+    )
     paso: bool
-    entrada: Optional[str] = None
-    esperado: Optional[str] = None
-    obtenido: Optional[str] = Field(
+    salida_obtenida: Optional[str] = Field(
         default=None,
         description=(
-            "Lo que realmente salió. Es lo que le permite al motor explicar el "
-            "fallo en vez de solo constatarlo."
+            "Lo que realmente salió por stdout. Es lo que le permite al motor "
+            "explicar el fallo en vez de solo constatarlo. El cliente ya lo "
+            "acota a 2000 caracteres antes de mandarlo."
+        ),
+    )
+    es_publico: bool = Field(
+        default=True,
+        description=(
+            "Si es False, el caso es OCULTO: cuenta para la nota pero su nombre "
+            "y su salida NO pueden aparecer en la devolución al alumno, o el "
+            "test oculto deja de serlo. El default es True porque el que tiene "
+            "casos ocultos los marca; el que omite la clave no los tiene."
         ),
     )
 

@@ -259,20 +259,52 @@ def _build_resultado_tests_texto(
         "\n(El detalle se recortó: 9999 caso(s) no se incluyeron por límite de "
         "tamaño. Los casos fallados van primero.)\n"
     )
-    reservado = len(texto) + len(encabezado_detalle) + len(cierre) + len(nota_recorte_maxima)
+    # El filtrado del contenido oculto ya protege el secreto por sí solo. Este
+    # aviso es contra el otro riesgo: que el motor, viendo un caso sin nombre ni
+    # salida, se INVENTE de qué se trataba para redactar la devolución.
+    hay_ocultos = any(c.get("es_publico", True) is False for c in casos)
+    aviso_ocultos = (
+        "\nLos casos marcados como OCULTOS cuentan para la nota, pero su "
+        "contenido no se te muestra a propósito. NO los nombres, NO describas "
+        "qué evaluaban y NO inventes su contenido en la devolución: decí que "
+        "hay casos adicionales que no pasaron y qué debería revisar el alumno.\n"
+    ) if hay_ocultos else ""
+    reservado = (
+        len(texto) + len(encabezado_detalle) + len(cierre)
+        + len(nota_recorte_maxima) + len(aviso_ocultos)
+    )
     presupuesto_casos = max(0, max_caracteres - reservado)
 
     cuerpo = ""
     recortados = 0
+    hubo_ocultos = False
     for indice, caso in enumerate(casos):
         veredicto = "PASÓ" if caso.get("paso") else "FALLÓ"
-        linea = f"- [{caso.get('id', '?')}] {veredicto}"
-        if not caso.get("paso"):
-            esperado = (caso.get("esperado") or "")[:200]
-            obtenido = (caso.get("obtenido") or "")[:200]
-            if esperado or obtenido:
-                linea += f" — esperado: {esperado!r} / obtenido: {obtenido!r}"
-        linea += "\n"
+        # Un caso OCULTO cuenta para la nota pero su contenido no puede salir de
+        # acá: si la devolución nombra el caso y muestra su salida, el alumno ya
+        # lo tiene y el próximo intento lo aprueba sin arreglar nada. Se filtra
+        # en el código y no con una instrucción en el prompt a propósito —
+        # pedirle al motor que no mencione algo que le mostramos es confiar en
+        # que obedezca, y de este motor ya está medido que no siempre lo hace.
+        es_publico = caso.get("es_publico", True) is not False
+        if not es_publico:
+            linea = f"- [{caso.get('id', '?')}] {veredicto} (caso oculto)\n"
+        else:
+            linea = f"- [{caso.get('id', '?')}]"
+            nombre = (caso.get("nombre") or "").strip()[:200]
+            if nombre:
+                linea += f" {nombre}:"
+            linea += f" {veredicto}"
+            if not caso.get("paso"):
+                # `salida_obtenida` es el único dato que el sandbox agrega y que
+                # nadie más puede saber: lo que el programa del alumno REALMENTE
+                # imprimió. Sin esto el motor constata el fallo y no lo explica.
+                # Lo esperado no viaja en la respuesta porque la definición del
+                # caso la mandamos nosotros en el TP; el cliente no la repite.
+                obtenida = (caso.get("salida_obtenida") or "")[:200]
+                if obtenida:
+                    linea += f" — salida obtenida: {obtenida!r}"
+            linea += "\n"
         # El PRIMER caso entra siempre, aunque el presupuesto sea ridículo. Con
         # los fallados ordenados adelante, ése es el que explica la nota: una
         # sección de resultado sin un solo caso pierde justo lo que la hace útil.
@@ -280,6 +312,10 @@ def _build_resultado_tests_texto(
             recortados += 1
             continue
         cuerpo += linea
+        # Se marca DESPUÉS del recorte: el aviso solo tiene sentido si el motor
+        # está viendo al menos un caso oculto. Advertir sobre algo que no está
+        # en el prompt es darle una regla sin referente.
+        hubo_ocultos = hubo_ocultos or not es_publico
 
     texto += encabezado_detalle + cuerpo
     if recortados:
@@ -287,6 +323,10 @@ def _build_resultado_tests_texto(
             f"\n(El detalle se recortó: {recortados} caso(s) no se incluyeron "
             "por límite de tamaño. Los casos fallados van primero.)\n"
         )
+    # Solo si algún oculto sobrevivió al recorte: avisar sobre casos que el motor
+    # no está viendo sería darle una advertencia sin referente.
+    if hubo_ocultos:
+        texto += aviso_ocultos
     return texto + cierre
 
 
