@@ -52,6 +52,84 @@ def _resultado(**over):
     return base
 
 
+class TestCorridaSinEvidencia:
+    """`total: 0` y `casos: []` no es una medición: es la AUSENCIA de una.
+
+    Lo destapó un bug del cliente (informado el 2026-08-28): su `_mapear` leía
+    cuatro claves que su propio sandbox no emitía, así que TODA corrección de
+    producción nos mandó el mismo objeto vacío —
+    `{"compila": true, "error_compilacion": null, "total": 0, "pasados": 0,
+    "casos": []}`— y un alumno cuyo Java no compilaba viajaba como
+    `compila: true`. Ellos ya lo corrigieron.
+
+    Pero lo que hacíamos NOSOTROS con ese payload era un defecto propio, y
+    sobrevive a su arreglo: rendereábamos «Casos superados: 0 de 0» bajo un
+    encabezado que dice HECHO ESTABLECIDO, junto con «no vuelvas a deducir si el
+    programa funciona: ya está respondido».
+
+    Las dos cosas juntas son lo peor posible: un «0 de 0» que se lee como que no
+    pasó nada, y una orden de apagar el juicio propio sobre una corrida que no
+    responde nada. Si el cliente no midió el comportamiento, la pregunta sigue
+    abierta y el motor tiene que contestarla leyendo el código, como cuando no
+    hay sección.
+    """
+
+    def _sin_evidencia(self):
+        return _resultado(compila=True, total=0, pasados=0, casos=[])
+
+    def test_no_muestra_un_cero_de_cero(self):
+        """Ese número se lee como fracaso y no mide nada."""
+        texto = _build_resultado_tests_texto(self._sin_evidencia())
+
+        assert "0 de 0" not in texto
+
+    def test_no_le_ordena_dejar_de_deducir_el_comportamiento(self):
+        """Sin evidencia, apagarle el juicio propio no lo reemplaza por nada."""
+        texto = _build_resultado_tests_texto(self._sin_evidencia()).lower()
+
+        assert "no vuelvas a deducir" not in texto
+        assert "ya está respondido" not in texto
+
+    def test_dice_explicitamente_que_no_se_ejecutaron_casos(self):
+        texto = _build_resultado_tests_texto(self._sin_evidencia()).lower()
+
+        assert "no se ejecut" in texto
+
+    def test_conserva_el_hecho_de_que_compila(self):
+        """Compilar es un dato aparte que el cliente sí puede saber sin tests."""
+        texto = _build_resultado_tests_texto(self._sin_evidencia()).lower()
+
+        assert "compila" in texto
+
+    def test_le_pide_que_juzgue_el_comportamiento_leyendo_el_codigo(self):
+        texto = _build_resultado_tests_texto(self._sin_evidencia()).lower()
+
+        assert "leyendo el código" in texto or "leyendo el codigo" in texto
+
+    def test_no_compila_sin_casos_SIGUE_siendo_evidencia(self):
+        """La simetría que no hay que romper.
+
+        Que no compile es un hecho completo por sí solo: no necesita casos para
+        respaldarlo, y el cierre determinístico de criterios depende de él.
+        """
+        texto = _build_resultado_tests_texto(
+            _resultado(compila=False, total=0, pasados=0, casos=[],
+                       error_compilacion="Main.java:12: error: ';' expected")
+        )
+
+        assert "NO COMPILA" in texto
+        assert "';' expected" in texto
+
+    def test_con_un_solo_caso_vuelve_a_ser_una_medicion(self):
+        """Triangulación: la frontera está en si hubo corrida, no en el conteo."""
+        texto = _build_resultado_tests_texto(
+            _resultado(compila=True, total=1, pasados=0, casos=[_caso("t1", False)])
+        ).lower()
+
+        assert "no vuelvas a deducir" in texto
+        assert "no se ejecut" not in texto
+
+
 class TestSeccionPresente:
     def test_informa_el_conteo(self):
         texto = _build_resultado_tests_texto(_resultado(total=6, pasados=4))

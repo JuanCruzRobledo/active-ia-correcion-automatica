@@ -207,13 +207,34 @@ def _build_resultado_tests_texto(
     compila = resultado.get("compila", True)
     total = resultado.get("total", 0)
     pasados = resultado.get("pasados", 0)
+    casos_crudos = list(resultado.get("casos") or [])
+
+    # Una corrida que compila pero no ejecutó NI UN caso no midió el
+    # comportamiento: es la AUSENCIA de una medición, no una medición con
+    # resultado cero. La distinción no es teórica — un bug del cliente
+    # (informado el 2026-08-28) hizo que durante un tiempo TODA correccion
+    # llegara como `{compila: true, total: 0, pasados: 0, casos: []}`, incluso
+    # para codigo que no compilaba.
+    #
+    # No compilar es distinto: es un hecho completo por si solo, no necesita
+    # casos que lo respalden, y el cierre deterministico de criterios depende
+    # de el.
+    sin_evidencia = compila and total == 0 and not casos_crudos
 
     texto = "\n## RESULTADO DE EJECUCIÓN (HECHO ESTABLECIDO)\n"
-    texto += (
-        "Este resultado viene de ejecutar el código del alumno en un sandbox real. "
-        "Es un HECHO ESTABLECIDO, no una sugerencia ni una hipótesis. "
-        "NO vuelvas a deducir si el programa funciona: ya está respondido.\n\n"
-    )
+    if sin_evidencia:
+        # Sin el "no vuelvas a deducir": apagarle el juicio propio al motor
+        # cuando no tenemos con que reemplazarlo es lo peor de los dos mundos.
+        texto += (
+            "Este resultado viene del sandbox del cliente. Cubre SOLO si el "
+            "código compila; el comportamiento del programa NO fue medido.\n\n"
+        )
+    else:
+        texto += (
+            "Este resultado viene de ejecutar el código del alumno en un sandbox real. "
+            "Es un HECHO ESTABLECIDO, no una sugerencia ni una hipótesis. "
+            "NO vuelvas a deducir si el programa funciona: ya está respondido.\n\n"
+        )
 
     if not compila:
         texto += "**EL CÓDIGO NO COMPILA.**\n"
@@ -229,18 +250,30 @@ def _build_resultado_tests_texto(
         )
         return texto
 
+    cierre = (
+        "\nConcentrate en lo que un test NO puede medir y que es lo que la rúbrica "
+        "evalúa: si la excepción es verificada o de runtime, si usó la interfaz o "
+        "enumeró los tipos concretos, si el encapsulamiento es real.\n"
+    )
+
+    if sin_evidencia:
+        # Nada de "0 de 0": ese numero se lee como fracaso y no mide nada.
+        texto += (
+            "El código compila. **No se ejecutaron casos de prueba**, así que "
+            "esta corrida no dice nada sobre si el programa hace lo que se pidió.\n"
+            "\nEsa pregunta sigue abierta y te toca a vos: juzgá el "
+            "comportamiento leyendo el código, con el mismo cuidado que si esta "
+            "sección no estuviera. NO interpretes la falta de casos como que el "
+            "programa falló, ni como que anduvo.\n"
+        )
+        return texto + cierre
+
     texto += f"El código compila. Casos superados: {pasados} de {total}.\n"
     if total and pasados == 0:
         texto += (
             "El programa CORRE pero no produce lo que se pidió en ningún caso. "
             "Acá hay un problema de lógica, no de sintaxis.\n"
         )
-
-    cierre = (
-        "\nConcentrate en lo que un test NO puede medir y que es lo que la rúbrica "
-        "evalúa: si la excepción es verificada o de runtime, si usó la interfaz o "
-        "enumeró los tipos concretos, si el encapsulamiento es real.\n"
-    )
 
     casos = list(resultado.get("casos") or [])
     if not casos:
