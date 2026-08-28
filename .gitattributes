@@ -1,0 +1,30 @@
+# Binarios: NUNCA convertir saltos de linea.
+#
+# Git autodetecta binario buscando bytes NUL en los primeros 8000 bytes. Un PDF
+# generado con reportlab arranca con texto (cabecera + xref) y no tiene NUL ahi,
+# asi que Git lo clasificaba como TEXTO y con core.autocrlf=true le insertaba CR
+# en cada salto al hacer checkout. Verificado el 2026-08-27: un clon fresco
+# devolvia un PDF con md5 distinto y el xref roto ("incorrect startxref
+# pointer"). Los PNG y los xlsx zafaban solo porque tienen NUL temprano; no es
+# una garantia, es suerte.
+#
+# Se declaran explicitamente en vez de poner `* text=auto`: eso ultimo
+# renormalizaria los saltos de linea de todo el repo en un solo commit gigante.
+*.pdf   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.webp  binary
+*.zip   binary
+*.gz    binary
+*.xlsx  binary
+*.xls   binary
+*.docx  binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.db    binary
+*.sqlite binary
