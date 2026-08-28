@@ -350,6 +350,71 @@ async def _asegurar_comision_integracion(
     return comision
 
 
+async def listar_materias(db: AsyncSession, uni: Universidad) -> list[Materia]:
+    """Inventario SÓLO LECTURA de las materias de una universidad.
+
+    Existe porque el `--materia-external-ref` no se puede adivinar: AI-Native
+    manda `str(materia_id)` de SU base (`activeia_sync.py`), así que el valor es
+    de ellos. Pero cuando lo manden hay que saber contra qué materia de acá
+    engancharlo, y elegir la equivocada publica los TPs del piloto sobre una
+    cursada real.
+
+    Muestra también los nombres repetidos: dos materias con el mismo nombre son
+    la trampa exacta de este paso, porque el que elige ve el nombre y no el id.
+    """
+    res = await db.execute(
+        select(Materia)
+        .where(Materia.universidad_id == uni.id, Materia.activa.is_(True))
+        .order_by(Materia.nombre, Materia.id)
+    )
+    materias = list(res.scalars().all())
+
+    print(f"\n{'=' * 62}\nMATERIAS ACTIVAS — {uni.nombre} (id={uni.id})\n{'=' * 62}")
+    if not materias:
+        error("No hay materias activas en esta universidad.")
+        return []
+
+    por_nombre: dict[str, int] = {}
+    for m in materias:
+        por_nombre[m.nombre] = por_nombre.get(m.nombre, 0) + 1
+
+    for m in materias:
+        duplicada = " ← NOMBRE REPETIDO" if por_nombre[m.nombre] > 1 else ""
+        print(f"\n  [id={m.id}] {m.nombre} (código {m.codigo}){ROJO}{duplicada}{FIN}")
+
+        if m.external_ref:
+            ok(f"external_ref = {m.external_ref}")
+        else:
+            falta("sin external_ref (AI-Native todavía no puede publicarle)")
+
+        if m.comision_integracion_id:
+            c = await db.get(Comision, m.comision_integracion_id)
+            if c is not None and c.activa:
+                ok(f"comisión de integración: '{c.nombre}' (id={c.id})")
+            else:
+                error("comision_integracion_id apunta a algo inexistente o inactivo")
+        else:
+            falta("sin comisión de integración")
+
+        res_c = await db.execute(
+            select(Comision).where(
+                Comision.materia_id == m.id, Comision.activa.is_(True)
+            ).order_by(Comision.nombre)
+        )
+        nombres = [c.nombre for c in res_c.scalars().all()]
+        if nombres:
+            nota(f"comisiones: {', '.join(nombres)}")
+
+    repetidos = sorted(n for n, c in por_nombre.items() if c > 1)
+    if repetidos:
+        print()
+        error(f"Hay nombres de materia repetidos: {', '.join(repetidos)}")
+        nota("Elegí por id, no por nombre: publicar el piloto sobre la materia")
+        nota("equivocada mete TPs de prueba en una cursada real.")
+
+    return materias
+
+
 async def _verificar(db: AsyncSession, uni: Universidad, usuario: Usuario) -> bool:
     """Relee el estado final desde la base. No confía en lo que acaba de escribir."""
     print(f"\n{'=' * 62}\nVERIFICACIÓN — {uni.nombre}\n{'=' * 62}")
@@ -399,7 +464,15 @@ async def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     ap.add_argument("--universidad", type=int, required=True, help="id de la universidad")
-    ap.add_argument("--usuario", required=True, help="username de la cuenta de AI-Native")
+    # No es `required`: `--listar-materias` es un inventario de la universidad y
+    # no tiene nada que ver con ninguna cuenta. Exigirlo ahí obligaría a inventar
+    # un usuario para poder mirar.
+    ap.add_argument("--usuario", help="username de la cuenta de AI-Native")
+    ap.add_argument(
+        "--listar-materias",
+        action="store_true",
+        help="Inventario de materias de la universidad. Sólo lee, nunca escribe.",
+    )
     ap.add_argument("--materia-external-ref", help="el ref que AI-Native va a mandar")
     ap.add_argument("--materia-codigo", help="código, si hay que crear la materia")
     ap.add_argument("--materia-nombre", help="nombre, si hay que crear la materia")
@@ -422,13 +495,29 @@ async def main() -> int:
     async with async_session_maker() as db:
         try:
             uni = await _cargar_universidad(db, args.universidad)
+
+            if args.listar_materias:
+                await listar_materias(db, uni)
+                await db.rollback()
+                return 0
+
+            if not args.usuario:
+                raise Aborta(
+                    "Falta --usuario (sólo --listar-materias puede correr sin él)."
+                )
             usuario = await _cargar_usuario(db, args.usuario)
 
             if args.verificar:
                 return 0 if await _verificar(db, uni, usuario) else 1
 
             if not args.materia_external_ref:
-                raise Aborta("Falta --materia-external-ref (o usá --verificar).")
+                raise Aborta(
+                    "Falta --materia-external-ref. Ese valor es de AI-Native: su "
+                    "`activeia_sync.py` manda `str(materia_id)` de SU base, así "
+                    "que no se puede elegir ni adivinar de este lado. Pediles el "
+                    "id de la materia del piloto. Mientras tanto, "
+                    "--listar-materias te muestra contra qué engancharlo."
+                )
 
             modo = "APLICANDO" if args.aplicar else "DRY-RUN (no escribe nada)"
             print(f"\n{'=' * 62}")

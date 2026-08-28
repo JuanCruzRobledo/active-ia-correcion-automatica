@@ -328,6 +328,94 @@ class TestIdempotencia:
         assert materia.comision_integracion_id == comision.id
 
 
+class TestListadoDeMaterias:
+    """El inventario que se mira ANTES de elegir contra qué materia enganchar.
+
+    El `--materia-external-ref` lo manda AI-Native (`str(materia_id)` de SU
+    base), así que de este lado sólo se decide una cosa: a qué materia nuestra
+    corresponde. Elegir mal publica los TPs del piloto sobre una cursada real.
+    """
+
+    @pytest.mark.asyncio
+    async def test_no_escribe_nada(self, escenario):
+        escenario["db"].add(Materia(
+            universidad_id=escenario["uni"].id, codigo="PARAD",
+            nombre="Paradigma de Programacion", activa=True,
+        ))
+        await escenario["db"].flush()
+
+        await cfg.listar_materias(escenario["db"], escenario["uni"])
+
+        res = await escenario["db"].execute(select(Comision))
+        assert res.scalars().all() == []
+        res = await escenario["db"].execute(select(CoordinadorMateria))
+        assert res.scalars().all() == []
+
+    @pytest.mark.asyncio
+    async def test_no_muestra_las_materias_de_otra_universidad(self, escenario):
+        """El inventario es por universidad, como todo lo demás del script."""
+        escenario["db"].add_all([
+            Materia(universidad_id=escenario["uni"].id, codigo="P1",
+                    nombre="De la TUPaD", activa=True),
+            Materia(universidad_id=escenario["otra"].id, codigo="P1",
+                    nombre="De la FRM", activa=True),
+        ])
+        await escenario["db"].flush()
+
+        materias = await cfg.listar_materias(escenario["db"], escenario["uni"])
+
+        assert [m.nombre for m in materias] == ["De la TUPaD"]
+
+    @pytest.mark.asyncio
+    async def test_no_muestra_materias_inactivas(self, escenario):
+        escenario["db"].add_all([
+            Materia(universidad_id=escenario["uni"].id, codigo="P1",
+                    nombre="Vigente", activa=True),
+            Materia(universidad_id=escenario["uni"].id, codigo="P2",
+                    nombre="Vieja", activa=False),
+        ])
+        await escenario["db"].flush()
+
+        materias = await cfg.listar_materias(escenario["db"], escenario["uni"])
+
+        assert [m.nombre for m in materias] == ["Vigente"]
+
+    @pytest.mark.asyncio
+    async def test_marca_los_nombres_repetidos(self, escenario, capsys):
+        """La trampa real de este paso: el que elige ve el nombre, no el id.
+
+        El dropdown de producción muestra varias entradas que parecen la misma
+        materia. Si hay dos filas con el mismo nombre, elegir por nombre es
+        elegir al azar.
+        """
+        escenario["db"].add_all([
+            Materia(universidad_id=escenario["uni"].id, codigo="P2A",
+                    nombre="Programacion 2", activa=True),
+            Materia(universidad_id=escenario["uni"].id, codigo="P2B",
+                    nombre="Programacion 2", activa=True),
+        ])
+        await escenario["db"].flush()
+
+        await cfg.listar_materias(escenario["db"], escenario["uni"])
+        salida = capsys.readouterr().out
+
+        assert "NOMBRE REPETIDO" in salida
+        assert "Elegí por id" in salida
+
+    @pytest.mark.asyncio
+    async def test_sin_repetidos_no_alarma(self, escenario, capsys):
+        escenario["db"].add(Materia(
+            universidad_id=escenario["uni"].id, codigo="PARAD",
+            nombre="Paradigma de Programacion", activa=True,
+        ))
+        await escenario["db"].flush()
+
+        await cfg.listar_materias(escenario["db"], escenario["uni"])
+        salida = capsys.readouterr().out
+
+        assert "NOMBRE REPETIDO" not in salida
+
+
 class TestVerificacion:
     """El `--verificar` relee de la base; no confía en lo que acaba de escribir."""
 
