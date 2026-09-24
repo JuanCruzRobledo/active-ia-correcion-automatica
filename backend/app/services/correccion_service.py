@@ -59,6 +59,7 @@ from app.repositories.rubrica_repository import RubricaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.schemas.correccion import (
     CorreccionCreate,
+    CorreccionExternaCreate,
     CorreccionHistorialItem,
     CorreccionHistorialResponse,
     CorreccionListItem,
@@ -503,14 +504,52 @@ class CorreccionService:
                 detail=mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, provider),
             )
 
-        # IA-010: el modelo marcó un intento de prompt injection en el código. Se
-        # registra prominente para revisión humana del tutor (la corrección con nota 0
-        # se persiste igual, pero queda el aviso en el log).
+        # A partir de acá el flujo es IDÉNTICO para cualquier origen del resultado
+        # (IA real o carga externa) -- ver `_persistir_resultado_correccion`.
+        return await self._persistir_resultado_correccion(
+            entrega=entrega,
+            rubrica=rubrica,
+            corregido_por_id=corregido_por_id,
+            gemini_response=gemini_response,
+            raw_response=result,
+            ia_proveedor=provider_efectivo,
+            metricas_extra=_metricas_ia(result),
+        )
+
+    async def _persistir_resultado_correccion(
+        self,
+        entrega: "Entrega",
+        rubrica: "Rubrica",
+        corregido_por_id: int,
+        gemini_response: GeminiResponse,
+        raw_response: dict | None,
+        ia_proveedor: str,
+        metricas_extra: dict,
+    ) -> CorreccionResponse:
+        """Valida `gemini_response` contra la rúbrica, calcula la nota determinística
+        (IA-001), versiona la corrección anterior si existía (CRUD-003), persiste la
+        nueva y deja la entrega en CORREGIDA.
+
+        Compartido por el flujo de IA real (`corregir_individual`, donde
+        `gemini_response` sale de parsear la respuesta HTTP del proveedor) y por la
+        carga externa (`cargar_correccion_externa`, donde `gemini_response` se arma
+        directo del body del request, sin ningún proveedor de IA de por medio) --
+        de acá para abajo el código no sabe ni le importa de dónde salió el
+        resultado, solo que tiene la forma correcta (`GeminiResponse`). Extraído
+        TAL CUAL de lo que antes era el final de `corregir_individual`: mismo
+        orden de pasos, mismas validaciones, mismo cálculo de nota -- ninguna
+        corrección real cambia de comportamiento con este refactor.
+        """
+        entrega_id = entrega.id
+
+        # IA-010: el modelo (o el proveedor externo) marcó un intento de prompt
+        # injection en el código. Se registra prominente para revisión humana del
+        # tutor (la corrección con nota 0 se persiste igual, pero queda el aviso).
         if getattr(gemini_response, "injection_detectada", False):
             logger.warning(
                 "IA-010: posible PROMPT INJECTION detectado en la entrega %s "
                 "(provider=%s). Revisar manualmente.",
-                entrega_id, provider,
+                entrega_id, ia_proveedor,
             )
 
         # IA-007: validar la respuesta contra la RÚBRICA antes de persistir. Una
@@ -520,13 +559,13 @@ class CorreccionService:
         if problemas:
             logger.warning(
                 "IA-007: respuesta de %s divergente de la rúbrica (entrega %s): %s",
-                provider, entrega_id, problemas,
+                ia_proveedor, entrega_id, problemas,
             )
-            _marcar_entrega_error(entrega, ERROR_IA_RESPUESTA_INVALIDA, provider)
+            _marcar_entrega_error(entrega, ERROR_IA_RESPUESTA_INVALIDA, ia_proveedor)
             await self.entrega_repo.update(entrega)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, provider),
+                detail=mensaje_error(ERROR_IA_RESPUESTA_INVALIDA, ia_proveedor),
             )
 
         # Check if correction already exists (re-correction case).
@@ -613,7 +652,7 @@ class CorreccionService:
             recomendaciones=gemini_response.recomendaciones,
             comentario_general=gemini_response.comentario_general,
             corregido_por_id=corregido_por_id,
-            raw_response=result,
+            raw_response=raw_response,
         )
 
         # Convert to SQLAlchemy model - map 'criterios' to 'criterios_json'
@@ -637,9 +676,8 @@ class CorreccionService:
 
         # IA-014: persistir el consumo (tokens/modelo/proveedor) en columnas propias.
         # IA-002: ia_proveedor = el proveedor que REALMENTE generó la corrección
-        # (puede diferir del elegido si hubo failover).
-        metricas = _metricas_ia(result)
-        metricas["ia_proveedor"] = provider_efectivo
+        # (puede diferir del elegido si hubo failover, o ser una carga externa).
+        metricas = {**metricas_extra, "ia_proveedor": ia_proveedor}
         # Fase 4 multi-tenant: universidad_id se PROPAGA desde la entrega corregida.
         correccion = Correccion(
             **data_dict, **metricas, universidad_id=entrega.universidad_id
@@ -653,6 +691,93 @@ class CorreccionService:
 
         # Return response
         return await self._build_correccion_response(created_correccion)
+
+    async def cargar_correccion_externa(
+        self,
+        entrega_id: int,
+        data: CorreccionExternaCreate,
+        corregido_por_id: int,
+    ) -> CorreccionResponse:
+        """
+        Crea una corrección para una entrega YA SUBIDA, con un resultado calculado
+        por FUERA de Active-IA (ej. un proveedor de IA corriendo LOCAL en la
+        máquina del tutor, con el mismo prompt/rúbrica que usaría Gemini) --
+        SIN llamar a ningún proveedor de IA server-side.
+
+        Pensado para integraciones externas (skills/herramientas del tutor) que ya
+        calcularon el resultado y solo necesitan que Active-IA lo registre: mismo
+        historial (CRUD-003), mismo cálculo determinístico de nota (IA-001), mismo
+        PDF de devolución y misma publicación a Moodle que una corrección de
+        Gemini/OpenRouter -- la única diferencia es de dónde salió el resultado
+        (columna `ia_proveedor`, auditable igual que hoy).
+
+        Args:
+            entrega_id: ID de la entrega ya subida (por cualquier vía existente).
+            data: Resultado ya calculado, mismo shape que `GeminiResponse` + metadata.
+            corregido_por_id: ID del usuario que dispara la carga.
+
+        Returns:
+            CorreccionResponse con la corrección persistida.
+
+        Raises:
+            HTTPException 404: Entrega o rúbrica no encontrada.
+            HTTPException 409: La entrega ya está siendo corregida (en proceso).
+            HTTPException 502: `data` no coincide con la rúbrica (IA-007).
+        """
+        entrega = await self.entrega_repo.get_by_id_with_relations(
+            entrega_id, load_contenido=False
+        )
+        if not entrega:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Entrega no encontrada",
+            )
+
+        rubrica = await self.rubrica_repo.get_active_by_id(entrega.rubrica_id)
+        if not rubrica:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Rúbrica no encontrada o inactiva",
+            )
+
+        # IA-003: mismo reclamo atómico que el flujo de IA real -- evita que una
+        # carga externa pise una corrección real que está corriendo en simultáneo
+        # (o viceversa).
+        if not await self.entrega_repo.reclamar_para_correccion(entrega_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Esta entrega ya está siendo corregida (en proceso). Esperá a que termine.",
+            )
+        entrega.estado = EstadoEntregaEnum.PENDIENTE  # reflejar en memoria
+
+        # Mismo shape que la respuesta parseada de Gemini/OpenRouter -- por eso
+        # `_persistir_resultado_correccion` no necesita saber que esto no vino de
+        # un proveedor real.
+        gemini_response = GeminiResponse(
+            nota=data.nota,
+            nota_antes_penalizaciones=data.nota_antes_penalizaciones,
+            condicion_desaprobacion_aplicada=data.condicion_desaprobacion_aplicada,
+            penalizaciones_aplicadas=data.penalizaciones_aplicadas,
+            criterios=data.criterios,
+            fortalezas=data.fortalezas,
+            recomendaciones=data.recomendaciones,
+            comentario_general=data.comentario_general,
+            injection_detectada=data.injection_detectada,
+        )
+
+        return await self._persistir_resultado_correccion(
+            entrega=entrega,
+            rubrica=rubrica,
+            corregido_por_id=corregido_por_id,
+            gemini_response=gemini_response,
+            raw_response=data.raw_response,
+            ia_proveedor=data.ia_proveedor,
+            metricas_extra={
+                "tokens_entrada": data.tokens_entrada,
+                "tokens_salida": data.tokens_salida,
+                "ia_modelo": data.ia_modelo,
+            },
+        )
 
     async def encolar_lote(
         self,

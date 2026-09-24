@@ -235,6 +235,51 @@ class CorreccionCreate(BaseModel):
         return self
 
 
+class CorreccionExternaCreate(BaseModel):
+    """Body para crear una corrección con un resultado YA CALCULADO por fuera de
+    Active-IA (ej. un proveedor de IA corriendo LOCAL en la máquina del tutor, con
+    el mismo prompt/rúbrica que usaría Gemini), sin llamar a ningún proveedor de
+    IA server-side.
+
+    Misma forma que `GeminiResponse` (nota, criterios, condicion_desaprobacion_aplicada,
+    penalizaciones_aplicadas, fortalezas, recomendaciones, comentario_general,
+    injection_detectada) -- así el servicio reusa EXACTAMENTE la misma validación
+    contra la rúbrica y el mismo cálculo determinístico de nota que el flujo de IA
+    real, sin reescribir nada de esa lógica. Se le suma metadata de auditoría para
+    que quede registrado de dónde salió, igual que con Gemini/OpenRouter.
+    """
+
+    nota: RoundedInt = Field(ge=0, le=100, description="Nota informada por el proveedor externo (se recalcula igual)")
+    nota_antes_penalizaciones: Optional[RoundedInt] = Field(default=None)
+    condicion_desaprobacion_aplicada: Optional[str] = Field(default=None, description="ID de la condición que aplica, según el proveedor externo")
+    penalizaciones_aplicadas: list[str] = Field(default_factory=list)
+    criterios: list[CriterioGeminiSchema] = Field(..., description="Criterios evaluados, mismo shape que la respuesta de Gemini")
+    fortalezas: list[str] = Field(default_factory=list)
+    recomendaciones: list[str] = Field(default_factory=list)
+    comentario_general: str = Field(...)
+    injection_detectada: bool = Field(default=False)
+
+    ia_proveedor: str = Field(..., min_length=1, description="Quién generó esta corrección (ej: 'claude_cli')")
+    ia_modelo: Optional[str] = Field(default=None, description="Modelo puntual usado (ej: 'claude-sonnet')")
+    tokens_entrada: Optional[int] = Field(default=None, ge=0)
+    tokens_salida: Optional[int] = Field(default=None, ge=0)
+    raw_response: Optional[dict] = Field(default=None, description="Respuesta cruda del proveedor externo, si aplica (auditoría)")
+
+    @field_validator("ia_proveedor")
+    @classmethod
+    def _proveedor_no_reservado(cls, v: str) -> str:
+        # "gemini"/"openrouter" en ia_proveedor significa "corrió el proveedor real"
+        # en el resto del sistema (reportes, errores_frecuentes) -- una carga externa
+        # no puede disfrazarse de eso.
+        limpio = v.strip()
+        if limpio.lower() in ("gemini", "openrouter"):
+            raise ValueError(
+                "ia_proveedor no puede ser 'gemini' ni 'openrouter' en una carga "
+                "externa -- esos nombres están reservados para el proveedor real."
+            )
+        return limpio
+
+
 class CorreccionListItem(BaseModel):
     """Schema for correction list items (lightweight)."""
 

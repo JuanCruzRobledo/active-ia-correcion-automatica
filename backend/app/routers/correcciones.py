@@ -29,6 +29,7 @@ from app.schemas.moodle_grade import (
 from app.services.moodle_grade_service import MoodleGradeService
 from app.schemas.correccion import (
     CorreccionAceptadaResponse,
+    CorreccionExternaCreate,
     CorreccionHistorialResponse,
     CorreccionResponse,
     CorreccionUpdate,
@@ -174,6 +175,48 @@ async def recorregir_entrega(
     return CorreccionAceptadaResponse(
         mensaje="Re-corrección iniciada. El estado se actualizará automáticamente.",
         entrega_id=entrega_id,
+    )
+
+
+@router.post(
+    "/entregas/{entrega_id}/cargar-externa",
+    response_model=CorreccionResponse,
+)
+async def cargar_correccion_externa(
+    entrega_id: int,
+    data: CorreccionExternaCreate,
+    current_user: Usuario = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    ctx: ContextoUniversidad = Depends(get_universidad_activa),
+) -> CorreccionResponse:
+    """
+    Crea una corrección para una entrega YA SUBIDA, con un resultado calculado por
+    FUERA de Active-IA (ej. un proveedor de IA corriendo LOCAL en la máquina del
+    tutor, con el mismo prompt/rúbrica que usaría Gemini) -- SIN llamar a ningún
+    proveedor de IA server-side ni gastar créditos de Gemini/OpenRouter.
+
+    **Pensado para integraciones externas** (skills/herramientas del tutor) que ya
+    corrieron su propia evaluación y solo necesitan que Active-IA la registre:
+    mismo historial (CRUD-003), mismo cálculo determinístico de nota (IA-001),
+    mismo PDF de devolución y misma publicación a Moodle que una corrección de
+    Gemini/OpenRouter -- queda auditada con `ia_proveedor` en vez de "gemini"/
+    "openrouter" (esos dos nombres están reservados y el body los rechaza).
+
+    **Síncrono (200, no 202)**: a diferencia de `corregir`/`recorregir`, acá no hay
+    ninguna llamada de red a un proveedor de IA dentro del request -- solo
+    validación + persistencia, así que no hace falta correrlo en background.
+
+    **Authorization:** Admin, tutor asignado a la comisión, o coordinador de su
+    materia -- MISMO permiso que corregir con IA. No es un agujero de seguridad
+    nuevo: un tutor que ya puede poner cualquier nota/criterios en una corrección
+    existente vía `PUT /correcciones/{id}` ahora también puede CREARLA con esos
+    mismos datos si todavía no existe.
+    """
+    await verificar_acceso_entrega(db, current_user, ctx, entrega_id)
+
+    service = CorreccionService(db)
+    return await service.cargar_correccion_externa(
+        entrega_id=entrega_id, data=data, corregido_por_id=current_user.id,
     )
 
 
