@@ -2,7 +2,7 @@
 
 El tutor elige el modo de corrección (``correction_provider``):
 - ``"gemini"``     → Gemini Studio (Google), key directa a generativelanguage.
-- ``"openrouter"`` → OpenRouter (modelo google/gemini-3.5-flash), auth Bearer.
+- ``"openrouter"`` → OpenRouter (modelo configurable por usuario), auth Bearer.
 
 Cada modo guarda su propia API key por separado y valida contra su proveedor.
 """
@@ -32,8 +32,8 @@ def normalizar_provider(provider: str | None) -> str:
     return limpio if limpio in PROVIDERS_VALIDOS else PROVIDER_GEMINI
 
 
-async def validar_api_key(provider: str, api_key: str) -> bool:
+async def validar_api_key(provider: str, api_key: str, model: str | None = None) -> bool:
     """Valida la API key contra el proveedor correspondiente."""
     if normalizar_provider(provider) == PROVIDER_OPENROUTER:
-        return await openrouter_client.validar_api_key(api_key)
+        return await openrouter_client.validar_api_key(api_key, model=model)
     return await gemini_studio_client.validar_api_key(api_key)

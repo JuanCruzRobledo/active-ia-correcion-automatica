@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import ContextoUniversidad, get_current_user, get_db, get_universidad_activa
 from app.core.security import decrypt_api_key, encrypt_api_key
+from app.core.config import settings
 from app.integrations import ia_provider
 from app.models import Usuario
 from app.models.enums import RolEnum
@@ -139,6 +140,7 @@ async def get_profile(
             getattr(current_user, "correction_provider", None)
         ),
         openrouter_api_key_valid=getattr(current_user, "openrouter_api_key_valid", False),
+        openrouter_model=getattr(current_user, "openrouter_model", None) or settings.OPENROUTER_MODEL,
         openrouter_api_key_last_4=_last_4(
             getattr(current_user, "openrouter_api_key_encrypted", None)
         ),
@@ -162,7 +164,7 @@ async def update_api_key(
     Configura la API Key del proveedor de corrección indicado (`provider`).
 
     Valida contra el proveedor correspondiente (Gemini Studio → Google;
-    OpenRouter → consulta real a google/gemini-3.5-flash) ANTES de guardar.
+    OpenRouter → consulta real al modelo configurado) ANTES de guardar.
     Si es válida, se encripta con AES-128-CBC (Fernet) en la columna propia de ese proveedor.
     Las keys de cada proveedor se guardan por separado.
 
@@ -172,7 +174,8 @@ async def update_api_key(
     provider = ia_provider.normalizar_provider(data.provider)
 
     # Health check contra el proveedor correspondiente antes de guardar.
-    is_valid = await ia_provider.validar_api_key(provider, api_key)
+    model = getattr(current_user, "openrouter_model", None) or settings.OPENROUTER_MODEL
+    is_valid = await ia_provider.validar_api_key(provider, api_key, model=model)
 
     if not is_valid:
         return UpdateApiKeyResponse(
@@ -265,8 +268,11 @@ async def update_correction_provider(
     provider = ia_provider.normalizar_provider(data.provider)
     user_repo = UsuarioRepository(db)
     current_user.correction_provider = provider
+    if provider == ia_provider.PROVIDER_OPENROUTER and data.openrouter_model is not None:
+        current_user.openrouter_model = data.openrouter_model
     await user_repo.update(current_user)
     return UpdateCorrectionProviderResponse(
         message="Modo de corrección actualizado",
         correction_provider=provider,
+        openrouter_model=getattr(current_user, "openrouter_model", None) or settings.OPENROUTER_MODEL,
     )

@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     # =========================================
     # Gemini API (corrección e IA directa)
     # =========================================
-    GEMINI_MODEL: str = "gemini-3.5-flash"
+    GEMINI_MODEL: str = "gemini-3.8-flash"
     GEMINI_TIMEOUT_SECONDS: float = 90.0
 
     # =========================================
@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     # La API key del usuario es de OpenRouter (sk-or-v1-...) y se usa con auth
     # Bearer.
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    OPENROUTER_MODEL: str = "google/gemini-3.5-flash"
+    OPENROUTER_MODEL: str = "google/gemini-3.8-flash"
 
     # =========================================
     # Archivos

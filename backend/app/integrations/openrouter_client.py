@@ -232,8 +232,9 @@ async def corregir(payload: dict) -> dict[str, Any]:
 
     url = f"{settings.OPENROUTER_BASE_URL.rstrip('/')}/chat/completions"
     headers = _construir_headers(api_key)
+    model = payload.get("model") or settings.OPENROUTER_MODEL
     body = {
-        "model": settings.OPENROUTER_MODEL,
+        "model": model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -275,7 +276,7 @@ async def corregir(payload: dict) -> dict[str, Any]:
                 "success": True,
                 "correccion": correccion_data,
                 "metadata": {
-                    "modelo": settings.OPENROUTER_MODEL,
+                    "modelo": model,
                     "modo": "openrouter",
                     "tokens_entrada": usage.get("prompt_tokens", 0),
                     "tokens_salida": usage.get("completion_tokens", 0),
@@ -298,17 +299,17 @@ async def corregir(payload: dict) -> dict[str, Any]:
             raise N8NError(f"Error de conexión con OpenRouter: {e}")
 
 
-async def validar_api_key(api_key: str) -> bool:
+async def validar_api_key(api_key: str, model: str | None = None) -> bool:
     """Valida una API key de OpenRouter haciendo una consulta real al modelo.
 
-    Pega a ``/chat/completions`` con ``google/gemini-3.5-flash`` (el mismo
-    modelo que usa el workflow de corrección) y una generación mínima.
+    Pega a ``/chat/completions`` con el modelo elegido para corregir
+    (o el predeterminado) y una generación mínima.
 
     Returns:
         True si la key es válida (auth OK), False en caso contrario.
     """
     url = f"{settings.OPENROUTER_BASE_URL.rstrip('/')}/chat/completions"
-    payload = construir_payload_validacion(settings.OPENROUTER_MODEL)
+    payload = construir_payload_validacion(model or settings.OPENROUTER_MODEL)
     headers = _construir_headers(api_key)
 
     try:

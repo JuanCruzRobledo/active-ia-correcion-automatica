@@ -10,6 +10,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.core.config import settings
 from app.integrations.ia_provider import (
     PROVIDER_GEMINI,
     PROVIDERS_VALIDOS,
@@ -52,6 +53,7 @@ class PerfilResponse(BaseModel):
         default=False,
         description="True si la API key de OpenRouter está configurada y validada",
     )
+    openrouter_model: str = Field(default=settings.OPENROUTER_MODEL)
     openrouter_api_key_last_4: str | None = Field(
         None,
         description="Últimos 4 caracteres de la API key de OpenRouter si está configurada",
@@ -121,6 +123,17 @@ class UpdateCorrectionProviderRequest(BaseModel):
     """Request para cambiar el modo de corrección activo (slider del perfil)."""
 
     provider: str = Field(..., description="Proveedor a activar: 'gemini' o 'openrouter'")
+    openrouter_model: str | None = Field(default=None, max_length=200)
+
+    @field_validator("openrouter_model")
+    @classmethod
+    def _validar_modelo(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip() or settings.OPENROUTER_MODEL
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.:/-]+", value):
+            raise ValueError("Ingresá el identificador del modelo con formato proveedor/modelo")
+        return value
 
     @field_validator("provider")
     @classmethod
@@ -133,6 +146,7 @@ class UpdateCorrectionProviderRequest(BaseModel):
 class UpdateCorrectionProviderResponse(BaseModel):
     message: str
     correction_provider: str
+    openrouter_model: str = Field(default=settings.OPENROUTER_MODEL)
 
 
 class UpdateKeyPagaRequest(BaseModel):

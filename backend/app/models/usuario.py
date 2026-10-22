@@ -62,6 +62,11 @@ class Usuario(Base, TimestampMixin):
         nullable=True,
     )
 
+    openrouter_model: Mapped[str] = mapped_column(
+        String(200), default="google/gemini-3.8-flash",
+        server_default="google/gemini-3.8-flash", nullable=False,
+    )
+
     gemini_api_key_valid: Mapped[bool] = mapped_column(default=False)
 
     # Validez de la API key de OpenRouter (último health check OK).

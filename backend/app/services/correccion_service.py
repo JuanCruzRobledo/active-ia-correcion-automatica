@@ -1195,6 +1195,12 @@ class CorreccionService:
         Returns:
             (result, provider_efectivo): la respuesta cruda y qué proveedor la generó.
         """
+        if provider == "openrouter":
+            usuario = await self.usuario_repo.get_by_id(corregido_por_id)
+            payload_primario = {
+                **payload_primario,
+                "model": getattr(usuario, "openrouter_model", None) or settings.OPENROUTER_MODEL,
+            }
         try:
             result = await self._call_ia_with_retry(payload_primario, provider=provider)
             return result, provider
@@ -1211,6 +1217,9 @@ class CorreccionService:
                 getattr(entrega, "id", "?"),
             )
             payload_sec = self._build_correction_payload(entrega, rubrica, api_key_sec)
+            if secundario == "openrouter":
+                usuario = await self.usuario_repo.get_by_id(corregido_por_id)
+                payload_sec["model"] = getattr(usuario, "openrouter_model", None) or settings.OPENROUTER_MODEL
             result = await self._call_ia_with_retry(payload_sec, provider=secundario)
             return result, secundario
 
