@@ -108,4 +108,3 @@ describe('PerfilPage — modelo OpenRouter', () => {
     expect(field).toBeEnabled();
   });
 });
-
