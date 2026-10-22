@@ -60,12 +60,17 @@ export async function deleteApiKey(
 }
 
 export async function updateCorrectionProvider(
-  provider: CorrectionProvider
-): Promise<{ message: string; correction_provider: CorrectionProvider }> {
+  provider: CorrectionProvider,
+  openrouterModel?: string
+): Promise<{ message: string; correction_provider: CorrectionProvider; openrouter_model: string }> {
   const { data } = await apiClient.patch<{
     message: string;
     correction_provider: CorrectionProvider;
-  }>('/perfil/correction-provider', { provider });
+    openrouter_model: string;
+  }>('/perfil/correction-provider', {
+    provider,
+    ...(openrouterModel !== undefined ? { openrouter_model: openrouterModel } : {}),
+  });
   return data;
 }
 

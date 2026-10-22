@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { useProfile, useUpdateApiKey, useDeleteApiKey, useChangePassword, useUpdateKeyPaga, useUpdateEmail, useUpdateCorrectionProvider } from '../hooks/usePerfil';
 import type { CorrectionProvider } from '../types';
+import { OpenRouterModelField } from '../components/OpenRouterModelField';
 import { updateMoodleCredentials } from '../services/perfil-service';
 import { Button } from '../../../shared/components/ui/Button';
 import { Input } from '../../../shared/components/ui/Input';
@@ -38,7 +39,7 @@ const PROVIDER_META: Record<
   openrouter: {
     nombre: 'OpenRouter (beta)',
     descripcion:
-      'Tu API Key de OpenRouter. Corrige con el modelo google/gemini-3.5-flash.',
+      'Tu API Key de OpenRouter. Elegí el modelo para tus correcciones.',
     helpUrl: 'https://openrouter.ai/keys',
     helpLabel: '¿Cómo obtener una API Key de OpenRouter? →',
   },
@@ -458,6 +459,13 @@ export const PerfilPage = () => {
               )}
             </div>
           </div>
+
+          {isOpenRouter && (
+            <OpenRouterModelField
+              key={profile.openrouter_model ?? 'default'}
+              savedModel={profile.openrouter_model}
+            />
+          )}
 
           {/* Toggle: API key paga (solo Gemini Studio — su free tier limita RPM) */}
           {!isOpenRouter && profile.gemini_api_key_valid && (

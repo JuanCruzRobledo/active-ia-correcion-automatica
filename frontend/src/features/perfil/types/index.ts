@@ -7,7 +7,7 @@
 /**
  * Modo de corrección elegido por el usuario.
  * - 'gemini'     → Corrección Gemini Studio (Google, key directa).
- * - 'openrouter' → Corrección OpenRouter (beta), modelo google/gemini-3.5-flash.
+ * - 'openrouter' → Corrección OpenRouter (beta), modelo personalizable.
  */
 export type CorrectionProvider = 'gemini' | 'openrouter';
 
@@ -28,6 +28,7 @@ export interface UserProfile {
   correction_provider: CorrectionProvider;
   openrouter_api_key_valid: boolean;
   openrouter_api_key_last_4: string | null;
+  openrouter_model?: string | null;
   moodle_username: string | null;
   moodle_host: string | null;
   moodle_configured: boolean;

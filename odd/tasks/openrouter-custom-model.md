@@ -18,7 +18,7 @@ Governance: medium for provider routing/profile preference; requested default co
 
 ## Tasks
 - [x] T1 Backend: defaults, per-user model preference/migration, existing preference API, request validation and primary/fallback routing, tests and configuration examples. Route delegated (multi-file writer). Verified default/blank/custom/malformed IDs, profile round-trip without key reentry, HTTP request and metadata, primary/fallback, and real SQLite persistence/migration backfill/new-user default/downgrade preserving users. Commit identity recorded after commit below.
-- [ ] T2 Frontend: accessible OpenRouter-only field directly below key with default/custom editing and save/reload through existing preference endpoint; service/types wiring and meaningful UI tests. Route delegated (multi-file writer). Acceptance: Google hides field; OpenRouter defaults correctly; custom value saves and survives reload; model update requires no key reentry; loading/error behavior follows form conventions. Checks: baseline/RED/GREEN/triangulation, focused and full tests, build, lint and visual check if runnable. Commit evidence pending.
+- [x] T2 Frontend: accessible OpenRouter-only field directly below key, default/custom editing and save/reload through existing preference endpoint; service/types wiring and UI tests. Route delegated (multi-file writer). Verified Google hides field, correct default, custom save/reload without key reentry, blank fallback, pending/error states. Commit identity recorded after commit below.
 
 ## Progress and verification
 - Mapping complete; no source changes before task creation. Main was clean.
@@ -30,9 +30,16 @@ Governance: medium for provider routing/profile preference; requested default co
 - Migration head: `python -m alembic heads` -> f8b4d2e6c901 (single head). SQLite upgrade/backfill/custom ORM persistence/downgrade tested; production database not contacted.
 - T1 scoped Ruff: new files pass; 36 findings in changed legacy files are identical before/after, zero introduced. `git diff --check -- backend` passes.
 - T1 authored count: 216 lines (65 existing + 21 migration + 130 tests), excluding task bookkeeping. Rollback boundary: backend files in T1 commit, downgrade migration first. RDD disabled/unmanaged.
+- T1 work-unit commit: `5e29277` (`feat(correcciones): support per-user OpenRouter models and Gemini 3.8 defaults`). Future stacked-to-main slice 1 contains this commit; no PR created.
 - T2 independent frontend writer preparing tests/component while T1 runs; no overlapping source ownership.
+- T2 strict TDD: safety baseline existing profile tests 3 passed; RED 5 failed/2 passed (after fixing test mock reset); GREEN + triangulation 10 targeted tests passed. No behavior refactor needed after GREEN.
+- T2 `npm run test`: 31 files, 150 tests passed. `npm run build`: TypeScript + production/PWA build passed, existing stale Browserslist advisory.
+- T2 scoped ESLint for new component/tests/service/types passes. Full `npm run lint`: 66 errors/4 warnings from existing code; changed PerfilPage has identical HEAD baseline (1 set-state-in-effect error/1 Moodle dependency warning). No unrelated lint fixes.
+- Impeccable detector on changed UI returns [] exit 0. First bare launcher invocation was unavailable, corrected to absolute skill launcher. `git diff --check` passes. Live authenticated visual check skipped (no authenticated runtime used); jsdom tests cover labels, visibility/order, save/reload and error/loading behavior.
+- T2 authored count: 219 lines across 6 frontend files; accumulated implementation 435 lines excluding task bookkeeping. User-selected stacked-to-main strategy applies: slice 1 backend commit, slice 2 frontend commit; no PRs published. RDD disabled/unmanaged.
+- T2 rollback boundary: 6 frontend files in T2 commit; independent from backend migration/default behavior.
 - Runtime harness: mocked provider HTTP boundary and profile UI tests; real provider requests excluded because keys/paid calls are unnecessary.
 - Rollback: revert feature commits and downgrade added migration, preserving unrelated behavior.
 
 ## Next step
-Commit verified T1, finish T2 verification, then record both work-unit commit identities and final delivery status.
+Commit verified T2 and finalize local evidence. Deployment remains user-owned: run `alembic upgrade head` in the deployment environment before starting the updated backend, and update explicit GEMINI_MODEL/OPENROUTER_MODEL environment overrides if present. No production migration, remote execution, paid model calls, push or PR performed.
