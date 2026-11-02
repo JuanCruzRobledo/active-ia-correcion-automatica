@@ -4,6 +4,8 @@ enorme (muchos archivos consolidados) podía inflar el payload sin control (cost
 tokens / rechazo del modelo). Se capa el código a un máximo con un marcador de corte.
 """
 
+import pytest
+from fastapi import HTTPException
 from app.services.correccion_service import _truncar_codigo
 
 
@@ -11,12 +13,12 @@ def test_codigo_corto_no_se_toca():
     assert _truncar_codigo("print(1)", 100) == "print(1)"
 
 
-def test_codigo_largo_se_trunca_con_marcador():
+def test_codigo_largo_se_rechaza_sin_correccion_parcial():
     codigo = "x" * 500
-    out = _truncar_codigo(codigo, 100)
-    assert len(out) <= 100 + 200          # el cuerpo cortado + el marcador
-    assert out.startswith("x" * 100)      # conserva el principio
-    assert "truncado" in out.lower()      # avisa que se cortó
+    with pytest.raises(HTTPException) as error:
+        _truncar_codigo(codigo, 100)
+    assert error.value.status_code == 413
+    assert "código incompleto" in error.value.detail
 
 
 def test_codigo_none_no_rompe():

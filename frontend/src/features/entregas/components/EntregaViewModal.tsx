@@ -28,6 +28,7 @@ import { Button } from '../../../shared/components/ui/Button';
 import { Spinner } from '../../../shared/components/ui/Spinner';
 import { Badge } from '../../../shared/components/ui/Badge';
 import { useEntregaContenido } from '../hooks/useEntregas';
+import { AnalisisArchivosEntrega } from './AnalisisArchivosEntrega';
 
 interface EntregaViewModalProps {
   /** ID of the entrega to display */
@@ -181,6 +182,7 @@ export default function EntregaViewModal({
         {/* Success State - Show Content */}
         {contenido && (
           <>
+            <AnalisisArchivosEntrega analisis={contenido.analisis_archivos} />
             {/* Included Files Section - Collapsible */}
             {!isPdf && contenido.archivos_incluidos.length > 0 && (
               <div className="border border-border rounded-lg overflow-hidden">

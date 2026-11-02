@@ -15,6 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.models.enums import FuenteRubricaEnum, TipoRubricaEnum
+from app.schemas.politica_entrega import validar_metadata_politica
 
 # Modo de consolidación del código de las entregas de una rúbrica.
 ModoConsolidacion = Literal["solo_codigo", "web_completo", "proyecto_completo", "personalizado"]
@@ -197,6 +198,7 @@ class CondicionDesaprobacion(BaseModel):
 
 
 class CriteriosStructure(BaseModel):
+    _validar_politica = field_validator("metadata")(validar_metadata_politica)
     """
     Estructura completa de una rúbrica.
 
@@ -336,6 +338,7 @@ class RubricaBase(BaseModel):
 
 
 class RubricaCreate(RubricaBase):
+    _validar_politica = field_validator("metadata_json")(validar_metadata_politica)
     """Schema for creating a new Rubrica."""
 
     materia_id: int = Field(
@@ -427,6 +430,7 @@ class RubricaCreate(RubricaBase):
 
 
 class RubricaUpdate(BaseModel):
+    _validar_politica = field_validator("metadata_json")(validar_metadata_politica)
     """Schema for updating an existing Rubrica ."""
 
     titulo: str | None = Field(

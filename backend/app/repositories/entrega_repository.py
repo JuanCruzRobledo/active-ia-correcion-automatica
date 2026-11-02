@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, undefer
 
 from app.models.comision import Comision
+from app.models.correccion import Correccion
 from app.models.entrega import Entrega
 
 
@@ -77,7 +78,7 @@ class EntregaRepository:
         return result.scalar_one_or_none()
 
     async def get_by_id_with_relations(
-        self, entrega_id: int, *, load_contenido: bool = False
+        self, entrega_id: int, *, load_contenido: bool = False, bloquear: bool = False
     ) -> Entrega | None:
         """
         Get entrega by ID with all relations loaded.
@@ -101,14 +102,16 @@ class EntregaRepository:
         ]
         if load_contenido:
             options.extend([
+                selectinload(Entrega.correccion).undefer(Correccion.raw_response),
+                selectinload(Entrega.correccion).selectinload(Correccion.moodle_syncs),
                 undefer(Entrega.contenido_consolidado),
                 undefer(Entrega.pdf_contenido_b64),
             ])
-        result = await self.db.execute(
-            select(Entrega)
-            .options(*options)
-            .where(Entrega.id == entrega_id, Entrega.deleted_at.is_(None))
-        )
+        query = select(Entrega).options(*options).where(
+            Entrega.id == entrega_id, Entrega.deleted_at.is_(None))
+        if bloquear:
+            query = query.with_for_update().execution_options(populate_existing=True)
+        result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def get_all(
@@ -298,6 +301,7 @@ class EntregaRepository:
         *,
         load_contenido: bool = False,
         universidad_id: int | None = None,
+        bloquear: bool = False,
     ) -> Entrega | None:
         """
         Get entrega by rubrica and alumno nombre.
@@ -316,6 +320,8 @@ class EntregaRepository:
         options = [selectinload(Entrega.correccion)]
         if load_contenido:
             options.extend([
+                selectinload(Entrega.correccion).undefer(Correccion.raw_response),
+                selectinload(Entrega.correccion).selectinload(Correccion.moodle_syncs),
                 undefer(Entrega.contenido_consolidado),
                 undefer(Entrega.pdf_contenido_b64),
             ])
@@ -333,6 +339,8 @@ class EntregaRepository:
         )
         if universidad_id is not None:
             query = query.where(Entrega.universidad_id == universidad_id)
+        if bloquear:
+            query = query.with_for_update().execution_options(populate_existing=True)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
@@ -422,7 +430,9 @@ class EntregaRepository:
         await self.db.commit()
         return result.rowcount
 
-    async def reclamar_para_correccion(self, entrega_id: int) -> bool:
+    async def reclamar_para_correccion(
+        self, entrega_id: int, *, hash_esperado: str | None = None
+    ) -> bool:
         """
         IA-003: reclamo ATÓMICO de una entrega para corregirla, para no disparar dos
         llamadas al LLM sobre la misma. UPDATE ... WHERE estado != PENDIENTE: el
@@ -434,14 +444,13 @@ class EntregaRepository:
         """
         from app.models.enums import EstadoEntregaEnum
 
-        result = await self.db.execute(
-            update(Entrega)
-            .where(
-                Entrega.id == entrega_id,
-                Entrega.estado != EstadoEntregaEnum.PENDIENTE,
-            )
-            .values(estado=EstadoEntregaEnum.PENDIENTE)
+        query = update(Entrega).where(
+            Entrega.id == entrega_id,
+            Entrega.estado != EstadoEntregaEnum.PENDIENTE,
         )
+        if hash_esperado is not None:
+            query = query.where(Entrega.hash_sha256 == hash_esperado)
+        result = await self.db.execute(query.values(estado=EstadoEntregaEnum.PENDIENTE))
         await self.db.commit()
         return result.rowcount > 0
 

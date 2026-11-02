@@ -48,6 +48,7 @@ import {
 import { useUpdateCorreccion } from '../hooks/useCorrecciones';
 import { cn } from '../../../shared/utils/cn';
 import type { Correccion, CriterioEvaluado, EstadoCriterio } from '../types';
+import { LimiteNotaEntrega } from '../../entregas/components/LimiteNotaEntrega';
 
 interface CorreccionViewEditModalProps {
   /** Corrección a mostrar/editar */
@@ -81,7 +82,7 @@ export default function CorreccionViewEditModal({
 
   // Form state (editable data)
   // Convert nota from string to number (backend returns Decimal as string)
-  const [nota, setNota] = useState(Number(correccion.nota));
+  const [nota, setNota] = useState(Number(correccion.nota_academica ?? correccion.nota));
   // Convert puntaje fields to numbers in criterios
   // Fallback to empty array if criterios is undefined
   const [criterios, setCriterios] = useState<CriterioEvaluado[]>(
@@ -118,7 +119,7 @@ export default function CorreccionViewEditModal({
 
   // Reset local state when correccion changes
   useEffect(() => {
-    setNota(Number(correccion.nota));
+    setNota(Number(correccion.nota_academica ?? correccion.nota));
     setCriterios((correccion.criterios || []).map(c => ({
       ...c,
       puntaje_obtenido: Number(c.puntaje_obtenido),
@@ -222,7 +223,7 @@ export default function CorreccionViewEditModal({
    */
   const handleCancelar = () => {
     // Reset to original values
-    setNota(Number(correccion.nota));
+    setNota(Number(correccion.nota_academica ?? correccion.nota));
     setCriterios((correccion.criterios || []).map(c => ({
       ...c,
       puntaje_obtenido: Number(c.puntaje_obtenido),
@@ -292,7 +293,7 @@ export default function CorreccionViewEditModal({
             {/* Left: Label and Recalcular button */}
             <div className="flex items-center gap-3">
               <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">
-                Nota Final
+                {isViewMode ? 'Nota Final' : 'Nota académica'}
               </h3>
               {!isViewMode && (
                 <Button
@@ -310,8 +311,8 @@ export default function CorreccionViewEditModal({
             {/* Right: Nota display */}
             <div className="flex items-baseline gap-2">
               {isViewMode ? (
-                <div className={cn('text-4xl font-bold', getNotaColor(nota))}>
-                  {nota.toFixed(1)}
+                <div className={cn('text-4xl font-bold', getNotaColor(Number(correccion.nota)))}>
+                  {Number(correccion.nota).toFixed(1)}
                 </div>
               ) : (
                 <input
@@ -341,6 +342,13 @@ export default function CorreccionViewEditModal({
             </div>
           )}
         </section>
+
+        {isViewMode && correccion.nota_academica != null && correccion.limite_nota != null && (
+          <p className="text-sm text-muted-foreground">
+            Nota académica: <span className="font-medium text-foreground">{Number(correccion.nota_academica).toFixed(1)}</span> / 100
+          </p>
+        )}
+        <LimiteNotaEntrega limiteNota={correccion.limite_nota} rutas={correccion.rutas_penalizables} />
 
         {/* Condición de desaprobación alert */}
         {cdAplicada && (

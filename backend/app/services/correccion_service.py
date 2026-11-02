@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.base import async_session_maker
 
+from app.services.politica_entrega import aplicar_politica_correccion
 logger = logging.getLogger(__name__)
 
 
@@ -131,15 +132,14 @@ def _metricas_ia(result) -> dict:
 
 
 def _truncar_codigo(codigo, limite: int):
-    """IA-015: capa el código consolidado a `limite` caracteres antes de mandarlo al
-    LLM, con un marcador de corte. None y códigos por debajo del límite pasan igual."""
+    """Rechaza contenido incompleto: jamás manda un prefijo al evaluador."""
     if codigo is None or len(codigo) <= limite:
         return codigo
-    marcador = (
-        f"\n\n... [código truncado: superó el límite de {limite} caracteres; "
-        "se corrige solo la primera parte] ..."
-    )
-    return codigo[:limite] + marcador
+    raise HTTPException(status_code=413, detail=(
+        f"El contenido evaluable tiene {len(codigo)} caracteres y supera el límite de {limite}. "
+        "No se realizó la corrección para evitar evaluar código incompleto. "
+        "Revisá los archivos incluidos y reconsolidá la entrega."
+    ))
 
 
 def _techo_de_condicion(rubrica, cd_id) -> int | None:
@@ -289,6 +289,21 @@ class CorreccionService:
         self.usuario_repo = UsuarioRepository(db)
         self.gemini_client = GeminiCorrectionClient()
 
+    async def _validar_integridad_contenido(self, entrega: Any) -> None:
+        """Bloquea evaluaciones incompletas por cualquier proveedor/canal."""
+        if entrega.archivo_tipo == "pdf":
+            return
+        try:
+            _truncar_codigo(entrega.contenido_consolidado or entrega.contenido_preview,
+                            settings.MAX_CODIGO_CORRECCION_CHARS)
+        except HTTPException as error:
+            entrega.estado = EstadoEntregaEnum.ERROR
+            entrega.error_code = "CONTENIDO_EXCESIVO"
+            entrega.error_mensaje = error.detail
+            entrega.error_at = datetime.utcnow()
+            await self.entrega_repo.update(entrega)
+            raise
+
     async def corregir_individual(
         self,
         entrega_id: int,
@@ -318,7 +333,7 @@ class CorreccionService:
         # para la IA leyendo contenido_consolidado / pdf_contenido_b64 (columnas deferidas
         # por PERF-002/PERF-006), así que hay que cargarlas con undefer en esta query.
         entrega = await self.entrega_repo.get_by_id_with_relations(
-            entrega_id, load_contenido=True
+            entrega_id, load_contenido=True, bloquear=True
         )
         if not entrega:
             raise HTTPException(
@@ -350,6 +365,9 @@ class CorreccionService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="La entrega no tiene contenido consolidado",
                 )
+
+        # El control sucede antes de desencriptar claves, reclamar o llamar a la IA.
+        await self._validar_integridad_contenido(entrega)
 
         # Get rubrica
         rubrica = await self.rubrica_repo.get_active_by_id(entrega.rubrica_id)
@@ -383,7 +401,7 @@ class CorreccionService:
         # IA-003: reclamo ATÓMICO en vez de un set no atómico. Evita que un doble
         # click / retry / lote con la misma entrega dispare DOS llamadas al LLM: el
         # segundo request concurrente no reclama y recibe 409 (sin gastar tokens).
-        if not await self.entrega_repo.reclamar_para_correccion(entrega_id):
+        if not await self.entrega_repo.reclamar_para_correccion(entrega_id, hash_esperado=getattr(entrega, "hash_sha256", None)):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Esta entrega ya está siendo corregida (en proceso). Esperá a que termine.",
@@ -682,6 +700,7 @@ class CorreccionService:
         correccion = Correccion(
             **data_dict, **metricas, universidad_id=entrega.universidad_id
         )
+        aplicar_politica_correccion(correccion, getattr(entrega, "analisis_archivos", None))
         created_correccion = await self.correccion_repo.create(correccion)
 
         # Update entrega state to CORREGIDA y limpiar cualquier error previo (item #1).
@@ -725,7 +744,7 @@ class CorreccionService:
             HTTPException 502: `data` no coincide con la rúbrica (IA-007).
         """
         entrega = await self.entrega_repo.get_by_id_with_relations(
-            entrega_id, load_contenido=False
+            entrega_id, load_contenido=True, bloquear=True
         )
         if not entrega:
             raise HTTPException(
@@ -740,10 +759,12 @@ class CorreccionService:
                 detail="Rúbrica no encontrada o inactiva",
             )
 
+        await self._validar_integridad_contenido(entrega)
+
         # IA-003: mismo reclamo atómico que el flujo de IA real -- evita que una
         # carga externa pise una corrección real que está corriendo en simultáneo
         # (o viceversa).
-        if not await self.entrega_repo.reclamar_para_correccion(entrega_id):
+        if not await self.entrega_repo.reclamar_para_correccion(entrega_id, hash_esperado=getattr(entrega, "hash_sha256", None)):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Esta entrega ya está siendo corregida (en proceso). Esperá a que termine.",
@@ -849,11 +870,17 @@ class CorreccionService:
                 detail="Corrección no encontrada",
             )
 
+        # La nota recibida es académica; una edición de feedback conserva la anterior.
+        previous_policy = (correccion.criterios_json or {}).get("politica_entrega", {})
+        academic = previous_policy.get("nota_academica", correccion.nota)
+
         # Update fields
         update_data = data.model_dump(exclude_unset=True)
 
         if "nota" in update_data:
             correccion.nota = Decimal(str(update_data["nota"]))
+        else:
+            correccion.nota = Decimal(str(academic))
 
         # Handle criterios: frontend sends 'criterios' but DB field is 'criterios_json'
         if "criterios" in update_data:
@@ -894,6 +921,10 @@ class CorreccionService:
 
         if "comentario_general" in update_data:
             correccion.comentario_general = update_data["comentario_general"]
+
+        entrega = await self.entrega_repo.get_by_id(correccion.entrega_id)
+        aplicar_politica_correccion(correccion, getattr(entrega, "analisis_archivos", None),
+                                   nota_academica=correccion.nota)
 
         # Mark as manually edited
         correccion.editado_manualmente = True

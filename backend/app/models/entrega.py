@@ -81,6 +81,7 @@ class Entrega(Base, TimestampMixin, SoftDeleteMixin):
         ARRAY(String),
         nullable=True,
     )  # List of files included in consolidation
+    analisis_archivos: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     # PERF-002/PERF-006: columna GIGANTE (PDF en Base64, ~MB). Mismo criterio que
     # contenido_consolidado: deferred=True + undefer() en los consumidores.
     pdf_contenido_b64: Mapped[str | None] = mapped_column(
@@ -229,6 +230,7 @@ class EntregaHistorial(Base):
         String(64),
         nullable=True,
     )
+    analisis_archivos: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     nota_anterior: Mapped[Decimal | None] = mapped_column(
         Numeric(5, 2),
         nullable=True,

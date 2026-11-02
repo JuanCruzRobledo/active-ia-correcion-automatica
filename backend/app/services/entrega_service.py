@@ -45,6 +45,9 @@ from app.services.actividad_service import ActividadService
 from app.services.consolidacion_service import ConsolidacionService
 from app.services.correccion_service import _limpiar_entrega_error
 from app.services.historial_service import HistorialService
+from app.services.politica_entrega import (
+    analizar_archivo, directorios_permitidos_de, es_nueva_version_moodle,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -173,14 +176,17 @@ class EntregaService:
         ) = await self._procesar_contenido(
             contenido_bytes, archivo_tipo, modo_consolidacion, archivo.filename,
             extensiones_personalizadas,
+            directorios_permitidos_de(rubrica),
         )
+        analisis = analizar_archivo(contenido_bytes, archivo.filename, archivos_incluidos,
+                                   directorios_permitidos_de(rubrica))
 
         # Check if entrega already exists. CRUD-005: si vamos a sobrescribir, cargar
         # el contenido para poder snapshotearlo en el historial antes de pisarlo.
         entrega_existente = await self.entrega_repo.get_by_rubrica_alumno(
             rubrica_id=data.rubrica_id,
             alumno_nombre=data.alumno_nombre,
-            load_contenido=sobrescribir,
+            load_contenido=sobrescribir, bloquear=sobrescribir,
         )
 
         if entrega_existente:
@@ -190,17 +196,14 @@ class EntregaService:
                     detail=f"Ya existe una entrega para el alumno '{data.alumno_nombre}' en esta rúbrica",
                 )
 
-            # Prevent overwriting if entrega has a correction
-            if entrega_existente.correccion:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"No se puede sobrescribir la entrega del alumno '{data.alumno_nombre}' porque ya tiene una corrección. Elimina la corrección para poder sobrescribir.",
-                )
+            if entrega_existente.estado == EstadoEntregaEnum.PENDIENTE:
+                raise HTTPException(status_code=409, detail="Hay una corrección en curso; reintentá al terminar.")
 
             # Save to history before overwriting
             await self.historial_service.guardar_version_anterior(
-                entrega_existente, subido_por_id
+                entrega_existente, subido_por_id, confirmar=False
             )
+            entrega_existente.correccion = None
 
             # Update existing entrega
             entrega_existente.archivo_nombre = archivo.filename
@@ -209,6 +212,7 @@ class EntregaService:
             entrega_existente.contenido_preview = contenido_preview
             entrega_existente.contenido_consolidado = contenido_consolidado
             entrega_existente.archivos_incluidos = archivos_incluidos
+            entrega_existente.analisis_archivos = analisis
             entrega_existente.pdf_contenido_b64 = pdf_contenido_b64
             entrega_existente.hash_sha256 = hash_sha256
             entrega_existente.estado = EstadoEntregaEnum.SUBIDA
@@ -237,6 +241,7 @@ class EntregaService:
             contenido_preview=contenido_preview,
             contenido_consolidado=contenido_consolidado,
             archivos_incluidos=archivos_incluidos,
+            analisis_archivos=analisis,
             pdf_contenido_b64=pdf_contenido_b64,
             estado=EstadoEntregaEnum.SUBIDA,
             hash_sha256=hash_sha256,
@@ -250,7 +255,7 @@ class EntregaService:
         return EntregaResponse.model_validate(created_entrega)
 
     async def verificar_entrega_existente(
-        self, rubrica_id: int, alumno_nombre: str
+        self, rubrica_id: int, alumno_nombre: str, moodle_timemodified: int | None = None
     ) -> ResultadoImportEntrega | None:
         """Verifica si ya existe una entrega para (rubrica_id, alumno_nombre) SIN descargar.
 
@@ -264,6 +269,8 @@ class EntregaService:
             alumno_nombre=alumno_nombre,
         )
         if not existente:
+            return None
+        if es_nueva_version_moodle(existente, moodle_timemodified):
             return None
         if existente.correccion:
             return ResultadoImportEntrega(
@@ -285,6 +292,7 @@ class EntregaService:
         moodle_user_id: int | None = None,
         modo_consolidacion: str | None = None,
         extensiones_personalizadas: list[str] | None = None,
+        moodle_timemodified: int | None = None,
     ) -> ResultadoImportEntrega:
         """Crea una entrega a partir de bytes (descarga de Moodle), de forma idempotente.
 
@@ -309,14 +317,14 @@ class EntregaService:
 
         # BUG-CONSOLIDACION: los callers actuales ya pasan el modo de la rúbrica,
         # pero si alguno lo omite se lee de la rúbrica en vez de caer al default.
+        rubrica = await self.rubrica_repo.get_active_by_id(rubrica_id)
         if modo_consolidacion is None:
-            rubrica = await self.rubrica_repo.get_active_by_id(rubrica_id)
             modo_consolidacion, extensiones_personalizadas = self._resolver_modo(
                 rubrica, None, extensiones_personalizadas
             )
 
         # Idempotencia: no re-importar ni pisar entregas existentes
-        existente = await self.verificar_entrega_existente(rubrica_id, alumno_nombre)
+        existente = await self.verificar_entrega_existente(rubrica_id, alumno_nombre, moodle_timemodified)
         if existente is not None:
             return existente
 
@@ -333,6 +341,7 @@ class EntregaService:
             ) = await self._procesar_contenido(
                 contenido_bytes, archivo_tipo, modo_consolidacion, archivo_nombre,
                 extensiones_personalizadas,
+                directorios_permitidos_de(rubrica),
             )
         except HTTPException as e:
             detalle = e.detail if isinstance(e.detail, str) else str(e.detail)
@@ -350,6 +359,33 @@ class EntregaService:
             )
 
         hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
+        analisis = analizar_archivo(contenido_bytes, archivo_nombre, archivos_incluidos,
+                                   directorios_permitidos_de(rubrica))
+        if moodle_timemodified:
+            analisis["moodle_timemodified"] = moodle_timemodified
+
+        # Reentrega: snapshot antes de reemplazar, la corrección anterior deja de estar activa.
+        anterior = await self.entrega_repo.get_by_rubrica_alumno(
+            rubrica_id=rubrica_id, alumno_nombre=alumno_nombre, load_contenido=True, bloquear=True)
+        if anterior is not None:
+            if anterior.estado == EstadoEntregaEnum.PENDIENTE:
+                return ResultadoImportEntrega(status="error", detalle="Hay una corrección en curso; reintentá al terminar.")
+            if not es_nueva_version_moodle(anterior, moodle_timemodified):
+                return ResultadoImportEntrega(status="ya_corregida" if anterior.correccion else "duplicada", entrega_id=anterior.id)
+            await self.historial_service.guardar_version_anterior(anterior, subido_por_id, confirmar=False)
+            anterior.correccion = None
+            for field, value in {
+                "archivo_nombre": archivo_nombre, "archivo_tamanio": len(contenido_bytes),
+                "archivo_tipo": archivo_tipo, "contenido_preview": contenido_preview,
+                "contenido_consolidado": contenido_consolidado, "archivos_incluidos": archivos_incluidos,
+                "pdf_contenido_b64": pdf_contenido_b64, "hash_sha256": hash_sha256,
+                "analisis_archivos": analisis, "estado": EstadoEntregaEnum.SUBIDA,
+                "subido_por_id": subido_por_id, "moodle_user_id": moodle_user_id,
+            }.items():
+                setattr(anterior, field, value)
+            _limpiar_entrega_error(anterior)
+            await self.entrega_repo.update(anterior)
+            return ResultadoImportEntrega(status="creada", entrega_id=anterior.id)
 
         # Fase 4 multi-tenant: universidad_id se PROPAGA desde la comision. `comision_id`
         # ya fue validado aguas arriba (ver docstring), pero acá no llega el objeto
@@ -366,6 +402,7 @@ class EntregaService:
             contenido_preview=contenido_preview,
             contenido_consolidado=contenido_consolidado,
             archivos_incluidos=archivos_incluidos,
+            analisis_archivos=analisis,
             pdf_contenido_b64=pdf_contenido_b64,
             estado=EstadoEntregaEnum.SUBIDA,
             hash_sha256=hash_sha256,
@@ -412,13 +449,16 @@ class EntregaService:
         # PERF-002). Con un get pelado, ambos accesos son un lazy load que en
         # contexto async revienta con MissingGreenlet.
         entrega = await self.entrega_repo.get_by_id_with_relations(
-            entrega_id, load_contenido=True
+            entrega_id, load_contenido=True, bloquear=True
         )
         if not entrega:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Entrega no encontrada",
             )
+
+        if entrega.estado == EstadoEntregaEnum.PENDIENTE:
+            raise HTTPException(status_code=409, detail="Hay una corrección en curso; reintentá al terminar.")
 
         rubrica = await self.rubrica_repo.get_active_by_id(entrega.rubrica_id)
         if not rubrica:
@@ -446,12 +486,13 @@ class EntregaService:
             pdf_contenido_b64,
         ) = await self._procesar_contenido(
             contenido_bytes, archivo_tipo, modo, archivo.filename, extensiones,
+            directorios_permitidos_de(rubrica),
         )
 
         # Se versiona el contenido viejo antes de pisarlo, igual que al
         # sobrescribir: si la reconsolidación empeora las cosas, hay a dónde
         # volver.
-        await self.historial_service.guardar_version_anterior(entrega, actor_id)
+        await self.historial_service.guardar_version_anterior(entrega, actor_id, confirmar=False)
 
         entrega.archivo_nombre = archivo.filename
         entrega.archivo_tamanio = len(contenido_bytes)
@@ -459,10 +500,14 @@ class EntregaService:
         entrega.contenido_preview = contenido_preview
         entrega.contenido_consolidado = contenido_consolidado
         entrega.archivos_incluidos = archivos_incluidos
+        entrega.analisis_archivos = analizar_archivo(contenido_bytes, archivo.filename, archivos_incluidos,
+                                                    directorios_permitidos_de(rubrica))
         entrega.pdf_contenido_b64 = pdf_contenido_b64
         entrega.hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
-        # El estado NO se toca y la corrección NO se borra: la entrega sigue
-        # CORREGIDA con su nota vieja hasta que se recorrija explícitamente.
+        # El historial conserva la devolución anterior; el contenido nuevo
+        # requiere una evaluación nueva, sin heredar la nota o liberar un tope viejo.
+        entrega.correccion = None
+        entrega.estado = EstadoEntregaEnum.SUBIDA
         _limpiar_entrega_error(entrega)
 
         actualizada = await self.entrega_repo.update(entrega)
@@ -514,6 +559,7 @@ class EntregaService:
         modo_consolidacion: str,
         archivo_nombre: str,
         extensiones_personalizadas: list[str] | None,
+        directorios_permitidos: list[str] | None = None,
     ) -> tuple[str, str | None, str, list[str], str | None]:
         """Procesa el contenido de un archivo según su tipo.
 
@@ -537,12 +583,13 @@ class EntregaService:
                 contenido_consolidado, archivos_incluidos = await self._consolidar_archivo(
                     contenido_bytes, "zip", modo_consolidacion, archivo_nombre,
                     extensiones_personalizadas=extensiones_personalizadas,
+                    directorios_permitidos=directorios_permitidos,
                 )
             except HTTPException as e:
                 # No hay código en el ZIP. Si trae un PDF, se procesa como entrega
                 # PDF; si no (ZIP vacío o solo binarios), se mantiene el error.
                 if e.status_code == status.HTTP_400_BAD_REQUEST:
-                    pdf = self.consolidacion_service.extraer_pdf_de_zip(contenido_bytes)
+                    pdf = self.consolidacion_service.extraer_pdf_de_zip(contenido_bytes, directorios_permitidos)
                     if pdf is not None:
                         pdf_bytes, pdf_nombre = pdf
                         return self._resultado_pdf(pdf_bytes, pdf_nombre)
@@ -695,6 +742,7 @@ class EntregaService:
             archivo_tamanio=entrega.archivo_tamanio,
             archivo_tipo=entrega.archivo_tipo,
             contenido_preview=entrega.contenido_preview,
+            analisis_archivos=entrega.analisis_archivos,
             estado=entrega.estado,
             archivado=entrega.archivado,
             hash_sha256=entrega.hash_sha256,
@@ -904,6 +952,7 @@ class EntregaService:
         if entrega.archivo_tipo == "pdf":
             return ContenidoEntrega(
                 entrega_id=entrega.id,
+                analisis_archivos=entrega.analisis_archivos,
                 alumno_nombre=entrega.alumno_nombre,
                 es_pdf=True,
                 contenido_consolidado=None,
@@ -924,6 +973,7 @@ class EntregaService:
 
         return ContenidoEntrega(
             entrega_id=entrega.id,
+            analisis_archivos=entrega.analisis_archivos,
             alumno_nombre=entrega.alumno_nombre,
             es_pdf=False,
             contenido_consolidado=contenido,
@@ -1126,14 +1176,17 @@ class EntregaService:
                         ) = await self._procesar_contenido(
                             contenido_bytes_alumno, archivo_tipo, modo_consolidacion,
                             archivo_nombre, extensiones_personalizadas,
+                            directorios_permitidos_de(rubrica),
                         )
+                        analisis = analizar_archivo(contenido_bytes_alumno, archivo_nombre, archivos_incluidos,
+                                                   directorios_permitidos_de(rubrica))
 
                         # Check if entrega already exists. CRUD-005: cargar el
                         # contenido si se va a sobrescribir, para snapshotearlo.
                         entrega_existente = await self.entrega_repo.get_by_rubrica_alumno(
                             rubrica_id=rubrica_id,
                             alumno_nombre=alumno_nombre,
-                            load_contenido=sobrescribir,
+                            load_contenido=sobrescribir, bloquear=sobrescribir,
                         )
 
                         sobrescrito = False
@@ -1149,21 +1202,15 @@ class EntregaService:
                                 )
                                 continue
 
-                            # Prevent overwriting if entrega has a correction
-                            if entrega_existente.correccion:
-                                errores.append(
-                                    EntregaError(
-                                        alumno_nombre=alumno_nombre,
-                                        archivo_nombre=archivo_nombre,
-                                        error=f"No se puede sobrescribir porque el alumno ya tiene una corrección. Elimina la corrección para poder sobrescribir.",
-                                    )
-                                )
+                            if entrega_existente.estado == EstadoEntregaEnum.PENDIENTE:
+                                errores.append(EntregaError(alumno_nombre=alumno_nombre, archivo_nombre=archivo_nombre, error="Hay una corrección en curso; reintentá al terminar."))
                                 continue
 
                             # Save to history before overwriting
                             await self.historial_service.guardar_version_anterior(
-                                entrega_existente, subido_por_id
+                                entrega_existente, subido_por_id, confirmar=False
                             )
+                            entrega_existente.correccion = None
 
                             # Update existing entrega
                             entrega_existente.archivo_nombre = archivo_nombre
@@ -1172,6 +1219,7 @@ class EntregaService:
                             entrega_existente.contenido_preview = contenido_preview
                             entrega_existente.contenido_consolidado = contenido_consolidado
                             entrega_existente.archivos_incluidos = archivos_incluidos
+                            entrega_existente.analisis_archivos = analisis
                             entrega_existente.pdf_contenido_b64 = pdf_contenido_b64_alumno
                             entrega_existente.hash_sha256 = hash_sha256
                             entrega_existente.estado = EstadoEntregaEnum.SUBIDA
@@ -1198,6 +1246,7 @@ class EntregaService:
                                 contenido_preview=contenido_preview,
                                 contenido_consolidado=contenido_consolidado,
                                 archivos_incluidos=archivos_incluidos,
+                                analisis_archivos=analisis,
                                 pdf_contenido_b64=pdf_contenido_b64_alumno,
                                 estado=EstadoEntregaEnum.SUBIDA,
                                 hash_sha256=hash_sha256,
@@ -1261,6 +1310,7 @@ class EntregaService:
         modo: str = "solo_codigo",
         filename: str = "archivo",
         extensiones_personalizadas: list[str] | None = None,
+        directorios_permitidos: list[str] | None = None,
     ) -> tuple[str, list[str]]:
         """
         Consolidate file content.
@@ -1290,6 +1340,7 @@ class EntregaService:
             modo,
             filename,
             extensiones_personalizadas,
+            directorios_permitidos,
         )
 
     def _consolidar_archivo_sync(
@@ -1299,6 +1350,7 @@ class EntregaService:
         modo: str,
         filename: str,
         extensiones_personalizadas: list[str] | None,
+        directorios_permitidos: list[str] | None = None,
     ) -> tuple[str, list[str]]:
         """Parte CPU-pura de la consolidación (corre en un thread vía to_thread).
 
@@ -1312,7 +1364,8 @@ class EntregaService:
 
         if archivo_tipo == "zip":
             return self.consolidacion_service.consolidar_zip(
-                file_obj, modo=modo, extensiones_custom=extensiones_personalizadas
+                file_obj, modo=modo, extensiones_custom=extensiones_personalizadas,
+                directorios_permitidos=directorios_permitidos,
             )
         elif archivo_tipo == "txt":
             return self.consolidacion_service.consolidar_txt(file_obj)

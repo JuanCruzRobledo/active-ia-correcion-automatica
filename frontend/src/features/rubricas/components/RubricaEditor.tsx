@@ -11,7 +11,6 @@ import { Modal } from '@/shared/components/ui/Modal';
 import { Button } from '@/shared/components/ui/Button';
 import { Spinner } from '@/shared/components/ui/Spinner';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '@/shared/components/ui/Accordion';
-import { KeyValueInput } from '@/shared/components/ui/KeyValueInput';
 import { ExtensionTagInput } from '@/shared/components/ui/ExtensionTagInput';
 import { cn } from '@/shared/utils/cn';
 
@@ -32,6 +31,8 @@ import { RubricaGeneralInfo } from './RubricaGeneralInfo';
 import { RubricaCreationModeSelector } from './RubricaCreationModeSelector';
 import { RubricaPDFMode } from './RubricaPDFMode';
 import { RubricaJSONMode } from './RubricaJSONMode';
+import { DirectoriosPermitidosEditor } from './DirectoriosPermitidosEditor';
+import { MetadataAdicionalEditor } from './MetadataAdicionalEditor';
 import type { CreationMode } from '../constants/rubrica-constants';
 
 // ========== SCHEMAS ==========
@@ -577,6 +578,11 @@ export function RubricaEditor({
           setCreationMode={setCreationMode}
         />
 
+        <DirectoriosPermitidosEditor
+          metadata={watch('metadata') || {}}
+          onChange={(metadata) => setValue('metadata', metadata, { shouldDirty: true })}
+        />
+
         {/* ── Manual: Editor Completo con Accordion ── */}
         {creationMode === 'manual' && (
           <>
@@ -626,10 +632,9 @@ export function RubricaEditor({
                 Metadata (opcional)
               </AccordionTrigger>
               <AccordionContent value="metadata">
-                <KeyValueInput
-                  value={watch('metadata') || {}}
+                <MetadataAdicionalEditor
+                  metadata={watch('metadata') || {}}
                   onChange={(metadata) => setValue('metadata', metadata)}
-                  placeholder={{ key: 'lenguaje', value: 'JavaScript' }}
                 />
               </AccordionContent>
             </AccordionItem>

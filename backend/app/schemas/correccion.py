@@ -130,6 +130,9 @@ class CorreccionResponse(BaseModel):
 
     id: int
     entrega_id: int
+    nota_academica: Decimal | None = None
+    limite_nota: int | None = None
+    rutas_penalizables: list[str] = Field(default_factory=list)
     nota: Decimal = Field(..., description="Final grade (0-100)")
     nota_antes_penalizaciones: Optional[Decimal] = Field(None, description="Merit score before penalties/CD")
     condicion_desaprobacion_aplicada: Optional[str] = Field(None, description="ID of applied failing condition")
@@ -174,6 +177,9 @@ class CorreccionResponse(BaseModel):
                 'created_at': obj.created_at,
                 'updated_at': obj.updated_at,
             }
+            policy = criterios_json.get("politica_entrega", {}) if isinstance(criterios_json, dict) else {}
+            data.update({key: policy.get(key) for key in ("nota_academica", "limite_nota")})
+            data["rutas_penalizables"] = policy.get("rutas_penalizables", [])
             return super().model_validate(data, **kwargs)
 
         # Otherwise, use default validation

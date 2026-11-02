@@ -18,6 +18,7 @@ from fastapi import HTTPException, status
 
 from app.core.fecha import ahora_ar
 from app.core.upload_limits import validar_zip_bomb
+from app.services.politica_entrega import ARCHIVOS_CONFIGURACION, clasificar_ruta, normalizar_ruta
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +224,7 @@ class ConsolidacionService:
         archivo_zip: BinaryIO,
         modo: str = "solo_codigo",
         extensiones_custom: list[str] | None = None,
+        directorios_permitidos: list[str] | None = None,
     ) -> tuple[str, list[str]]:
         """
         Consolidate code files from a ZIP archive into a single TXT document.
@@ -243,7 +245,7 @@ class ConsolidacionService:
 
         try:
             with zipfile.ZipFile(archivo_zip, "r") as zf:
-                return self._consolidar_desde_zipfile(zf, extensiones, modo)
+                return self._consolidar_desde_zipfile(zf, extensiones, modo, directorios_permitidos)
 
         except zipfile.BadZipFile:
             raise HTTPException(
@@ -264,6 +266,7 @@ class ConsolidacionService:
         zf: zipfile.ZipFile,
         extensiones: set[str],
         modo: str,
+        directorios_permitidos: list[str] | None = None,
     ) -> tuple[str, list[str]]:
         """Consolida desde un ZipFile ya abierto.
 
@@ -278,7 +281,7 @@ class ConsolidacionService:
         # nada. Se valida sobre todo el filelist, no solo lo filtrado por extensión.
         validar_zip_bomb(zf.filelist)
 
-        archivos_info = self._scan_zip(zf, extensiones)
+        archivos_info = self._scan_zip(zf, extensiones, directorios_permitidos)
 
         if not archivos_info:
             raise HTTPException(
@@ -397,7 +400,8 @@ class ConsolidacionService:
                 detail="Error procesando el archivo",
             )
 
-    def extraer_pdf_de_zip(self, zip_bytes: bytes) -> tuple[bytes, str] | None:
+    def extraer_pdf_de_zip(self, zip_bytes: bytes,
+                           directorios_permitidos: list[str] | None = None) -> tuple[bytes, str] | None:
         """Devuelve (bytes, nombre) del primer PDF útil del ZIP, o None.
 
         Pensado como fallback cuando el ZIP no tiene código: ignora carpetas
@@ -411,15 +415,15 @@ class ConsolidacionService:
                 for info in zf.filelist:
                     if info.is_dir():
                         continue
-                    path = info.filename.replace("\\", "/")
-                    if self._has_excluded_dir(path):
+                    path = normalizar_ruta(info.filename)
+                    if clasificar_ruta(path, directorios_permitidos)[0]:
                         continue
                     if self._get_extension(path) == ".pdf":
                         candidatos.append((info, path))
                 if not candidatos:
                     return None
                 info, path = sorted(candidatos, key=lambda par: par[1])[0]
-                return zf.read(info), path.split("/")[-1]
+                return zf.read(info), path
         except zipfile.BadZipFile:
             return None
 
@@ -598,7 +602,8 @@ class ConsolidacionService:
         return config["nombre"] if config else modo
 
     def _scan_zip(
-        self, zf: zipfile.ZipFile, extensiones: set[str]
+        self, zf: zipfile.ZipFile, extensiones: set[str],
+        directorios_permitidos: list[str] | None = None,
     ) -> list[tuple[zipfile.ZipInfo, str]]:
         """
         Return sorted list of (ZipInfo, normalized_path) for the entries that
@@ -616,16 +621,16 @@ class ConsolidacionService:
             if info.is_dir():
                 continue
 
-            path = info.filename.replace("\\", "/")
+            path = normalizar_ruta(info.filename)
 
-            if self._has_excluded_dir(path):
+            if clasificar_ruta(path, directorios_permitidos)[0]:
                 continue
 
             ext = self._get_extension(path)
             if ext in BINARY_EXTENSIONS:
                 continue
 
-            if ext in extensiones:
+            if ext in extensiones or ext == ".properties" or path.split("/")[-1].casefold() in ARCHIVOS_CONFIGURACION:
                 result.append((info, path))
 
         return sorted(result, key=lambda par: par[1])

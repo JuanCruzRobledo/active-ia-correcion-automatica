@@ -103,6 +103,7 @@ class EntregaResponse(BaseModel):
     """Schema for Entrega response with all fields."""
 
     id: int
+    analisis_archivos: dict | None = None
     comision_id: int
     rubrica_id: int
     alumno_nombre: str
@@ -268,6 +269,7 @@ class ContenidoEntrega(BaseModel):
     """
 
     entrega_id: int
+    analisis_archivos: dict | None = None
     alumno_nombre: str
     es_pdf: bool = Field(
         default=False,
@@ -301,6 +303,7 @@ class HistorialItem(BaseModel):
     """Schema for a single history entry."""
 
     id: int
+    analisis_archivos: dict | None = None
     alumno_nombre: str
     archivo_nombre: str
     archivo_tamanio: int

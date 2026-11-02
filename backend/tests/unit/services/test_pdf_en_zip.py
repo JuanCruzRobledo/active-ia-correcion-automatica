@@ -46,7 +46,7 @@ class TestExtraerPdfDeZip:
         assert resultado is not None
         data, nombre = resultado
         assert data == b"%PDF-1.4 contenido"
-        assert nombre == "Trabajo.pdf"
+        assert nombre == "informe/Trabajo.pdf"
 
     def test_zip_sin_pdf_devuelve_none(self, consol: ConsolidacionService):
         assert consol.extraer_pdf_de_zip(_zip({"main.py": b"x = 1"})) is None
@@ -70,7 +70,7 @@ class TestProcesarContenidoPrioridad:
         assert tipo == "pdf"
         assert consolidado is None
         assert pdf_b64 is not None
-        assert archivos == ["Informe.pdf"]
+        assert archivos == ["entrega/Informe.pdf"]
 
     async def test_zip_codigo_y_pdf_prioriza_codigo(self, service: EntregaService):
         """Regla 3: hay código → se usa el código y se descarta el PDF."""

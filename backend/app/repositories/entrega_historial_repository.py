@@ -67,7 +67,7 @@ class EntregaHistorialRepository:
         )
         return result.scalar_one_or_none()
 
-    async def create(self, historial: EntregaHistorial) -> EntregaHistorial:
+    async def create(self, historial: EntregaHistorial, *, confirmar: bool = True) -> EntregaHistorial:
         """
         Create a new historial entry.
 
@@ -78,8 +78,11 @@ class EntregaHistorialRepository:
             Created EntregaHistorial object with ID assigned.
         """
         self.db.add(historial)
-        await self.db.commit()
-        await self.db.refresh(historial)
+        if confirmar:
+            await self.db.commit()
+            await self.db.refresh(historial)
+        else:
+            await self.db.flush()
         return historial
 
     async def count_by_entrega(self, entrega_id: int) -> int:

@@ -267,6 +267,7 @@ async def test_editar_correccion_preserva_subcriterios_evaluados_en_edicion_manu
     service.correccion_repo.get_by_id = AsyncMock(return_value=correccion)
     service.correccion_repo.update = AsyncMock(side_effect=lambda c: c)
     service.correccion_repo.get_by_id_with_relations = AsyncMock(return_value=correccion)
+    service.entrega_repo.get_by_id = AsyncMock(return_value=entrega)
 
     update = CorreccionUpdate(
         criterios=[

@@ -644,7 +644,7 @@ class TestEntregaService:
         )
 
         incluidos = await _archivos_incluidos(service, rubrica.id, "Override, Test")
-        assert not any(a.endswith("build.gradle") for a in incluidos)
+        assert any(a.endswith("build.gradle") for a in incluidos)  # Configuración relevante en todos los modos.
         assert any(a.endswith(".java") for a in incluidos)
 
     async def test_entrega_individual_web_completo_de_la_rubrica(
@@ -673,7 +673,7 @@ class TestEntregaService:
 
         incluidos = await _archivos_incluidos(service, rubrica.id, "Web, Alumno")
         assert any(a.endswith("estilos.css") for a in incluidos)
-        assert not any(a.endswith("build.gradle") for a in incluidos)
+        assert any(a.endswith("build.gradle") for a in incluidos)
 
     async def test_entrega_masiva_usa_el_modo_de_la_rubrica(
         self,
@@ -740,7 +740,7 @@ class TestEntregaService:
 
         # Se consolidó mal: el build.gradle nunca llegó al corrector.
         incluidos = await _archivos_incluidos(service, rubrica.id, "Herrera, Jazmin")
-        assert not any(a.endswith("build.gradle") for a in incluidos)
+        assert any(a.endswith("build.gradle") for a in incluidos)
 
         # La rúbrica se corrige y la entrega se reprocesa con el mismo ZIP.
         rubrica.modo_consolidacion = "proyecto_completo"
@@ -759,7 +759,7 @@ class TestEntregaService:
         assert any(a.endswith("application.properties") for a in incluidos)
         assert "Proyecto completo" in (resultado.contenido_preview or "")
 
-    async def test_reconsolidar_conserva_la_correccion_existente(
+    async def test_reconsolidar_versiona_e_invalida_la_correccion_existente(
         self,
         db_session: AsyncSession,
         comision: Comision,
@@ -805,8 +805,8 @@ class TestEntregaService:
         )
 
         detalle = await service.obtener_entrega(entrega.id)
-        assert detalle.tiene_correccion is True, (
-            "reconsolidar borró la corrección — es justo lo que debe evitar"
+        assert detalle.tiene_correccion is False, (
+            "reconsolidar debe requerir una nueva evaluación del contenido"
         )
 
     async def test_reconsolidar_entrega_inexistente_da_404(

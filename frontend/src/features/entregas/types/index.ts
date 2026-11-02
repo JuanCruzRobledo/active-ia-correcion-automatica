@@ -7,6 +7,9 @@
  * Ref: docs/specs/06-MODELO-DATOS.md seccion 3.7
  */
 
+import type { AnalisisArchivos } from './politica';
+export type { AnalisisArchivos } from './politica';
+
 export type EstadoEntrega = 'SUBIDA' | 'PENDIENTE' | 'CORREGIDA' | 'ERROR';
 
 export type ModoConsolidacion =
@@ -73,6 +76,9 @@ export interface Correccion {
   id: number;
   entrega_id: number;
   nota: number;
+  nota_academica?: number | null;
+  limite_nota?: number | null;
+  rutas_penalizables?: string[];
   nota_antes_penalizaciones: number | null;
   condicion_desaprobacion_aplicada: string | null;
   condicion_desaprobacion_descripcion: string | null;
@@ -127,6 +133,7 @@ export interface Entrega {
   archivo_tamanio: number;
   archivo_tipo: 'zip' | 'txt' | 'pdf' | 'individual';
   contenido_preview: string | null;
+  analisis_archivos?: AnalisisArchivos | null;
   estado: EstadoEntrega;
   archivado: boolean;
   hash_sha256: string | null;
@@ -229,6 +236,7 @@ export interface EntregaContenido {
   archivos_incluidos: string[];
   total_lineas: number;
   total_caracteres: number;
+  analisis_archivos?: AnalisisArchivos | null;
 }
 
 export interface EntregasFilters {

@@ -31,6 +31,7 @@ from app.repositories.moodle_sync_repository import MoodleSyncRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.services.comentario_template_service import ComentarioTemplateService
 from app.services.devolucion_link_service import DevolucionLinkService
+from app.services.politica_entrega import anexar_devolucion_politica
 from app.services.moodle_credentials_resolver import resolver_credenciales_moodle
 from app.services.moodle_service import (
     AssignmentGradeConfig,
@@ -183,6 +184,7 @@ class MoodleGradeService:
 
         # El comentario del tutor + cierre con el link "devolución" como hipervínculo (HTML).
         link = f"{base_url.rstrip('/')}{DevolucionLinkService.generar_path(correccion_id)}"
+        comentario_final = anexar_devolucion_politica(comentario_final, correccion)
         feedback_html = self._construir_feedback_html(comentario_final, link)
 
         try:

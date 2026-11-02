@@ -282,7 +282,7 @@ class MoodleImportService:
                 async with async_session_maker() as db:
                     entrega_service = EntregaService(db)
                     existente = await entrega_service.verificar_entrega_existente(
-                        rubrica.id, alumno_nombre
+                        rubrica.id, alumno_nombre, moodle_timemodified=sub.timemodified
                     )
                     if existente is not None:
                         async with lock:
@@ -314,6 +314,7 @@ class MoodleImportService:
                         contenido_bytes=contenido_bytes,
                         subido_por_id=user_id,
                         moodle_user_id=sub.userid,
+                        moodle_timemodified=sub.timemodified,
                         modo_consolidacion=getattr(rubrica, "modo_consolidacion", None) or "solo_codigo",
                         extensiones_personalizadas=getattr(rubrica, "extensiones_personalizadas", None),
                     )
@@ -450,7 +451,7 @@ class MoodleImportService:
                 continue
 
             existente = await self.entrega_service.verificar_entrega_existente(
-                rubrica.id, alumno_nombre
+                rubrica.id, alumno_nombre, moodle_timemodified=sub.timemodified
             )
             if existente is not None:
                 if existente.status == "ya_corregida":
@@ -494,6 +495,7 @@ class MoodleImportService:
                 contenido_bytes=contenido_bytes,
                 subido_por_id=subido_por_id,
                 moodle_user_id=sub.userid,
+                moodle_timemodified=sub.timemodified,
                 # El modo de consolidación lo define la rúbrica (no se asume solo_codigo).
                 modo_consolidacion=getattr(rubrica, "modo_consolidacion", None) or "solo_codigo",
                 extensiones_personalizadas=getattr(rubrica, "extensiones_personalizadas", None),

@@ -8,6 +8,7 @@ Ref: docs/specs/03-REQUISITOS-FUNCIONALES.md seccion 7
 Ref: docs/specs/06-MODELO-DATOS.md seccion 3.9
 """
 
+from copy import deepcopy
 from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +37,7 @@ class HistorialService:
         self,
         entrega: Entrega,
         sobrescrito_por_id: int,
+        *, confirmar: bool = True,
     ) -> EntregaHistorial:
         """
         Save current entrega to history before overwriting.
@@ -61,6 +63,29 @@ class HistorialService:
                 "nota_final": float(entrega.correccion.nota),
                 "criterios_json": entrega.correccion.criterios_json,
             }
+            # Las versiones corregidas ahora pueden reemplazarse: conservar toda
+            # la devolución, no solamente los criterios y la nota.
+            correction = entrega.correccion
+            for name in (
+                "comentario_general", "fortalezas", "recomendaciones",
+                "condicion_desaprobacion_aplicada", "penalizaciones_aplicadas",
+                "editado_manualmente", "corregido_por_id", "ia_modelo", "ia_proveedor",
+                "tokens_entrada", "tokens_salida",
+            ):
+                correccion_json[name] = getattr(correction, name, None)
+            merit = getattr(correction, "nota_antes_penalizaciones", None)
+            correccion_json["nota_antes_penalizaciones"] = float(merit) if merit is not None else None
+            correccion_json["raw_response"] = deepcopy(getattr(correction, "raw_response", None))
+            correccion_json["moodle_syncs"] = []
+            for sync in getattr(correction, "moodle_syncs", None) or []:
+                snapshot = {}
+                for field in ("id", "estado", "nota_enviada", "comentario_enviado", "moodle_assignment_id", "moodle_user_id", "mensaje_error", "intento", "enviado_por_id", "created_at", "updated_at"):
+                    value = getattr(sync, field, None)
+                    snapshot[field] = value.isoformat() if isinstance(value, datetime) else getattr(value, "value", value)
+                correccion_json["moodle_syncs"].append(snapshot)
+            for name in ("created_at", "updated_at"):
+                value = getattr(correction, name, None)
+                correccion_json[name] = value.isoformat() if value else None
 
         # Create historial entry
         historial = EntregaHistorial(
@@ -73,13 +98,16 @@ class HistorialService:
             contenido_consolidado=entrega.contenido_consolidado,
             pdf_contenido_b64=entrega.pdf_contenido_b64,
             hash_sha256=entrega.hash_sha256,
+            analisis_archivos=getattr(entrega, "analisis_archivos", None),
             nota_anterior=nota_anterior,
             correccion_json=correccion_json,
             sobrescrito_en=datetime.utcnow(),
             sobrescrito_por_id=sobrescrito_por_id,
         )
 
-        return await self.historial_repo.create(historial)
+        if confirmar:
+            return await self.historial_repo.create(historial)
+        return await self.historial_repo.create(historial, confirmar=False)
 
     async def obtener_historial(self, entrega_id: int) -> HistorialResponse:
         """
@@ -107,6 +135,7 @@ class HistorialService:
                 archivo_tamanio=h.archivo_tamanio,
                 contenido_preview=h.contenido_preview,
                 hash_sha256=h.hash_sha256,
+                analisis_archivos=h.analisis_archivos,
                 nota_anterior=h.nota_anterior,
                 sobrescrito_en=h.sobrescrito_en,
                 sobrescrito_por_nombre=h.sobrescrito_por.nombre,

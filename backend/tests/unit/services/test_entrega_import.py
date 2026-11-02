@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from app.models.enums import EstadoEntregaEnum
 from app.services.entrega_service import EntregaService
+from tests.unit.services.test_politica_entrega import zip_bytes
 
 
 @pytest.fixture
@@ -50,7 +51,7 @@ async def test_crear_desde_bytes_nueva_zip(service):
 
     res = await service.crear_o_actualizar_desde_bytes(
         comision_id=1, rubrica_id=2, alumno_nombre="Juan Perez",
-        archivo_nombre="tp.zip", contenido_bytes=b"PK\x03\x04",
+        archivo_nombre="tp.zip", contenido_bytes=zip_bytes({"main.py": "print(1)"}),
         subido_por_id=5, moodle_user_id=101,
     )
 
@@ -165,7 +166,7 @@ async def test_crear_desde_bytes_zip_con_pdf_se_guarda_como_pdf(service):
 
     res = await service.crear_o_actualizar_desde_bytes(
         comision_id=1, rubrica_id=2, alumno_nombre="Juan Perez",
-        archivo_nombre="tp.zip", contenido_bytes=b"PK\x03\x04",
+        archivo_nombre="tp.zip", contenido_bytes=zip_bytes({"Informe.pdf": b"%PDF-1.4 datos"}),
         subido_por_id=5, moodle_user_id=101,
     )
 

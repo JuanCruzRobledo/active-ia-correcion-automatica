@@ -25,7 +25,7 @@ def _correccion(nota=85, tipo="TP", moodle_user_id=101, materia_universidad_id=N
         alumno_nombre="Carlos Brittos", moodle_user_id=moodle_user_id,
         comision=comision, rubrica=rubrica,
     )
-    correccion = MagicMock(id=9, nota=Decimal(str(nota)), entrega=entrega)
+    correccion = MagicMock(id=9, nota=Decimal(str(nota)), entrega=entrega, criterios_json={})
     return correccion
 
 

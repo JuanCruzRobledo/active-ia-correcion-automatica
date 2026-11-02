@@ -46,6 +46,10 @@ export interface Correccion {
   id: number;
   entrega_id: number;
   nota: number;
+  /** Nota evaluada antes de aplicar el máximo por presentación del proyecto. */
+  nota_academica?: number | null;
+  limite_nota?: number | null;
+  rutas_penalizables?: string[];
   nota_antes_penalizaciones: number | null;
   condicion_desaprobacion_aplicada: string | null;
   condicion_desaprobacion_descripcion: string | null;
