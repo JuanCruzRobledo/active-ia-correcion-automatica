@@ -291,6 +291,8 @@ async def test_editar_correccion_preserva_subcriterios_evaluados_en_edicion_manu
         ]
     )
 
+    # La edición trabaja sobre el snapshot persistido, no crea un desglose nuevo.
+    correccion.criterios_json = {"criterios": [update.criterios[0].model_dump(mode="json")]}
     response = await service.editar_correccion(100, update, editado_por_id=2)
 
     persisted_criterio = correccion.criterios_json["criterios"][0]

@@ -95,3 +95,6 @@ nul
 *.dump
 *.sql.gz
 prod_backup*
+
+# Local generated skill registry
+.atl/

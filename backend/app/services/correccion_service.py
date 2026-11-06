@@ -71,6 +71,7 @@ from app.schemas.correccion import (
     GeminiResponse,
 )
 from app.services.actividad_service import ActividadService
+from app.services.correccion_edicion_manual import editar_correccion_manual
 
 
 def _problemas_respuesta_vs_rubrica(criterios_resp, rubrica) -> list[str]:
@@ -849,89 +850,8 @@ class CorreccionService:
         data: CorreccionUpdate,
         editado_por_id: int,
     ) -> CorreccionResponse:
-        """
-        Manually edit a correction.
-
-        Args:
-            correccion_id: ID of the correction to edit.
-            data: Update data.
-            editado_por_id: ID of user editing.
-
-        Returns:
-            CorreccionResponse with updated correction.
-
-        Raises:
-            HTTPException 404: Correction not found.
-        """
-        correccion = await self.correccion_repo.get_by_id(correccion_id)
-        if not correccion:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Corrección no encontrada",
-            )
-
-        # La nota recibida es académica; una edición de feedback conserva la anterior.
-        previous_policy = (correccion.criterios_json or {}).get("politica_entrega", {})
-        academic = previous_policy.get("nota_academica", correccion.nota)
-
-        # Update fields
-        update_data = data.model_dump(exclude_unset=True)
-
-        if "nota" in update_data:
-            correccion.nota = Decimal(str(update_data["nota"]))
-        else:
-            correccion.nota = Decimal(str(academic))
-
-        # Handle criterios: frontend sends 'criterios' but DB field is 'criterios_json'
-        if "criterios" in update_data:
-            # Convert list of CriterioEvaluado to criterios_json format
-            criterios_list = update_data["criterios"]
-            # Convert Decimal to float for JSON serialization
-            criterios_serialized = [
-                {
-                    "id": c["id"],
-                    "nombre": c["nombre"],
-                    "puntaje_obtenido": float(c["puntaje_obtenido"]),
-                    "puntaje_maximo": float(c["puntaje_maximo"]),
-                    "estado": c["estado"],
-                    "feedback": c["feedback"],
-                    "subcriterios_evaluados": _subcriterios_para_json(
-                        c.get("subcriterios_evaluados")
-                    ),
-                }
-                for c in criterios_list
-            ]
-            correccion.criterios_json = {"criterios": criterios_serialized}
-
-        if "nota_antes_penalizaciones" in update_data:
-            val = update_data["nota_antes_penalizaciones"]
-            correccion.nota_antes_penalizaciones = Decimal(str(val)) if val is not None else None
-
-        if "condicion_desaprobacion_aplicada" in update_data:
-            correccion.condicion_desaprobacion_aplicada = update_data["condicion_desaprobacion_aplicada"] or None
-
-        if "penalizaciones_aplicadas" in update_data:
-            correccion.penalizaciones_aplicadas = update_data["penalizaciones_aplicadas"] or []
-
-        if "fortalezas" in update_data:
-            correccion.fortalezas = update_data["fortalezas"]
-
-        if "recomendaciones" in update_data:
-            correccion.recomendaciones = update_data["recomendaciones"]
-
-        if "comentario_general" in update_data:
-            correccion.comentario_general = update_data["comentario_general"]
-
-        entrega = await self.entrega_repo.get_by_id(correccion.entrega_id)
-        aplicar_politica_correccion(correccion, getattr(entrega, "analisis_archivos", None),
-                                   nota_academica=correccion.nota)
-
-        # Mark as manually edited
-        correccion.editado_manualmente = True
-        correccion.corregido_por_id = editado_por_id
-
-        updated_correccion = await self.correccion_repo.update(correccion)
-        return await self._build_correccion_response(updated_correccion)
+        """Editar la corrección con validación del snapshot de subcriterios."""
+        return await editar_correccion_manual(self, correccion_id, data, editado_por_id)
 
     async def obtener_correccion(
         self, correccion_id: int, *, universidad_id: int | None = None

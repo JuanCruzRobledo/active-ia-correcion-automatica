@@ -191,7 +191,14 @@ class CorreccionResponse(BaseModel):
 
 
 class CorreccionUpdate(BaseModel):
-    """Schema for updating an existing correction."""
+    """Edición parcial mediante PUT /correcciones/{id}.
+
+    El servicio valida el desglose contra el snapshot persistido (HTTP 400):
+    solo puntaje y feedback de subcriterios existentes son editables, con
+    puntajes finitos dentro del máximo y comentarios no vacíos tras trim.
+    Omitir el desglose lo conserva; null/lista vacía no eliminan uno existente.
+    Los cambios de puntaje derivan el total del criterio; la nota es explícita.
+    """
 
     nota: Optional[Decimal] = Field(None, ge=0, le=100, description="Final grade")
     nota_antes_penalizaciones: Optional[Decimal] = Field(None, ge=0, le=100, description="Merit score")
@@ -202,8 +209,8 @@ class CorreccionUpdate(BaseModel):
     recomendaciones: Optional[list[str]] = Field(None, description="Updated recommendations")
     comentario_general: Optional[str] = Field(None, description="Updated general comment")
 
-    # No validation here - users can edit individual criteria without constraints
-    # The nota field can be manually adjusted or recalculated on frontend
+    # Las invariantes del snapshot se validan solo en la edición manual;
+    # los schemas compartidos de respuesta/IA conservan compatibilidad histórica.
 
 
 class CorreccionCreate(BaseModel):
