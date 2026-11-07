@@ -21,7 +21,8 @@ async def editar_correccion_manual(
 
     update_data = data.model_dump(exclude_unset=True)
     documento = correccion.criterios_json or {}
-    academic = documento.get("politica_entrega", {}).get("nota_academica", correccion.nota)
+    politica_anterior = documento.get("politica_entrega", {})
+    academic = politica_anterior.get("nota_academica", correccion.nota)
     criterios = None
     if "criterios" in update_data:
         criterios = preparar_criterios_editados(
@@ -31,7 +32,7 @@ async def editar_correccion_manual(
 
     # La consulta también sucede antes de mutar, para evitar cambios parciales.
     entrega = await service.entrega_repo.get_by_id(correccion.entrega_id)
-    analisis = getattr(entrega, "analisis_archivos", None)
+    analisis = getattr(entrega, "analisis_archivos", None) or politica_anterior
     rubrica = None
     if (analisis or {}).get("rutas_penalizables") and getattr(entrega, "rubrica_id", None):
         rubrica = await service.rubrica_repo.get_by_id(entrega.rubrica_id)
@@ -51,6 +52,7 @@ async def editar_correccion_manual(
     aplicar_politica_correccion(
         correccion, analisis, nota_academica=correccion.nota,
         tipo_rubrica=rubrica.tipo if rubrica else None,
+        mostrar_recomendacion_archivos=data.mostrar_recomendacion_archivos,
     )
     correccion.editado_manualmente = True
     correccion.corregido_por_id = editado_por_id

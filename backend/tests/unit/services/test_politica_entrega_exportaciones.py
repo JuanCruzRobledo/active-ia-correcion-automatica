@@ -66,6 +66,17 @@ def test_pdf_renderiza_final_y_explicacion(score, restricted, expected):
     assert svc._render_pdf_bytes(obj).startswith(b"%PDF")
 
 
+@pytest.mark.parametrize("visible", [True, False])
+def test_pdf_usa_la_politica_aunque_el_comentario_no_tenga_el_aviso(visible):
+    obj = correction(94, True)
+    obj.comentario_general = "Trabajo evaluado."
+    obj.criterios_json["politica_entrega"]["mostrar_recomendacion_archivos"] = visible
+    text = " ".join(flowable_text(PDFService(None)._build_pdf_content(obj)))
+    assert "Trabajo evaluado." in text
+    assert ("tp/dist/" in text) is visible
+    assert ("RECOMENDACIÓN SOBRE LA ENTREGA" in text) is visible
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("score,restricted,expected", [(90, True, 90), (35, True, 35), (90, False, 90)])
 async def test_excel_exporta_final_y_explicacion(score, restricted, expected):

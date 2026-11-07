@@ -3,8 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import CorreccionViewEditModal from './CorreccionViewEditModal';
 import type { Correccion } from '../types';
 
+const { mutate } = vi.hoisted(() => ({ mutate: vi.fn() }));
 vi.mock('../hooks/useCorrecciones', () => ({
-  useUpdateCorreccion: () => ({ mutate: vi.fn(), isPending: false }),
+  useUpdateCorreccion: () => ({ mutate, isPending: false }),
 }));
 
 const correction: Correccion & {
@@ -49,5 +50,27 @@ describe('CorreccionViewEditModal — tope posterior a evaluación', () => {
     openModal();
     fireEvent.click(screen.getByRole('button', { name: /editar/i }));
     expect(screen.getByRole('spinbutton')).toHaveValue(82);
+  });
+
+  it('muestra el aviso sin tope y permite quitarlo al guardar', () => {
+    openModal({ ...correction, nota: 82, limite_nota: null });
+    expect(screen.getByText('tp/dist/')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /editar/i }));
+    const incluir = screen.getByRole('checkbox', { name: /incluir recomendación/i });
+    expect(incluir).toBeChecked();
+    fireEvent.click(incluir);
+    fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+    expect(mutate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ nota: 82, mostrar_recomendacion_archivos: false }) }),
+      expect.anything(),
+    );
+  });
+
+  it('mantiene el aviso oculto al abrir una corrección guardada sin recomendación', () => {
+    openModal({ ...correction, nota: 82, limite_nota: null, mostrar_recomendacion_archivos: false });
+    expect(screen.queryByText('tp/dist/')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /editar/i }));
+    expect(screen.getByText('tp/dist/')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /incluir recomendación/i })).not.toBeChecked();
   });
 });

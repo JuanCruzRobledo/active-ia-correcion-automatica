@@ -133,6 +133,7 @@ class CorreccionResponse(BaseModel):
     nota_academica: Decimal | None = None
     limite_nota: int | None = None
     rutas_penalizables: list[str] = Field(default_factory=list)
+    mostrar_recomendacion_archivos: bool = True
     nota: Decimal = Field(..., description="Final grade (0-100)")
     nota_antes_penalizaciones: Optional[Decimal] = Field(None, description="Merit score before penalties/CD")
     condicion_desaprobacion_aplicada: Optional[str] = Field(None, description="ID of applied failing condition")
@@ -180,6 +181,7 @@ class CorreccionResponse(BaseModel):
             policy = criterios_json.get("politica_entrega", {}) if isinstance(criterios_json, dict) else {}
             data.update({key: policy.get(key) for key in ("nota_academica", "limite_nota")})
             data["rutas_penalizables"] = policy.get("rutas_penalizables", [])
+            data["mostrar_recomendacion_archivos"] = policy.get("mostrar_recomendacion_archivos", True)
             return super().model_validate(data, **kwargs)
 
         # Otherwise, use default validation
@@ -208,6 +210,7 @@ class CorreccionUpdate(BaseModel):
     fortalezas: Optional[list[str]] = Field(None, description="Updated strengths")
     recomendaciones: Optional[list[str]] = Field(None, description="Updated recommendations")
     comentario_general: Optional[str] = Field(None, description="Updated general comment")
+    mostrar_recomendacion_archivos: bool | None = None
 
     # Las invariantes del snapshot se validan solo en la edición manual;
     # los schemas compartidos de respuesta/IA conservan compatibilidad histórica.

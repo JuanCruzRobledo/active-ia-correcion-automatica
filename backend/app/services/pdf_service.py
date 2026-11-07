@@ -38,6 +38,7 @@ from app.models.correccion import Correccion
 from app.models.rubrica import Rubrica
 from app.repositories.correccion_repository import CorreccionRepository
 from app.repositories.rubrica_repository import RubricaRepository
+from app.services.politica_entrega import comentario_sin_recomendacion, texto_recomendacion_archivos
 
 
 class PDFService:
@@ -651,12 +652,13 @@ class PDFService:
 
         # ==================== COMENTARIO GENERAL ====================
 
-        if correccion.comentario_general:
+        comentario = comentario_sin_recomendacion(correccion.comentario_general)
+        if comentario:
             story.append(Spacer(1, 0.25 * inch))
             story.append(Paragraph("COMENTARIOS DEL EVALUADOR", heading_style))
             story.append(Spacer(1, 0.1 * inch))
 
-            comment_data = [[Paragraph(self._escape_xml(correccion.comentario_general), body_style)]]
+            comment_data = [[Paragraph(self._escape_xml(comentario), body_style)]]
             comment_table = Table(comment_data, colWidths=[6.5 * inch])
             comment_table.setStyle(
                 TableStyle([
@@ -669,6 +671,18 @@ class PDFService:
                 ])
             )
             story.append(comment_table)
+
+        recomendacion = texto_recomendacion_archivos(correccion)
+        if recomendacion:
+            aviso_style = ParagraphStyle(
+                "RecomendacionArchivos", parent=body_style,
+                backColor=colors.HexColor("#fffbeb"), borderColor=colors.HexColor("#f59e0b"),
+                borderWidth=1, borderPadding=8, spaceBefore=16,
+            )
+            story.append(Paragraph(
+                "<b>RECOMENDACIÓN SOBRE LA ENTREGA</b><br/>" + self._escape_xml(recomendacion),
+                aviso_style,
+            ))
 
         # El pie NO va en el story: se estampa en el margen inferior de cada página
         # (ver _canvas_con_pie). Como flowable al final del flujo, cualquier

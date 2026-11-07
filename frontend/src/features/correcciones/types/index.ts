@@ -50,6 +50,7 @@ export interface Correccion {
   nota_academica?: number | null;
   limite_nota?: number | null;
   rutas_penalizables?: string[];
+  mostrar_recomendacion_archivos?: boolean;
   nota_antes_penalizaciones: number | null;
   condicion_desaprobacion_aplicada: string | null;
   condicion_desaprobacion_descripcion: string | null;
@@ -76,4 +77,5 @@ export interface CorreccionUpdate {
   fortalezas?: string[];
   recomendaciones?: string[];
   comentario_general?: string;
+  mostrar_recomendacion_archivos?: boolean;
 }

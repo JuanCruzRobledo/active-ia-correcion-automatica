@@ -11,6 +11,7 @@ import { CriterioCorreccionCard } from './CriterioCorreccionCard';
 import { ListaComentariosCorreccion } from './ListaComentariosCorreccion';
 import { AjustesCorreccion } from './AjustesCorreccion';
 import { NotaCorreccion } from './NotaCorreccion';
+import { LimiteNotaEntrega } from '../../entregas/components/LimiteNotaEntrega';
 
 interface CorreccionViewEditModalProps {
   correccion: Correccion;
@@ -18,6 +19,13 @@ interface CorreccionViewEditModalProps {
   trabajoNombre: string;
   isOpen: boolean;
   onClose: () => void;
+}
+
+function comentarioEditable(comentario = '') {
+  const marcador = '[Presentación de la entrega]';
+  return comentario.trimStart().startsWith(marcador)
+    ? ''
+    : comentario.split(`\n\n${marcador}`, 1)[0];
 }
 
 /** A new server snapshot or reopening starts a fresh editable copy. */
@@ -37,7 +45,8 @@ function CorreccionForm({ correccion, alumno, trabajoNombre, isOpen, onClose }: 
   const [criterios, setCriterios] = useState(() => normalizarCriterios(correccion.criterios));
   const [fortalezas, setFortalezas] = useState(correccion.fortalezas || []);
   const [recomendaciones, setRecomendaciones] = useState(correccion.recomendaciones || []);
-  const [comentarioGeneral, setComentarioGeneral] = useState(correccion.comentario_general || '');
+  const [comentarioGeneral, setComentarioGeneral] = useState(comentarioEditable(correccion.comentario_general));
+  const [mostrarRecomendacion, setMostrarRecomendacion] = useState(correccion.mostrar_recomendacion_archivos ?? true);
   const [cdAplicada, setCdAplicada] = useState(correccion.condicion_desaprobacion_aplicada);
   const [penalizaciones, setPenalizaciones] = useState(correccion.penalizaciones_aplicadas || []);
   const [resetKey, setResetKey] = useState(0);
@@ -49,7 +58,8 @@ function CorreccionForm({ correccion, alumno, trabajoNombre, isOpen, onClose }: 
     setNota(Number(correccion.nota_academica ?? correccion.nota));
     setCriterios(normalizarCriterios(correccion.criterios));
     setFortalezas(correccion.fortalezas || []); setRecomendaciones(correccion.recomendaciones || []);
-    setComentarioGeneral(correccion.comentario_general || '');
+    setComentarioGeneral(comentarioEditable(correccion.comentario_general));
+    setMostrarRecomendacion(correccion.mostrar_recomendacion_archivos ?? true);
     setCdAplicada(correccion.condicion_desaprobacion_aplicada); setPenalizaciones(correccion.penalizaciones_aplicadas || []);
     setResetKey(key => key + 1); setMode('view');
   };
@@ -67,6 +77,7 @@ function CorreccionForm({ correccion, alumno, trabajoNombre, isOpen, onClose }: 
       nota, nota_antes_penalizaciones: sumarPuntajes(criterios.map(c => c.puntaje_obtenido)),
       condicion_desaprobacion_aplicada: cdAplicada || null, penalizaciones_aplicadas: penalizaciones,
       criterios, fortalezas, recomendaciones, comentario_general: comentarioGeneral,
+      mostrar_recomendacion_archivos: mostrarRecomendacion,
     } }, { onSuccess: () => setMode('view') });
   };
   return <Modal isOpen={isOpen} onClose={handleClose} size="2xl" title={`Corrección: ${alumno}`}>
@@ -80,6 +91,14 @@ function CorreccionForm({ correccion, alumno, trabajoNombre, isOpen, onClose }: 
     </div>
     <div className="space-y-6 max-h-[calc(100vh-22rem)] overflow-y-auto pr-2">
       <NotaCorreccion correccion={correccion} nota={nota} isViewMode={isViewMode} setNota={setNota} handleRecalcularNota={recalcular} />
+      <LimiteNotaEntrega limiteNota={correccion.limite_nota} rutas={correccion.rutas_penalizables}
+        recomendar={!isViewMode || mostrarRecomendacion} />
+      {!isViewMode && !!correccion.rutas_penalizables?.length && (
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={mostrarRecomendacion} onChange={e => setMostrarRecomendacion(e.target.checked)} />
+          Incluir recomendación en la devolución al alumno
+        </label>
+      )}
       {!isViewMode && <p className="text-xs text-muted-foreground">
         Editá el puntaje y comentario de cada subcriterio. El total del criterio se actualiza al cambiar sus puntajes.
         Usá Recalcular para llevar la suma de criterios a la nota académica; también podés ajustarla manualmente.

@@ -39,11 +39,14 @@ async def reparar_correcciones(
     reparables = 0
     for entrega, correccion in (await db.execute(consulta)).all():
         anterior = correccion.criterios_json["politica_entrega"]
+        analisis = entrega.analisis_archivos or {}
+        rutas = anterior.get("rutas_penalizables")
+        if not rutas and analisis.get("version") == VERSION_POLITICA:
+            rutas = analisis.get("rutas_penalizables")
         try:
             academica = Decimal(str(anterior.get("nota_academica")))
         except InvalidOperation:
             academica = Decimal("NaN")
-        rutas = anterior.get("rutas_penalizables")
         if (
             not academica.is_finite()
             or not 0 <= academica <= 100
@@ -61,14 +64,17 @@ async def reparar_correcciones(
         reparables += 1
         if aplicar:
             # La evidencia guardada con la corrección identifica la versión evaluada.
-            aplicar_politica_correccion(correccion, anterior, nota_academica=academica)
-            analisis = entrega.analisis_archivos
-            if analisis and analisis.get("limite_nota") == 50:
+            aplicar_politica_correccion(
+                correccion, {**anterior, "rutas_penalizables": rutas}, nota_academica=academica,
+            )
+            if analisis.get("limite_nota") == 50:
                 entrega.analisis_archivos = {**analisis, "limite_nota": None}
     return reparables
 
 
 async def main(universidad_id: int, aplicar: bool) -> None:
+    if not aplicar:
+        print("Vista previa: los cambios se guardan al agregar --aplicar.")
     async with async_session_maker() as db, db.begin():
         total = await reparar_correcciones(db, universidad_id=universidad_id, aplicar=aplicar)
     modo = "Aplicadas" if aplicar else "Detectadas en vista previa"
@@ -78,6 +84,6 @@ async def main(universidad_id: int, aplicar: bool) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--universidad-id", required=True, type=int)
-    parser.add_argument("--aplicar", action="store_true")
+    parser.add_argument("--aplicar", action="store_true", help="Guarda las correcciones en la base de datos.")
     args = parser.parse_args()
     asyncio.run(main(args.universidad_id, args.aplicar))

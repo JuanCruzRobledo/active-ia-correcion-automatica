@@ -8,7 +8,7 @@ from app.models.correccion import Correccion
 from app.models.entrega import EntregaHistorial
 from app.models.enums import EstadoEntregaEnum, TipoRubricaEnum
 from app.models.rubrica import Rubrica
-from app.schemas.correccion import CorreccionExternaCreate
+from app.schemas.correccion import CorreccionExternaCreate, CorreccionUpdate
 from app.services.correccion_service import CorreccionService
 from app.services.entrega_service import EntregaService
 from tests.unit.repositories.test_ia003_reclamar_atomico import _entrega
@@ -65,8 +65,8 @@ async def test_sucia_a_nueva_version_requiere_evaluacion_nueva(db_session, dirty
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("academic", [90, 35])
-async def test_reparacion_masiva_previsualiza_y_restaura_sin_duplicar_aviso(db_session, academic):
+@pytest.mark.parametrize("academic,guardar_rutas", [(90, True), (35, False)])
+async def test_reparacion_masiva_previsualiza_y_restaura_sin_duplicar_aviso(db_session, academic, guardar_rutas):
     from decimal import Decimal
 
     from app.services.politica_entrega import MARCADOR_DEVOLUCION
@@ -77,7 +77,10 @@ async def test_reparacion_masiva_previsualiza_y_restaura_sin_duplicar_aviso(db_s
     entrega.analisis_archivos = {**analysis, "moodle_timemodified": 123}
     correction = Correccion(
         entrega_id=entrega.id, universidad_id=1, nota=Decimal(min(academic, 50)),
-        criterios_json={"criterios": [], "politica_entrega": {**analysis, "nota_academica": academic}},
+        criterios_json={"criterios": [], "politica_entrega": {
+            **analysis, "nota_academica": academic,
+            "rutas_penalizables": analysis["rutas_penalizables"] if guardar_rutas else [],
+        }},
         comentario_general=f"Buen trabajo.\n\n{MARCADOR_DEVOLUCION} máximo 50/100.",
     )
     db_session.add(correction)
@@ -98,3 +101,17 @@ async def test_reparacion_masiva_previsualiza_y_restaura_sin_duplicar_aviso(db_s
     assert entrega.analisis_archivos["limite_nota"] is None
     assert entrega.analisis_archivos["moodle_timemodified"] == 123
     assert await reparar_correcciones(db_session, universidad_id=1, aplicar=True) == 0
+
+    service = CorreccionService(db_session)
+    service._build_correccion_response = AsyncMock(side_effect=lambda c: c)
+    await service.editar_correccion(
+        correction.id, CorreccionUpdate(mostrar_recomendacion_archivos=False), 1,
+    )
+    saved = await service.editar_correccion(
+        correction.id, CorreccionUpdate(comentario_general="Devolución revisada."), 1,
+    )
+    assert saved.nota == academic
+    assert saved.comentario_general == "Devolución revisada."
+    politica = saved.criterios_json["politica_entrega"]
+    assert politica["mostrar_recomendacion_archivos"] is False
+    assert politica["rutas_penalizables"] == ["tp/build/"]

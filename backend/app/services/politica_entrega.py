@@ -114,39 +114,57 @@ def aplicar_tope(nota: Decimal, analisis: dict | None,
 
 def aplicar_politica_correccion(correccion: Any, analisis: dict | None,
                                nota_academica: Decimal | None = None, *,
-                               tipo_rubrica: TipoRubricaEnum | None = None) -> None:
+                               tipo_rubrica: TipoRubricaEnum | None = None,
+                               mostrar_recomendacion_archivos: bool | None = None) -> None:
     """Actualiza la nota y la devolución sin acumular topes ni avisos."""
     previous = (correccion.criterios_json or {}).get("politica_entrega", {})
     academic = nota_academica if nota_academica is not None else previous.get("nota_academica", correccion.nota)
     policy = aplicar_tope(Decimal(str(academic)), analisis, tipo_rubrica)
+    if mostrar_recomendacion_archivos is None:
+        mostrar_recomendacion_archivos = previous.get("mostrar_recomendacion_archivos", True)
+    policy["mostrar_recomendacion_archivos"] = mostrar_recomendacion_archivos
     correccion.nota = policy.pop("nota")
     correccion.criterios_json = {**(correccion.criterios_json or {}), "politica_entrega": policy}
     correccion.comentario_general = anexar_devolucion_politica(correccion.comentario_general, correccion)
 
 
-def anexar_devolucion_politica(comment: str | None, correccion: Any) -> str:
-    """Mantiene la explicación aunque el tutor personalice el mensaje a Moodle."""
-    policy = (correccion.criterios_json or {}).get("politica_entrega", {})
+def comentario_sin_recomendacion(comment: str | None) -> str:
+    """Separa el texto del tutor del aviso generado por la política."""
     comment = comment or ""
-    comment = comment.split("\n\n" + MARCADOR_DEVOLUCION, 1)[0]
-    if comment.startswith(MARCADOR_DEVOLUCION):
-        comment = ""
+    if comment.lstrip().startswith(MARCADOR_DEVOLUCION):
+        return ""
+    return comment.split("\n\n" + MARCADOR_DEVOLUCION, 1)[0]
+
+
+def texto_recomendacion_archivos(correccion: Any) -> str:
+    """Obtiene el aviso desde la evidencia y la preferencia de la corrección."""
+    policy = (correccion.criterios_json or {}).get("politica_entrega", {})
     paths = policy.get("rutas_penalizables") or []
-    if paths:
-        if comment:
-            comment += "\n\n"
-        comment += (
-            f"{MARCADOR_DEVOLUCION} Se detectaron dependencias o compilados "
-            f"que quedaron fuera de la evaluación: {', '.join(paths)}. "
-            "Recomendamos quitar esas carpetas antes de comprimir el proyecto para la próxima entrega."
+    if not paths or not policy.get("mostrar_recomendacion_archivos", True):
+        return ""
+    text = (
+        "Se detectaron dependencias o compilados que quedaron fuera de la evaluación: "
+        f"{', '.join(paths)}. "
+        "Recomendamos quitar esas carpetas antes de comprimir el proyecto. "
+        "Es importante que queden fuera del próximo ZIP."
+    )
+    limit = policy.get("limite_nota")
+    if limit is not None:
+        text += (
+            f" Nota académica: {policy['nota_academica']:g}/100. "
+            f"Nota final: {correccion.nota}/100 (máximo {limit}/100)."
         )
-        limit = policy.get("limite_nota")
-        if limit is not None:
-            comment += (
-                f" Nota académica: {policy['nota_academica']:g}/100. "
-                f"Nota final: {correccion.nota}/100 (máximo {limit}/100)."
-            )
-    return comment
+    return text
+
+
+def anexar_devolucion_politica(comment: str | None, correccion: Any) -> str:
+    """Respeta la visibilidad del aviso al preparar una devolución."""
+    comment = comentario_sin_recomendacion(comment)
+    text = texto_recomendacion_archivos(correccion)
+    if not text:
+        return comment
+    aviso = f"{MARCADOR_DEVOLUCION} {text}"
+    return f"{comment}\n\n{aviso}" if comment else aviso
 
 
 def es_nueva_version_moodle(entrega: Any, timemodified: int | None) -> bool:

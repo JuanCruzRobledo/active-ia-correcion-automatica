@@ -2,7 +2,6 @@ import { Calculator } from 'lucide-react';
 import { Button } from '../../../shared/components/ui/Button';
 import { cn } from '../../../shared/utils/cn';
 import type { Correccion } from '../types';
-import { LimiteNotaEntrega } from '../../entregas/components/LimiteNotaEntrega';
 interface NotaCorreccionProps {
   correccion: Correccion;
   nota: number;
@@ -75,7 +74,6 @@ export function NotaCorreccion({ correccion, nota, isViewMode, setNota, handleRe
             Nota académica: <span className="font-medium text-foreground">{Number(correccion.nota_academica).toFixed(1)}</span> / 100
           </p>
         )}
-        <LimiteNotaEntrega limiteNota={correccion.limite_nota} rutas={correccion.rutas_penalizables} />
 
   </>;
 }
