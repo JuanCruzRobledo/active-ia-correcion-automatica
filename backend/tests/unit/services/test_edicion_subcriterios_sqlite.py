@@ -20,7 +20,7 @@ from tests.unit.services.test_edicion_subcriterios import criterio
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("modo", ["desglose", "omitido", "v1"])
-async def test_guardar_recargar_y_pdf_conservan_detalle_y_tope(db_session, modo):
+async def test_guardar_recargar_y_pdf_conservan_detalle_y_nota_academica(db_session, modo):
     entrega = await _entrega(db_session)
     entrega.analisis_archivos = {"version": VERSION_POLITICA, "rutas_penalizables": ["tp/dist/"]}
     original = criterio()
@@ -59,7 +59,7 @@ async def test_guardar_recargar_y_pdf_conservan_detalle_y_tope(db_session, modo)
     await service.editar_correccion(correction_id, CorreccionUpdate(criterios=[edited]), 7)
     db_session.expire_all()
     response = await service.obtener_correccion(correction_id, universidad_id=1)
-    assert response.nota_academica == 82 and response.nota == 50
+    assert response.nota_academica == 82 and response.nota == 82
     assert response.editado_manualmente and response.corregido_por_id == 7
     persisted = await service.correccion_repo.get_by_id(correction_id)
     assert persisted.criterios_json["origen"] == "conservar"

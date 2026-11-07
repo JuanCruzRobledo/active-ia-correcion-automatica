@@ -701,7 +701,9 @@ class CorreccionService:
         correccion = Correccion(
             **data_dict, **metricas, universidad_id=entrega.universidad_id
         )
-        aplicar_politica_correccion(correccion, getattr(entrega, "analisis_archivos", None))
+        aplicar_politica_correccion(
+            correccion, getattr(entrega, "analisis_archivos", None), tipo_rubrica=rubrica.tipo,
+        )
         created_correccion = await self.correccion_repo.create(correccion)
 
         # Update entrega state to CORREGIDA y limpiar cualquier error previo (item #1).

@@ -21,17 +21,27 @@ DIRTY = {"version": 1, "rutas_penalizables": ["tp/node_modules/"], "limite_nota"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("score,expected", [(90, 50), (35, 35)])
-async def test_resultado_ia_se_limita_despues_de_evaluar(monkeypatch, score, expected):
+@pytest.mark.parametrize("enabled,tipo,score,expected", [
+    (False, "TP", 90, 90),
+    (False, "PARCIAL_2", 35, 35),
+    (True, "TP", 90, 50),
+    (True, "PARCIAL_2", 90, 90),
+])
+async def test_resultado_ia_aplica_politica_segun_tipo(monkeypatch, enabled, tipo, score, expected):
     from app.schemas.correccion import GeminiResponse
+    from app.services import politica_entrega
+
+    monkeypatch.setattr(politica_entrega, "APLICAR_TOPE_TP", enabled)
     entrega = _fake_entrega(analisis_archivos=DIRTY)
+    rubrica = _fake_rubrica(1)
+    rubrica.tipo = tipo
     result = _gemini_result_v1()["correccion"]
     result["criterios"][0]["puntaje_obtenido"] = score
     result["nota"] = score
-    service, captured = _service_con(entrega, _fake_rubrica(1), {})
+    service, _ = _service_con(entrega, rubrica, {})
     service._build_correccion_response = AsyncMock(side_effect=lambda c: c)
     saved = await service._persistir_resultado_correccion(
-        entrega=entrega, rubrica=_fake_rubrica(1), corregido_por_id=1,
+        entrega=entrega, rubrica=rubrica, corregido_por_id=1,
         gemini_response=GeminiResponse(**result), raw_response={}, ia_proveedor="gemini", metricas_extra={})
     assert saved.nota == expected
     assert saved.criterios_json["politica_entrega"]["nota_academica"] == score
@@ -41,7 +51,7 @@ async def test_resultado_ia_se_limita_despues_de_evaluar(monkeypatch, score, exp
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("update,expected", [({"comentario_general": "Otro comentario"}, 90), ({"nota": 75}, 75)])
-async def test_edicion_reaplica_tope_sin_perder_nota_academica(update, expected):
+async def test_edicion_recupera_nota_academica(update, expected):
     correction = SimpleNamespace(id=1, entrega_id=1, nota=Decimal(50),
         criterios_json={"criterios": [], "politica_entrega": {"nota_academica": 90, "limite_nota": 50}},
         comentario_general="Bien", penalizaciones_aplicadas=[])
@@ -51,7 +61,7 @@ async def test_edicion_reaplica_tope_sin_perder_nota_academica(update, expected)
     service.entrega_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(analisis_archivos=DIRTY))
     service._build_correccion_response = AsyncMock(side_effect=lambda c: c)
     saved = await service.editar_correccion(1, CorreccionUpdate(**update), 2)
-    assert saved.nota == 50
+    assert saved.nota == expected
     assert saved.criterios_json["politica_entrega"]["nota_academica"] == expected
     assert saved.comentario_general.count("[Presentación de la entrega]") == 1
 
@@ -87,7 +97,7 @@ async def test_importacion_persiste_analisis_sin_enviar_dependencias():
         contenido_bytes=archive, subido_por_id=1, modo_consolidacion="solo_codigo")
     assert result.status == "creada"
     saved = service.entrega_repo.create.call_args.args[0]
-    assert saved.analisis_archivos["limite_nota"] == 50
+    assert saved.analisis_archivos["limite_nota"] is None
     assert "DEPENDENCY" not in saved.contenido_consolidado
 
 
@@ -191,5 +201,5 @@ async def test_correccion_externa_respeta_integridad_de_contenido(monkeypatch, s
         service.correccion_repo.create.assert_not_awaited()
     else:
         saved = await service.cargar_correccion_externa(1, data, 1)
-        assert saved.nota == 50
+        assert saved.nota == 90
         assert saved.criterios_json["politica_entrega"]["nota_academica"] == 90

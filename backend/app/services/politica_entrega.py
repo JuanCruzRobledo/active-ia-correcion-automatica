@@ -10,8 +10,12 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 from app.core.politica_archivos import DIRECTORIOS_PENALIZABLES
+from app.models.enums import TipoRubricaEnum
 
 VERSION_POLITICA = 1
+APLICAR_TOPE_TP = False
+# Descomentá esta línea para activar el máximo de 50/100 solo para TP.
+# APLICAR_TOPE_TP = True
 DIRECTORIOS_IGNORADOS = frozenset({
     ".git", ".idea", ".vscode", ".settings", ".gradle", ".mvn",
     "__pycache__", ".pytest_cache", "__macosx", ".mypy_cache", ".ruff_cache",
@@ -60,7 +64,8 @@ def directorios_permitidos_de(rubrica: Any) -> list[str]:
 
 
 def analizar_archivo(content: bytes, filename: str, included: list[str],
-                     directorios_permitidos: list[str] | None = None) -> dict[str, Any]:
+                     directorios_permitidos: list[str] | None = None, *,
+                     tipo_rubrica: TipoRubricaEnum | None = None) -> dict[str, Any]:
     """Registra exclusiones antes de perder evidencia al consolidar."""
     ignored: list[dict[str, str]] = []
     penalized: set[str] = set()
@@ -82,30 +87,38 @@ def analizar_archivo(content: bytes, filename: str, included: list[str],
         "archivos_incluidos": included,
         "archivos_ignorados": sorted(ignored, key=lambda item: item["ruta"]),
         "rutas_penalizables": sorted(penalized),
-        "limite_nota": 50 if penalized else None,
+        "limite_nota": _limite_para(tipo_rubrica) if penalized else None,
         "directorios_permitidos": sorted(set(directorios_permitidos or [])),
     }
 
 
-def aplicar_tope(nota: Decimal, analisis: dict | None) -> dict[str, Any]:
+def _limite_para(tipo_rubrica: TipoRubricaEnum | None) -> int | None:
+    return 50 if APLICAR_TOPE_TP and tipo_rubrica == TipoRubricaEnum.TP else None
+
+
+def aplicar_tope(nota: Decimal, analisis: dict | None,
+                 tipo_rubrica: TipoRubricaEnum | None = None) -> dict[str, Any]:
     """La nota académica ya incluye las reglas de evaluación de la rúbrica."""
-    paths = (analisis or {}).get("rutas_penalizables") or []
-    limit = 50 if paths and (analisis or {}).get("version") == VERSION_POLITICA else None
+    analysis = analisis or {}
+    version = analysis.get("version")
+    paths = (analysis.get("rutas_penalizables") or []) if version == VERSION_POLITICA else []
+    limit = _limite_para(tipo_rubrica) if paths else None
     return {
         "nota": min(nota, Decimal(limit)) if limit is not None else nota,
         "nota_academica": float(nota),
         "limite_nota": limit,
-        "rutas_penalizables": paths if limit is not None else [],
-        "version": (analisis or {}).get("version"),
+        "rutas_penalizables": paths,
+        "version": version,
     }
 
 
 def aplicar_politica_correccion(correccion: Any, analisis: dict | None,
-                               nota_academica: Decimal | None = None) -> None:
-    """Aplica el mismo tope a IA, cargas externas y edición manual, una sola vez."""
+                               nota_academica: Decimal | None = None, *,
+                               tipo_rubrica: TipoRubricaEnum | None = None) -> None:
+    """Actualiza la nota y la devolución sin acumular topes ni avisos."""
     previous = (correccion.criterios_json or {}).get("politica_entrega", {})
     academic = nota_academica if nota_academica is not None else previous.get("nota_academica", correccion.nota)
-    policy = aplicar_tope(Decimal(str(academic)), analisis)
+    policy = aplicar_tope(Decimal(str(academic)), analisis, tipo_rubrica)
     correccion.nota = policy.pop("nota")
     correccion.criterios_json = {**(correccion.criterios_json or {}), "politica_entrega": policy}
     correccion.comentario_general = anexar_devolucion_politica(correccion.comentario_general, correccion)
@@ -115,16 +128,24 @@ def anexar_devolucion_politica(comment: str | None, correccion: Any) -> str:
     """Mantiene la explicación aunque el tutor personalice el mensaje a Moodle."""
     policy = (correccion.criterios_json or {}).get("politica_entrega", {})
     comment = comment or ""
-    comment = comment.split("\n\n" + MARCADOR_DEVOLUCION)[0]
-    if policy.get("limite_nota") is not None:
-        paths = ", ".join(policy["rutas_penalizables"])
+    comment = comment.split("\n\n" + MARCADOR_DEVOLUCION, 1)[0]
+    if comment.startswith(MARCADOR_DEVOLUCION):
+        comment = ""
+    paths = policy.get("rutas_penalizables") or []
+    if paths:
+        if comment:
+            comment += "\n\n"
         comment += (
-            f"\n\n{MARCADOR_DEVOLUCION} Nota académica: {policy['nota_academica']:g}/100. "
-            f"Nota final: {correccion.nota}/100 (máximo 50/100). "
-            f"Se detectaron dependencias o compilados no evaluables: {paths}. "
-            "Entregá nuevamente el proyecto sin esas carpetas para quitar la restricción; "
-            "la nueva versión deberá evaluarse otra vez."
+            f"{MARCADOR_DEVOLUCION} Se detectaron dependencias o compilados "
+            f"que quedaron fuera de la evaluación: {', '.join(paths)}. "
+            "Recomendamos quitar esas carpetas antes de comprimir el proyecto para la próxima entrega."
         )
+        limit = policy.get("limite_nota")
+        if limit is not None:
+            comment += (
+                f" Nota académica: {policy['nota_academica']:g}/100. "
+                f"Nota final: {correccion.nota}/100 (máximo {limit}/100)."
+            )
     return comment
 
 

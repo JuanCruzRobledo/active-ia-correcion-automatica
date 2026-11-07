@@ -179,7 +179,7 @@ class EntregaService:
             directorios_permitidos_de(rubrica),
         )
         analisis = analizar_archivo(contenido_bytes, archivo.filename, archivos_incluidos,
-                                   directorios_permitidos_de(rubrica))
+                                   directorios_permitidos_de(rubrica), tipo_rubrica=getattr(rubrica, "tipo", None))
 
         # Check if entrega already exists. CRUD-005: si vamos a sobrescribir, cargar
         # el contenido para poder snapshotearlo en el historial antes de pisarlo.
@@ -360,7 +360,7 @@ class EntregaService:
 
         hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
         analisis = analizar_archivo(contenido_bytes, archivo_nombre, archivos_incluidos,
-                                   directorios_permitidos_de(rubrica))
+                                   directorios_permitidos_de(rubrica), tipo_rubrica=getattr(rubrica, "tipo", None))
         if moodle_timemodified:
             analisis["moodle_timemodified"] = moodle_timemodified
 
@@ -501,7 +501,7 @@ class EntregaService:
         entrega.contenido_consolidado = contenido_consolidado
         entrega.archivos_incluidos = archivos_incluidos
         entrega.analisis_archivos = analizar_archivo(contenido_bytes, archivo.filename, archivos_incluidos,
-                                                    directorios_permitidos_de(rubrica))
+                                                    directorios_permitidos_de(rubrica), tipo_rubrica=getattr(rubrica, "tipo", None))
         entrega.pdf_contenido_b64 = pdf_contenido_b64
         entrega.hash_sha256 = hashlib.sha256(contenido_bytes).hexdigest()
         # El historial conserva la devolución anterior; el contenido nuevo
@@ -1179,7 +1179,7 @@ class EntregaService:
                             directorios_permitidos_de(rubrica),
                         )
                         analisis = analizar_archivo(contenido_bytes_alumno, archivo_nombre, archivos_incluidos,
-                                                   directorios_permitidos_de(rubrica))
+                                                   directorios_permitidos_de(rubrica), tipo_rubrica=getattr(rubrica, "tipo", None))
 
                         # Check if entrega already exists. CRUD-005: cargar el
                         # contenido si se va a sobrescribir, para snapshotearlo.

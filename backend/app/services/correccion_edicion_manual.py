@@ -31,6 +31,10 @@ async def editar_correccion_manual(
 
     # La consulta también sucede antes de mutar, para evitar cambios parciales.
     entrega = await service.entrega_repo.get_by_id(correccion.entrega_id)
+    analisis = getattr(entrega, "analisis_archivos", None)
+    rubrica = None
+    if (analisis or {}).get("rutas_penalizables") and getattr(entrega, "rubrica_id", None):
+        rubrica = await service.rubrica_repo.get_by_id(entrega.rubrica_id)
     correccion.nota = Decimal(str(update_data.get("nota", academic)))
     if criterios is not None:
         correccion.criterios_json = {**documento, "criterios": criterios}
@@ -45,7 +49,8 @@ async def editar_correccion_manual(
         if field in update_data:
             setattr(correccion, field, update_data[field])
     aplicar_politica_correccion(
-        correccion, getattr(entrega, "analisis_archivos", None), nota_academica=correccion.nota,
+        correccion, analisis, nota_academica=correccion.nota,
+        tipo_rubrica=rubrica.tipo if rubrica else None,
     )
     correccion.editado_manualmente = True
     correccion.corregido_por_id = editado_por_id

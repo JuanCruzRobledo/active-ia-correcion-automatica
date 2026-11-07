@@ -30,14 +30,12 @@ def correction(score, restricted):
     return obj
 
 
-def assert_explanation(text, score):
+def assert_explanation(text):
     text = " ".join(text.split())
-    assert f"Nota académica: {score}/100" in text
-    assert "máximo 50/100" in text
+    assert "máximo 50/100" not in text
     assert "tp/dist/" in text
     assert "dependencias o compilados" in text
-    assert "nuevamente" in text
-    assert "evaluarse otra vez" in text
+    assert "Recomendamos" in text
 
 
 def flowable_text(items):
@@ -55,21 +53,21 @@ def flowable_text(items):
             yield from flowable_text(item._content)
 
 
-@pytest.mark.parametrize("score,restricted,expected", [(90, True, 50), (35, True, 35), (90, False, 90)])
+@pytest.mark.parametrize("score,restricted,expected", [(90, True, 90), (35, True, 35), (90, False, 90)])
 def test_pdf_renderiza_final_y_explicacion(score, restricted, expected):
     obj = correction(score, restricted)
     svc = PDFService(None)
     text = " ".join(flowable_text(svc._build_pdf_content(obj)))
     assert f"Calificación Final: {expected}/100" in text
     if restricted:
-        assert_explanation(text, score)
+        assert_explanation(text)
     else:
         assert "máximo 50/100" not in text
     assert svc._render_pdf_bytes(obj).startswith(b"%PDF")
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("score,restricted,expected", [(90, True, 50), (35, True, 35), (90, False, 90)])
+@pytest.mark.parametrize("score,restricted,expected", [(90, True, 90), (35, True, 35), (90, False, 90)])
 async def test_excel_exporta_final_y_explicacion(score, restricted, expected):
     obj = correction(score, restricted)
     entrega = obj.entrega
@@ -83,13 +81,13 @@ async def test_excel_exporta_final_y_explicacion(score, restricted, expected):
     sheet = load_workbook(io.BytesIO(data)).active
     assert sheet["B5"].value == expected
     if restricted:
-        assert_explanation(sheet["F5"].value, score)
+        assert_explanation(sheet["F5"].value)
     else:
         assert "máximo 50/100" not in sheet["F5"].value
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("score,restricted,expected", [(90, True, 50), (35, True, 35), (90, False, 90)])
+@pytest.mark.parametrize("score,restricted,expected", [(90, True, 90), (35, True, 35), (90, False, 90)])
 async def test_moodle_envia_final_y_explicacion_aunque_tutor_edite_comentario(service, score, restricted, expected):
     obj = _correccion(nota=score, tipo="PARCIAL_1")
     obj.criterios_json = {"criterios": []}
@@ -104,7 +102,7 @@ async def test_moodle_envia_final_y_explicacion_aunque_tutor_edite_comentario(se
     assert sent["grade"] == expected
     assert "Revisá la devolución." in sent["feedback_comment"]
     if restricted:
-        assert_explanation(sent["feedback_comment"], score)
-        assert_explanation(service.moodle_sync_repo.create.call_args.args[0].comentario_enviado, score)
+        assert_explanation(sent["feedback_comment"])
+        assert_explanation(service.moodle_sync_repo.create.call_args.args[0].comentario_enviado)
     else:
         assert "máximo 50/100" not in sent["feedback_comment"]

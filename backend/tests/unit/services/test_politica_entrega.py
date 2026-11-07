@@ -44,7 +44,7 @@ def test_analisis_detecta_antes_de_filtrar_y_no_penaliza_residuos():
                          "tp/__pycache__/main.pyc": "cache", "tp/src/main.js": "source"})
     result = analizar_archivo(archive, "tp.zip", ["tp/src/main.js"])
     assert result["version"] == 1
-    assert result["limite_nota"] == 50
+    assert result["limite_nota"] is None
     assert result["rutas_penalizables"] == ["TP/NODE_MODULES/", "tp/dist/"]
     assert len(result["archivos_ignorados"]) == 4
 
@@ -68,14 +68,23 @@ def test_excepcion_explicita_permite_dist_sin_penalizar():
     assert result["limite_nota"] is None
 
 
-@pytest.mark.parametrize("academic,expected", [(82, 50), (35, 35)])
-def test_tope_posterior_no_descuenta_porcentaje(academic, expected):
-    from app.services.politica_entrega import aplicar_tope
+@pytest.mark.parametrize("enabled,tipo,academic,expected,limit", [
+    (False, "TP", 82, 82, None),
+    (False, "PARCIAL_2", 82, 82, None),
+    (True, "TP", 82, 50, 50),
+    (True, "TP", 35, 35, 50),
+    (True, "TPI", 82, 82, None),
+    (True, "PARCIAL_2", 82, 82, None),
+])
+def test_tope_solo_para_tp_si_se_activa(monkeypatch, enabled, tipo, academic, expected, limit):
+    from app.services import politica_entrega
     analysis = {"version": 1, "rutas_penalizables": ["tp/node_modules/"], "limite_nota": 50}
-    result = aplicar_tope(Decimal(academic), analysis)
+    monkeypatch.setattr(politica_entrega, "APLICAR_TOPE_TP", enabled)
+    result = politica_entrega.aplicar_tope(Decimal(academic), analysis, tipo)
     assert result["nota"] == Decimal(expected)
     assert result["nota_academica"] == academic
-    assert result["limite_nota"] == 50
+    assert result["limite_nota"] == limit
+    assert result["rutas_penalizables"] == ["tp/node_modules/"]
 
 
 @pytest.mark.parametrize("analysis", [None, {"version": 1, "rutas_penalizables": [], "limite_nota": None}])

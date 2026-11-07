@@ -17,8 +17,8 @@ from tests.unit.services.test_politica_entrega import zip_bytes
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("dirty_again,expected", [(False, 90), (True, 50)])
-async def test_sucia_a_nueva_version_requiere_evaluacion_nueva(db_session, dirty_again, expected):
+@pytest.mark.parametrize("dirty_again", [False, True])
+async def test_sucia_a_nueva_version_requiere_evaluacion_nueva(db_session, dirty_again):
     original = await _entrega(db_session)
     rubric = Rubrica(universidad_id=1, materia_id=original.comision_id,
         tipo=TipoRubricaEnum.TP, anio=2026, titulo="TP", descripcion="Prueba",
@@ -44,7 +44,7 @@ async def test_sucia_a_nueva_version_requiere_evaluacion_nueva(db_session, dirty
     first = await upload(100, True)
     data = CorreccionExternaCreate(**_gemini_result_v1()["correccion"], ia_proveedor="externo")
     correction = await grades.cargar_correccion_externa(first.entrega_id, data, 1)
-    assert correction.nota == 50
+    assert correction.nota == 90
     assert correction.criterios_json["politica_entrega"]["nota_academica"] == 90
     second = await upload(200, dirty_again)
     assert second.entrega_id == first.entrega_id
@@ -53,11 +53,48 @@ async def test_sucia_a_nueva_version_requiere_evaluacion_nueva(db_session, dirty
     assert current.correccion is None
     assert await grades.correccion_repo.get_by_entrega_id(first.entrega_id) is None
     history = (await db_session.execute(select(EntregaHistorial))).scalar_one()
-    assert history.nota_anterior == 50
+    assert history.nota_anterior == 90
     assert history.correccion_json["criterios_json"]["politica_entrega"]["nota_academica"] == 90
-    assert history.analisis_archivos["limite_nota"] == 50
-    assert current.analisis_archivos["limite_nota"] == (50 if dirty_again else None)
+    assert history.analisis_archivos["limite_nota"] is None
+    assert current.analisis_archivos["limite_nota"] is None
     fresh = await grades.cargar_correccion_externa(first.entrega_id, data, 1)
-    assert fresh.nota == expected
+    assert fresh.nota == 90
     assert len((await db_session.execute(select(Correccion))).scalars().all()) == 1
     assert current.estado == EstadoEntregaEnum.CORREGIDA
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("academic", [90, 35])
+async def test_reparacion_masiva_previsualiza_y_restaura_sin_duplicar_aviso(db_session, academic):
+    from decimal import Decimal
+
+    from app.services.politica_entrega import MARCADOR_DEVOLUCION
+    from scripts.reparar_tope_entregas import reparar_correcciones
+
+    entrega = await _entrega(db_session)
+    analysis = {"version": 1, "rutas_penalizables": ["tp/build/"], "limite_nota": 50}
+    entrega.analisis_archivos = {**analysis, "moodle_timemodified": 123}
+    correction = Correccion(
+        entrega_id=entrega.id, universidad_id=1, nota=Decimal(min(academic, 50)),
+        criterios_json={"criterios": [], "politica_entrega": {**analysis, "nota_academica": academic}},
+        comentario_general=f"Buen trabajo.\n\n{MARCADOR_DEVOLUCION} máximo 50/100.",
+    )
+    db_session.add(correction)
+    await db_session.commit()
+
+    assert await reparar_correcciones(db_session, universidad_id=2, aplicar=True) == 0
+    assert await reparar_correcciones(db_session, universidad_id=1, aplicar=False) == 1
+    assert correction.nota == min(academic, 50)
+    assert "máximo 50/100" in correction.comentario_general
+
+    assert await reparar_correcciones(db_session, universidad_id=1, aplicar=True) == 1
+    await db_session.commit()
+    assert correction.nota == academic
+    assert correction.comentario_general.startswith("Buen trabajo.")
+    assert correction.comentario_general.count(MARCADOR_DEVOLUCION) == 1
+    assert "Recomendamos" in correction.comentario_general
+    assert "máximo 50/100" not in correction.comentario_general
+    assert entrega.analisis_archivos["limite_nota"] is None
+    assert entrega.analisis_archivos["moodle_timemodified"] == 123
+    assert await reparar_correcciones(db_session, universidad_id=1, aplicar=True) == 0
