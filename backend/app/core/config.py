@@ -118,8 +118,8 @@ class Settings(BaseSettings):
 
     # IA-015: tope de caracteres del código consolidado que se manda al LLM. Una
     # entrega enorme podía inflar el payload sin control (costo de tokens / rechazo
-    # del modelo). ~200k chars ≈ ~50k tokens, holgado para una entrega de código.
-    MAX_CODIGO_CORRECCION_CHARS: int = 200_000
+    # del modelo). El límite admite proyectos completos con backend y frontend.
+    MAX_CODIGO_CORRECCION_CHARS: int = 350_000
     MAX_ZIP_ENTRIES: int = 5000
 
     # =========================================
